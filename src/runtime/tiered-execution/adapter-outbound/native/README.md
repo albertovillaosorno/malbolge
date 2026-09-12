@@ -453,14 +453,16 @@ different artifact cannot replace the resident implicitly, live leases block
 release, failed load publishes nothing, and failed release transfers exact ready
 retry ownership.
 
-`DirectFusedNativeLeaseCache` adds fixed weighted multi-entry residency. Exact
-hits preserve FIFO age without adapter work; misses evict the oldest unleased
-resident until entry/mapping/byte limits fit. Live leases remain active and
-charged, and blocked candidates clean themselves. Explicit drain and eviction
-failure return exact keyed retry ownership.
+`DirectFusedNativeLeaseCache` now separates active lookup from retired leased
+residency under one weighted capacity account. Hits preserve FIFO age without
+adapter work; misses process active FIFO entries oldest-first, releasing
+unleased victims and retiring leased victims while their exact weight remains
+charged.
 
-Retirement, invalidation, dynamic reconfiguration, and fused sequence ownership
-remain absent.
+Explicit invalidation, full drain, lease return, and retired reconciliation end
+lookup authority without hidden reclamation. Blocked candidates clean
+up themselves, and release failures transfer exact keyed retry ownership.
+Dynamic reconfiguration and fused sequence ownership remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

@@ -364,12 +364,17 @@ identity cannot replace the occupied slot, live leases block release, failed
 load publishes nothing, and failed release transfers the exact ready mapping for
 retry.
 
-A separate fixed-limit fused lease cache now keeps multiple exact owners under
-entry, mapping, and mapped-byte limits. Hits preserve FIFO age without adapter
-work; misses evict oldest unleased residents, while live leases stay active and
-charged and blocked candidates clean themselves. Explicit drain and eviction
-failure transfer exact keyed retry ownership. Retirement, invalidation, dynamic
-reconfiguration, and fused sequence ownership remain absent.
+A separate fixed-limit fused lease cache now separates active lookup from
+retired leased residency under entry, mapping, and mapped-byte limits. Hits
+preserve FIFO age without adapter work; misses process active FIFO entries
+oldest-first, releasing unleased victims and retiring leased victims while exact
+weight stays charged.
+
+Explicit invalidation, full drain, lease return, and retired reconciliation
+preserve that ownership boundary without implicit reclamation on hit or miss.
+Blocked candidates clean themselves, and release failures transfer exact keyed
+retry ownership. Dynamic reconfiguration and fused sequence ownership remain
+absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

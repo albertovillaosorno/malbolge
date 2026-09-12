@@ -11,26 +11,26 @@
 // - Owns:
 //   - Fixed-limit multi-entry FIFO residency for exact fused native owners.
 // - Must-Not:
-//   - Project authority into halt caches/sequences, retire live residents, or
-//     refresh FIFO age on hits.
+//   - Project authority into halt caches/sequences, reconcile retirement
+//     implicitly on hit/miss, or refresh FIFO age on hits.
 // - Allows:
 //   - Inputs: exact fused native artifacts, fixed weighted limits, and a memory
 //     adapter.
-//   - Outputs: cloneable leases, exact usage, eviction/block evidence, and
-//     keyed retryable cleanup ownership.
+//   - Outputs: cloneable leases, active/retired residency, eviction/block
+//     evidence, and keyed retryable cleanup ownership.
 //   - Side effects: executable load/release only through the supplied adapter.
 // - Split-When:
-//   - Live retirement, invalidation, dynamic reconfiguration, or sequence
-//     execution needs independent policy.
+//   - Dynamic reconfiguration or sequence execution needs independent policy.
 // - Merge-When:
 //   - One reviewed terminal-kind executable store subsumes parallel caches.
 // - Summary:
 //   - Reuses exact fused native mappings under fixed weighted FIFO limits.
 // - Description:
-//   - Misses evict the oldest unleased active entries; live leases stay active
-//     and charged rather than gaining retirement authority.
+//   - Active lookup and retired leased residency are separate queues whose
+//     exact weights share one fixed capacity account.
 // - Usage:
-//   - Ensure exact residents and explicitly release unleased cache ownership.
+//   - Ensure exact residents, invalidate, return leases, reconcile retirement,
+//     and release all explicitly.
 // - Defaults:
 //   - Hits and lease clone/drop perform no adapter work.
 //
@@ -61,6 +61,8 @@ use crate::execution_cache::NativeArtifactKey;
 
 type EntryReleaseFailure<E> = DirectFusedNativeLeaseCacheEntryReleaseFailure<E>;
 
+type CacheInvalidation = DirectFusedNativeLeaseCacheInvalidation;
+
 #[derive(Debug)]
 struct CacheValue {
     key: NativeArtifactKey,
@@ -75,11 +77,29 @@ struct CacheCandidate {
     weight: NativeExecutableSequenceWeight,
 }
 
+#[derive(Debug)]
+struct CacheEvictionContext {
+    candidate: CacheCandidate,
+    evicted_keys: Vec<NativeArtifactKey>,
+    retired_keys: Vec<NativeArtifactKey>,
+}
+
+#[derive(Debug)]
+enum CacheVictimOutcome<E> {
+    ReleaseFailed {
+        failure: DirectFusedNativeExecutableReleaseFailure<E>,
+        weight: NativeExecutableSequenceWeight,
+    },
+    Released(NativeExecutableSequenceWeight),
+    Retired(Box<CacheValue>),
+}
+
 /// Caller-owned fixed-limit cache with exact fused native leases.
 #[derive(Debug)]
 pub struct DirectFusedNativeLeaseCache {
     active: VecDeque<CacheValue>,
     limits: NativeExecutableSequenceCacheLimits,
+    retired: VecDeque<CacheValue>,
     usage: NativeExecutableSequenceCacheUsage,
 }
 
@@ -95,10 +115,12 @@ pub struct DirectFusedNativeLease {
 pub enum DirectFusedNativeLeaseCacheDisposition {
     /// Exact active identity already existed; FIFO age was unchanged.
     Hit,
-    /// One miss was published after oldest-unleased FIFO eviction.
+    /// One miss was published after oldest-first active FIFO processing.
     Inserted {
-        /// Every key released from active lookup in eviction order.
+        /// Every key removed from active lookup in FIFO order.
         evicted: Vec<NativeArtifactKey>,
+        /// Removed keys still resident behind external leases.
+        retired: Vec<NativeArtifactKey>,
     },
 }
 
@@ -109,11 +131,11 @@ pub struct DirectFusedNativeLeaseCacheAcquisition {
     lease: DirectFusedNativeLease,
 }
 
-/// Exact active state preventing one candidate from fitting fixed limits.
+/// Exact resident state preventing one candidate from fitting fixed limits.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectFusedNativeLeaseCacheBlock {
-    leased_keys: Vec<NativeArtifactKey>,
     limits: NativeExecutableSequenceCacheLimits,
+    retired_keys: Vec<NativeArtifactKey>,
     usage: NativeExecutableSequenceCacheUsage,
 }
 
@@ -134,6 +156,21 @@ pub struct DirectFusedNativeLeaseCacheLoadFailure<E> {
     cause: LoadFailureCause<E>,
     evicted_keys: Vec<NativeArtifactKey>,
     requested_key: NativeArtifactKey,
+    retired_keys: Vec<NativeArtifactKey>,
+}
+
+/// Result of invalidating one exact active fused resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectFusedNativeLeaseCacheInvalidation {
+    /// No active key matched the request.
+    Missing,
+    /// The unleased resident released immediately.
+    Released,
+    /// Lookup authority ended while external leases retained the mapping.
+    Retired {
+        /// External lease owners remaining after retirement.
+        leases: usize,
+    },
 }
 
 /// One keyed release failure removed from cache ownership for exact retry.
@@ -150,14 +187,14 @@ pub struct DirectFusedNativeLeaseCacheLoadReleaseFailures<E> {
     eviction: Option<DirectFusedNativeLeaseCacheEntryReleaseFailure<E>>,
 }
 
-/// Successful explicit release pass over active cache ownership.
+/// Successful reclamation pass over cache-owned fused residents.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectFusedNativeLeaseCacheReleaseSummary {
     released_keys: Vec<NativeArtifactKey>,
     retained_keys: Vec<NativeArtifactKey>,
 }
 
-/// Explicit release pass that transferred one or more failures for retry.
+/// Reclamation pass that transferred one or more failures for retry.
 #[derive(Debug)]
 pub struct DirectFusedNativeLeaseCacheReleaseFailure<E> {
     failures: Vec<DirectFusedNativeLeaseCacheEntryReleaseFailure<E>>,
@@ -169,7 +206,7 @@ pub struct DirectFusedNativeLeaseCacheReleaseFailure<E> {
 pub type DirectFusedNativeLeaseCacheLimits =
     NativeExecutableSequenceCacheLimits;
 
-/// Exact active resource usage retained by this fused cache.
+/// Exact active-plus-retired resource usage retained by this cache.
 pub type DirectFusedNativeLeaseCacheUsage = NativeExecutableSequenceCacheUsage;
 
 /// Capacity rejection produced by this fused resident cache.
@@ -183,11 +220,25 @@ pub type DirectFusedNativeLeaseCacheLoadResult<E> = Result<
 >;
 
 type CacheFitResult<E> = Result<
-    (CacheCandidate, Vec<NativeArtifactKey>),
+    (
+        CacheCandidate,
+        Vec<NativeArtifactKey>,
+        Vec<NativeArtifactKey>,
+    ),
     Box<DirectFusedNativeLeaseCacheLoadFailure<E>>,
 >;
 
-/// Result of explicitly releasing every currently unleased active resident.
+/// Result of invalidating one exact active fused resident.
+pub type DirectFusedNativeLeaseCacheInvalidationResult<E> = Result<
+    DirectFusedNativeLeaseCacheInvalidation,
+    Box<DirectFusedNativeLeaseCacheEntryReleaseFailure<E>>,
+>;
+
+/// Result of reconciling retired fused residents.
+pub type DirectFusedNativeLeaseCacheReconciliationResult<E> =
+    DirectFusedNativeLeaseCacheReleaseResult<E>;
+
+/// Result of reclaiming cache-owned fused residents.
 pub type DirectFusedNativeLeaseCacheReleaseResult<E> = Result<
     DirectFusedNativeLeaseCacheReleaseSummary,
     Box<DirectFusedNativeLeaseCacheReleaseFailure<E>>,
@@ -228,7 +279,7 @@ impl DirectFusedNativeLease {
         Arc::ptr_eq(&self.resident, &other.resident)
     }
 
-    /// Returns all strong owners, including active cache authority.
+    /// Returns all strong owners, including active or retired cache authority.
     #[must_use]
     pub fn strong_owner_count(&self) -> usize {
         Arc::strong_count(&self.resident)
@@ -236,12 +287,12 @@ impl DirectFusedNativeLease {
 }
 
 impl DirectFusedNativeLeaseCacheDisposition {
-    /// Returns every key released from active lookup for this insertion.
+    /// Returns every key removed from active lookup for this insertion.
     #[must_use]
     pub fn evicted_keys(&self) -> &[NativeArtifactKey] {
         match self {
             Self::Hit => &[],
-            Self::Inserted { evicted } => evicted,
+            Self::Inserted { evicted, .. } => evicted,
         }
     }
 
@@ -249,6 +300,15 @@ impl DirectFusedNativeLeaseCacheDisposition {
     #[must_use]
     pub const fn is_hit(&self) -> bool {
         matches!(self, Self::Hit)
+    }
+
+    /// Returns removed keys still resident behind external leases.
+    #[must_use]
+    pub fn retired_keys(&self) -> &[NativeArtifactKey] {
+        match self {
+            Self::Hit => &[],
+            Self::Inserted { retired, .. } => retired,
+        }
     }
 }
 
@@ -273,19 +333,19 @@ impl DirectFusedNativeLeaseCacheAcquisition {
 }
 
 impl DirectFusedNativeLeaseCacheBlock {
-    /// Returns exact active keys whose external leases prevent eviction.
-    #[must_use]
-    pub fn leased_keys(&self) -> &[NativeArtifactKey] {
-        &self.leased_keys
-    }
-
     /// Returns fixed resident limits that could not admit the candidate.
     #[must_use]
     pub const fn limits(&self) -> DirectFusedNativeLeaseCacheLimits {
         self.limits
     }
 
-    /// Returns exact active resident usage when admission became blocked.
+    /// Returns retired keys whose mappings still count against capacity.
+    #[must_use]
+    pub fn retired_keys(&self) -> &[NativeArtifactKey] {
+        &self.retired_keys
+    }
+
+    /// Returns exact resident usage when admission became blocked.
     #[must_use]
     pub const fn usage(&self) -> DirectFusedNativeLeaseCacheUsage {
         self.usage
@@ -293,7 +353,7 @@ impl DirectFusedNativeLeaseCacheBlock {
 }
 
 impl<E> DirectFusedNativeLeaseCacheLoadFailure<E> {
-    /// Returns resident lease blockage when no unleased victim can make room.
+    /// Returns lease blockage when retired weight prevents candidate admission.
     #[must_use]
     pub const fn block(&self) -> Option<&DirectFusedNativeLeaseCacheBlock> {
         match &self.cause {
@@ -397,6 +457,12 @@ impl<E> DirectFusedNativeLeaseCacheLoadFailure<E> {
     pub const fn requested_key(&self) -> &NativeArtifactKey {
         &self.requested_key
     }
+
+    /// Returns removed keys still resident behind external leases.
+    #[must_use]
+    pub fn retired_keys(&self) -> &[NativeArtifactKey] {
+        &self.retired_keys
+    }
 }
 
 impl<E: Display> Display for DirectFusedNativeLeaseCacheLoadFailure<E> {
@@ -497,6 +563,35 @@ impl<E> DirectFusedNativeLeaseCacheLoadReleaseFailures<E> {
     ) -> Option<DirectFusedNativeLeaseCacheEntryReleaseFailure<E>> {
         self.eviction
     }
+
+    /// Retries every executable still owned outside cache authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns aggregate retained ownership after attempting every failure.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> DirectFusedNativeLeaseCacheReconciliationResult<E>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = E>,
+    {
+        let mut failures = Vec::with_capacity(2);
+        if let Some(eviction) = self.eviction {
+            failures.push(eviction);
+        }
+        if let Some(candidate) = self.candidate {
+            failures.push(candidate);
+        }
+        retry_keyed_release_failures(
+            adapter,
+            DirectFusedNativeLeaseCacheReleaseFailure {
+                failures,
+                released_keys: Vec::new(),
+                retained_keys: Vec::new(),
+            },
+        )
+    }
 }
 
 impl DirectFusedNativeLeaseCacheReleaseSummary {
@@ -514,6 +609,14 @@ impl DirectFusedNativeLeaseCacheReleaseSummary {
 }
 
 impl<E> DirectFusedNativeLeaseCacheReleaseFailure<E> {
+    /// Returns every keyed release failure retained outside cache authority.
+    #[must_use]
+    pub fn failures(
+        &self,
+    ) -> &[DirectFusedNativeLeaseCacheEntryReleaseFailure<E>] {
+        &self.failures
+    }
+
     /// Consumes this result and returns every keyed retry owner.
     #[must_use]
     pub fn into_failures(
@@ -532,6 +635,21 @@ impl<E> DirectFusedNativeLeaseCacheReleaseFailure<E> {
     #[must_use]
     pub fn retained_keys(&self) -> &[NativeArtifactKey] {
         &self.retained_keys
+    }
+
+    /// Retries every failed release removed from cache ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns only repeated keyed failures after attempting every owner.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> DirectFusedNativeLeaseCacheReconciliationResult<E>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = E>,
+    {
+        retry_keyed_release_failures(adapter, self)
     }
 }
 
@@ -580,7 +698,7 @@ impl DirectFusedNativeLeaseCache {
     /// Loads or reuses one exact fused resident and returns a lease.
     ///
     /// Hits perform no adapter operations and do not refresh FIFO age. Misses
-    /// load completely before the oldest unleased active residents are evicted.
+    /// load completely before active FIFO release-or-retirement processing.
     ///
     /// # Errors
     ///
@@ -608,6 +726,7 @@ impl DirectFusedNativeLeaseCache {
                 cause: LoadFailureCause::Identity,
                 evicted_keys: Vec::new(),
                 requested_key: key,
+                retired_keys: Vec::new(),
             }));
         }
         let owner = DirectFusedNativeExecutableOwner::load(adapter, artifact)
@@ -617,6 +736,7 @@ impl DirectFusedNativeLeaseCache {
                 cause: LoadFailureCause::Load(failure),
                 evicted_keys: Vec::new(),
                 requested_key: key.clone(),
+                retired_keys: Vec::new(),
             })
         })?;
         self.publish_candidate(adapter, key, owner)
@@ -631,64 +751,99 @@ impl DirectFusedNativeLeaseCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let mut evicted_keys = Vec::new();
+        let mut retired_keys = Vec::new();
         while self.limits.projected_exceeds(self.usage, candidate.weight) {
-            let Some(index) = self.oldest_unleased_position() else {
+            let Some(victim) = self.active.pop_front() else {
                 return Err(Box::new(blocked_failure(
                     adapter,
-                    candidate,
-                    evicted_keys,
-                    self,
-                )));
-            };
-            let Some(victim) = self.active.remove(index) else {
-                return Err(Box::new(blocked_failure(
-                    adapter,
-                    candidate,
-                    evicted_keys,
-                    self,
-                )));
-            };
-            let CacheValue {
-                key: victim_key,
-                resident: victim_resident,
-                weight,
-            } = victim;
-            let victim_owner = match Arc::try_unwrap(victim_resident) {
-                Ok(victim_owner) => victim_owner,
-                Err(recovered_resident) => {
-                    self.active.insert(index, CacheValue {
-                        key: victim_key,
-                        resident: recovered_resident,
-                        weight,
-                    });
-                    return Err(Box::new(blocked_failure(
-                        adapter,
+                    CacheEvictionContext {
                         candidate,
                         evicted_keys,
-                        self,
-                    )));
-                },
+                        retired_keys,
+                    },
+                    self,
+                )));
             };
-            self.usage.remove(weight);
-            evicted_keys.push(victim_key);
-            if let Err(failure) = victim_owner.release(adapter) {
-                let candidate_cleanup_failure =
-                    candidate.owner.release(adapter).err().map(|item| *item);
-                return Err(Box::new(DirectFusedNativeLeaseCacheLoadFailure {
-                    candidate_cleanup_failure,
-                    cause: LoadFailureCause::Release(*failure),
-                    evicted_keys,
-                    requested_key: candidate.key,
-                }));
+            evicted_keys.push(victim.key.clone());
+            match process_victim(adapter, victim) {
+                CacheVictimOutcome::Released(weight) => {
+                    self.usage.remove(weight);
+                },
+                CacheVictimOutcome::ReleaseFailed { failure, weight } => {
+                    self.usage.remove(weight);
+                    let candidate_cleanup_failure = candidate
+                        .owner
+                        .release(adapter)
+                        .err()
+                        .map(|item| *item);
+                    return Err(Box::new(
+                        DirectFusedNativeLeaseCacheLoadFailure {
+                            candidate_cleanup_failure,
+                            cause: LoadFailureCause::Release(failure),
+                            evicted_keys,
+                            requested_key: candidate.key,
+                            retired_keys,
+                        },
+                    ));
+                },
+                CacheVictimOutcome::Retired(entry) => {
+                    retired_keys.push(entry.key.clone());
+                    self.retired.push_back(*entry);
+                },
             }
         }
-        Ok((candidate, evicted_keys))
+        Ok((candidate, evicted_keys, retired_keys))
     }
 
-    /// Returns whether no active resident remains under cache authority.
+    /// Invalidates one exact active key, releasing or retiring its resident.
+    ///
+    /// # Errors
+    ///
+    /// Returns keyed retryable release ownership when an unleased resident
+    /// cannot release.
+    pub fn invalidate_key<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        key: &NativeArtifactKey,
+    ) -> DirectFusedNativeLeaseCacheInvalidationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let Some(index) = self.position(key) else {
+            return Ok(CacheInvalidation::Missing);
+        };
+        let Some(entry) = self.active.remove(index) else {
+            return Ok(CacheInvalidation::Missing);
+        };
+        let leases = Arc::strong_count(&entry.resident).saturating_sub(1);
+        match Arc::try_unwrap(entry.resident) {
+            Ok(owner) => {
+                self.usage.remove(entry.weight);
+                owner
+                    .release(adapter)
+                    .map(|()| CacheInvalidation::Released)
+                    .map_err(|failure| {
+                        Box::new(EntryReleaseFailure {
+                            failure: *failure,
+                            key: entry.key,
+                        })
+                    })
+            },
+            Err(resident) => {
+                self.retired.push_back(CacheValue {
+                    key: entry.key,
+                    resident,
+                    weight: entry.weight,
+                });
+                Ok(CacheInvalidation::Retired { leases })
+            },
+        }
+    }
+
+    /// Returns whether no active or retired resident remains.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.active.is_empty()
+        self.active.is_empty() && self.retired.is_empty()
     }
 
     /// Returns active exact keys in FIFO insertion order.
@@ -706,12 +861,6 @@ impl DirectFusedNativeLeaseCache {
     #[must_use]
     pub const fn new(capacity: NonZeroUsize) -> Self {
         Self::with_limits(NativeExecutableSequenceCacheLimits::new(capacity))
-    }
-
-    fn oldest_unleased_position(&self) -> Option<usize> {
-        self.active
-            .iter()
-            .position(|entry| Arc::strong_count(&entry.resident) == 1)
     }
 
     fn position(&self, key: &NativeArtifactKey) -> Option<usize> {
@@ -736,7 +885,7 @@ impl DirectFusedNativeLeaseCache {
             return Err(Box::new(capacity_failure(adapter, key, owner, error)));
         }
         let prepared_candidate = CacheCandidate { key, owner, weight };
-        let (candidate, evicted_keys) =
+        let (candidate, evicted_keys, retired_keys) =
             self.evict_until_fits(adapter, prepared_candidate)?;
         if let Err(error) = self.usage.add(candidate.weight) {
             return Err(Box::new(capacity_failure(
@@ -755,6 +904,7 @@ impl DirectFusedNativeLeaseCache {
         Ok(DirectFusedNativeLeaseCacheAcquisition {
             disposition: DirectFusedNativeLeaseCacheDisposition::Inserted {
                 evicted: evicted_keys,
+                retired: retired_keys,
             },
             lease: DirectFusedNativeLease {
                 key: candidate.key,
@@ -763,26 +913,24 @@ impl DirectFusedNativeLeaseCache {
         })
     }
 
-    /// Releases every unleased active resident, retaining live leased entries.
-    ///
-    /// Release failures transfer exact mapping ownership out of this cache.
+    /// Reclaims every retired resident whose final external lease has gone.
     ///
     /// # Errors
     ///
-    /// Returns all keyed retry owners after attempting every unleased entry.
-    pub fn release_all<Adapter>(
+    /// Returns keyed release failures after attempting every releasable entry.
+    pub fn reconcile_retired<Adapter>(
         &mut self,
         adapter: &mut Adapter,
     ) -> DirectFusedNativeLeaseCacheReleaseResult<Adapter::Error>
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let entries = self.active.len();
         let mut failures = Vec::new();
         let mut released_keys = Vec::new();
         let mut retained_keys = Vec::new();
+        let entries = self.retired.len();
         for _ in 0..entries {
-            let Some(entry) = self.active.pop_front() else {
+            let Some(entry) = self.retired.pop_front() else {
                 break;
             };
             let key = entry.key;
@@ -790,7 +938,11 @@ impl DirectFusedNativeLeaseCache {
             match Arc::try_unwrap(entry.resident) {
                 Err(resident) => {
                     retained_keys.push(key.clone());
-                    self.active.push_back(CacheValue { key, resident, weight });
+                    self.retired.push_back(CacheValue {
+                        key,
+                        resident,
+                        weight,
+                    });
                 },
                 Ok(owner) => {
                     self.usage.remove(weight);
@@ -804,21 +956,63 @@ impl DirectFusedNativeLeaseCache {
                 },
             }
         }
-        if failures.is_empty() {
-            Ok(DirectFusedNativeLeaseCacheReleaseSummary {
-                released_keys,
-                retained_keys,
-            })
-        } else {
-            Err(Box::new(DirectFusedNativeLeaseCacheReleaseFailure {
-                failures,
-                released_keys,
-                retained_keys,
-            }))
-        }
+        reconciliation_result(released_keys, retained_keys, failures)
     }
 
-    /// Returns exact active resident resource usage.
+    /// Removes all active lookup authority and reclaims every unleased
+    /// resident.
+    ///
+    /// Live leased mappings move to retirement without losing their weight.
+    ///
+    /// # Errors
+    ///
+    /// Returns keyed release failures after attempting every releasable entry.
+    pub fn release_all<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> DirectFusedNativeLeaseCacheReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        self.retired.extend(self.active.drain(..));
+        self.reconcile_retired(adapter)
+    }
+
+    /// Returns total active plus retired resident count.
+    #[must_use]
+    pub fn resident_len(&self) -> usize {
+        self.active.len().saturating_add(self.retired.len())
+    }
+
+    /// Returns retired keys in original FIFO order.
+    pub fn retired_keys(&self) -> impl Iterator<Item = &NativeArtifactKey> {
+        self.retired.iter().map(|entry| &entry.key)
+    }
+
+    /// Returns the number of retired residents awaiting lease reclamation.
+    #[must_use]
+    pub fn retired_len(&self) -> usize {
+        self.retired.len()
+    }
+
+    /// Consumes one lease then reconciles all retired residents explicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns keyed release failures after attempting every releasable entry.
+    pub fn return_lease<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        lease: DirectFusedNativeLease,
+    ) -> DirectFusedNativeLeaseCacheReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        drop(lease);
+        self.reconcile_retired(adapter)
+    }
+
+    /// Returns exact active plus retired resident resource usage.
     #[must_use]
     pub const fn usage(&self) -> DirectFusedNativeLeaseCacheUsage {
         self.usage
@@ -832,6 +1026,7 @@ impl DirectFusedNativeLeaseCache {
         Self {
             active: VecDeque::new(),
             limits,
+            retired: VecDeque::new(),
             usage: NativeExecutableSequenceCacheUsage::empty(),
         }
     }
@@ -839,31 +1034,34 @@ impl DirectFusedNativeLeaseCache {
 
 fn blocked_failure<Adapter>(
     adapter: &mut Adapter,
-    candidate: CacheCandidate,
-    evicted_keys: Vec<NativeArtifactKey>,
+    context: CacheEvictionContext,
     cache: &DirectFusedNativeLeaseCache,
 ) -> DirectFusedNativeLeaseCacheLoadFailure<Adapter::Error>
 where
     Adapter: NativeExecutableMemoryAdapter,
 {
     let block = DirectFusedNativeLeaseCacheBlock {
-        leased_keys: cache
-            .active
+        limits: cache.limits,
+        retired_keys: cache
+            .retired
             .iter()
-            .filter(|entry| Arc::strong_count(&entry.resident) > 1)
             .map(|entry| entry.key.clone())
             .collect(),
-        limits: cache.limits,
         usage: cache.usage,
     };
-    let requested_key = candidate.key;
-    let candidate_cleanup_failure =
-        candidate.owner.release(adapter).err().map(|item| *item);
+    let requested_key = context.candidate.key;
+    let candidate_cleanup_failure = context
+        .candidate
+        .owner
+        .release(adapter)
+        .err()
+        .map(|item| *item);
     DirectFusedNativeLeaseCacheLoadFailure {
         candidate_cleanup_failure,
         cause: LoadFailureCause::Leases(block),
-        evicted_keys,
+        evicted_keys: context.evicted_keys,
         requested_key,
+        retired_keys: context.retired_keys,
     }
 }
 
@@ -883,5 +1081,67 @@ where
         cause: LoadFailureCause::Capacity(error),
         evicted_keys: Vec::new(),
         requested_key: key,
+        retired_keys: Vec::new(),
     }
+}
+
+fn process_victim<Adapter>(
+    adapter: &mut Adapter,
+    victim: CacheValue,
+) -> CacheVictimOutcome<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    match Arc::try_unwrap(victim.resident) {
+        Err(resident) => CacheVictimOutcome::Retired(Box::new(CacheValue {
+            key: victim.key,
+            resident,
+            weight: victim.weight,
+        })),
+        Ok(owner) => match owner.release(adapter) {
+            Ok(()) => CacheVictimOutcome::Released(victim.weight),
+            Err(failure) => CacheVictimOutcome::ReleaseFailed {
+                failure: *failure,
+                weight: victim.weight,
+            },
+        },
+    }
+}
+
+fn reconciliation_result<E>(
+    released_keys: Vec<NativeArtifactKey>,
+    retained_keys: Vec<NativeArtifactKey>,
+    failures: Vec<EntryReleaseFailure<E>>,
+) -> DirectFusedNativeLeaseCacheReconciliationResult<E> {
+    if failures.is_empty() {
+        Ok(DirectFusedNativeLeaseCacheReleaseSummary {
+            released_keys,
+            retained_keys,
+        })
+    } else {
+        Err(Box::new(DirectFusedNativeLeaseCacheReleaseFailure {
+            failures,
+            released_keys,
+            retained_keys,
+        }))
+    }
+}
+
+fn retry_keyed_release_failures<Adapter>(
+    adapter: &mut Adapter,
+    pending: DirectFusedNativeLeaseCacheReleaseFailure<Adapter::Error>,
+) -> DirectFusedNativeLeaseCacheReconciliationResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let mut failures = Vec::new();
+    let mut released_keys = pending.released_keys;
+    for entry in pending.failures {
+        let key = entry.key;
+        match entry.failure.retry(adapter) {
+            Ok(()) => released_keys.push(key),
+            Err(failure) => failures.push(EntryReleaseFailure { failure, key }),
+        }
+    }
+    reconciliation_result(released_keys, pending.retained_keys, failures)
 }

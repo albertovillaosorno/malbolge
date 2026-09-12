@@ -223,8 +223,8 @@ use execution_native::{
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
-    DirectFusedNativeLeaseCache, DirectFusedNativeOwnerExecutionFailure,
-    DirectFusedNativeOwnerLoadFailure,
+    DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheInvalidation,
+    DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeOwnerLoadFailure,
     DirectFusedNativeResidentCacheAcquireFailure,
     DirectFusedNativeResidentCacheDisposition,
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
@@ -15081,34 +15081,38 @@ fn fused_direct_sequence_multi_cache_hits_without_remap() -> Result<(), String>
     if !second_hit
         || !first_lease.shares_resident_with(&second_lease)
         || cache.active_len() != 1
+        || cache.resident_len() != 1
         || cache.usage().entries() != 1
         || adapter.operations != loaded_operations
     {
         return Err(String::from("fused multi hit remapped or changed usage"));
     }
-    let retained = cache
+    let drained = cache
         .release_all(&mut adapter)
         .map_err(|error| format!("fused multi leased drain: {error}"))?;
-    if !retained.released_keys().is_empty()
-        || retained.retained_keys() != [key.clone()]
+    if !drained.released_keys().is_empty()
+        || drained.retained_keys() != [key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
         || adapter.operations != loaded_operations
     {
-        return Err(String::from("fused multi live drain drifted"));
+        return Err(String::from("fused live drain did not retire resident"));
     }
     drop((first_lease, second_lease));
-    let released = cache
-        .release_all(&mut adapter)
-        .map_err(|error| format!("fused multi drain: {error}"))?;
-    if released.released_keys() == [key]
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("fused retired reconcile: {error}"))?;
+    if reconciled.released_keys() == [key]
+        && reconciled.retained_keys().is_empty()
         && cache.is_empty()
         && cache.usage().entries() == 0
     {
         Ok(())
     } else {
-        Err(String::from("fused multi final drain drifted"))
+        Err(String::from("fused retired drain reconciliation drifted"))
     }
 }
-
 #[test]
 fn fused_direct_sequence_multi_cache_evicts_unleased() -> Result<(), String> {
     let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
@@ -15149,6 +15153,7 @@ fn fused_direct_sequence_multi_cache_live_lease_blocks() -> Result<(), String> {
     let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
     let arm = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
     let x86_key = x86.key().clone();
+    let arm_key = arm.key().clone();
     let capacity =
         NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?;
     let mut cache = DirectFusedNativeLeaseCache::new(capacity);
@@ -15166,20 +15171,142 @@ fn fused_direct_sequence_multi_cache_live_lease_blocks() -> Result<(), String> {
     let block = error
         .block()
         .ok_or_else(|| String::from("fused block missing"))?;
-    if block.leased_keys() != [x86_key.clone()]
+    if block.retired_keys() != [x86_key.clone()]
         || block.usage().entries() != 1
-        || !error.evicted_keys().is_empty()
+        || error.evicted_keys() != [x86_key.clone()]
+        || error.retired_keys() != [x86_key.clone()]
         || error.candidate_cleanup_failure().is_some()
-        || cache.keys().cloned().collect::<Vec<_>>() != [x86_key]
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>()
+            != [x86_key.clone()]
         || adapter.release_attempts != 1
     {
-        return Err(String::from("fused live-lease block drifted"));
+        return Err(String::from("fused live-lease retirement block drifted"));
     }
-    drop(lease);
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|failure| format!("fused block return: {failure}"))?;
+    if reconciled.released_keys() != [x86_key]
+        || cache.usage().entries() != 0
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("fused blocked resident did not reconcile"));
+    }
+    let inserted =
+        cache.ensure(&mut adapter, &arm).map_err(|insert_error| {
+            format!("fused post-block insert: {insert_error}")
+        })?;
+    if inserted.lease().key() != &arm_key {
+        return Err(String::from("fused post-block identity drifted"));
+    }
+    drop(inserted);
     cache
         .release_all(&mut adapter)
         .map(|_| ())
         .map_err(|failure| format!("fused block cleanup: {failure}"))
+}
+#[test]
+fn fused_direct_sequence_multi_cache_retires_leased_fifo() -> Result<(), String>
+{
+    let first = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let second = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let third = verified_fused_direct_sequence_variant(HostIsa::X86_64, 21)?;
+    let first_key = first.key().clone();
+    let second_key = second.key().clone();
+    let third_key = third.key().clone();
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(786)?,
+        native_executable_address(0x2a_0000)?,
+    );
+    let first_lease = cache
+        .ensure(&mut adapter, &first)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &second)
+            .map_err(|error| error.to_string())?,
+    );
+    let inserted = cache
+        .ensure(&mut adapter, &third)
+        .map_err(|error| format!("fused retirement insert: {error}"))?;
+    if inserted.disposition().evicted_keys() != [first_key.clone(), second_key]
+        || inserted.disposition().retired_keys() != [first_key.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.retired_keys().cloned().collect::<Vec<_>>()
+            != [first_key.clone()]
+        || cache.usage().entries() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("fused oldest-first retirement drifted"));
+    }
+    drop(inserted);
+    let reconciled = cache
+        .return_lease(&mut adapter, first_lease)
+        .map_err(|error| format!("fused FIFO return: {error}"))?;
+    if reconciled.released_keys() != [first_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+    {
+        return Err(String::from("fused FIFO retirement did not reconcile"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn fused_direct_sequence_multi_cache_invalidation_retires_lease()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let key = artifact.key().clone();
+    let capacity =
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(787)?,
+        native_executable_address(0x2b_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let invalidation = cache
+        .invalidate_key(&mut adapter, &key)
+        .map_err(|error| format!("fused invalidation: {:?}", error.key()))?;
+    if invalidation
+        != (DirectFusedNativeLeaseCacheInvalidation::Retired { leases: 1 })
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("fused leased invalidation did not retire"));
+    }
+    if cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+        format!("fused missing invalidation: {:?}", error.key())
+    })? != DirectFusedNativeLeaseCacheInvalidation::Missing
+    {
+        return Err(String::from("fused retired key remained active"));
+    }
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("fused invalidation return: {error}"))?;
+    if reconciled.released_keys() == [key]
+        && cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused invalidation reconciliation drifted"))
+    }
 }
 
 #[test]
@@ -15301,6 +15428,57 @@ fn fused_direct_sequence_multi_cache_release_failure_retries()
         Ok(())
     } else {
         Err(String::from("fused release-all retry drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_multi_cache_retries_multiple_releases()
+-> Result<(), String> {
+    let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let x86_key = x86.key().clone();
+    let arm_key = arm.key().clone();
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(788)?,
+        native_executable_address(0x2c_0000)?,
+    )
+    .with_release_failures(2);
+    drop(
+        cache
+            .ensure(&mut adapter, &x86)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &arm)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from(
+            "fused aggregate release failure was ignored",
+        ));
+    };
+    if failure.failures().len() != 2
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+    {
+        return Err(String::from("fused aggregate release ownership drifted"));
+    }
+    let retried = failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("fused aggregate retry: {error}"))?;
+    if retried.released_keys() == [x86_key, arm_key]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused aggregate retry drifted"))
     }
 }
 
