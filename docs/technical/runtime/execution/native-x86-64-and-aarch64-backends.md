@@ -350,7 +350,15 @@ release. Load or call failure restores the complete region entry and retains
 cleanup failure independently from the primary cause. Final-release failure
 preserves the committed Applied or GuardMiss outcome plus the exact ready
 mapping
-for retry. Reusable fused ownership and cache authority remain absent.
+for retry.
+
+A distinct fused executable owner now retains one verified fused artifact and
+one synchronized mapping for repeated whole-region calls without adapter work.
+Runner/completion failure restores the current call while residency remains
+reusable; mapping-reported capacity defines resident weight, and explicit
+release
+retains exact retry ownership. Fused leases, caches, and sequence ownership
+remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

@@ -222,7 +222,8 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedInvocationError, DirectFusedNativeRunner,
+    DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
+    DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeRunner,
     DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
@@ -14622,6 +14623,180 @@ fn fused_direct_sequence_transaction_release_failure_retries()
     } else {
         Err(String::from("fused committed release retry count drifted"))
     }
+}
+
+#[test]
+fn fused_direct_sequence_owner_reuses_mapping_across_calls()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(770)?,
+        native_executable_address(0x1a_0000)?,
+    );
+    let owner = DirectFusedNativeExecutableOwner::load(&mut adapter, &artifact)
+        .map_err(|error| format!("fused owner load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mapping_id = owner.executable().mapping().mapping_id();
+    let weight = owner.resident_weight();
+    if owner.artifact() != &artifact
+        || owner.key() != artifact.key()
+        || owner.program() != artifact.admission().program()
+        || weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+    {
+        return Err(String::from("fused owner identity or weight drifted"));
+    }
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    for iteration in 0usize..2usize {
+        let mut memory = fixture.initial_memory.clone();
+        let mut output = fixture.initial_output.clone();
+        let outcome = owner
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(
+                    &mut memory,
+                    &fixture.input,
+                    &mut output,
+                ),
+            )
+            .map_err(|error| {
+                format!("fused owner execute {iteration}: {error}")
+            })?;
+        if outcome
+            != NativeRegionInvocationOutcome::Applied(
+                artifact.admission().source_plan().exit(),
+            )
+            || memory != fixture.final_memory
+            || output != fixture.final_output
+        {
+            return Err(format!("fused owner call {iteration} drifted"));
+        }
+    }
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from("fused owner remapped between calls"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("fused owner release: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("fused owner release was not explicit"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_owner_recovers_after_runner_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(771)?,
+        native_executable_address(0x1b_0000)?,
+    );
+    let owner = DirectFusedNativeExecutableOwner::load(&mut adapter, &artifact)
+        .map_err(|error| format!("fused recovery owner load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut failing = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(execution_error) = owner.execute(
+        &mut failing,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("fused owner runner failure was ignored"));
+    };
+    if !matches!(
+        execution_error.as_ref(),
+        DirectFusedNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run
+    ) || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused owner failure changed residency"));
+    }
+    let mut succeeding =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = owner
+        .execute(
+            &mut succeeding,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|failure| {
+            format!("fused owner recovery execute: {failure}")
+        })?;
+    if !matches!(outcome, NativeRegionInvocationOutcome::Applied(_))
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused owner was not reusable after failure"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|failure| format!("fused recovery owner release: {failure}"))
+}
+
+#[test]
+fn fused_direct_sequence_owner_release_failure_retries() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(773)?,
+        native_executable_address(0x1d_0000)?,
+    )
+    .with_release_failures(1);
+    let owner = DirectFusedNativeExecutableOwner::load(&mut adapter, &artifact)
+        .map_err(|error| format!("fused release owner load: {error}"))?;
+    let expected_key = owner.key().clone();
+    let expected_mapping = owner.executable().mapping();
+    let Err(failure) = owner.release(&mut adapter) else {
+        return Err(String::from("fused owner release failure was ignored"));
+    };
+    if failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from("fused owner release lost exact identity"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("fused owner release retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused owner release retry count drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_owner_weight_uses_platform_mapping()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let mapped_len = 16_384usize;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(772)?,
+        native_executable_address(0x1c_0000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = DirectFusedNativeExecutableOwner::load(&mut adapter, &artifact)
+        .map_err(|error| format!("fused weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from("fused owner used artifact size for weight"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("fused weighted owner release: {error}"))
 }
 
 #[test]

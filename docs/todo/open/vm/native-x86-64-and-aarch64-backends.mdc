@@ -225,8 +225,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   One-shot fused orchestration now composes exact load, bind, run, completion,
   and release. Pre-commit failure restores the full region entry while keeping
   cleanup failure separate; final-release failure preserves the committed
-  outcome and exact ready mapping for retry. Reusable fused ownership and cache
-  authority remain absent.
+  outcome and exact ready mapping for retry.
+
+  A distinct fused executable owner now keeps one verified artifact and one
+  synchronized mapping for repeated whole-region calls without adapter work.
+  Runner/completion failure leaves residency reusable, mapping-reported capacity
+  defines resident weight, and explicit release preserves exact retry ownership.
+  Fused leases, caches, and sequence ownership remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

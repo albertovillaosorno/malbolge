@@ -46,6 +46,7 @@ mod executable_cache;
 mod executable_cache_capacity;
 mod executable_lease_cache;
 mod executable_sequence;
+mod fused_resident;
 mod fused_sequence;
 mod invocation;
 mod lifecycle;
@@ -256,6 +257,12 @@ pub use executable_sequence::{
     load_verified_native_sequence,
     release_execution_geometry_native_executable_sequence,
     release_native_executable_sequence,
+};
+pub use fused_resident::{
+    DirectFusedNativeExecutableOwner, DirectFusedNativeOwnerExecutionFailure,
+    DirectFusedNativeOwnerExecutionResult, DirectFusedNativeOwnerLoadFailure,
+    DirectFusedNativeOwnerLoadResult, DirectFusedNativeOwnerReleaseResult,
+    DirectFusedNativeResidentWeight,
 };
 pub use fused_sequence::{
     DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
