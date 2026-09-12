@@ -201,6 +201,7 @@ use execution_native::{
     DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_REVISION,
+    DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
@@ -221,12 +222,13 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateError, DirectSelectionError, DirectSequenceError,
+    DirectFusedSequenceAdmissionError, DirectHaltFetchError,
+    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
+    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
+    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
+    DirectOutputError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
+    DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -313,9 +315,9 @@ use execution_native::{
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
-    admit_register_masked_direct_native, compile_preflighted_clang_c23,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_execution_geometry_crazy_coff,
+    admit_fused_direct_sequence, admit_register_masked_direct_native,
+    compile_preflighted_clang_c23, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -13666,6 +13668,120 @@ fn normative_trace_sequence_selects_mixed_exact_direct_steps()
         }
     }
     Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_binds_region_identity_and_source_provenance()
+-> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("fused source plan: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("fused admission: {error}"))?;
+        let source_key = NativeExecutableSequenceKey::from_plan(&plan);
+        let mut expected_live_ins = programs
+            .iter()
+            .flat_map(|program| program.memory_live_ins.iter().copied())
+            .collect::<Vec<_>>();
+        expected_live_ins.sort_by_key(|live_in| live_in.address);
+        let canonical = admission
+            .program()
+            .canonical_bytes()
+            .map_err(|error| format!("fused canonical IR: {error:?}"))?;
+        let source_identity_matches = admission
+            .source_key()
+            .artifact_keys()
+            .iter()
+            .zip(plan.artifacts())
+            .all(|(key, artifact)| key == artifact.key());
+        if admission.source_key() != &source_key
+            || admission.source_plan() != &plan
+            || !source_identity_matches
+            || admission.program().effects.len() != 2
+            || admission.program().step_budget != 2
+            || admission.program().outcome != plan.outcome()
+            || admission.program().memory_live_ins != expected_live_ins
+            || admission.key().ir().canonical_bytes() != canonical
+            || admission.key().target().backend_id()
+                != DIRECT_FUSED_SEQUENCE_BACKEND_ID
+            || admission.key().target().backend_revision()
+                != DIRECT_FUSED_SEQUENCE_BACKEND_REVISION
+            || admission.key().target().host_isa() != isa
+            || admission.key().target().host_os()
+                != HostOperatingSystem::Windows
+            || admission.key().target().native_abi_revision()
+                != NATIVE_REGION_ABI_REVISION
+        {
+            return Err(String::from(
+                "fused direct sequence identity or provenance drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_keeps_host_identity_out_of_portable_region()
+-> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    let mut admissions = Vec::new();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("fused host source: {error}"))?;
+        admissions.push(
+            admit_fused_direct_sequence(&plan)
+                .map_err(|error| format!("fused host admission: {error}"))?,
+        );
+    }
+    let [x86, arm] = admissions.as_slice() else {
+        return Err(String::from("fused host fixture count drifted"));
+    };
+    if x86.program() != arm.program()
+        || x86.key() == arm.key()
+        || x86.source_key() == arm.source_key()
+        || x86.key().target().host_isa() != HostIsa::X86_64
+        || arm.key().target().host_isa() != HostIsa::AArch64
+    {
+        Err(String::from(
+            "fused host identity leaked into portable region semantics",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn fused_direct_sequence_rejects_single_step_alias() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let plan = select_verified_direct_sequence(
+        &[program],
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("single-step fused source: {error}"))?;
+    let result = admit_fused_direct_sequence(&plan);
+    if matches!(
+        result,
+        Err(DirectFusedSequenceAdmissionError::SequenceLength { steps: 1 })
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "fused admission accepted an existing one-step backend alias",
+        ))
+    }
 }
 
 #[test]

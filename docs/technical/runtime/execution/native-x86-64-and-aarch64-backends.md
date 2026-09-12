@@ -303,7 +303,16 @@ changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact
 is selected. The retained rotate/output fixture yields two reviewed artifacts on
 both ISAs and rejects empty, discontinuous, profile-mixed, hidden-deopt, and
-post-termination sequences. Safe sequence execution now runs those reviewed
+post-termination sequences.
+
+`DirectFusedSequenceAdmission` can now derive one canonical multieffect region
+from that already verified plan. Ordered memory
+evidence becomes exact region-entry live-ins; a distinct revision-1 fused target
+binds the region-wide `NativeArtifactKey` while the complete source plan and
+ordered `NativeExecutableSequenceKey` remain provenance. Single-step plans are
+rejected, and no fused object bytes or fused-object verifier exist yet.
+
+Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
 prefixes remain committed; a second-step guard miss resumes at index one with
 the exact VM observation, and runner/completion failure restores only the

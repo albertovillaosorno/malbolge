@@ -184,7 +184,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
-  deopt and partial sequences fail closed. Cache-aware sequence planning
+  deopt and partial sequences fail closed.
+
+  A fused admission boundary now derives one canonical multieffect region with
+  dependency-aware entry live-ins,
+  a distinct region-wide artifact key, and retained source-plan/sequence-key
+  provenance. It rejects single-step aliasing and emits no fused object bytes.
+
+  Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only
   after full success. Safe sequence execution now runs each exact artifact in
   order, preserves applied prefixes, and returns exact second-step guard resume

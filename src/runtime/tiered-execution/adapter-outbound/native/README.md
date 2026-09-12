@@ -390,6 +390,17 @@ byte-exact prior exit observation. A non-final termination, any ordinary direct
 selection/admission failure, or a selected deoptimization stub rejects the whole
 sequence before a `VerifiedDirectSequencePlan` is returned.
 
+`DirectFusedSequenceAdmission` now consumes only such a verified plan and
+derives one canonical multieffect `RegionEffectProgram`. It folds ordered
+read/write evidence into exact region-entry live-ins, binds the complete region
+to the distinct `direct-fused-sequence` revision-1 target, and retains both the
+full verified source plan and its ordered `NativeExecutableSequenceKey`.
+Single-step plans are rejected so this identity cannot alias an existing direct
+template.
+
+This is fused identity/admission only. No fused object bytes, fused-object
+verifier, mapping, or runner authority is introduced.
+
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
 reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and
