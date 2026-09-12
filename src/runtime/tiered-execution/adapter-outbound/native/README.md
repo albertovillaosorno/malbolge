@@ -471,8 +471,10 @@ evidence.
 A distinct fused-region sequence plan now reconstructs every retained admission
 and admits only common-target/profile chains with exact exit-to-entry
 continuity. It retains region count, source semantic-step total, exact
-entry/exit, and complete outcome before any mapping. Loaded fused sequence
-ownership, execution, and release remain absent.
+entry/exit, and complete outcome before any mapping. A separate loaded owner
+now publishes only after every exact fused region maps successfully, retains
+exact mapped-byte evidence, and releases mappings in reverse with aggregate
+retry ownership. Ordered fused runner execution remains absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

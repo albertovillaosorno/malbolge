@@ -255,8 +255,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A distinct fused-region sequence plan now reconstructs every verified fused
   admission before admitting an ordered common-target/profile chain. Exact
   exit-to-entry continuity, total source semantic steps, regional entry/exit,
-  and complete outcome are retained without mapping authority. Loaded fused
-  sequence ownership, execution, and release remain absent.
+  and complete outcome are retained without mapping authority. A separate
+  loaded owner now publishes only after every exact fused region maps
+  successfully, retains exact mapped-byte evidence, and releases mappings in
+  reverse with aggregate retry ownership. Ordered fused runner execution remains
+  absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

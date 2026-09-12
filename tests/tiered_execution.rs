@@ -359,6 +359,7 @@ use execution_native::{
     execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
+    load_direct_fused_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
     load_register_masked_non_graphical_native_executable,
@@ -15917,6 +15918,117 @@ fn fused_direct_sequence_plan_rejects_target_drift() -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("fused target error drifted: {error}"))
+    }
+}
+
+fn fused_direct_loaded_sequence_plan(
+    isa: HostIsa,
+) -> Result<DirectFusedNativeSequencePlan, String> {
+    let artifact = verified_fused_direct_sequence_object(isa)?;
+    DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused loaded sequence plan: {error}"))
+}
+
+#[test]
+fn fused_direct_sequence_loaded_owns_mapping() -> Result<(), String> {
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let mapped_len = 12_288usize;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(791)?,
+        native_executable_address(0x2f_0000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused sequence load: {error}"))?;
+    if loaded.len() != 1
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_len)
+        || loaded.plan() != &plan
+    {
+        return Err(String::from("fused loaded sequence ownership drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused sequence release: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("fused loaded sequence did not release"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_loaded_load_failure_is_atomic() -> Result<(), String> {
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(792)?,
+        native_executable_address(0x30_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) = load_direct_fused_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from("fused sequence ignored load failure"));
+    };
+    if error.index() != 0
+        || error.loaded_count() != 0
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            DirectFusedNativeOwnerLoadFailure::Load(_)
+        )
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "fused sequence load failure evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_loaded_release_failure_retries() -> Result<(), String>
+{
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let expected_key = plan
+        .artifacts()
+        .first()
+        .ok_or_else(|| String::from("fused loaded artifact missing"))?
+        .key()
+        .clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(793)?,
+        native_executable_address(0x31_0000)?,
+    )
+    .with_release_failure_at(1);
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused sequence retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("fused sequence ignored release failure"));
+    };
+    if failure.attempted_count() != 1
+        || failure.released_count() != 0
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != Some(&expected_key)
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("fused sequence release evidence drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("fused sequence release retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused sequence release retry count drifted"))
     }
 }
 
