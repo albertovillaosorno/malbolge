@@ -41,7 +41,7 @@ use super::coff::{
     extract_relocation_free_executable_text,
 };
 use super::direct::{
-    VerifiedDirectNativeArtifact,
+    VerifiedDirectFusedSequenceObjectArtifact, VerifiedDirectNativeArtifact,
     VerifiedExecutionGeometryCrazyNativeObjectArtifact,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
@@ -121,6 +121,20 @@ pub struct VerifiedRegisterMaskedLoadImage {
 /// accepts it, so relocation closure cannot grant mapping or call authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRegisterMaskedNonGraphicalLoadImage {
+    code: Box<[u8]>,
+    entry_offset: usize,
+    key: NativeArtifactKey,
+    policy: NativeExecutableLoadPolicy,
+    target_triple: &'static str,
+}
+
+/// Relocation-free image for one independently verified fused direct object.
+///
+/// No lifecycle, mapping, or invocation API accepts this type. It proves only
+/// that exact fused COFF is relocation-free, ISA-aligned, and ready for the
+/// same strict W^X staging policy as other verified native code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedDirectFusedLoadImage {
     code: Box<[u8]>,
     entry_offset: usize,
     key: NativeArtifactKey,
@@ -599,6 +613,109 @@ impl VerifiedRegisterMaskedNonGraphicalLoadImage {
     }
 
     /// Returns exact target assumptions retained by this v6 image.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.key.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.target_triple
+    }
+}
+
+impl VerifiedDirectFusedLoadImage {
+    /// Returns the exact number of fused code bytes to allocate and copy.
+    #[must_use]
+    pub const fn allocation_len(&self) -> usize {
+        self.code.len()
+    }
+
+    /// Returns the complete relocation-free fused instruction stream.
+    #[must_use]
+    pub const fn code(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Returns fused code beginning at the required native entrypoint.
+    #[must_use]
+    pub fn entry_code(&self) -> &[u8] {
+        self.code.get(self.entry_offset..).unwrap_or_default()
+    }
+
+    /// Returns the fused entrypoint byte offset inside [`Self::code`].
+    #[must_use]
+    pub const fn entry_offset(&self) -> usize {
+        self.entry_offset
+    }
+
+    fn from_object(
+        artifact: &VerifiedDirectFusedSequenceObjectArtifact,
+        object: &[u8],
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        let parts = verified_load_image_parts(
+            artifact.key(),
+            object,
+            artifact.target_triple(),
+        )?;
+        Ok(Self {
+            code: parts.code,
+            entry_offset: parts.entry_offset,
+            key: parts.key,
+            policy: parts.policy,
+            target_triple: parts.target_triple,
+        })
+    }
+
+    /// Extracts a supplied object under one verified fused identity for tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn from_object_for_test(
+        artifact: &VerifiedDirectFusedSequenceObjectArtifact,
+        object: &[u8],
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_object(artifact, object)
+    }
+
+    /// Returns the exact ISA selected by the fused artifact identity.
+    #[must_use]
+    pub const fn host_isa(&self) -> HostIsa {
+        self.key.target().host_isa()
+    }
+
+    /// Returns the complete retained fused artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        &self.key
+    }
+
+    /// Returns minimum instruction alignment required by the fused target ISA.
+    #[must_use]
+    pub const fn minimum_instruction_alignment(&self) -> usize {
+        minimum_instruction_alignment(self.host_isa())
+    }
+
+    /// Extracts one immutable relocation-free image from a verified fused
+    /// object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn new(
+        artifact: &VerifiedDirectFusedSequenceObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_object(artifact, artifact.object())
+    }
+
+    /// Returns the mandatory W^X and instruction-sync policy evidence.
+    #[must_use]
+    pub const fn policy(&self) -> NativeExecutableLoadPolicy {
+        self.policy
+    }
+
+    /// Returns exact target assumptions retained by this fused image.
     #[must_use]
     pub const fn target(&self) -> &NativeTargetIdentity {
         self.key.target()

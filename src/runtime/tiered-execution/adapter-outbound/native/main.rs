@@ -291,8 +291,9 @@ pub use lifecycle::{
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedExecutionGeometryLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use malbolge::{

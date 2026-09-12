@@ -314,8 +314,13 @@ remain provenance. Single-step plans are rejected.
 The first fused emitter covers the retained rotate/output region on x86-64 and
 AArch64. Every fused guard completes before the first store, and independent
 semantic promotion reconstructs admission, structurally admits COFF, rebuilds
-canonical bytes, and rejects text-byte drift. Fused loading and invocation are
-still absent.
+canonical bytes, and rejects text-byte drift.
+
+`VerifiedDirectFusedLoadImage` now extracts the relocation-free fused entry
+without granting execution authority. It retains exact key/triple identity,
+validates ISA alignment, rejects machine drift or relocations, and requires the
+same strict RW-to-RX plus instruction-sync policy. Fused lifecycle and
+invocation remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -495,9 +500,10 @@ Clang-produced structurally admitted COFF remains semantically untrusted.
 Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; the first atomic fused rotate/output object is also
-emitted and independently verified on both ISAs. Wider fused-template coverage,
-fused loading/invocation, concrete executable-memory and foreign-call adapters,
-runtime integration, and instruction-cache synchronization remain incomplete.
+emitted, independently verified, and extracted as a relocation-free load image
+on both ISAs. Wider fused-template coverage, fused lifecycle/invocation,
+concrete executable-memory and foreign-call adapters, runtime integration, and
+instruction-cache synchronization remain incomplete.
 
 ## Invariants
 

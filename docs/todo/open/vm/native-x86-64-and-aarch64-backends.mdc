@@ -193,8 +193,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   The retained rotate/output region now emits one atomic reviewed x86-64 or
   AArch64 COFF candidate whose complete guard set precedes every store. Semantic
   promotion reconstructs admission, structurally admits COFF, regenerates the
-  canonical object, and rejects text-byte drift. Fused load/invocation authority
-  remains absent.
+  canonical object, and rejects text-byte drift.
+
+  A distinct fused load-image type now extracts relocation-free code, rejects
+  machine drift or relocations, validates ISA alignment, and retains the strict
+  RW-to-RX/full-sync policy. Fused lifecycle, mapping, invocation, and runner
+  authority remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

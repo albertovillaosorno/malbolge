@@ -307,10 +307,11 @@ use execution_native::{
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
-    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    UntrustedNativeObjectArtifact, VerifiedDirectFusedLoadImage,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
+    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
+    VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
@@ -13614,6 +13615,26 @@ fn direct_normative_sequence_programs()
         .collect()
 }
 
+fn verified_fused_direct_sequence_object(
+    isa: HostIsa,
+) -> Result<execution_native::VerifiedDirectFusedSequenceObjectArtifact, String>
+{
+    let programs = direct_normative_sequence_programs()?;
+    let plan = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| format!("fused load source select: {error}"))?;
+    let admission = admit_fused_direct_sequence(&plan)
+        .map_err(|error| format!("fused load admit: {error}"))?;
+    let candidate = emit_fused_direct_sequence_coff(&admission)
+        .map_err(|error| format!("fused load emit: {error}"))?;
+    verify_fused_direct_sequence(&candidate, &admission)
+        .map_err(|error| format!("fused load verify: {error}"))
+}
+
 #[test]
 fn normative_trace_sequence_selects_mixed_exact_direct_steps()
 -> Result<(), String> {
@@ -13828,6 +13849,81 @@ fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_load_image_extracts_both_isas() -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let image = VerifiedDirectFusedLoadImage::new(&artifact)
+            .map_err(|error| format!("fused load image: {error}"))?;
+        let expected_code = direct_object_text(artifact.object())?;
+        let expected_alignment = match isa {
+            HostIsa::AArch64 => 4,
+            HostIsa::X86_64 => 1,
+        };
+        let policy = image.policy();
+        if image.code() != expected_code
+            || image.entry_code() != expected_code
+            || image.entry_offset() != 0
+            || image.allocation_len() != expected_code.len()
+            || image.host_isa() != isa
+            || image.key() != artifact.key()
+            || image.minimum_instruction_alignment() != expected_alignment
+            || image.target() != artifact.key().target()
+            || image.target_triple() != artifact.target_triple()
+            || policy.initial_permissions()
+                != NativeExecutablePermission::ReadWrite
+            || policy.final_permissions()
+                != NativeExecutablePermission::ReadExecute
+            || !policy.requires_instruction_sync()
+        {
+            return Err(format!("fused load image drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_load_rejects_machine_drift() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut object = artifact.object().to_vec();
+    write_fixture_u16(&mut object, 0, 0)?;
+    if VerifiedDirectFusedLoadImage::from_object_for_test(&artifact, &object)
+        == Err(VerifiedDirectLoadError::Object(CoffAdmissionError::Machine))
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused load image admitted machine drift"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_load_image_rejects_relocations() -> Result<(), String>
+{
+    const TEXT_HEADER: usize = 20;
+    const RELOCATION_START_OFFSET: usize = 24;
+    const RELOCATION_COUNT_OFFSET: usize = 32;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut object = artifact.object().to_vec();
+    let relocation_start = u32::try_from(object.len())
+        .map_err(|error| format!("fused relocation offset: {error}"))?;
+    object.extend_from_slice(&[0u8; 10]);
+    let start_offset = TEXT_HEADER
+        .checked_add(RELOCATION_START_OFFSET)
+        .ok_or_else(|| String::from("fused relocation start overflow"))?;
+    let count_offset = TEXT_HEADER
+        .checked_add(RELOCATION_COUNT_OFFSET)
+        .ok_or_else(|| String::from("fused relocation count overflow"))?;
+    write_fixture_u32(&mut object, start_offset, relocation_start)?;
+    write_fixture_u16(&mut object, count_offset, 1)?;
+    if VerifiedDirectFusedLoadImage::from_object_for_test(&artifact, &object)
+        == Err(VerifiedDirectLoadError::Relocations)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused load image admitted relocations"))
+    }
 }
 
 #[test]

@@ -406,7 +406,11 @@ a miss therefore preserves the original region entry rather than a step prefix.
 Semantic promotion reconstructs the fused admission from the retained verified
 source plan, structurally admits COFF, regenerates canonical bytes, and requires
 exact equality. A structurally valid text-byte mutation fails this verifier.
-Fused load-image, mapping, invocation, and runner authority remain absent.
+
+`VerifiedDirectFusedLoadImage` now reparses only that verified fused object,
+rejects relocations, validates ISA alignment, and retains exact key/triple plus
+the strict RW-to-RX/full-sync policy. No lifecycle, mapping, invocation, or
+runner API accepts the fused image yet.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
