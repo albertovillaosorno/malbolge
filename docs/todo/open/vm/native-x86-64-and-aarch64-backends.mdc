@@ -528,8 +528,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   insufficient sample evidence defers, and exact latency evidence plus
   violations remain attached.
 
-  Rebinning, distributed/durable merge, latency recommendation publication,
-  durable/cross-cycle policy publication, runtime clock acquisition, async
+  A parallel request-scoped publication boundary consumes latency
+  recommendations. Deferral preserves the request unchanged, while ready
+  evidence replaces only its retry policy and retains previous/current policy
+  plus exact latency recommendation evidence.
+
+  Rebinning, distributed/durable merge, durable/cross-cycle policy publication,
+  runtime clock acquisition, async
   queues, durable storage, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry

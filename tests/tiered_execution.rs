@@ -141,6 +141,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
     NativeContinuationCachedRetryLatencyMergeError,
+    NativeContinuationCachedRetryLatencyPolicyPublication,
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
     NativeContinuationCachedRetryLatencySample,
     NativeContinuationCachedRetryLatencySnapshotCounts,
@@ -170,6 +171,7 @@ use cached_cycle::{
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
+    publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     summarize_cached_retry_attempts,
@@ -50550,6 +50552,89 @@ fn cached_retry_latency_policy_recommendation_retains_miss_evidence()
         Ok(())
     } else {
         Err(String::from("missed latency recommendation lost evidence"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_publication_defers_without_mutation()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "latency publication samples")?,
+            u64::MAX,
+            u64::MAX,
+            usize::MAX,
+        );
+    let recommendation = recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        cached_retry_policy_recommendation_set(),
+    );
+    let publication = publish_cached_retry_latency_policy_recommendation(
+        request,
+        recommendation,
+    );
+    if publication.is_published()
+        || publication.recommendation() != recommendation
+        || publication.request().policy() != original_policy
+    {
+        return Err(String::from(
+            "deferred latency publication mutated request",
+        ));
+    }
+    let recovered_request = publication.into_request();
+    if recovered_request.policy() == original_policy {
+        Ok(())
+    } else {
+        Err(String::from("deferred latency policy owner drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_publication_replaces_request_policy()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "latency publication samples")?,
+            15,
+            20,
+            0,
+        );
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        policies,
+    );
+    let publication = publish_cached_retry_latency_policy_recommendation(
+        request,
+        recommendation,
+    );
+    let NativeContinuationCachedRetryLatencyPolicyPublication::Published {
+        current_policy,
+        previous_policy,
+        recommendation: retained_recommendation,
+        request: published_request,
+    } = publication
+    else {
+        return Err(String::from(
+            "ready latency recommendation did not publish",
+        ));
+    };
+    if current_policy == policies.meets()
+        && previous_policy == original_policy
+        && retained_recommendation == recommendation
+        && published_request.policy() == policies.meets()
+    {
+        Ok(())
+    } else {
+        Err(String::from("published latency policy evidence drifted"))
     }
 }
 

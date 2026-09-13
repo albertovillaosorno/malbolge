@@ -121,7 +121,9 @@ pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencySnapshotRange,
 };
 pub use telemetry_policy_publication::{
+    NativeContinuationCachedRetryLatencyPolicyPublication,
     NativeContinuationCachedRetryPolicyPublication,
+    publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
 };
 pub use telemetry_recommendation::{

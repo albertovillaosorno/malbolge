@@ -667,8 +667,13 @@ recommendation now maps ready assessments through the same caller-supplied
 meets/misses policy table as count telemetry; insufficient sample evidence
 defers, and exact latency evidence plus violations remain attached.
 
-Rebinning, distributed merge, latency recommendation publication,
-durable/cross-cycle policy publication, native object fusion, foreign
+A parallel request-scoped publication boundary now consumes latency
+recommendations. Deferral preserves the request unchanged, while ready evidence
+replaces only its retry policy and retains previous/current policy plus exact
+latency recommendation evidence.
+
+Rebinning, distributed merge, durable/cross-cycle policy publication, native
+object fusion, foreign
 invocation, runtime clock acquisition, durable storage, and cross-process
 coordination remain open.
 
