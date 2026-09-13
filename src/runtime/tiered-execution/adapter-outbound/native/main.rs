@@ -52,6 +52,7 @@ mod fused_resident;
 mod fused_resident_cache;
 mod fused_sequence;
 mod fused_sequence_cache;
+mod fused_sequence_cache_transaction;
 mod fused_sequence_cached_retry;
 mod fused_sequence_cached_retry_cycle;
 mod fused_sequence_continuation;
@@ -281,7 +282,12 @@ pub use executable_sequence::{
 };
 pub use fused_lease_cache::{
     DirectFusedNativeLease, DirectFusedNativeLeaseCache,
-    DirectFusedNativeLeaseCacheAcquisition, DirectFusedNativeLeaseCacheBlock,
+    DirectFusedNativeLeaseCacheAcquisition,
+    DirectFusedNativeLeaseCacheBatchAcquisition,
+    DirectFusedNativeLeaseCacheBatchCommittedCleanup,
+    DirectFusedNativeLeaseCacheBatchFailure,
+    DirectFusedNativeLeaseCacheBatchParts,
+    DirectFusedNativeLeaseCacheBatchResult, DirectFusedNativeLeaseCacheBlock,
     DirectFusedNativeLeaseCacheCapacityError,
     DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
@@ -330,6 +336,12 @@ pub use fused_sequence_cache::{
     DirectFusedNativeSequenceCacheAcquireResult,
     DirectFusedNativeSequenceCacheAcquisition,
     acquire_direct_fused_native_sequence,
+};
+pub use fused_sequence_cache_transaction::{
+    DirectFusedNativeSequenceCacheAdmissionFailureParts,
+    DirectFusedNativeSequenceCacheTransactionFailure,
+    DirectFusedNativeSequenceCacheTransactionResult,
+    acquire_direct_fused_native_sequence_transactionally,
 };
 pub use fused_sequence_cached_retry::{
     DirectFusedNativeCachedRetryAcquisitionFailure,

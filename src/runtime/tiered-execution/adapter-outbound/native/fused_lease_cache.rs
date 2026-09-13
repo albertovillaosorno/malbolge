@@ -40,6 +40,8 @@
 
 #[path = "fused_lease_cache/reconfiguration.rs"]
 mod reconfiguration;
+#[path = "fused_lease_cache/transaction.rs"]
+mod transaction;
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -50,6 +52,13 @@ pub use reconfiguration::{
     DirectFusedNativeLeaseCacheReconfiguration,
     DirectFusedNativeLeaseCacheReconfigurationFailure,
     DirectFusedNativeLeaseCacheReconfigurationResult,
+};
+pub use transaction::{
+    DirectFusedNativeLeaseCacheBatchAcquisition,
+    DirectFusedNativeLeaseCacheBatchCommittedCleanup,
+    DirectFusedNativeLeaseCacheBatchFailure,
+    DirectFusedNativeLeaseCacheBatchParts,
+    DirectFusedNativeLeaseCacheBatchResult,
 };
 
 use super::direct::VerifiedDirectFusedSequenceObjectArtifact;
@@ -677,6 +686,27 @@ impl<E: Display> Display for DirectFusedNativeLeaseCacheReleaseFailure<E> {
 }
 
 impl DirectFusedNativeLeaseCache {
+    /// Transactionally acquires an ordered exact fused artifact batch.
+    ///
+    /// All misses load and capacity-preflight before active/retired authority
+    /// changes. Pre-publication failure restores exact cache queues and usage.
+    ///
+    /// # Errors
+    ///
+    /// Returns primary staging/admission evidence plus retryable rollback
+    /// cleanup ownership. Post-publication victim cleanup failure retains the
+    /// committed acquisitions separately.
+    pub fn acquire_batch_transactionally<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        artifacts: &[VerifiedDirectFusedSequenceObjectArtifact],
+    ) -> DirectFusedNativeLeaseCacheBatchResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        transaction::acquire_batch_transactionally(self, adapter, artifacts)
+    }
+
     fn active_acquisition(
         entry: &CacheValue,
         disposition: DirectFusedNativeLeaseCacheDisposition,

@@ -496,7 +496,14 @@ zero-step `NativeRetry` rescheduling.
 Only successfully rebased guard misses continue. Unchanged suffixes reuse active
 cache authority as exact hits, while exhaustion falls back normatively. Load,
 runner, rebase, and reconciliation failures remain terminal with ownership.
-Transactional cache rollback remains separate.
+
+A separate transactional fused cache-acquisition boundary now stages every miss
+and preflights the complete FIFO/weighted fit before changing active or retired
+authority. Late load, capacity, or live-lease blockage therefore preserves the
+prior cache queues and usage, while staged cleanup failure remains retryable.
+Post-publication victim cleanup failure reports committed acquisition plus exact
+cleanup ownership rather than being misreported as rollback. The cached
+retry cycle continues to use its ordinary acquisition path independently.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

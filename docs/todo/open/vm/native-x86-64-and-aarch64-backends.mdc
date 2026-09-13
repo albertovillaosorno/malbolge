@@ -370,7 +370,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Only successfully rebased guard misses continue. Unchanged suffixes reuse
   active cache authority as exact hits, while exhaustion falls back normatively.
   Load, runner, rebase, and reconciliation failures remain terminal with
-  ownership. Transactional cache rollback remains separate.
+  ownership.
+
+  A separate transactional fused cache-acquisition boundary now stages every
+  miss and preflights the complete FIFO/weighted fit before changing active or
+  retired authority. Late load, capacity, or live-lease blockage preserves prior
+  cache queues and usage, while staged cleanup failure remains retryable.
+  Post-publication victim cleanup failure reports committed acquisition plus
+  exact cleanup ownership. The cached retry cycle keeps its ordinary acquisition
+  path independently.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

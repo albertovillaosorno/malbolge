@@ -349,10 +349,11 @@ use execution_native::{
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
-    acquire_direct_fused_native_sequence, admit_fused_direct_sequence,
-    admit_register_masked_direct_native, compile_preflighted_clang_c23,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_execution_geometry_crazy_coff,
+    acquire_direct_fused_native_sequence,
+    acquire_direct_fused_native_sequence_transactionally,
+    admit_fused_direct_sequence, admit_register_masked_direct_native,
+    compile_preflighted_clang_c23, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -15632,6 +15633,244 @@ fn fused_direct_sequence_multi_cache_load_failure_preserves_resident()
 }
 
 #[test]
+fn fused_cache_batch_rolls_back_late_load_failure() -> Result<(), String> {
+    let seed = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let second = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let third = verified_fused_direct_sequence_variant(HostIsa::X86_64, 21)?;
+    let seed_key = seed.key().clone();
+    let capacity =
+        NonZeroUsize::new(3).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(791)?,
+        native_executable_address(0x2f_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 3);
+    drop(
+        cache
+            .ensure(&mut adapter, &seed)
+            .map_err(|error| error.to_string())?,
+    );
+    let usage = cache.usage();
+    let keys = cache.keys().cloned().collect::<Vec<_>>();
+    let Err(failure) =
+        cache.acquire_batch_transactionally(&mut adapter, &[second, third])
+    else {
+        return Err(String::from("late fused batch load failure published"));
+    };
+    if failure.index() != 1
+        || failure.load_failure().is_none()
+        || failure.cache_committed()
+        || failure.rollback_cleanup_failure().is_some()
+        || cache.keys().cloned().collect::<Vec<_>>() != keys
+        || cache.keys().cloned().collect::<Vec<_>>() != [seed_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage() != usage
+    {
+        return Err(String::from("late fused batch load rollback drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn fused_cache_batch_retains_rollback_cleanup_failure() -> Result<(), String> {
+    let seed = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let second = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let third = verified_fused_direct_sequence_variant(HostIsa::X86_64, 21)?;
+    let seed_key = seed.key().clone();
+    let capacity =
+        NonZeroUsize::new(3).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(795)?,
+        native_executable_address(0x33_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 3)
+    .with_release_failure_at(2);
+    drop(
+        cache
+            .ensure(&mut adapter, &seed)
+            .map_err(|error| error.to_string())?,
+    );
+    let usage = cache.usage();
+    let Err(failure) =
+        cache.acquire_batch_transactionally(&mut adapter, &[second, third])
+    else {
+        return Err(String::from("fused rollback cleanup failure was hidden"));
+    };
+    if failure.index() != 1
+        || failure.load_failure().is_none()
+        || failure.cache_committed()
+        || failure
+            .rollback_cleanup_failure()
+            .is_none_or(|cleanup| cleanup.failures().len() != 1)
+        || cache.keys().cloned().collect::<Vec<_>>() != [seed_key]
+        || cache.usage() != usage
+    {
+        return Err(String::from("fused rollback cleanup evidence drifted"));
+    }
+    let cleanup = (*failure)
+        .into_rollback_cleanup()
+        .ok_or_else(|| String::from("fused rollback cleanup owner missing"))?;
+    let _summary = cleanup
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn fused_cache_batch_block_preserves_active_lease() -> Result<(), String> {
+    let seed = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let candidate = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let seed_key = seed.key().clone();
+    let capacity =
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(792)?,
+        native_executable_address(0x30_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &seed)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let usage = cache.usage();
+    let Err(failure) =
+        cache.acquire_batch_transactionally(&mut adapter, &[candidate])
+    else {
+        return Err(String::from("live fused batch unexpectedly published"));
+    };
+    if failure.index() != 0
+        || failure.block().is_none()
+        || failure.cache_committed()
+        || cache.keys().cloned().collect::<Vec<_>>() != [seed_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage() != usage
+    {
+        return Err(String::from(
+            "blocked fused batch changed cache authority",
+        ));
+    }
+    drop(lease);
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn fused_cache_batch_publishes_after_preflight() -> Result<(), String> {
+    let seed = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let second = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let third = verified_fused_direct_sequence_variant(HostIsa::X86_64, 21)?;
+    let seed_key = seed.key().clone();
+    let second_key = second.key().clone();
+    let third_key = third.key().clone();
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(793)?,
+        native_executable_address(0x31_0000)?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &seed)
+            .map_err(|error| error.to_string())?,
+    );
+    let batch = cache
+        .acquire_batch_transactionally(&mut adapter, &[second, third])
+        .map_err(|error| error.to_string())?;
+    let (dispositions, leases) = batch.into_parts();
+    let [first_disposition, second_disposition] = dispositions.as_slice()
+    else {
+        return Err(String::from("fused batch disposition count drifted"));
+    };
+    if first_disposition.is_hit()
+        || !first_disposition.evicted_keys().is_empty()
+        || second_disposition.evicted_keys() != [seed_key]
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key, third_key]
+        || cache.active_len() != 2
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 2
+        || leases.len() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("fused batch publication evidence drifted"));
+    }
+    drop(leases);
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn fused_cache_batch_retains_committed_cleanup_failure() -> Result<(), String> {
+    let seed = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let candidate = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let seed_key = seed.key().clone();
+    let candidate_key = candidate.key().clone();
+    let capacity =
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(794)?,
+        native_executable_address(0x32_0000)?,
+    )
+    .with_release_failure_at(1);
+    drop(
+        cache
+            .ensure(&mut adapter, &seed)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) =
+        cache.acquire_batch_transactionally(&mut adapter, &[candidate])
+    else {
+        return Err(String::from("fused batch cleanup failure was hidden"));
+    };
+    if !failure.cache_committed()
+        || failure.index() != 1
+        || failure.publication_cleanup_failure().is_none()
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.active_len() != 1
+        || cache.usage().entries() != 1
+    {
+        return Err(String::from("fused committed cleanup evidence drifted"));
+    }
+    let (committed, cleanup) = (*failure)
+        .into_committed_cleanup()
+        .ok_or_else(|| String::from("committed fused batch owners missing"))?;
+    if committed.len() != 1
+        || cleanup.failures().len() != 1
+        || cleanup
+            .failures()
+            .first()
+            .map(DirectFusedNativeLeaseCacheEntryReleaseFailure::key)
+            != Some(&seed_key)
+    {
+        return Err(String::from("fused committed cleanup owner drifted"));
+    }
+    let (_, leases) = committed.into_parts();
+    let _cleanup_summary = cleanup
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    drop(leases);
+    cache
+        .release_all(&mut adapter)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[test]
 fn fused_direct_sequence_multi_cache_reconfiguration_expands_no_io()
 -> Result<(), String> {
     let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
@@ -16346,6 +16585,58 @@ fn fused_direct_sequence_lease_hit_executes_without_adapter_work()
     }
     drop(first);
     drop(leased.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_transactional_cache_reuses_exact_plan() -> Result<(), String> {
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(810)?,
+        native_executable_address(0x42_0000)?,
+    );
+    let inserted = acquire_direct_fused_native_sequence_transactionally(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )
+    .map_err(|error| error.to_string())?;
+    if inserted.dispositions().len() != 1
+        || inserted
+            .dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || inserted.sequence().plan() != &plan
+    {
+        return Err(String::from(
+            "transactional fused sequence insert drifted",
+        ));
+    }
+    drop(inserted.into_sequence().into_leases());
+    let operations = adapter.operations.clone();
+    let hit = acquire_direct_fused_native_sequence_transactionally(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )
+    .map_err(|error| error.to_string())?;
+    if hit.dispositions().len() != 1
+        || hit
+            .dispositions()
+            .first()
+            .is_none_or(|disposition| !disposition.is_hit())
+        || hit.sequence().plan() != &plan
+        || adapter.operations != operations
+    {
+        return Err(String::from("transactional fused sequence hit drifted"));
+    }
+    drop(hit.into_sequence().into_leases());
     let _summary = cache
         .release_all(&mut adapter)
         .map_err(|error| error.to_string())?;

@@ -65,8 +65,8 @@ pub struct DirectFusedNativeSequenceCacheAcquireFailure<E> {
 /// Successful ordered fused-sequence cache acquisition.
 #[derive(Debug)]
 pub struct DirectFusedNativeSequenceCacheAcquisition {
-    dispositions: Vec<DirectFusedNativeLeaseCacheDisposition>,
-    sequence: DirectFusedNativeLeasedSequence,
+    pub(super) dispositions: Vec<DirectFusedNativeLeaseCacheDisposition>,
+    pub(super) sequence: DirectFusedNativeLeasedSequence,
 }
 
 /// Result of acquiring every exact fused-region lease in one admitted plan.
