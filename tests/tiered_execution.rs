@@ -141,6 +141,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
     NativeContinuationCachedRetryLatencyMergeError,
+    NativeContinuationCachedRetryLatencyPolicyRecommendation,
     NativeContinuationCachedRetryLatencySample,
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
@@ -169,7 +170,8 @@ use cached_cycle::{
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
-    publish_cached_retry_policy_recommendation, recommend_cached_retry_policy,
+    publish_cached_retry_policy_recommendation,
+    recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     summarize_cached_retry_attempts,
 };
 use cached_retry::{
@@ -50429,6 +50431,125 @@ fn cached_retry_latency_assessment_does_not_truncate_average()
         Ok(())
     } else {
         Err(String::from("fractional latency assessment drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_recommendation_defers_insufficient_evidence()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10])?;
+    let required = nonzero_test_limit(2, "latency recommendation samples")?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            required,
+            u64::MAX,
+            u64::MAX,
+            usize::MAX,
+        );
+    let assessment = assess_cached_retry_latency(&histogram, thresholds);
+    let recommendation = recommend_cached_retry_latency_policy(
+        assessment,
+        cached_retry_policy_recommendation_set(),
+    );
+    let NativeContinuationCachedRetryLatencyPolicyRecommendation::Deferred {
+        observed_samples,
+        required_samples,
+    } = recommendation
+    else {
+        return Err(String::from("insufficient latency selected policy"));
+    };
+    if observed_samples == 1
+        && required_samples == required
+        && recommendation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency recommendation defer evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_recommendation_selects_meets_policy()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "latency recommendation samples")?,
+            15,
+            20,
+            0,
+        );
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        policies,
+    );
+    let NativeContinuationCachedRetryLatencyPolicyRecommendation::Meets {
+        evidence,
+        policy,
+    } = recommendation
+    else {
+        return Err(String::from("meeting latency recommendation drifted"));
+    };
+    if policy == policies.meets()
+        && evidence.samples() == 2
+        && evidence.total_nanoseconds() == 30
+        && recommendation.policy() == Some(policies.meets())
+    {
+        Ok(())
+    } else {
+        Err(String::from("meeting latency selected wrong policy"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_recommendation_retains_miss_evidence()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 100, 101])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(3, "latency recommendation samples")?,
+            70,
+            100,
+            0,
+        );
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        policies,
+    );
+    let NativeContinuationCachedRetryLatencyPolicyRecommendation::Misses {
+        evidence,
+        policy,
+        violations,
+    } = recommendation
+    else {
+        return Err(String::from("missed latency recommendation drifted"));
+    };
+    if policy == policies.misses()
+        && evidence.total_nanoseconds() == 211
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                AverageNanoseconds,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                MaximumNanoseconds,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                OverflowSamples,
+        )
+        && recommendation.policy() == Some(policies.misses())
+    {
+        Ok(())
+    } else {
+        Err(String::from("missed latency recommendation lost evidence"))
     }
 }
 

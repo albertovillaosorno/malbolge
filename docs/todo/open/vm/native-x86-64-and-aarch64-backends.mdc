@@ -523,9 +523,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   sample, and overflow-bin count. Mean comparison uses exact integer arithmetic
   without floating point or truncating division; four cases cover insufficient
   evidence, inclusive equality, multi-signal misses, and a fractional mean
-  boundary.
+  boundary. A pure latency-driven recommendation maps ready assessments through
+  the same caller-supplied meets/misses policy table as count telemetry;
+  insufficient sample evidence defers, and exact latency evidence plus
+  violations remain attached.
 
-  Rebinning, distributed/durable merge, latency-driven recommendation,
+  Rebinning, distributed/durable merge, latency recommendation publication,
   durable/cross-cycle policy publication, runtime clock acquisition, async
   queues, durable storage, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them

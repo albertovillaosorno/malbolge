@@ -17,8 +17,7 @@
 //   - Outputs: deferred evidence or one exact recommended retry policy.
 //   - Side effects: none.
 // - Split-When:
-//   - Latency-driven recommendation or durable/cross-cycle publication gains
-//     authority.
+//   - Durable/cross-cycle publication gains authority.
 // - Merge-When:
 //   - Caller orchestration owns assessment and publication atomically.
 // - Summary:
@@ -42,7 +41,7 @@ use super::{
 };
 use crate::retry_policy::NativeContinuationRetryPolicy;
 
-/// Caller-owned policies eligible for one count-based recommendation.
+/// Caller-owned policies eligible for one assessment-based recommendation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryPolicyRecommendationSet {
     meets: NativeContinuationRetryPolicy,

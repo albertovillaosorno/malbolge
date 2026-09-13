@@ -662,10 +662,15 @@ and applies inclusive maxima to exact arithmetic mean latency, largest observed
 sample, and overflow-bin count. Mean comparison uses exact integer arithmetic
 without floating point or truncating division, and all simultaneous misses are
 retained. Four cases cover insufficient evidence, inclusive equality,
-multi-signal misses, and a fractional mean boundary. Rebinning, distributed
-merge, latency-driven recommendation, durable/cross-cycle policy publication,
-native object fusion, foreign invocation, runtime clock acquisition, durable
-storage, and cross-process coordination remain open.
+multi-signal misses, and a fractional mean boundary. A pure latency-driven
+recommendation now maps ready assessments through the same caller-supplied
+meets/misses policy table as count telemetry; insufficient sample evidence
+defers, and exact latency evidence plus violations remain attached.
+
+Rebinning, distributed merge, latency recommendation publication,
+durable/cross-cycle policy publication, native object fusion, foreign
+invocation, runtime clock acquisition, durable storage, and cross-process
+coordination remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
