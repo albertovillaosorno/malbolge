@@ -360,10 +360,16 @@ pub use fused_sequence_lease::{
 pub use fused_sequence_leased_retry::{
     DirectFusedNativeLeasedRetry, DirectFusedNativeLeasedRetryAdmissionError,
     DirectFusedNativeLeasedRetryAdmissionFailure,
+    DirectFusedNativeLeasedRetryDisposition,
     DirectFusedNativeLeasedRetryExecution,
     DirectFusedNativeLeasedRetryExecutionFailure,
     DirectFusedNativeLeasedRetryExecutionResult,
+    DirectFusedNativeLeasedRetryFailureDisposition,
     DirectFusedNativeLeasedRetryFailureParts,
+    DirectFusedNativeLeasedRetryFailureRebaseFailure,
+    DirectFusedNativeLeasedRetryFailureRebaseResult,
+    DirectFusedNativeLeasedRetryRebaseFailure,
+    DirectFusedNativeLeasedRetryRebasedFailureParts,
     DirectFusedNativeLeasedRetrySuccessParts,
 };
 pub use fused_sequence_plan::{

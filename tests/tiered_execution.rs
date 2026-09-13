@@ -18191,6 +18191,206 @@ fn fused_direct_retry_failure_rebase_completes_cleanup() -> Result<(), String> {
 }
 
 #[test]
+fn fused_direct_cached_retry_rebase_completes_with_lease() -> Result<(), String>
+{
+    let expected = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let expected_outcome = retry.suspension().continuation().expected_outcome();
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1240)?,
+        native_executable_address(0x80_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("fused cached rebase: {failure:?}"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, dispositions, sequence) = rebased.into_parts();
+    let DirectFusedNativeRetryDisposition::Completed(completion) = disposition
+    else {
+        return Err(String::from("cached fused retry remained resumable"));
+    };
+    if completion.retry_steps() != 2
+        || completion.outcome() != expected_outcome
+        || completion.state().memory() != expected.final_memory
+        || dispositions
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || sequence.len() != 1
+    {
+        return Err(String::from("cached fused completion rebase drifted"));
+    }
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_cached_retry_rebase_resumes_guard_hit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1241)?,
+        native_executable_address(0x81_0000)?,
+    );
+    let seed = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        retry.plan(),
+    )
+    .map_err(|error| error.to_string())?;
+    drop(seed.into_sequence().into_leases());
+    let operations = adapter.operations.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("fused cached guard rebase: {failure:?}"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, dispositions, sequence) = rebased.into_parts();
+    let DirectFusedNativeRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from("cached fused guard retry completed"));
+    };
+    let completion = resumption
+        .into_handoff()
+        .execute()
+        .map_err(|error| error.to_string())?;
+    let is_hit = matches!(dispositions.first(), Some(item) if item.is_hit());
+    if !is_hit
+        || adapter.operations != operations
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("cached fused guard rebase drifted"));
+    }
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn assert_fused_cached_retry_sequence_reusable(
+    expected: &NativeSequenceFixture,
+    sequence: &DirectFusedNativeLeasedSequence,
+    adapter: &FakeNativeExecutableAdapter,
+    operations: &[FakeNativeAdapterOperation],
+) -> Result<(), String> {
+    let mut memory = expected.initial_memory.clone();
+    let mut output = expected.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = sequence
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &expected.input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome.completed_steps() == 2
+        && memory == expected.final_memory
+        && output == expected.final_output
+        && adapter.operations.as_slice() == operations
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached fused failure lease was not reusable"))
+    }
+}
+
+fn fused_cached_failure_handoff(
+    disposition: DirectFusedNativeRetryDisposition,
+    failure_steps: usize,
+) -> Result<DirectFusedNativeInterpreterHandoff, String> {
+    if failure_steps != 0 {
+        return Err(String::from("cached fused native failure made progress"));
+    }
+    let DirectFusedNativeRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from(
+            "cached fused runner failure completed semantics",
+        ));
+    };
+    if resumption.retry_steps() != 0 {
+        return Err(String::from(
+            "cached fused failure rebase progress drifted",
+        ));
+    }
+    Ok(resumption.into_handoff())
+}
+
+#[test]
+fn fused_direct_cached_retry_failure_rebase_keeps_sequence()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1242)?,
+        native_executable_address(0x82_0000)?,
+    );
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(cached_failure) = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    ) else {
+        return Err(String::from("cached fused runner failure completed"));
+    };
+    let execution = (*cached_failure)
+        .into_execution()
+        .ok_or_else(|| String::from("cached fused execution owner missing"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, failure, _, sequence) = rebased.into_parts();
+    let handoff =
+        fused_cached_failure_handoff(disposition, failure.completed_steps())?;
+    let completion = handoff.execute().map_err(|error| error.to_string())?;
+    if completion.state().memory() != expected.final_memory {
+        return Err(String::from("cached fused fallback completion drifted"));
+    }
+    let operations = adapter.operations.clone();
+    assert_fused_cached_retry_sequence_reusable(
+        &expected,
+        &sequence,
+        &adapter,
+        &operations,
+    )?;
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
 fn fused_direct_cached_retry_inserts_and_executes() -> Result<(), String> {
     let fixture = direct_normative_sequence_fixture()?;
     let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;

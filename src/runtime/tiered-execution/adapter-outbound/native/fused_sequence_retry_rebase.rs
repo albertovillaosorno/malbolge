@@ -143,15 +143,23 @@ type DirectFusedNativeSemanticRebaseResult = Result<
     DirectFusedNativeRetryRebaseError,
 >;
 
+/// Exact semantic evidence shared by uncached and leased retry rebase.
 #[derive(Clone, Copy)]
-struct DirectFusedNativeRetryRebaseEvidence<'evidence> {
-    observation: malbolge::ProfileMachineObservation,
-    plan: &'evidence DirectFusedNativeSequencePlan,
-    reason: DirectFusedNativeContinuationReason,
-    retry_regions: usize,
-    retry_steps: usize,
-    suspension: &'evidence DirectFusedNativeScheduleSuspension,
-    transfer: &'evidence DirectFusedNativeRetryTransfer,
+pub(super) struct DirectFusedNativeRetryRebaseEvidence<'evidence> {
+    /// Exact observation reached by native retry work.
+    pub(super) observation: malbolge::ProfileMachineObservation,
+    /// Exact fused plan used by this retry attempt.
+    pub(super) plan: &'evidence DirectFusedNativeSequencePlan,
+    /// Semantic continuation reason after native retry work.
+    pub(super) reason: DirectFusedNativeContinuationReason,
+    /// Fused regions committed by this retry attempt.
+    pub(super) retry_regions: usize,
+    /// Source semantic steps committed by this retry attempt.
+    pub(super) retry_steps: usize,
+    /// Original scheduler suspension granting retry authority.
+    pub(super) suspension: &'evidence DirectFusedNativeScheduleSuspension,
+    /// Exact owned state transferred out of native execution.
+    pub(super) transfer: &'evidence DirectFusedNativeRetryTransfer,
 }
 
 impl Display for DirectFusedNativeRetryRebaseError {
@@ -427,7 +435,7 @@ fn failed_retry_semantic_evidence<MemoryError, RunnerError>(
     )
 }
 
-fn retry_rebase_evidence(
+pub(super) fn retry_rebase_evidence(
     evidence: DirectFusedNativeRetryRebaseEvidence<'_>,
 ) -> DirectFusedNativeSemanticRebaseResult {
     let checkpoint = evidence

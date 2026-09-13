@@ -466,7 +466,14 @@ leased sequence.
 A one-attempt cached retry coordinator now acquires exact fused-region leases,
 binds them to the admitted retry, and executes resident mappings. Exact hits add
 no adapter work, while acquisition failure restores retry plus indexed cache
-ownership. Leased semantic rebase, explicit lease return, multi-turn policy, and
+ownership.
+
+Successful and failed resident retry executions now rebase through the same
+verified semantic checker as uncached retries while retaining cache dispositions
+and the independently reusable leased sequence. Applied work can complete the
+original plan; guard miss and runner failure return normative resumptions
+without consuming resident ownership. Explicit lease return, multi-turn
+policy, and
 transactional cache rollback remain separate.
 
 Safe sequence execution now runs those reviewed
@@ -651,7 +658,7 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, leased retry rebase/policy, concrete
+fused sequence-cache rollback, leased retry return/policy, concrete
 executable-memory and foreign-call adapters, runtime
 integration, and concrete instruction-cache synchronization remain incomplete.
 

@@ -39,6 +39,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use super::fused_lease_cache::DirectFusedNativeLeaseCacheDisposition;
 use super::fused_sequence_cache::DirectFusedNativeSequenceCacheAcquisition;
+use super::fused_sequence_continuation::DirectFusedNativeContinuationReason;
 use super::fused_sequence_execution::{
     DirectFusedNativeSequenceExecutionFailure,
     DirectFusedNativeSequenceExecutionOutcome,
@@ -47,6 +48,10 @@ use super::fused_sequence_lease::DirectFusedNativeLeasedSequence;
 use super::fused_sequence_retry::DirectFusedNativeRetry;
 use super::fused_sequence_retry_execution::{
     DirectFusedNativeRetryTransfer, DirectFusedNativeRetryTransferParts,
+};
+use super::fused_sequence_retry_rebase::{
+    DirectFusedNativeRetryDisposition, DirectFusedNativeRetryRebaseError,
+    DirectFusedNativeRetryRebaseEvidence, retry_rebase_evidence,
 };
 use super::fused_sequence_scheduler::DirectFusedNativeScheduleSuspension;
 use super::invocation::NativeRegionBuffers;
@@ -100,6 +105,51 @@ pub type DirectFusedNativeLeasedRetryExecutionResult<RunnerError> = Result<
     DirectFusedNativeLeasedRetryExecution,
     Box<DirectFusedNativeLeasedRetryExecutionFailure<RunnerError>>,
 >;
+
+/// Successful semantic rebase retaining cache evidence and resident leases.
+#[derive(Debug)]
+pub struct DirectFusedNativeLeasedRetryDisposition {
+    disposition: DirectFusedNativeRetryDisposition,
+    dispositions: Vec<DirectFusedNativeLeaseCacheDisposition>,
+    sequence: DirectFusedNativeLeasedSequence,
+}
+
+/// Failed resident execution plus independently rebased semantic disposition.
+#[derive(Debug)]
+pub struct DirectFusedNativeLeasedRetryFailureDisposition<RunnerError> {
+    disposition: DirectFusedNativeRetryDisposition,
+    dispositions: Vec<DirectFusedNativeLeaseCacheDisposition>,
+    failure: Box<DirectFusedNativeSequenceExecutionFailure<RunnerError>>,
+    sequence: DirectFusedNativeLeasedSequence,
+}
+
+/// Rebase rejection retaining the complete successful leased execution owner.
+#[derive(Debug)]
+pub struct DirectFusedNativeLeasedRetryRebaseFailure {
+    error: DirectFusedNativeRetryRebaseError,
+    execution: DirectFusedNativeLeasedRetryExecution,
+}
+
+/// Rebase rejection retaining the complete failed leased execution owner.
+#[derive(Debug)]
+pub struct DirectFusedNativeLeasedRetryFailureRebaseFailure<RunnerError> {
+    error: DirectFusedNativeRetryRebaseError,
+    execution: Box<DirectFusedNativeLeasedRetryExecutionFailure<RunnerError>>,
+}
+
+/// Result of rebasing one failed resident fused retry attempt.
+pub type DirectFusedNativeLeasedRetryFailureRebaseResult<RunnerError> = Result<
+    DirectFusedNativeLeasedRetryFailureDisposition<RunnerError>,
+    Box<DirectFusedNativeLeasedRetryFailureRebaseFailure<RunnerError>>,
+>;
+
+/// Semantic, native failure, cache evidence, and resident lease owners.
+pub type DirectFusedNativeLeasedRetryRebasedFailureParts<RunnerError> = (
+    DirectFusedNativeRetryDisposition,
+    Box<DirectFusedNativeSequenceExecutionFailure<RunnerError>>,
+    Vec<DirectFusedNativeLeaseCacheDisposition>,
+    DirectFusedNativeLeasedSequence,
+);
 
 /// Exact owners restored from one successful resident fused retry execution.
 pub type DirectFusedNativeLeasedRetrySuccessParts = (
@@ -286,6 +336,55 @@ impl DirectFusedNativeLeasedRetryExecution {
         self.outcome
     }
 
+    /// Rebases successful resident retry work while preserving every lease.
+    ///
+    /// # Errors
+    ///
+    /// Returns ownership-preserving rejection when semantic rebase fails
+    /// closed.
+    pub fn rebase(
+        self,
+    ) -> Result<
+        DirectFusedNativeLeasedRetryDisposition,
+        Box<DirectFusedNativeLeasedRetryRebaseFailure>,
+    > {
+        let reason = match self.outcome {
+            DirectFusedNativeSequenceExecutionOutcome::GuardMiss { .. } => {
+                DirectFusedNativeContinuationReason::GuardMiss
+            },
+            DirectFusedNativeSequenceExecutionOutcome::Applied { .. } => {
+                self.suspension.continuation().reason()
+            },
+        };
+        let evidence = DirectFusedNativeRetryRebaseEvidence {
+            observation: self.outcome.observation(),
+            plan: self.sequence.plan(),
+            reason,
+            retry_regions: self.outcome.completed_regions(),
+            retry_steps: self.outcome.completed_steps(),
+            suspension: &self.suspension,
+            transfer: &self.transfer,
+        };
+        match retry_rebase_evidence(evidence) {
+            Ok(disposition) => {
+                let Self {
+                    dispositions, sequence, ..
+                } = self;
+                Ok(DirectFusedNativeLeasedRetryDisposition {
+                    disposition,
+                    dispositions,
+                    sequence,
+                })
+            },
+            Err(error) => {
+                Err(Box::new(DirectFusedNativeLeasedRetryRebaseFailure {
+                    error,
+                    execution: self,
+                }))
+            },
+        }
+    }
+
     /// Returns exact transferred state after resident execution.
     #[must_use]
     pub const fn transfer(&self) -> &DirectFusedNativeRetryTransfer {
@@ -324,6 +423,48 @@ impl<RunnerError> DirectFusedNativeLeasedRetryExecutionFailure<RunnerError> {
         )
     }
 
+    /// Rebases failed resident retry work while preserving failure and leases.
+    ///
+    /// # Errors
+    ///
+    /// Returns ownership-preserving rejection when semantic rebase fails
+    /// closed.
+    pub fn rebase(
+        self: Box<Self>,
+    ) -> DirectFusedNativeLeasedRetryFailureRebaseResult<RunnerError> {
+        let evidence = DirectFusedNativeRetryRebaseEvidence {
+            observation: self.failure.observation(),
+            plan: self.sequence.plan(),
+            reason: DirectFusedNativeContinuationReason::ExecutionFailure,
+            retry_regions: self.failure.completed_regions(),
+            retry_steps: self.failure.completed_steps(),
+            suspension: &self.suspension,
+            transfer: &self.transfer,
+        };
+        match retry_rebase_evidence(evidence) {
+            Ok(disposition) => {
+                let Self {
+                    dispositions,
+                    failure,
+                    sequence,
+                    ..
+                } = *self;
+                Ok(DirectFusedNativeLeasedRetryFailureDisposition {
+                    disposition,
+                    dispositions,
+                    failure,
+                    sequence,
+                })
+            },
+            Err(error) => Err(Box::new(
+                DirectFusedNativeLeasedRetryFailureRebaseFailure {
+                    error,
+                    execution: self,
+                },
+            )),
+        }
+    }
+
     /// Returns the exact leased sequence retained after failure.
     #[must_use]
     pub const fn sequence(&self) -> &DirectFusedNativeLeasedSequence {
@@ -334,6 +475,115 @@ impl<RunnerError> DirectFusedNativeLeasedRetryExecutionFailure<RunnerError> {
     #[must_use]
     pub const fn transfer(&self) -> &DirectFusedNativeRetryTransfer {
         &self.transfer
+    }
+}
+
+impl DirectFusedNativeLeasedRetryDisposition {
+    /// Returns every cache insertion/hit disposition retained after rebase.
+    #[must_use]
+    pub fn cache_dispositions(
+        &self,
+    ) -> &[DirectFusedNativeLeaseCacheDisposition] {
+        &self.dispositions
+    }
+
+    /// Returns the exact mixed-tier semantic disposition.
+    #[must_use]
+    pub const fn disposition(&self) -> &DirectFusedNativeRetryDisposition {
+        &self.disposition
+    }
+
+    /// Consumes this result into semantic, cache, and resident lease owners.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        DirectFusedNativeRetryDisposition,
+        Vec<DirectFusedNativeLeaseCacheDisposition>,
+        DirectFusedNativeLeasedSequence,
+    ) {
+        (self.disposition, self.dispositions, self.sequence)
+    }
+
+    /// Returns the independently reusable resident fused sequence.
+    #[must_use]
+    pub const fn sequence(&self) -> &DirectFusedNativeLeasedSequence {
+        &self.sequence
+    }
+}
+
+impl<RunnerError> DirectFusedNativeLeasedRetryFailureDisposition<RunnerError> {
+    /// Returns every cache insertion/hit disposition retained after rebase.
+    #[must_use]
+    pub fn cache_dispositions(
+        &self,
+    ) -> &[DirectFusedNativeLeaseCacheDisposition] {
+        &self.dispositions
+    }
+
+    /// Returns the exact mixed-tier semantic disposition.
+    #[must_use]
+    pub const fn disposition(&self) -> &DirectFusedNativeRetryDisposition {
+        &self.disposition
+    }
+
+    /// Returns the exact resident execution failure retained after rebase.
+    #[must_use]
+    pub const fn failure(
+        &self,
+    ) -> &DirectFusedNativeSequenceExecutionFailure<RunnerError> {
+        &self.failure
+    }
+
+    /// Consumes this result into semantic, failure, cache, and lease owners.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> DirectFusedNativeLeasedRetryRebasedFailureParts<RunnerError> {
+        (
+            self.disposition,
+            self.failure,
+            self.dispositions,
+            self.sequence,
+        )
+    }
+
+    /// Returns the independently reusable resident fused sequence.
+    #[must_use]
+    pub const fn sequence(&self) -> &DirectFusedNativeLeasedSequence {
+        &self.sequence
+    }
+}
+
+impl DirectFusedNativeLeasedRetryRebaseFailure {
+    /// Returns the exact semantic rebase rejection.
+    #[must_use]
+    pub const fn error(&self) -> DirectFusedNativeRetryRebaseError {
+        self.error
+    }
+
+    /// Consumes this rejection and restores the successful execution owner.
+    #[must_use]
+    pub fn into_execution(self) -> DirectFusedNativeLeasedRetryExecution {
+        self.execution
+    }
+}
+
+impl<RunnerError>
+    DirectFusedNativeLeasedRetryFailureRebaseFailure<RunnerError>
+{
+    /// Returns the exact semantic rebase rejection.
+    #[must_use]
+    pub const fn error(&self) -> DirectFusedNativeRetryRebaseError {
+        self.error
+    }
+
+    /// Consumes this rejection and restores the failed execution owner.
+    #[must_use]
+    pub fn into_execution(
+        self,
+    ) -> Box<DirectFusedNativeLeasedRetryExecutionFailure<RunnerError>> {
+        self.execution
     }
 }
 
