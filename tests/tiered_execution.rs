@@ -138,6 +138,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyAssessmentThresholds,
     NativeContinuationCachedRetryLatencyCoarseningError,
     NativeContinuationCachedRetryLatencyCodecError,
+    NativeContinuationCachedRetryLatencyCommonCoarseningError,
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
@@ -171,6 +172,7 @@ use cached_cycle::{
     coarsen_cached_retry_latency_histogram,
     decode_cached_retry_latency_snapshot,
     decode_cached_retry_telemetry_snapshot,
+    derive_common_cached_retry_latency_coarsening,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     publish_cached_retry_latency_policy_recommendation,
@@ -50769,6 +50771,121 @@ fn cached_retry_latency_coarsening_normalizes_for_exact_merge()
         Ok(())
     } else {
         Err(String::from("coarsened latency merge evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_common_coarsening_keeps_identical_schema()
+-> Result<(), String> {
+    let left = cached_retry_latency_histogram()?;
+    let right = cached_retry_latency_histogram()?;
+    let common = derive_common_cached_retry_latency_coarsening(&left, &right)
+        .map_err(|error| format!("common schema failed: {error:?}"))?;
+    if common.upper_bounds() == [0, 10, 100]
+        && common.left_removed_bounds() == 0
+        && common.right_removed_bounds() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("identical common latency schema drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_common_coarsening_derives_overlap_for_merge()
+-> Result<(), String> {
+    let mut left = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut left, &[0, 1, 10, 101])?;
+    let mut right =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 50, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut right, &[11, 50, 100])?;
+    let common = derive_common_cached_retry_latency_coarsening(&left, &right)
+        .map_err(|error| format!("common schema failed: {error:?}"))?;
+    if common.upper_bounds() != [10, 100]
+        || common.left_removed_bounds() != 1
+        || common.right_removed_bounds() != 1
+    {
+        return Err(String::from("overlapping common schema drifted"));
+    }
+    let mut normalized_left = coarsen_cached_retry_latency_histogram(
+        &left,
+        common.upper_bounds().to_vec(),
+    )
+    .map_err(|error| format!("left normalization failed: {error:?}"))?
+    .into_histogram();
+    let normalized_right = coarsen_cached_retry_latency_histogram(
+        &right,
+        common.upper_bounds().to_vec(),
+    )
+    .map_err(|error| format!("right normalization failed: {error:?}"))?
+    .into_histogram();
+    let merge = normalized_left
+        .merge(&normalized_right)
+        .map_err(|error| format!("common-schema merge failed: {error:?}"))?;
+    if normalized_left.upper_bounds() == [10, 100]
+        && normalized_left.bucket_counts() == [3, 3]
+        && normalized_left.above_maximum() == 1
+        && normalized_left.samples() == 7
+        && normalized_left.total_nanoseconds() == 273
+        && normalized_left.minimum_nanoseconds() == Some(0)
+        && normalized_left.maximum_nanoseconds() == Some(101)
+        && merge.added_samples() == 3
+        && merge.samples() == 7
+        && merge.total_nanoseconds() == 273
+    {
+        Ok(())
+    } else {
+        Err(String::from("common-schema latency merge evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_common_coarsening_can_reduce_to_final_bound()
+-> Result<(), String> {
+    let left =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 10, 100])
+            .map_err(|error| error.to_string())?;
+    let right =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![20, 80, 100])
+            .map_err(|error| error.to_string())?;
+    let common = derive_common_cached_retry_latency_coarsening(&left, &right)
+        .map_err(|error| {
+        format!("minimal common schema failed: {error:?}")
+    })?;
+    if common.upper_bounds() == [100]
+        && common.left_removed_bounds() == 2
+        && common.right_removed_bounds() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("minimal common latency schema drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_common_coarsening_rejects_final_bound_mismatch()
+-> Result<(), String> {
+    let left =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 10, 100])
+            .map_err(|error| error.to_string())?;
+    let right =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 50, 200])
+            .map_err(|error| error.to_string())?;
+    let failure = derive_common_cached_retry_latency_coarsening(&left, &right)
+        .err()
+        .ok_or_else(|| {
+            String::from("incompatible overflow schemas were joined")
+        })?;
+    let expected = NativeContinuationCachedRetryLatencyCommonCoarseningError::
+        FinalBoundMismatch {
+            left: 100,
+            right: 200,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("common overflow mismatch evidence drifted"))
     }
 }
 

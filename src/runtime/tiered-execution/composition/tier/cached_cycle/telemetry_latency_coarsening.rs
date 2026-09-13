@@ -78,6 +78,30 @@ pub struct NativeContinuationCachedRetryLatencyCoarsening {
     target_bound_count: usize,
 }
 
+/// Why two histograms cannot share one exact coarsened schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationCachedRetryLatencyCommonCoarseningError {
+    /// Final inclusive bounds differ, so overflow semantics are incompatible.
+    FinalBoundMismatch {
+        /// Final inclusive left-histogram bound.
+        left: u64,
+        /// Final inclusive right-histogram bound.
+        right: u64,
+    },
+    /// Left histogram unexpectedly has no inclusive bounds.
+    LeftBoundsEmpty,
+    /// Right histogram unexpectedly has no inclusive bounds.
+    RightBoundsEmpty,
+}
+
+/// Exact common schema derivation for two latency histograms.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryLatencyCommonCoarsening {
+    left_bound_count: usize,
+    right_bound_count: usize,
+    upper_bounds: Vec<u64>,
+}
+
 impl NativeContinuationCachedRetryLatencyCoarsening {
     /// Borrows the exact coarsened histogram.
     #[must_use]
@@ -112,6 +136,28 @@ impl NativeContinuationCachedRetryLatencyCoarsening {
     #[must_use]
     pub const fn target_bound_count(&self) -> usize {
         self.target_bound_count
+    }
+}
+
+impl NativeContinuationCachedRetryLatencyCommonCoarsening {
+    /// Returns how many left-side interior bounds normalization removes.
+    #[must_use]
+    pub const fn left_removed_bounds(&self) -> usize {
+        self.left_bound_count
+            .saturating_sub(self.upper_bounds.len())
+    }
+
+    /// Returns how many right-side interior bounds normalization removes.
+    #[must_use]
+    pub const fn right_removed_bounds(&self) -> usize {
+        self.right_bound_count
+            .saturating_sub(self.upper_bounds.len())
+    }
+
+    /// Returns the exact ordered bounds shared by both source schemas.
+    #[must_use]
+    pub fn upper_bounds(&self) -> &[u64] {
+        &self.upper_bounds
     }
 }
 
@@ -177,6 +223,49 @@ pub fn coarsen_cached_retry_latency_histogram(
         histogram,
         source_bound_count: source.upper_bounds().len(),
         target_bound_count: target_upper_bounds_len,
+    })
+}
+
+/// Derives the greatest exact coarsened schema shared by two histograms.
+///
+/// # Errors
+///
+/// Rejects differing final bounds because one common overflow bin could not
+/// preserve both source semantics exactly.
+pub fn derive_common_cached_retry_latency_coarsening(
+    left: &NativeContinuationCachedRetryLatencyHistogram,
+    right: &NativeContinuationCachedRetryLatencyHistogram,
+) -> Result<
+    NativeContinuationCachedRetryLatencyCommonCoarsening,
+    NativeContinuationCachedRetryLatencyCommonCoarseningError,
+> {
+    let left_final = left.upper_bounds().last().copied().ok_or(
+        NativeContinuationCachedRetryLatencyCommonCoarseningError::
+            LeftBoundsEmpty,
+    )?;
+    let right_final = right.upper_bounds().last().copied().ok_or(
+        NativeContinuationCachedRetryLatencyCommonCoarseningError::
+            RightBoundsEmpty,
+    )?;
+    if left_final != right_final {
+        return Err(
+            NativeContinuationCachedRetryLatencyCommonCoarseningError::
+                FinalBoundMismatch {
+                    left: left_final,
+                    right: right_final,
+                },
+        );
+    }
+    let upper_bounds = left
+        .upper_bounds()
+        .iter()
+        .copied()
+        .filter(|bound| right.upper_bounds().binary_search(bound).is_ok())
+        .collect::<Vec<_>>();
+    Ok(NativeContinuationCachedRetryLatencyCommonCoarsening {
+        left_bound_count: left.upper_bounds().len(),
+        right_bound_count: right.upper_bounds().len(),
+        upper_bounds,
     })
 }
 

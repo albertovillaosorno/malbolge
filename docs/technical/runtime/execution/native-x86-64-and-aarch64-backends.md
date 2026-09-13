@@ -680,6 +680,12 @@ overflow-bound drift fail closed. Five cases cover identity, exact coarsening,
 refinement rejection, overflow-bound rejection, and normalization before the
 existing same-schema merge.
 
+A pure common-schema derivation now intersects two ordered source schemas when
+their final overflow boundary matches. It returns
+the greatest exact shared bound set plus per-side removal counts; four cases
+cover identity, partial overlap with exact merge, final-bound-only reduction,
+and incompatible final bounds.
+
 Histogram refinement, distributed merge, durable/cross-cycle policy
 publication, native object fusion, foreign invocation, runtime clock
 acquisition, durable storage, and cross-process coordination remain open.

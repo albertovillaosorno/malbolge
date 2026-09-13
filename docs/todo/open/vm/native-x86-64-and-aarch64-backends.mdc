@@ -540,6 +540,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   closed. Five cases cover identity, exact coarsening, both rejection classes,
   and normalization before same-schema merge.
 
+  A pure common-schema derivation intersects two ordered schemas when their
+  final overflow boundary matches. It
+  returns the greatest exact shared bounds plus per-side removal counts; four
+  cases cover identity, partial-overlap merge, final-bound-only reduction, and
+  incompatible final bounds.
+
   Histogram refinement, distributed/durable merge, durable/cross-cycle policy
   publication, runtime clock acquisition, async queues, durable storage, and
   broader production orchestration remain pending.

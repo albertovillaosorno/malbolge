@@ -106,7 +106,10 @@ pub use telemetry_latency_assessment::{
 pub use telemetry_latency_coarsening::{
     NativeContinuationCachedRetryLatencyCoarsening,
     NativeContinuationCachedRetryLatencyCoarseningError,
+    NativeContinuationCachedRetryLatencyCommonCoarsening,
+    NativeContinuationCachedRetryLatencyCommonCoarseningError,
     coarsen_cached_retry_latency_histogram,
+    derive_common_cached_retry_latency_coarsening,
 };
 pub use telemetry_latency_codec::{
     NativeContinuationCachedRetryLatencyCodecError,
