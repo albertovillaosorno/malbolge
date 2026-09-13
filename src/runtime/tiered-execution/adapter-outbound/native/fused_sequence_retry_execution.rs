@@ -52,6 +52,14 @@ use super::invocation::NativeRegionBuffers;
 use super::platform::NativeExecutableMemoryAdapter;
 use super::runner::DirectFusedNativeRunner;
 
+pub(super) struct DirectFusedNativeRetryTransferParts {
+    pub(super) geometry: ProfileExecutionGeometry,
+    pub(super) input: Vec<u8>,
+    pub(super) memory: Vec<u32>,
+    pub(super) observation: ProfileMachineObservation,
+    pub(super) output: Vec<u8>,
+}
+
 /// Exact owned state transferred out of one fused native retry attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectFusedNativeRetryTransfer {
@@ -154,6 +162,18 @@ impl Display for DirectFusedNativeRetryTransferError {
 }
 
 impl DirectFusedNativeRetryTransfer {
+    pub(super) fn from_owned_parts(
+        parts: DirectFusedNativeRetryTransferParts,
+    ) -> Self {
+        Self {
+            geometry: parts.geometry,
+            input: parts.input,
+            memory: parts.memory,
+            observation: parts.observation,
+            output: parts.output,
+        }
+    }
+
     /// Returns the exact execution geometry retained from the entry checkpoint.
     #[must_use]
     pub const fn geometry(&self) -> ProfileExecutionGeometry {

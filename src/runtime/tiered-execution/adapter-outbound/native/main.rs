@@ -56,6 +56,7 @@ mod fused_sequence_continuation;
 mod fused_sequence_execution;
 mod fused_sequence_handoff;
 mod fused_sequence_lease;
+mod fused_sequence_leased_retry;
 mod fused_sequence_plan;
 mod fused_sequence_retry;
 mod fused_sequence_retry_execution;
@@ -348,6 +349,15 @@ pub use fused_sequence_lease::{
     DirectFusedNativeLeasedSequence,
     DirectFusedNativeLeasedSequenceAdmissionError,
     DirectFusedNativeLeasedSequenceAdmissionFailure,
+};
+pub use fused_sequence_leased_retry::{
+    DirectFusedNativeLeasedRetry, DirectFusedNativeLeasedRetryAdmissionError,
+    DirectFusedNativeLeasedRetryAdmissionFailure,
+    DirectFusedNativeLeasedRetryExecution,
+    DirectFusedNativeLeasedRetryExecutionFailure,
+    DirectFusedNativeLeasedRetryExecutionResult,
+    DirectFusedNativeLeasedRetryFailureParts,
+    DirectFusedNativeLeasedRetrySuccessParts,
 };
 pub use fused_sequence_plan::{
     DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,

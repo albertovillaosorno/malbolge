@@ -230,7 +230,9 @@ use execution_native::{
     DirectFusedNativeInterpreterHandoff, DirectFusedNativeLease,
     DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
-    DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedSequence,
+    DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedRetry,
+    DirectFusedNativeLeasedRetryAdmissionError,
+    DirectFusedNativeLeasedSequence,
     DirectFusedNativeLeasedSequenceAdmissionError,
     DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeOwnerLoadFailure,
     DirectFusedNativeResidentCacheAcquireFailure,
@@ -18184,6 +18186,147 @@ fn fused_direct_retry_failure_rebase_completes_cleanup() -> Result<(), String> {
     release
         .retry(&mut adapter)
         .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn fused_direct_leased_retry_executes_without_adapter_work()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1220)?,
+        native_executable_address(0x7a_0000)?,
+    );
+    let acquisition = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        retry.plan(),
+    )
+    .map_err(|error| error.to_string())?;
+    let loaded_operations = adapter.operations.clone();
+    let leased = DirectFusedNativeLeasedRetry::new(retry, acquisition)
+        .map_err(|failure| failure.error().to_string())?;
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = leased
+        .execute(&mut runner)
+        .map_err(|failure| failure.failure().to_string())?;
+    if execution.outcome().completed_steps() != 2
+        || execution.transfer().memory() != fixture.final_memory
+        || execution.transfer().output() != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused leased retry execution drifted"));
+    }
+    let (_, _, sequence, _, _) = execution.into_parts();
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_leased_retry_rejects_cross_plan() -> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let retry_plan = retry.plan().clone();
+    let arm_plan = fused_direct_loaded_sequence_plan(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1221)?,
+        native_executable_address(0x7b_0000)?,
+    );
+    let acquisition = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        &arm_plan,
+    )
+    .map_err(|error| error.to_string())?;
+    let Err(failure) = DirectFusedNativeLeasedRetry::new(retry, acquisition)
+    else {
+        return Err(String::from("cross-plan fused leased retry was admitted"));
+    };
+    if failure.error()
+        != DirectFusedNativeLeasedRetryAdmissionError::PlanIdentity
+    {
+        return Err(String::from("cross-plan fused retry reason drifted"));
+    }
+    let (restored_retry, restored_acquisition) = (*failure).into_parts();
+    if restored_retry.plan() != &retry_plan
+        || restored_acquisition.sequence().plan() != &arm_plan
+    {
+        return Err(String::from("cross-plan fused retry lost ownership"));
+    }
+    drop(restored_acquisition.into_sequence().into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_leased_retry_failure_keeps_reusable_sequence()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1222)?,
+        native_executable_address(0x7c_0000)?,
+    );
+    let acquisition = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        retry.plan(),
+    )
+    .map_err(|error| error.to_string())?;
+    let loaded_operations = adapter.operations.clone();
+    let leased = DirectFusedNativeLeasedRetry::new(retry, acquisition)
+        .map_err(|failure| failure.error().to_string())?;
+    let mut failing_runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = leased.execute(&mut failing_runner) else {
+        return Err(String::from("fused leased retry failure completed"));
+    };
+    if failure.failure().completed_steps() != 0
+        || failure.transfer().memory() != fixture.initial_memory
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused leased retry rollback drifted"));
+    }
+    let (_, _, sequence, _, _) = (*failure).into_parts();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = sequence
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome.completed_steps() != 2
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "fused leased retry sequence was not reusable",
+        ));
+    }
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn assert_fused_sequence_transaction_applied(

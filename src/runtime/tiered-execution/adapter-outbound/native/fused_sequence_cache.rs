@@ -160,6 +160,17 @@ impl DirectFusedNativeSequenceCacheAcquisition {
         &self.dispositions
     }
 
+    /// Consumes this acquisition into dispositions and leased sequence.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        Vec<DirectFusedNativeLeaseCacheDisposition>,
+        DirectFusedNativeLeasedSequence,
+    ) {
+        (self.dispositions, self.sequence)
+    }
+
     /// Consumes this acquisition and returns the admitted leased sequence.
     #[must_use]
     pub fn into_sequence(self) -> DirectFusedNativeLeasedSequence {

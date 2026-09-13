@@ -543,8 +543,14 @@ x86-64/AArch64, regenerates and verifies the exact fused object, and
 readmits the reconstructed plan before native work. Missing target format and a
 one-step
 mid-region suffix route normatively to the interpreter; profile, IR, object, and
-identity drift remain hard ownership-preserving failures. Cached fused retry and
-transactional cache rollback remain absent.
+identity drift remain hard ownership-preserving failures.
+
+Already-acquired fused sequence leases can now bind to one admitted fused retry
+only when the acquired sequence plan exactly matches retry authority. Resident
+execution performs no further memory-adapter work; cross-plan rejection restores
+both owners, and runner failure preserves exact rollback state plus the reusable
+leased sequence. Automatic retry cache acquisition, leased semantic rebase, and
+transactional cache rollback remain separate.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
