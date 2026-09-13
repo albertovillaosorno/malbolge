@@ -241,9 +241,11 @@ use execution_native::{
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRetry,
     DirectFusedNativeRetryAdmissionError, DirectFusedNativeRetryDisposition,
-    DirectFusedNativeRetryFallback, DirectFusedNativeRetryPlanningError,
-    DirectFusedNativeRetryPlanningOutcome, DirectFusedNativeRetryPolicy,
-    DirectFusedNativeRetryPolicyError, DirectFusedNativeRetryPolicyOutcome,
+    DirectFusedNativeRetryFallback, DirectFusedNativeRetryHost,
+    DirectFusedNativeRetryPlanningError, DirectFusedNativeRetryPlanningOutcome,
+    DirectFusedNativeRetryPolicy, DirectFusedNativeRetryPolicyError,
+    DirectFusedNativeRetryPolicyOutcome, DirectFusedNativeRetryRoute,
+    DirectFusedNativeRetryRoutingError, DirectFusedNativeRetryRoutingRequest,
     DirectFusedNativeRetryStepPlanningError, DirectFusedNativeRunner,
     DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
     DirectFusedNativeScheduleStopReason,
@@ -396,7 +398,7 @@ use execution_native::{
     release_register_masked_native_executable,
     release_register_masked_non_graphical_native_executable,
     return_direct_fused_native_retry_failure_leases,
-    return_direct_fused_native_retry_leases,
+    return_direct_fused_native_retry_leases, route_direct_fused_native_retry,
     schedule_direct_fused_native_handoff,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
@@ -17655,6 +17657,261 @@ fn fused_direct_retry_policy_rejects_caller_yield() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("fused retry policy lost rejected suspension"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_router_selects_bounded_windows_attempt()
+-> Result<(), String> {
+    let (expected_plan, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let expected_state = pause.state().clone();
+    let policy = DirectFusedNativeRetryPolicy::new(
+        2,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let routing = route_direct_fused_native_retry(
+        DirectFusedNativeRetryRoutingRequest::new(
+            policy,
+            pause,
+            0,
+            DirectFusedNativeRetryHost::new(
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                HostIsa::X86_64,
+            ),
+        ),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let DirectFusedNativeRetryRoute::Native(native_route) = routing else {
+        return Err(String::from("bounded fused Windows retry fell back"));
+    };
+    if native_route.attempt() == 1
+        && native_route.retry().plan() == &expected_plan
+        && native_route.retry().suspension().state() == &expected_state
+    {
+        Ok(())
+    } else {
+        Err(String::from("bounded fused retry route drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_router_exhaustion_bypasses_hard_planner()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let policy = DirectFusedNativeRetryPolicy::new(
+        1,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let routing = route_direct_fused_native_retry(
+        DirectFusedNativeRetryRoutingRequest::new(
+            policy,
+            pause,
+            1,
+            DirectFusedNativeRetryHost::new(
+                safe_rust_classic_capability(),
+                HostOperatingSystem::Windows,
+                HostIsa::AArch64,
+            ),
+        ),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let DirectFusedNativeRetryRoute::Interpreter(interpreter_route) = routing
+    else {
+        return Err(String::from("exhausted fused retry entered planner"));
+    };
+    if interpreter_route.attempts() != 1
+        || interpreter_route.decision()
+            != DirectFusedNativeScheduleDecision::complete_interpreter()
+    {
+        return Err(String::from("exhausted fused retry evidence drifted"));
+    }
+    let (handoff, decision) = interpreter_route.into_parts();
+    let outcome = schedule_direct_fused_native_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("exhausted fused fallback suspended"));
+    };
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("exhausted fused retry fallback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_router_uses_policy_for_planner_fallback()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let policy = DirectFusedNativeRetryPolicy::new(
+        2,
+        DirectFusedNativeRetryFallback::sliced(nonzero_test_limit(
+            1,
+            "fused retry router slice",
+        )?),
+    );
+    let routing = route_direct_fused_native_retry(
+        DirectFusedNativeRetryRoutingRequest::new(
+            policy,
+            pause,
+            0,
+            DirectFusedNativeRetryHost::new(
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Linux,
+                HostIsa::X86_64,
+            ),
+        ),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let DirectFusedNativeRetryRoute::Interpreter(interpreter_route) = routing
+    else {
+        return Err(String::from("fused planner fallback remained native"));
+    };
+    if interpreter_route.attempts() != 0 {
+        return Err(String::from("fused planner fallback counted attempt"));
+    }
+    let (handoff, decision) = interpreter_route.into_parts();
+    let first = schedule_direct_fused_native_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(fallback_pause) = first
+    else {
+        return Err(String::from("fused routed slice completed early"));
+    };
+    if fallback_pause.interpreter_steps() != 1
+        || fallback_pause.reason()
+            != DirectFusedNativeScheduleStopReason::BudgetExhausted
+    {
+        return Err(String::from("fused routed fallback slice drifted"));
+    }
+    let second = fallback_pause
+        .resume(DirectFusedNativeScheduleDecision::complete_interpreter())
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = second else {
+        return Err(String::from("fused routed fallback did not complete"));
+    };
+    if completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused routed fallback completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_router_preserves_hard_planning_failure()
+-> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let expected_state = pause.state().clone();
+    let policy = DirectFusedNativeRetryPolicy::new(
+        2,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let Err(failure) = route_direct_fused_native_retry(
+        DirectFusedNativeRetryRoutingRequest::new(
+            policy,
+            pause,
+            0,
+            DirectFusedNativeRetryHost::new(
+                safe_rust_classic_capability(),
+                HostOperatingSystem::Windows,
+                HostIsa::X86_64,
+            ),
+        ),
+    ) else {
+        return Err(String::from("hard fused planning failure was hidden"));
+    };
+    if failure.error()
+        != (DirectFusedNativeRetryRoutingError::Planning(
+            DirectFusedNativeRetryPlanningError::Step {
+                cause: DirectFusedNativeRetryStepPlanningError::Profile,
+                index: 0,
+            },
+        ))
+        || !failure.profile_diagnostic().is_some_and(|diagnostic| {
+            diagnostic.starts_with("MALBOLGE-PROFILE-001 ")
+                && failure.to_string() == diagnostic
+        })
+    {
+        return Err(String::from("hard fused routing diagnostic drifted"));
+    }
+    let recovered = (*failure).into_suspension();
+    if recovered.state() == &expected_state
+        && recovered.reason()
+            == DirectFusedNativeScheduleStopReason::NativeRetry
+    {
+        Ok(())
+    } else {
+        Err(String::from("hard fused routing failure lost suspension"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_router_preserves_policy_rejection() -> Result<(), String>
+{
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::Caller,
+    )?;
+    let expected_state = pause.state().clone();
+    let policy = DirectFusedNativeRetryPolicy::new(
+        2,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let Err(failure) = route_direct_fused_native_retry(
+        DirectFusedNativeRetryRoutingRequest::new(
+            policy,
+            pause,
+            0,
+            DirectFusedNativeRetryHost::new(
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                HostIsa::AArch64,
+            ),
+        ),
+    ) else {
+        return Err(String::from("caller yield entered fused retry router"));
+    };
+    if failure.error()
+        != (DirectFusedNativeRetryRoutingError::Policy(
+            DirectFusedNativeRetryPolicyError::ScheduleReason {
+                observed: DirectFusedNativeScheduleStopReason::CallerYield,
+            },
+        ))
+    {
+        return Err(String::from("fused retry router policy error drifted"));
+    }
+    let recovered = (*failure).into_suspension();
+    if recovered.state() == &expected_state
+        && recovered.reason()
+            == DirectFusedNativeScheduleStopReason::CallerYield
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused router policy failure lost suspension"))
     }
 }
 

@@ -571,7 +571,13 @@ A pure bounded fused retry policy now accepts caller-supplied completed-attempt
 counts, preserves exact one-based next-attempt evidence while budget remains,
 and routes exhaustion to either complete normative fallback or one positive
 source-step slice. Non-`NativeRetry` suspensions fail ownership-preservingly.
-Host-policy composition, multi-turn execution, and transactional cache rollback
+A bounded fused retry router now composes attempt policy with exact host
+planning. Exhaustion bypasses planning, remaining budget produces a numbered
+native route, and planner fallback applies the configured normative decision
+without consuming an attempt.
+
+Hard policy or planning rejection preserves the exact suspension and canonical
+profile diagnostic. Multi-turn execution and transactional cache rollback
 remain separate.
 
 The retained two-step fixture is produced by the normative VM from a rotate

@@ -65,6 +65,7 @@ mod fused_sequence_retry_planner;
 mod fused_sequence_retry_policy;
 mod fused_sequence_retry_rebase;
 mod fused_sequence_retry_return;
+mod fused_sequence_retry_router;
 mod fused_sequence_scheduler;
 mod fused_sequence_transaction;
 mod invocation;
@@ -419,6 +420,13 @@ pub use fused_sequence_retry_return::{
     DirectFusedNativeRetryLeaseReturnResult,
     return_direct_fused_native_retry_failure_leases,
     return_direct_fused_native_retry_leases,
+};
+pub use fused_sequence_retry_router::{
+    DirectFusedNativeRetryHost, DirectFusedNativeRetryRoute,
+    DirectFusedNativeRetryRoutingError, DirectFusedNativeRetryRoutingFailure,
+    DirectFusedNativeRetryRoutingInterpreterRoute,
+    DirectFusedNativeRetryRoutingNativeRoute,
+    DirectFusedNativeRetryRoutingRequest, route_direct_fused_native_retry,
 };
 pub use fused_sequence_scheduler::{
     DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
