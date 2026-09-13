@@ -413,13 +413,19 @@ exact fused-region boundaries. It retains complete/remaining fused keys,
 flattened verified source programs, canonical geometry, final outcome, and both
 region/source-step resume indices; completed work yields no continuation.
 
-A separate complete fused interpreter handoff now admits an exact checkpoint or
-native transfer buffers, reconstructs the normative profile machine, and
+A separate fused interpreter handoff now admits an exact checkpoint or native
+transfer buffers, reconstructs the normative profile machine, and
 executes/reprojects every retained one-step source program. Initial live-ins are
 checked before work starts; later source-step mismatch restores that step entry
 while keeping an already admitted prefix. Completion must reproduce the exact
-fused plan exit and total outcome. Budget suspension, scheduling/native retry,
-and transactional cache rollback remain absent.
+fused plan exit and total outcome.
+
+Explicit source-step budgets now return an affine suspension with cumulative
+interpreter progress, complete-plan resume step, exact normative checkpoint, and
+remaining verified source programs. Zero budget preserves state, partial budget
+resumes without readmission, and oversized budget completes. Mid-region pauses
+do not claim a new fused-region cache key. Scheduling/native retry and
+transactional cache rollback remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -603,7 +609,7 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, budgeted/scheduled fused interpreter fallback,
+fused sequence-cache rollback, scheduled/native-retry fused interpreter policy,
 concrete executable-memory and foreign-call adapters, runtime integration, and
 concrete instruction-cache synchronization remain incomplete.
 

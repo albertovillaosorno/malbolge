@@ -225,6 +225,7 @@ use execution_native::{
     DirectFusedInvocationError, DirectFusedNativeContinuation,
     DirectFusedNativeContinuationError, DirectFusedNativeContinuationReason,
     DirectFusedNativeExecutableOwner, DirectFusedNativeHandoffAdmissionError,
+    DirectFusedNativeHandoffBudgetOutcome,
     DirectFusedNativeHandoffExecutionCause,
     DirectFusedNativeInterpreterHandoff, DirectFusedNativeLease,
     DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheDisposition,
@@ -17027,6 +17028,204 @@ fn fused_direct_handoff_rolls_back_late_live_in_drift() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("fused late handoff rollback evidence drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_budget_zero_suspends_exactly() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let retained = continuation.clone();
+    let outcome = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory.clone(),
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(0)
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Suspended(suspension) = outcome
+    else {
+        return Err(String::from("fused zero budget completed work"));
+    };
+    if suspension.continuation() == &retained
+        && suspension.interpreter_steps() == 0
+        && suspension.resume_step() == 0
+        && suspension.remaining_steps() == 2
+        && suspension.remaining_programs() == retained.remaining_programs()
+        && suspension.state().memory() == fixture.initial_memory
+        && suspension.state().io().output().is_empty()
+        && profile_state_observation(suspension.state())
+            == retained.observation()
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused zero-budget suspension drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_budget_suspends_then_completes() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::AArch64)?;
+    let expected_remaining = continuation
+        .remaining_programs()
+        .get(1..)
+        .ok_or_else(|| String::from("fused budget suffix missing"))?
+        .to_vec();
+    let outcome = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Suspended(suspension) = outcome
+    else {
+        return Err(String::from("fused one-step budget did not suspend"));
+    };
+    if suspension.interpreter_steps() != 1
+        || suspension.resume_step() != 1
+        || suspension.remaining_steps() != 1
+        || suspension.remaining_programs() != expected_remaining
+        || suspension.state().memory() != fixture.first_memory
+        || !suspension.state().io().output().is_empty()
+    {
+        return Err(String::from("fused one-step suspension drifted"));
+    }
+    let completion = suspension
+        .into_handoff()
+        .execute()
+        .map_err(|error| error.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused resumed budget completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_budget_overshoot_completes() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let outcome = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(7)
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("fused oversized budget suspended"));
+    };
+    if completion.interpreter_outcome()
+        == (RunOutcome::BudgetExhausted { steps: 2 })
+        && completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused oversized budget completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_budget_zero_preserves_progress() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let first = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Suspended(first_pause) = first
+    else {
+        return Err(String::from("fused progress fixture did not suspend"));
+    };
+    let retained_state = first_pause.state().clone();
+    let retained_programs = first_pause.remaining_programs().to_vec();
+    let second = first_pause
+        .into_handoff()
+        .execute_with_budget(0)
+        .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Suspended(second_pause) = second
+    else {
+        return Err(String::from("fused resumed zero budget completed work"));
+    };
+    if second_pause.interpreter_steps() == 1
+        && second_pause.resume_step() == 1
+        && second_pause.remaining_steps() == 1
+        && second_pause.remaining_programs() == retained_programs
+        && second_pause.state() == &retained_state
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused zero budget lost accumulated progress"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_budget_resume_rolls_back_drift() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::AArch64)?;
+    let source = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("fused budget drift index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    let mut memory = fixture.initial_memory;
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("fused budget drift address missing"))? =
+        observed;
+    let first = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeHandoffBudgetOutcome::Suspended(suspension) = first
+    else {
+        return Err(String::from("fused budget drift did not suspend"));
+    };
+    let Err(failure) = suspension.into_handoff().execute_with_budget(1) else {
+        return Err(String::from("fused resumed budget drift was ignored"));
+    };
+    if failure.cause()
+        == (DirectFusedNativeHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_step() == 1
+        && failure.state().memory().get(index).copied() == Some(observed)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused resumed budget rollback drifted"))
     }
 }
 

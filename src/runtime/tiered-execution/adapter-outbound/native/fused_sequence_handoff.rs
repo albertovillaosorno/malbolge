@@ -127,6 +127,25 @@ pub enum DirectFusedNativeHandoffExecutionCause {
 pub struct DirectFusedNativeInterpreterHandoff {
     checkpoint: ProfileMachineState,
     continuation: DirectFusedNativeContinuation,
+    interpreter_steps: usize,
+}
+
+/// One budgeted normative fused-handoff result.
+#[derive(Debug, Eq, PartialEq)]
+pub enum DirectFusedNativeHandoffBudgetOutcome {
+    /// Every remaining source semantic step completed exactly.
+    Completed(DirectFusedNativeHandoffCompletion),
+    /// The requested budget ended at an exact source-step checkpoint.
+    Suspended(DirectFusedNativeHandoffSuspension),
+}
+
+/// Exact resumable interpreter state after one fused handoff budget boundary.
+#[derive(Debug, Eq, PartialEq)]
+pub struct DirectFusedNativeHandoffSuspension {
+    continuation: DirectFusedNativeContinuation,
+    interpreter_steps: usize,
+    resume_step: usize,
+    state: ProfileMachineState,
 }
 
 /// Successful complete normative fused fallback.
@@ -154,9 +173,23 @@ struct DirectFusedNativeStepFailure {
     state: ProfileMachineState,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct DirectFusedNativeBudgetProgress {
+    continuation: DirectFusedNativeContinuation,
+    interpreter_steps: usize,
+    state: ProfileMachineState,
+    termination: Option<malbolge::Termination>,
+}
+
 /// Result of completely consuming one fused continuation normatively.
 pub type DirectFusedNativeHandoffExecutionResult = Result<
     DirectFusedNativeHandoffCompletion,
+    Box<DirectFusedNativeHandoffExecutionFailure>,
+>;
+
+/// Result of one budgeted fused interpreter continuation slice.
+pub type DirectFusedNativeHandoffBudgetResult = Result<
+    DirectFusedNativeHandoffBudgetOutcome,
     Box<DirectFusedNativeHandoffExecutionFailure>,
 >;
 
@@ -288,6 +321,65 @@ impl DirectFusedNativeHandoffCompletion {
     }
 }
 
+impl DirectFusedNativeHandoffSuspension {
+    /// Returns the original exact fused semantic continuation.
+    #[must_use]
+    pub const fn continuation(&self) -> &DirectFusedNativeContinuation {
+        &self.continuation
+    }
+
+    /// Returns normative interpreter steps committed after fused native work.
+    #[must_use]
+    pub const fn interpreter_steps(&self) -> usize {
+        self.interpreter_steps
+    }
+
+    /// Converts this affine pause into its next executable handoff.
+    #[must_use]
+    pub fn into_handoff(self) -> DirectFusedNativeInterpreterHandoff {
+        let Self {
+            continuation,
+            interpreter_steps,
+            state,
+            ..
+        } = self;
+        DirectFusedNativeInterpreterHandoff {
+            checkpoint: state,
+            continuation,
+            interpreter_steps,
+        }
+    }
+
+    /// Returns exact one-step source programs still pending after this slice.
+    #[must_use]
+    pub fn remaining_programs(&self) -> &[RegionEffectProgram] {
+        self.continuation
+            .remaining_programs()
+            .get(self.interpreter_steps..)
+            .unwrap_or(&[])
+    }
+
+    /// Returns the number of source semantic steps still requiring execution.
+    #[must_use]
+    pub const fn remaining_steps(&self) -> usize {
+        self.continuation
+            .remaining_steps()
+            .saturating_sub(self.interpreter_steps)
+    }
+
+    /// Returns the next complete-plan source semantic-step index.
+    #[must_use]
+    pub const fn resume_step(&self) -> usize {
+        self.resume_step
+    }
+
+    /// Returns the exact normative checkpoint at this budget boundary.
+    #[must_use]
+    pub const fn state(&self) -> &ProfileMachineState {
+        &self.state
+    }
+}
+
 impl DirectFusedNativeHandoffExecutionFailure {
     /// Returns the exact reason fused interpreter handoff failed.
     #[must_use]
@@ -327,8 +419,67 @@ impl DirectFusedNativeInterpreterHandoff {
     ///
     /// Returns indexed failure with the exact current-step entry checkpoint.
     pub fn execute(self) -> DirectFusedNativeHandoffExecutionResult {
-        let Self { checkpoint, continuation } = self;
-        execute_handoff(continuation, checkpoint)
+        match self.execute_with_budget(usize::MAX)? {
+            DirectFusedNativeHandoffBudgetOutcome::Completed(completion) => {
+                Ok(completion)
+            },
+            DirectFusedNativeHandoffBudgetOutcome::Suspended(suspension) => {
+                let DirectFusedNativeHandoffSuspension {
+                    continuation,
+                    interpreter_steps,
+                    state,
+                    ..
+                } = suspension;
+                Err(execution_failure(
+                    DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+                    continuation,
+                    interpreter_steps,
+                    state,
+                ))
+            },
+        }
+    }
+
+    /// Executes at most `step_budget` remaining source semantic steps.
+    ///
+    /// A zero budget performs no interpreter transition. Partial progress
+    /// returns an affine source-step checkpoint; it does not manufacture a new
+    /// fused-region identity after stopping inside a fused region.
+    ///
+    /// # Errors
+    ///
+    /// Returns indexed failure when a requested interpreter step fails exact
+    /// normative admission.
+    pub fn execute_with_budget(
+        self,
+        step_budget: usize,
+    ) -> DirectFusedNativeHandoffBudgetResult {
+        let Self {
+            checkpoint,
+            continuation,
+            interpreter_steps,
+        } = self;
+        let progress = execute_handoff_budget_slice(
+            continuation,
+            checkpoint,
+            interpreter_steps,
+            step_budget,
+        )?;
+        if progress.interpreter_steps < progress.continuation.remaining_steps()
+        {
+            return suspend_handoff(
+                progress.continuation,
+                progress.interpreter_steps,
+                progress.state,
+            );
+        }
+        complete_handoff(
+            progress.continuation,
+            progress.interpreter_steps,
+            progress.state,
+            progress.termination,
+        )
+        .map(DirectFusedNativeHandoffBudgetOutcome::Completed)
     }
 
     /// Constructs a fused handoff from native transfer buffers.
@@ -407,7 +558,11 @@ fn admit_handoff(
     if let Some(error) = admission_live_in_error(first, checkpoint.memory()) {
         return Err(error);
     }
-    Ok(DirectFusedNativeInterpreterHandoff { checkpoint, continuation })
+    Ok(DirectFusedNativeInterpreterHandoff {
+        checkpoint,
+        continuation,
+        interpreter_steps: 0,
+    })
 }
 
 fn admission_live_in_error(
@@ -484,41 +639,71 @@ fn continuation_profile(
     Ok(profile)
 }
 
-fn execute_handoff(
+fn execute_handoff_budget_slice(
     continuation: DirectFusedNativeContinuation,
     checkpoint: ProfileMachineState,
-) -> DirectFusedNativeHandoffExecutionResult {
+    mut interpreter_steps: usize,
+    step_budget: usize,
+) -> Result<
+    DirectFusedNativeBudgetProgress,
+    Box<DirectFusedNativeHandoffExecutionFailure>,
+> {
+    let mut termination = checkpoint.io().termination();
     let mut machine = ProfileMachine::from_snapshot(checkpoint);
-    let mut termination = machine.snapshot_state().io().termination();
-    let programs = continuation.remaining_programs().to_vec();
-    for (index, expected) in programs.iter().enumerate() {
-        let outcome = match execute_step(&mut machine, expected) {
+    let remaining_steps = continuation.remaining_steps();
+    if interpreter_steps > remaining_steps {
+        return Err(execution_failure(
+            DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            machine.snapshot_state(),
+        ));
+    }
+    let target = interpreter_steps
+        .saturating_add(step_budget)
+        .min(remaining_steps);
+    while interpreter_steps < target {
+        let Some(expected) = continuation
+            .remaining_programs()
+            .get(interpreter_steps)
+            .cloned()
+        else {
+            return Err(execution_failure(
+                DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+                continuation,
+                interpreter_steps,
+                machine.snapshot_state(),
+            ));
+        };
+        let outcome = match execute_step(&mut machine, &expected) {
             Ok(outcome) => outcome,
             Err(failure) => {
+                let DirectFusedNativeStepFailure { cause, state } = *failure;
                 return Err(execution_failure(
-                    failure.cause,
+                    cause,
                     continuation,
-                    index,
-                    failure.state,
+                    interpreter_steps,
+                    state,
                 ));
             },
         };
+        interpreter_steps = interpreter_steps.saturating_add(1);
         termination = termination_after_step(termination, outcome);
-        if termination.is_some() && index.saturating_add(1) != programs.len() {
+        if termination.is_some() && interpreter_steps != remaining_steps {
             return Err(execution_failure(
                 DirectFusedNativeHandoffExecutionCause::PrematureTermination,
                 continuation,
-                index.saturating_add(1),
+                interpreter_steps,
                 machine.snapshot_state(),
             ));
         }
     }
-    complete_handoff(
+    Ok(DirectFusedNativeBudgetProgress {
         continuation,
-        programs.len(),
-        machine.snapshot_state(),
+        interpreter_steps,
+        state: machine.snapshot_state(),
         termination,
-    )
+    })
 }
 
 fn execute_step(
@@ -662,6 +847,51 @@ const fn projection_error_id(
         StepProgramProjectionError::RejectedTrace => "rejected-trace",
         StepProgramProjectionError::TerminatedEntry => "terminated-entry",
     }
+}
+
+fn suspend_handoff(
+    continuation: DirectFusedNativeContinuation,
+    interpreter_steps: usize,
+    state: ProfileMachineState,
+) -> DirectFusedNativeHandoffBudgetResult {
+    let Some(next_program) =
+        continuation.remaining_programs().get(interpreter_steps)
+    else {
+        return Err(execution_failure(
+            DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    };
+    let Some(next_entry) =
+        next_program.effects.first().map(|effect| effect.before)
+    else {
+        return Err(execution_failure(
+            DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    };
+    if state_observation(&state) != next_entry {
+        return Err(execution_failure(
+            DirectFusedNativeHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    }
+    let resume_step =
+        continuation.resume_step().saturating_add(interpreter_steps);
+    Ok(DirectFusedNativeHandoffBudgetOutcome::Suspended(
+        DirectFusedNativeHandoffSuspension {
+            continuation,
+            interpreter_steps,
+            resume_step,
+            state,
+        },
+    ))
 }
 
 fn state_observation(state: &ProfileMachineState) -> ProfileMachineObservation {

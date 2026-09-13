@@ -331,11 +331,13 @@ pub use fused_sequence_execution::{
     execute_loaded_direct_fused_native_sequence,
 };
 pub use fused_sequence_handoff::{
-    DirectFusedNativeHandoffAdmissionError, DirectFusedNativeHandoffCompletion,
+    DirectFusedNativeHandoffAdmissionError,
+    DirectFusedNativeHandoffBudgetOutcome,
+    DirectFusedNativeHandoffBudgetResult, DirectFusedNativeHandoffCompletion,
     DirectFusedNativeHandoffExecutionCause,
     DirectFusedNativeHandoffExecutionFailure,
     DirectFusedNativeHandoffExecutionResult,
-    DirectFusedNativeInterpreterHandoff,
+    DirectFusedNativeHandoffSuspension, DirectFusedNativeInterpreterHandoff,
 };
 pub use fused_sequence_lease::{
     DirectFusedNativeLeasedSequence,
