@@ -45,10 +45,28 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::cached_retry_telemetry_blob_store::{
     NativeContinuationCachedRetryTelemetryBlobLoadResult,
     NativeContinuationCachedRetryTelemetryBlobStore,
+    NativeContinuationCachedRetryTelemetryDurableBlobStore,
 };
 
 const MAX_STAGING_ATTEMPTS: usize = 64;
 static NEXT_STAGING_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Why a committed filesystem publication could not confirm durability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationTelemetryFileBlobDurabilityError {
+    /// Configured destination does not expose a parent directory.
+    InvalidDestination,
+    /// Opening the destination directory for durability confirmation failed.
+    OpenDirectory {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+    /// Synchronizing the destination directory entry failed after publication.
+    SyncDirectory {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+}
 
 /// Why filesystem-backed telemetry blob storage failed closed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -121,6 +139,22 @@ impl NativeContinuationTelemetryFileBlobStore {
     #[must_use]
     pub fn destination(&self) -> &Path {
         &self.destination
+    }
+
+    fn destination_directory(
+        &self,
+    ) -> Result<&Path, NativeContinuationTelemetryFileBlobDurabilityError> {
+        let Some(parent) = self.destination.parent() else {
+            return Err(
+                NativeContinuationTelemetryFileBlobDurabilityError::
+                    InvalidDestination,
+            );
+        };
+        if parent.as_os_str().is_empty() {
+            Ok(Path::new("."))
+        } else {
+            Ok(parent)
+        }
     }
 
     /// Binds one filesystem adapter to an explicit destination path.
@@ -247,6 +281,26 @@ impl NativeContinuationCachedRetryTelemetryBlobStore
             );
         }
         Ok(())
+    }
+}
+
+impl NativeContinuationCachedRetryTelemetryDurableBlobStore
+    for NativeContinuationTelemetryFileBlobStore
+{
+    type DurabilityError = NativeContinuationTelemetryFileBlobDurabilityError;
+
+    fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+        let directory_path = self.destination_directory()?;
+        let directory = File::open(directory_path).map_err(|error| {
+            NativeContinuationTelemetryFileBlobDurabilityError::OpenDirectory {
+                kind: error.kind(),
+            }
+        })?;
+        directory.sync_all().map_err(|error| {
+            NativeContinuationTelemetryFileBlobDurabilityError::SyncDirectory {
+                kind: error.kind(),
+            }
+        })
     }
 }
 

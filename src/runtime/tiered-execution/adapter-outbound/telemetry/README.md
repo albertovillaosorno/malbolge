@@ -39,8 +39,8 @@ atomically, an overwrite may fail safely instead of deleting the destination.
 The current port requires any returned failure to leave the prior publication
 authoritative, so a remove-then-rename fallback is intentionally prohibited.
 
-Directory fsync is also intentionally not hidden here. A post-rename directory
-sync can fail after publication has already changed, which needs a committed
-publication/cleanup result shape rather than the current port's prepublication
-failure contract. Crash-durable directory publication therefore remains a
-separate lifecycle extension.
+Directory fsync is exposed through a separate durability-confirmation port
+capability rather than hidden inside `replace`. Application orchestration first
+commits publication, then confirms the destination directory; sync failure is
+returned as committed `Published` evidence, never as rollback. The ordinary
+replacement API keeps its original prepublication failure contract.

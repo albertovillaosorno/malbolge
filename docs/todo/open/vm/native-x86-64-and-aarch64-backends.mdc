@@ -562,10 +562,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Five host-real cases cover missing state, overwrite-or-safe-failure behavior,
   oversized reads, and exact count/latency persistence round trips.
 
-  Directory-entry fsync/crash durability, histogram refinement,
-  distributed/durable merge, durable/cross-cycle policy publication, runtime
-  clock acquisition, async queues, cross-process locking/CAS, multi-blob
-  transactions, and broader production orchestration remain pending.
+  A separate durability capability now confirms the destination directory only
+  after replacement commits. The application reports either confirmed
+  `Durable` state or committed `Published` state with exact sync failure, so
+  post-publication failure is never mislabeled rollback. Two deterministic
+  cases cover both outcomes and one host-real case exercises directory sync.
+
+  Histogram refinement, distributed/durable merge, durable/cross-cycle policy
+  publication, runtime clock acquisition, async queues, cached-cycle durable
+  convenience binding, cross-process locking/CAS, multi-blob transactions, and
+  broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

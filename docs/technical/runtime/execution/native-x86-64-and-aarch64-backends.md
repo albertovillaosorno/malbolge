@@ -704,10 +704,17 @@ removing the previous destination first. Five host-real cases cover missing
 state, overwrite-or-safe-failure semantics, oversized reads, and exact
 count/latency persistence round trips.
 
-Directory-entry fsync/crash durability, histogram refinement, distributed
-merge, durable/cross-cycle policy publication, native object fusion, foreign
-invocation, runtime clock acquisition, cross-process locking/CAS, and
-multi-blob transactions remain open.
+A separate post-publication durability capability now confirms the destination
+directory after replacement. Application orchestration returns `Durable` after
+successful confirmation or committed `Published` evidence with the exact
+durability error; two deterministic cases cover both states, and one host-real
+filesystem case exercises directory sync without reclassifying commit as
+rollback.
+
+Histogram refinement, distributed merge, durable/cross-cycle policy
+publication, native object fusion, foreign invocation, runtime clock
+acquisition, cached-cycle durable convenience binding, cross-process
+locking/CAS, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

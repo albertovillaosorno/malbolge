@@ -700,8 +700,10 @@ use retry_turn::{
     NativeContinuationRetryTurnOutcome, execute_native_continuation_retry_turn,
 };
 use telemetry_blob_persistence::{
+    NativeContinuationTelemetryBlobDurablePersistence as BlobDurablePersistence,
     NativeContinuationTelemetryBlobPersistenceError as BlobPersistenceError,
     NativeContinuationTelemetryBlobPersistenceLoad as BlobPersistenceLoad,
+    persist_telemetry_blob_durably,
 };
 use telemetry_file_store::{
     NativeContinuationTelemetryFileBlobStore,
@@ -2033,6 +2035,11 @@ impl NativeExecutableRunner for FakeNativeSequenceRunner {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestCachedRetryTelemetryBlobDurabilityError {
+    Confirm,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TestCachedRetryTelemetryBlobStoreError {
     Load,
     Replace,
@@ -2041,6 +2048,7 @@ enum TestCachedRetryTelemetryBlobStoreError {
 #[derive(Debug, Default)]
 struct TestCachedRetryTelemetryBlobStore {
     blob: Option<Vec<u8>>,
+    fail_durability: bool,
     fail_load: bool,
     fail_replace: bool,
     last_load_limit: Option<NonZeroUsize>,
@@ -2076,6 +2084,21 @@ impl telemetry_store_port::NativeContinuationCachedRetryTelemetryBlobStore
             Err(TestCachedRetryTelemetryBlobStoreError::Replace)
         } else {
             self.blob = Some(bytes.to_vec());
+            Ok(())
+        }
+    }
+}
+
+impl
+    telemetry_store_port::NativeContinuationCachedRetryTelemetryDurableBlobStore
+    for TestCachedRetryTelemetryBlobStore
+{
+    type DurabilityError = TestCachedRetryTelemetryBlobDurabilityError;
+
+    fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+        if self.fail_durability {
+            Err(TestCachedRetryTelemetryBlobDurabilityError::Confirm)
+        } else {
             Ok(())
         }
     }
@@ -49720,6 +49743,91 @@ fn cached_retry_window_telemetry(
         ),
     ])
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_durable_blob_persistence_confirms_publication()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "durable blob bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome =
+        persist_telemetry_blob_durably(&mut store, b"durable", maximum_bytes)
+            .map_err(|error| format!("durable publication failed: {error:?}"))?;
+    if outcome.is_durable()
+        && outcome.bytes() == 7
+        && outcome.durability_error().is_none()
+        && store.blob.as_deref() == Some(b"durable")
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable publication evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_durable_blob_persistence_retains_committed_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "committed blob bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        persist_telemetry_blob_durably(&mut store, b"published", maximum_bytes)
+            .map_err(|error| {
+                format!("committed publication failed early: {error:?}")
+            })?;
+    let BlobDurablePersistence::Published { durability_error, write } = outcome
+    else {
+        return Err(String::from("durability failure lost committed state"));
+    };
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && write.bytes() == 9
+        && store.blob.as_deref() == Some(b"published")
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed durability evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_confirms_directory_durability()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("durable")?;
+    let maximum_bytes = nonzero_test_limit(64, "file durability bytes")?;
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let outcome = persist_telemetry_blob_durably(
+        &mut store,
+        b"durable-file",
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("file durability publication failed: {error:?}")
+    })?;
+    let load = telemetry_blob_persistence::restore_telemetry_blob(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("durable file reload failed: {error:?}"))?;
+    let BlobPersistenceLoad::Present { bytes } = load else {
+        return Err(String::from("durable file publication disappeared"));
+    };
+    let valid = match outcome {
+        BlobDurablePersistence::Durable { write }
+        | BlobDurablePersistence::Published { write, .. } => {
+            write.bytes() == 12 && bytes == b"durable-file"
+        },
+    };
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("file durability publication evidence drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

@@ -36,6 +36,11 @@
 
 use std::num::NonZeroUsize;
 
+/// Result of confirming durability after one committed blob replacement.
+pub type NativeContinuationCachedRetryTelemetryBlobDurabilityResult<
+    DurabilityError,
+> = Result<(), DurabilityError>;
+
 /// Bounded absent/present load result returned by one blob-store adapter.
 pub type NativeContinuationCachedRetryTelemetryBlobLoadResult<StoreError> =
     Result<Option<Vec<u8>>, StoreError>;
@@ -69,4 +74,27 @@ pub trait NativeContinuationCachedRetryTelemetryBlobStore {
     ///
     /// Returns only adapter-local publication failures.
     fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
+}
+/// Optional post-publication durability confirmation for one blob store.
+///
+/// This capability is deliberately separate from `replace`: publication has
+/// already committed before confirmation begins, so confirmation failure must
+/// never be reported as if the prior blob remained authoritative.
+pub trait NativeContinuationCachedRetryTelemetryDurableBlobStore:
+    NativeContinuationCachedRetryTelemetryBlobStore
+{
+    /// Adapter-local durability-confirmation failure after publication.
+    type DurabilityError;
+
+    /// Confirms host durability for the most recently committed publication.
+    ///
+    /// # Errors
+    ///
+    /// Returns post-publication durability evidence. The new blob remains the
+    /// process-visible publication even when confirmation fails.
+    fn confirm_durability(
+        &mut self,
+    ) -> NativeContinuationCachedRetryTelemetryBlobDurabilityResult<
+        Self::DurabilityError,
+    >;
 }

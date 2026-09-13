@@ -35,7 +35,29 @@
 
 use std::num::NonZeroUsize;
 
+use store_port::{
+    NativeContinuationCachedRetryTelemetryBlobStore as BlobStore,
+    NativeContinuationCachedRetryTelemetryDurableBlobStore as DurableBlobStore,
+};
+
 use crate::cached_retry_telemetry_blob_store as store_port;
+
+/// Outcome after publication plus explicit durability confirmation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationTelemetryBlobDurablePersistence<DurabilityError> {
+    /// Publication and the adapter's durability confirmation both completed.
+    Durable {
+        /// Exact committed byte count.
+        write: NativeContinuationTelemetryBlobPersistenceWrite,
+    },
+    /// Publication committed, but durability confirmation failed afterward.
+    Published {
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Exact committed byte count.
+        write: NativeContinuationTelemetryBlobPersistenceWrite,
+    },
+}
 
 /// Why one explicit telemetry-blob persistence use case failed closed.
 #[derive(Debug, Eq, PartialEq)]
@@ -67,10 +89,55 @@ pub enum NativeContinuationTelemetryBlobPersistenceLoad {
 pub type NativeContinuationTelemetryBlobPersistenceResult<Value, StoreError> =
     Result<Value, NativeContinuationTelemetryBlobPersistenceError<StoreError>>;
 
+/// Result of publication plus optional durability confirmation.
+pub type NativeContinuationTelemetryBlobDurablePersistenceResult<
+    StoreError,
+    DurabilityError,
+> = Result<
+    NativeContinuationTelemetryBlobDurablePersistence<DurabilityError>,
+    NativeContinuationTelemetryBlobPersistenceError<StoreError>,
+>;
+
+/// Durable publication result specialized to one outbound store type.
+pub type NativeContinuationTelemetryBlobDurableStoreResult<Store> =
+    NativeContinuationTelemetryBlobDurablePersistenceResult<
+        <Store as BlobStore>::Error,
+        <Store as DurableBlobStore>::DurabilityError,
+    >;
+
 /// Publication evidence from one successful telemetry-blob replacement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationTelemetryBlobPersistenceWrite {
     bytes: usize,
+}
+
+impl<DurabilityError>
+    NativeContinuationTelemetryBlobDurablePersistence<DurabilityError>
+{
+    /// Returns the exact committed byte count in either durability state.
+    #[must_use]
+    pub const fn bytes(&self) -> usize {
+        match self {
+            Self::Durable { write } | Self::Published { write, .. } => {
+                write.bytes()
+            },
+        }
+    }
+
+    /// Returns post-publication durability failure when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(&self) -> Option<&DurabilityError> {
+        match self {
+            Self::Durable { .. } => None,
+            Self::Published { durability_error, .. } => Some(durability_error),
+        }
+    }
+
+    /// Reports whether publication durability was explicitly confirmed.
+    #[must_use]
+    pub const fn is_durable(&self) -> bool {
+        matches!(self, Self::Durable { .. })
+    }
 }
 
 impl NativeContinuationTelemetryBlobPersistenceWrite {
@@ -78,6 +145,36 @@ impl NativeContinuationTelemetryBlobPersistenceWrite {
     #[must_use]
     pub const fn bytes(self) -> usize {
         self.bytes
+    }
+}
+
+/// Persists one blob and then explicitly confirms publication durability.
+///
+/// # Errors
+///
+/// Returns only prepublication byte-limit or store failures. A durability
+/// confirmation failure is returned as committed `Published` evidence.
+pub fn persist_telemetry_blob_durably<Store>(
+    store: &mut Store,
+    bytes: &[u8],
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationTelemetryBlobDurableStoreResult<Store>
+where
+    Store: DurableBlobStore,
+{
+    let write = persist_telemetry_blob(store, bytes, maximum_bytes)?;
+    match store.confirm_durability() {
+        Ok(()) => {
+            Ok(NativeContinuationTelemetryBlobDurablePersistence::Durable {
+                write,
+            })
+        },
+        Err(durability_error) => Ok(
+            NativeContinuationTelemetryBlobDurablePersistence::Published {
+                durability_error,
+                write,
+            },
+        ),
     }
 }
 
@@ -95,7 +192,7 @@ pub fn persist_telemetry_blob<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     admit_byte_limit(bytes.len(), maximum_bytes)?;
     store
@@ -118,7 +215,7 @@ pub fn restore_telemetry_blob<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     let Some(bytes) = store
         .load(maximum_bytes)
