@@ -55,6 +55,7 @@ mod fused_sequence_cache;
 mod fused_sequence_cache_transaction;
 mod fused_sequence_cached_retry;
 mod fused_sequence_cached_retry_cycle;
+mod fused_sequence_cached_retry_mode;
 mod fused_sequence_continuation;
 mod fused_sequence_execution;
 mod fused_sequence_handoff;
@@ -361,6 +362,13 @@ pub use fused_sequence_cached_retry_cycle::{
     DirectFusedNativeCachedRetryNativeFailure,
     DirectFusedNativeCachedRetryRescheduleFailure,
     execute_cached_direct_fused_native_retry_cycle,
+};
+pub use fused_sequence_cached_retry_mode::{
+    DirectFusedNativeCachedRetryAcquisitionMode,
+    DirectFusedNativeSelectedCachedRetryFailure,
+    DirectFusedNativeSelectedCachedRetryRequest,
+    DirectFusedNativeSelectedCachedRetryResult,
+    execute_selected_cached_direct_fused_native_retry,
 };
 pub use fused_sequence_continuation::{
     DirectFusedNativeContinuation, DirectFusedNativeContinuationError,

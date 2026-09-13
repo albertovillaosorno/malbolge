@@ -600,6 +600,14 @@ the runner while restoring the admitted retry plus exact transaction ownership;
 success binds the committed leased sequence through the existing resident retry
 executor. The ordinary cached retry and bounded cached cycle remain unchanged.
 
+An explicit one-attempt acquisition-mode request now selects ordinary or
+transactional cache semantics without inferring policy from cache state.
+Mode-tagged failures preserve the selected coordinator's exact ownership. Under
+live FIFO blockage, ordinary mode retains its visible retire-before-block
+effect,
+while transactional mode preserves active authority. The bounded cached cycle
+still selects ordinary acquisition until cycle policy owns this mode explicitly.
+
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
 reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and

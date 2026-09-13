@@ -222,7 +222,9 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedInvocationError, DirectFusedNativeCachedRetryCycleFailure,
+    DirectFusedInvocationError, DirectFusedNativeCachedRetryAcquisitionFailure,
+    DirectFusedNativeCachedRetryAcquisitionMode,
+    DirectFusedNativeCachedRetryCycleFailure,
     DirectFusedNativeCachedRetryCycleOutcome,
     DirectFusedNativeCachedRetryCycleRequest,
     DirectFusedNativeCachedRetryFailure, DirectFusedNativeContinuation,
@@ -251,6 +253,8 @@ use execution_native::{
     DirectFusedNativeRetryStepPlanningError, DirectFusedNativeRunner,
     DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
     DirectFusedNativeScheduleStopReason, DirectFusedNativeScheduleSuspension,
+    DirectFusedNativeSelectedCachedRetryFailure as SelectedRetryFailure,
+    DirectFusedNativeSelectedCachedRetryRequest,
     DirectFusedNativeSequenceExecutionOutcome, DirectFusedNativeSequencePlan,
     DirectFusedNativeSequencePlanError,
     DirectFusedNativeTransactionalCachedRetryAcquisitionFailure,
@@ -384,6 +388,7 @@ use execution_native::{
     execute_loaded_verified_native_sequence,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_non_graphical_native,
+    execute_selected_cached_direct_fused_native_retry,
     execute_transactional_cached_direct_fused_native_retry,
     execute_verified_direct_fused_native, execute_verified_native,
     execute_verified_native_sequence, execute_verified_register_masked_native,
@@ -701,6 +706,12 @@ type CrazyTheoremSequenceTriple = (
 );
 
 type TieredTestResult = Result<(), String>;
+type OrdinaryCachedAcquisitionFailure = Box<
+    DirectFusedNativeCachedRetryAcquisitionFailure<FakeNativeAdapterOperation>,
+>;
+type SelectedCachedRetryFailureOwner =
+    SelectedRetryFailure<FakeNativeAdapterOperation, FakeNativeRunnerError>;
+type SelectedCachedRetryFailure = Box<SelectedCachedRetryFailureOwner>;
 type TransactionalCachedAcquisitionFailure = Box<
     DirectFusedNativeTransactionalCachedRetryAcquisitionFailure<
         FakeNativeAdapterOperation,
@@ -19675,6 +19686,204 @@ fn fused_transactional_cached_retry_stops_on_committed_cleanup()
     drop(leases);
     let _summary = cache
         .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn assert_selected_cached_retry_executes(
+    mode: DirectFusedNativeCachedRetryAcquisitionMode,
+    mapping: u64,
+    base: usize,
+) -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let capacity = nonzero_test_limit(2, "selected retry capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping)?,
+        native_executable_address(base)?,
+    );
+    let request = DirectFusedNativeSelectedCachedRetryRequest::new(mode, retry);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_selected_cached_direct_fused_native_retry(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("selected cached retry: {failure:?}"))?;
+    if execution.outcome().completed_steps() != 2
+        || execution.transfer().memory() != expected.final_memory
+        || execution.transfer().output() != expected.final_output
+        || execution
+            .cache_dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || runner.calls != 1
+    {
+        return Err(String::from("selected cached retry execution drifted"));
+    }
+    let (_, _, sequence, _, _) = execution.into_parts();
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_cached_retry_mode_executes_both_modes() -> Result<(), String> {
+    assert_selected_cached_retry_executes(
+        DirectFusedNativeCachedRetryAcquisitionMode::Ordinary,
+        1276,
+        0x92_0000,
+    )?;
+    assert_selected_cached_retry_executes(
+        DirectFusedNativeCachedRetryAcquisitionMode::Transactional,
+        1277,
+        0x93_0000,
+    )
+}
+
+fn selected_cached_retry_failure(
+    request: DirectFusedNativeSelectedCachedRetryRequest,
+    cache: &mut DirectFusedNativeLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> Result<SelectedCachedRetryFailure, String> {
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(failure) = execute_selected_cached_direct_fused_native_retry(
+        request,
+        cache,
+        adapter,
+        &mut runner,
+    ) else {
+        return Err(String::from(
+            "selected cached retry unexpectedly executed",
+        ));
+    };
+    if runner.calls != 0 {
+        return Err(String::from(
+            "selected cached retry reached native runner",
+        ));
+    }
+    Ok(failure)
+}
+
+fn selected_ordinary_acquisition_failure(
+    selected: SelectedCachedRetryFailureOwner,
+) -> Result<OrdinaryCachedAcquisitionFailure, String> {
+    let SelectedRetryFailure::Ordinary(ordinary_failure) = selected else {
+        return Err(String::from("ordinary mode lost failure tag"));
+    };
+    let DirectFusedNativeCachedRetryFailure::Acquisition(acquisition) =
+        *ordinary_failure
+    else {
+        return Err(String::from("ordinary mode acquisition missing"));
+    };
+    Ok(acquisition)
+}
+
+fn selected_transactional_acquisition_failure(
+    selected: SelectedCachedRetryFailureOwner,
+) -> Result<TransactionalCachedAcquisitionFailure, String> {
+    let SelectedRetryFailure::Transactional(transactional_failure) = selected
+    else {
+        return Err(String::from("transactional mode lost failure tag"));
+    };
+    let DirectFusedNativeTransactionalCachedRetryFailure::Acquisition(
+        acquisition,
+    ) = *transactional_failure
+    else {
+        return Err(String::from("transactional mode acquisition missing"));
+    };
+    Ok(acquisition)
+}
+
+#[test]
+fn fused_cached_retry_mode_transactional_preserves_blocked_authority()
+-> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let seed = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let seed_key = seed.key().clone();
+    let capacity = nonzero_test_limit(1, "selected transactional capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1274)?,
+        native_executable_address(0x90_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &seed)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let request = DirectFusedNativeSelectedCachedRetryRequest::new(
+        DirectFusedNativeCachedRetryAcquisitionMode::Transactional,
+        retry,
+    );
+    let selected_failure =
+        selected_cached_retry_failure(request, &mut cache, &mut adapter)?;
+    let acquisition =
+        selected_transactional_acquisition_failure(*selected_failure)?;
+    let batch = acquisition
+        .failure()
+        .batch_failure()
+        .ok_or_else(|| String::from("transactional mode batch missing"))?;
+    if batch.block().is_none()
+        || batch.cache_committed()
+        || cache.keys().cloned().collect::<Vec<_>>() != [seed_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+    {
+        return Err(String::from(
+            "selected transactional retry changed blocked authority",
+        ));
+    }
+    drop(lease);
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_cached_retry_mode_ordinary_retains_visible_block_effects()
+-> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let seed = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let seed_key = seed.key().clone();
+    let capacity = nonzero_test_limit(1, "selected ordinary capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1275)?,
+        native_executable_address(0x91_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &seed)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let request = DirectFusedNativeSelectedCachedRetryRequest::new(
+        DirectFusedNativeCachedRetryAcquisitionMode::Ordinary,
+        retry,
+    );
+    let selected_failure =
+        selected_cached_retry_failure(request, &mut cache, &mut adapter)?;
+    let acquisition = selected_ordinary_acquisition_failure(*selected_failure)?;
+    let block = acquisition
+        .failure()
+        .cache_failure()
+        .and_then(|cache_failure| cache_failure.block())
+        .ok_or_else(|| String::from("ordinary mode block missing"))?;
+    if block.retired_keys() != [seed_key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [seed_key]
+    {
+        return Err(String::from(
+            "selected ordinary retry hid visible block effects",
+        ));
+    }
+    let _summary = cache
+        .return_lease(&mut adapter, lease)
         .map_err(|error| error.to_string())?;
     Ok(())
 }

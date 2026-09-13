@@ -388,6 +388,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   resident retry executor. The ordinary cached retry and bounded cached cycle
   remain unchanged.
 
+  An explicit one-attempt acquisition-mode request now selects ordinary or
+  transactional cache semantics without inferring policy from cache state.
+  Mode-tagged failures preserve the selected coordinator's exact ownership.
+  Under live FIFO blockage, ordinary mode retains its visible
+  retire-before-block effect, while transactional mode preserves active
+  authority. The bounded cached cycle still selects ordinary acquisition until
+  cycle policy owns this mode.
+
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only
   after full success. Safe sequence execution now runs each exact artifact in
