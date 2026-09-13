@@ -62,6 +62,7 @@ mod fused_sequence_plan;
 mod fused_sequence_retry;
 mod fused_sequence_retry_execution;
 mod fused_sequence_retry_planner;
+mod fused_sequence_retry_policy;
 mod fused_sequence_retry_rebase;
 mod fused_sequence_retry_return;
 mod fused_sequence_scheduler;
@@ -391,6 +392,12 @@ pub use fused_sequence_retry_planner::{
     DirectFusedNativeRetryPlanningOutcome,
     DirectFusedNativeRetryStepPlanningError,
     DirectFusedNativeRetryTopologyError, plan_direct_fused_native_retry,
+};
+pub use fused_sequence_retry_policy::{
+    DirectFusedNativeRetryFallback, DirectFusedNativeRetryInterpreterRoute,
+    DirectFusedNativeRetryNativeRoute, DirectFusedNativeRetryPolicy,
+    DirectFusedNativeRetryPolicyError, DirectFusedNativeRetryPolicyFailure,
+    DirectFusedNativeRetryPolicyOutcome,
 };
 pub use fused_sequence_retry_rebase::{
     DirectFusedNativeRetryCompletion, DirectFusedNativeRetryDisposition,

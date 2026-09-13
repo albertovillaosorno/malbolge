@@ -565,8 +565,14 @@ without consuming resident ownership.
 An explicit post-rebase return boundary now drops every region lease together,
 keeps active lookup authority intact, and runs one retired-resident
 reconciliation pass. Release failure preserves semantic/native evidence beside
-exact keyed cleanup retry ownership. Multi-turn policy and transactional cache
-rollback remain separate.
+exact keyed cleanup retry ownership.
+
+A pure bounded fused retry policy now accepts caller-supplied completed-attempt
+counts, preserves exact one-based next-attempt evidence while budget remains,
+and routes exhaustion to either complete normative fallback or one positive
+source-step slice. Non-`NativeRetry` suspensions fail ownership-preservingly.
+Host-policy composition, multi-turn execution, and transactional cache rollback
+remain separate.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

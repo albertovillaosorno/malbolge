@@ -241,7 +241,9 @@ use execution_native::{
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRetry,
     DirectFusedNativeRetryAdmissionError, DirectFusedNativeRetryDisposition,
-    DirectFusedNativeRetryPlanningError, DirectFusedNativeRetryPlanningOutcome,
+    DirectFusedNativeRetryFallback, DirectFusedNativeRetryPlanningError,
+    DirectFusedNativeRetryPlanningOutcome, DirectFusedNativeRetryPolicy,
+    DirectFusedNativeRetryPolicyError, DirectFusedNativeRetryPolicyOutcome,
     DirectFusedNativeRetryStepPlanningError, DirectFusedNativeRunner,
     DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
     DirectFusedNativeScheduleStopReason,
@@ -17493,6 +17495,167 @@ fn fused_direct_retry_pause(
         return Err(String::from("fused retry yield completed work"));
     };
     Ok((plan, pause))
+}
+
+#[test]
+fn fused_direct_retry_policy_numbers_attempts() -> Result<(), String> {
+    let policy = DirectFusedNativeRetryPolicy::new(
+        2,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    for (attempts, next_attempt) in [(0usize, 1usize), (1usize, 2usize)] {
+        let (_, pause) = fused_direct_retry_pause(
+            HostIsa::X86_64,
+            0,
+            DirectFusedNativeYieldTarget::NativeRetry,
+        )?;
+        let expected_state = pause.state().clone();
+        let outcome = policy
+            .route(pause, attempts)
+            .map_err(|failure| failure.error().to_string())?;
+        let DirectFusedNativeRetryPolicyOutcome::NativeRetry(route) = outcome
+        else {
+            return Err(String::from("available fused retry budget fell back"));
+        };
+        if route.attempts() != attempts || route.next_attempt() != next_attempt
+        {
+            return Err(String::from("fused retry attempt numbering drifted"));
+        }
+        let recovered = route.into_suspension();
+        if recovered.state() != &expected_state
+            || recovered.reason()
+                != DirectFusedNativeScheduleStopReason::NativeRetry
+        {
+            return Err(String::from("fused retry policy lost suspension"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_retry_policy_completes_at_limit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let policy = DirectFusedNativeRetryPolicy::new(
+        1,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let outcome = policy
+        .route(pause, 1)
+        .map_err(|failure| failure.error().to_string())?;
+    let DirectFusedNativeRetryPolicyOutcome::Interpreter(route) = outcome
+    else {
+        return Err(String::from("exhausted fused retry selected native"));
+    };
+    if route.attempts() != 1
+        || route.decision()
+            != DirectFusedNativeScheduleDecision::complete_interpreter()
+    {
+        return Err(String::from("fused complete fallback route drifted"));
+    }
+    let (handoff, decision) = route.into_parts();
+    let scheduled = schedule_direct_fused_native_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = scheduled
+    else {
+        return Err(String::from("fused complete fallback remained suspended"));
+    };
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused complete fallback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_policy_slices_at_zero_limit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let policy = DirectFusedNativeRetryPolicy::new(
+        0,
+        DirectFusedNativeRetryFallback::sliced(nonzero_test_limit(
+            1,
+            "fused retry policy slice",
+        )?),
+    );
+    let outcome = policy
+        .route(pause, 0)
+        .map_err(|failure| failure.error().to_string())?;
+    let DirectFusedNativeRetryPolicyOutcome::Interpreter(route) = outcome
+    else {
+        return Err(String::from("zero fused retry limit selected native"));
+    };
+    let (handoff, decision) = route.into_parts();
+    let first = schedule_direct_fused_native_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(fallback_pause) = first
+    else {
+        return Err(String::from("fused sliced fallback completed early"));
+    };
+    if fallback_pause.reason()
+        != DirectFusedNativeScheduleStopReason::BudgetExhausted
+        || fallback_pause.interpreter_steps() != 1
+        || fallback_pause.resume_step() != 1
+    {
+        return Err(String::from("fused sliced fallback evidence drifted"));
+    }
+    let second = fallback_pause
+        .resume(DirectFusedNativeScheduleDecision::complete_interpreter())
+        .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = second else {
+        return Err(String::from("fused sliced fallback did not resume"));
+    };
+    if completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused sliced fallback completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_policy_rejects_caller_yield() -> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::Caller,
+    )?;
+    let expected_state = pause.state().clone();
+    let policy = DirectFusedNativeRetryPolicy::new(
+        1,
+        DirectFusedNativeRetryFallback::complete(),
+    );
+    let Err(failure) = policy.route(pause, 0) else {
+        return Err(String::from("caller yield entered fused retry policy"));
+    };
+    if failure.error()
+        != (DirectFusedNativeRetryPolicyError::ScheduleReason {
+            observed: DirectFusedNativeScheduleStopReason::CallerYield,
+        })
+    {
+        return Err(String::from("fused retry policy rejection drifted"));
+    }
+    let recovered = (*failure).into_suspension();
+    if recovered.state() == &expected_state
+        && recovered.reason()
+            == DirectFusedNativeScheduleStopReason::CallerYield
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused retry policy lost rejected suspension"))
+    }
 }
 
 #[test]
