@@ -655,10 +655,17 @@ histogram state and reject impossible count, range, or overflow-bin evidence.
 Identical-schema histograms merge transactionally with exact rollback on any
 schema or counter failure. Canonical revision-one latency bytes preserve exact
 extrema flags, `u128` totals, and bound/count pairs while repeating snapshot
-validation after decode. Rebinning, distributed merge, latency-driven
-recommendation, durable/cross-cycle policy publication, native object fusion,
-foreign invocation, runtime clock acquisition, durable storage, and
-cross-process coordination remain open.
+validation after decode.
+
+A pure latency assessment now gates on a positive caller-required sample count
+and applies inclusive maxima to exact arithmetic mean latency, largest observed
+sample, and overflow-bin count. Mean comparison uses exact integer arithmetic
+without floating point or truncating division, and all simultaneous misses are
+retained. Four cases cover insufficient evidence, inclusive equality,
+multi-signal misses, and a fractional mean boundary. Rebinning, distributed
+merge, latency-driven recommendation, durable/cross-cycle policy publication,
+native object fusion, foreign invocation, runtime clock acquisition, durable
+storage, and cross-process coordination remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

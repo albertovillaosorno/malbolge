@@ -516,10 +516,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Identical-schema histograms merge transactionally with exact rollback.
   Canonical revision-one latency bytes preserve extrema flags, `u128` totals,
 
-  bound/count pairs, and repeat snapshot validation after decode. Rebinning,
-  distributed/durable merge, latency-driven recommendation, durable/cross-cycle
-  policy publication, runtime clock acquisition, async queues, durable storage,
-  and broader production orchestration remain pending.
+  bound/count pairs, and repeat snapshot validation after decode.
+
+  A pure latency assessment gates on a positive caller-required sample count and
+  applies inclusive maxima to exact arithmetic mean latency, largest observed
+  sample, and overflow-bin count. Mean comparison uses exact integer arithmetic
+  without floating point or truncating division; four cases cover insufficient
+  evidence, inclusive equality, multi-signal misses, and a fractional mean
+  boundary.
+
+  Rebinning, distributed/durable merge, latency-driven recommendation,
+  durable/cross-cycle policy publication, runtime clock acquisition, async
+  queues, durable storage, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

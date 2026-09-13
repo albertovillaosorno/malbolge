@@ -326,6 +326,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Wire concrete tier policy and adapters.
+  - id: part-0059
+    path: composition/tier/cached_cycle/telemetry_latency_assessment.rs
+    kind: composition
+    language: rust
+    responsibility: Wire concrete tier policy and adapters.
 projects: []
 tests: []
 graph:

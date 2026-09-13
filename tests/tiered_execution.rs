@@ -133,6 +133,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
     NativeContinuationCachedRetryInterpreterOutcome,
+    NativeContinuationCachedRetryLatencyAssessment,
+    NativeContinuationCachedRetryLatencyAssessmentSignal,
+    NativeContinuationCachedRetryLatencyAssessmentThresholds,
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
@@ -161,7 +164,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindowCounter,
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
-    assess_cached_retry_telemetry, decode_cached_retry_latency_snapshot,
+    assess_cached_retry_latency, assess_cached_retry_telemetry,
+    decode_cached_retry_latency_snapshot,
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
@@ -50271,6 +50275,161 @@ fn cached_retry_latency_histogram()
 -> Result<NativeContinuationCachedRetryLatencyHistogram, String> {
     NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 10, 100])
         .map_err(|error| error.to_string())
+}
+
+fn record_cached_retry_latencies(
+    histogram: &mut NativeContinuationCachedRetryLatencyHistogram,
+    samples: &[u64],
+) -> Result<(), String> {
+    for &nanoseconds in samples {
+        let _record = histogram
+            .record(NativeContinuationCachedRetryLatencySample::new(
+                nanoseconds,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[test]
+fn cached_retry_latency_assessment_requires_sample_gate() -> Result<(), String>
+{
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10])?;
+    let required = nonzero_test_limit(2, "latency assessment samples")?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            required,
+            u64::MAX,
+            u64::MAX,
+            usize::MAX,
+        );
+    let assessment = assess_cached_retry_latency(&histogram, thresholds);
+    let NativeContinuationCachedRetryLatencyAssessment::Insufficient {
+        observed_samples,
+        required_samples,
+    } = assessment
+    else {
+        return Err(String::from("latency sample gate category drifted"));
+    };
+    if observed_samples == 1 && required_samples == required {
+        Ok(())
+    } else {
+        Err(String::from("latency sample gate evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_assessment_meets_inclusive_thresholds()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let required = nonzero_test_limit(2, "latency assessment samples")?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            required, 15, 20, 0,
+        );
+    let assessment = assess_cached_retry_latency(&histogram, thresholds);
+    let NativeContinuationCachedRetryLatencyAssessment::Meets { evidence } =
+        assessment
+    else {
+        return Err(String::from("inclusive latency assessment drifted"));
+    };
+    if evidence.samples() == 2
+        && evidence.total_nanoseconds() == 30
+        && evidence.maximum_nanoseconds() == Some(20)
+        && evidence.above_maximum() == 0
+        && thresholds.samples() == required
+        && thresholds.maximum_average_nanoseconds() == 15
+        && thresholds.maximum_nanoseconds() == 20
+        && thresholds.maximum_overflow_samples() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("inclusive latency evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_assessment_retains_all_missed_signals()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 100, 101])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(3, "latency assessment samples")?,
+            70,
+            100,
+            0,
+        );
+    let NativeContinuationCachedRetryLatencyAssessment::Misses {
+        evidence,
+        violations,
+    } = assess_cached_retry_latency(&histogram, thresholds)
+    else {
+        return Err(String::from("latency misses were not retained"));
+    };
+    if evidence.samples() == 3
+        && evidence.total_nanoseconds() == 211
+        && evidence.maximum_nanoseconds() == Some(101)
+        && evidence.above_maximum() == 1
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                AverageNanoseconds,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                MaximumNanoseconds,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                OverflowSamples,
+        )
+        && !violations.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency miss signals drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_assessment_does_not_truncate_average()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 11])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "latency assessment samples")?,
+            10,
+            11,
+            0,
+        );
+    let NativeContinuationCachedRetryLatencyAssessment::Misses {
+        evidence,
+        violations,
+    } = assess_cached_retry_latency(&histogram, thresholds)
+    else {
+        return Err(String::from("fractional latency mean was truncated"));
+    };
+    if evidence.total_nanoseconds() == 21
+        && violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                AverageNanoseconds,
+        )
+        && !violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                MaximumNanoseconds,
+        )
+        && !violations.contains(
+            NativeContinuationCachedRetryLatencyAssessmentSignal::
+                OverflowSamples,
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("fractional latency assessment drifted"))
+    }
 }
 
 #[test]
