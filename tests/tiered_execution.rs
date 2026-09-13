@@ -712,6 +712,10 @@ type OrdinaryCachedAcquisitionFailure = Box<
 type SelectedCachedRetryFailureOwner =
     SelectedRetryFailure<FakeNativeAdapterOperation, FakeNativeRunnerError>;
 type SelectedCachedRetryFailure = Box<SelectedCachedRetryFailureOwner>;
+type FusedCachedRetryCycleFailure = DirectFusedNativeCachedRetryCycleFailure<
+    FakeNativeAdapterOperation,
+    FakeNativeRunnerError,
+>;
 type TransactionalCachedAcquisitionFailure = Box<
     DirectFusedNativeTransactionalCachedRetryAcquisitionFailure<
         FakeNativeAdapterOperation,
@@ -19906,6 +19910,246 @@ const fn fused_cached_retry_cycle_request(
             isa,
         ),
     )
+}
+
+const fn fused_cached_retry_cycle_request_with_mode(
+    suspension: DirectFusedNativeScheduleSuspension,
+    max_native_attempts: usize,
+    isa: HostIsa,
+    acquisition_mode: DirectFusedNativeCachedRetryAcquisitionMode,
+) -> DirectFusedNativeCachedRetryCycleRequest {
+    fused_cached_retry_cycle_request(suspension, max_native_attempts, isa)
+        .with_acquisition_mode(acquisition_mode)
+}
+
+fn assert_transactional_cycle_block_failure(
+    cycle_failure: &FusedCachedRetryCycleFailure,
+    cache: &DirectFusedNativeLeaseCache,
+    seed_key: &NativeArtifactKey,
+) -> Result<(), String> {
+    let DirectFusedNativeCachedRetryCycleFailure::TransactionalCached {
+        attempt,
+        failure: transactional_failure,
+        prior_attempts,
+    } = cycle_failure
+    else {
+        return Err(String::from(
+            "transactional blocked cycle failure misclassified",
+        ));
+    };
+    let acquisition = transactional_failure.acquisition().ok_or_else(|| {
+        String::from("transactional cycle acquisition missing")
+    })?;
+    let batch = acquisition
+        .failure()
+        .batch_failure()
+        .ok_or_else(|| String::from("transactional cycle batch missing"))?;
+    if *attempt == 1
+        && prior_attempts.is_empty()
+        && batch.block().is_some()
+        && !batch.cache_committed()
+        && cache.keys().eq([seed_key])
+        && cache.active_len() == 1
+        && cache.retired_len() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "transactional blocked cycle changed cache authority",
+        ))
+    }
+}
+
+fn assert_transactional_guard_cycle(
+    outcome: &DirectFusedNativeCachedRetryCycleOutcome<FakeNativeRunnerError>,
+    cache: &DirectFusedNativeLeaseCache,
+    adapter: &FakeNativeExecutableAdapter,
+    expected: &NativeSequenceFixture,
+) -> Result<(), String> {
+    let DirectFusedNativeCachedRetryCycleOutcome::Interpreter(interpreter) =
+        outcome
+    else {
+        return Err(String::from(
+            "transactional guard cycle did not fall back",
+        ));
+    };
+    let [first, second] = interpreter.native_attempts() else {
+        return Err(String::from(
+            "transactional guard attempt evidence drifted",
+        ));
+    };
+    let DirectFusedNativeScheduleOutcome::Completed(completion) =
+        interpreter.outcome()
+    else {
+        return Err(String::from("transactional guard fallback suspended"));
+    };
+    if interpreter.attempts() == 2
+        && first.attempt() == 1
+        && second.attempt() == 2
+        && first
+            .cache_dispositions()
+            .first()
+            .is_some_and(|disposition| !disposition.is_hit())
+        && second
+            .cache_dispositions()
+            .first()
+            .is_some_and(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        && cache.active_len() == 1
+        && adapter.operations.len() == 4
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("transactional guard cycle reuse drifted"))
+    }
+}
+
+#[test]
+fn fused_transactional_cached_cycle_preserves_blocked_authority()
+-> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let seed = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let seed_key = seed.key().clone();
+    let capacity = nonzero_test_limit(1, "transactional cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1278)?,
+        native_executable_address(0x94_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &seed)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let request = fused_cached_retry_cycle_request_with_mode(
+        pause,
+        2,
+        HostIsa::X86_64,
+        DirectFusedNativeCachedRetryAcquisitionMode::Transactional,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(failure) = execute_cached_direct_fused_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    ) else {
+        return Err(String::from("transactional blocked cycle executed"));
+    };
+    assert_transactional_cycle_block_failure(&failure, &cache, &seed_key)?;
+    if runner.calls != 0 {
+        return Err(String::from("transactional blocked cycle ran native"));
+    }
+    let _summary = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_transactional_cached_cycle_reuses_guard_hit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "transactional cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1279)?,
+        native_executable_address(0x95_0000)?,
+    );
+    let request = fused_cached_retry_cycle_request_with_mode(
+        pause,
+        2,
+        HostIsa::X86_64,
+        DirectFusedNativeCachedRetryAcquisitionMode::Transactional,
+    );
+    if request.acquisition_mode()
+        != DirectFusedNativeCachedRetryAcquisitionMode::Transactional
+    {
+        return Err(String::from("transactional cycle mode drifted"));
+    }
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("transactional guard cycle: {failure:?}"))?;
+    assert_transactional_guard_cycle(&outcome, &cache, &adapter, &expected)?;
+    if runner.calls != 2 {
+        return Err(String::from("transactional guard runner count drifted"));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_transactional_cached_cycle_keeps_runner_failure_terminal()
+-> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "transactional cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1280)?,
+        native_executable_address(0x96_0000)?,
+    );
+    let request = fused_cached_retry_cycle_request_with_mode(
+        pause,
+        2,
+        HostIsa::AArch64,
+        DirectFusedNativeCachedRetryAcquisitionMode::Transactional,
+    );
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("transactional runner cycle: {failure:?}"))?;
+    let DirectFusedNativeCachedRetryCycleOutcome::NativeFailure(failure) =
+        outcome
+    else {
+        return Err(String::from(
+            "transactional runner failure was not terminal",
+        ));
+    };
+    if failure.attempt() != 1
+        || !failure.prior_attempts().is_empty()
+        || failure.failure().failure().completed_steps() != 0
+        || !matches!(
+            failure.failure().disposition(),
+            DirectFusedNativeRetryDisposition::Resumable(_)
+        )
+        || cache.active_len() != 1
+        || runner.calls != 1
+    {
+        return Err(String::from(
+            "transactional runner failure rebase drifted",
+        ));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[test]

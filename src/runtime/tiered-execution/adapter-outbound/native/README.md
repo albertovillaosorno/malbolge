@@ -590,23 +590,30 @@ and preflights the complete FIFO/weighted fit before changing active or retired
 authority. Late load, capacity, or live-lease blockage therefore preserves the
 prior cache queues and usage, while staged cleanup failure remains retryable.
 Post-publication victim cleanup failure reports committed acquisition plus exact
-cleanup ownership rather than being misreported as rollback. The cached
-retry cycle continues to use its ordinary acquisition path independently.
+cleanup ownership rather than being misreported as rollback. The bounded
+cached cycle may select this path explicitly; ordinary acquisition remains its
+compatibility default.
 
 A separate transactional one-attempt cached retry coordinator consumes that
 whole-plan acquisition boundary before lease binding or native execution.
 Pre-publication rollback and post-publication cleanup failure both stop before
 the runner while restoring the admitted retry plus exact transaction ownership;
 success binds the committed leased sequence through the existing resident retry
-executor. The ordinary cached retry and bounded cached cycle remain unchanged.
+executor. The ordinary one-attempt cached retry remains unchanged.
 
 An explicit one-attempt acquisition-mode request now selects ordinary or
 transactional cache semantics without inferring policy from cache state.
 Mode-tagged failures preserve the selected coordinator's exact ownership. Under
 live FIFO blockage, ordinary mode retains its visible retire-before-block
-effect,
-while transactional mode preserves active authority. The bounded cached cycle
-still selects ordinary acquisition until cycle policy owns this mode explicitly.
+effect, while transactional mode preserves active authority.
+
+The bounded cached cycle now carries that explicit mode across every native
+turn; `new()` keeps ordinary acquisition as the compatibility default.
+Transactional acquisition or binding failure is terminal with exact transaction
+ownership plus prior successful-attempt evidence. Execution failure in either
+mode converges on the same semantic rebase and explicit lease-return path.
+Transactional guard retries preserve active authority and exact-hit reuse across
+turns.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

@@ -13,16 +13,16 @@
 //     misses.
 // - Must-Not:
 //   - Retry hard failures, infer attempt limits, release active lookup
-//     authority, or roll back visible cache effects.
+//     authority, or infer cache acquisition mode from mutable state.
 // - Allows:
-//   - Inputs: exact suspension, attempt policy, host, fused cache, and
-//     adapters.
+//   - Inputs: exact suspension, attempt policy, host, cache acquisition mode,
+//     fused cache, and adapters.
 //   - Outputs: normative fallback, completion, native failure, or owned
 //     failure.
 //   - Side effects: bounded resident acquisitions, native attempts, and
 //     explicit lease-return reconciliation.
 // - Split-When:
-//   - Transactional cache rollback, telemetry, or asynchronous policy gains
+//   - Adaptive acquisition selection, telemetry, or asynchronous policy gains
 //     independent ownership.
 // - Merge-When:
 //   - Product orchestration owns the complete cached tier lifecycle.
@@ -33,8 +33,8 @@
 // - Usage:
 //   - Execute from one scheduler `NativeRetry` suspension with fixed policy.
 // - Defaults:
-//   - Returned leases preserve active cache authority for exact subsequent
-//     hits.
+//   - Ordinary acquisition remains the compatibility default; returned leases
+//     preserve active cache authority for exact subsequent hits.
 //
 
 //! Bounded cache-aware fused native retry cycles.
@@ -43,15 +43,19 @@ use super::fused_lease_cache::{
     DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheReleaseSummary,
 };
-use super::fused_sequence_cached_retry::{
-    DirectFusedNativeCachedRetryFailure,
-    execute_cached_direct_fused_native_retry,
+use super::fused_sequence_cached_retry::DirectFusedNativeCachedRetryFailure;
+use super::fused_sequence_cached_retry_mode::{
+    DirectFusedNativeCachedRetryAcquisitionMode,
+    DirectFusedNativeSelectedCachedRetryFailure,
+    DirectFusedNativeSelectedCachedRetryRequest,
+    execute_selected_cached_direct_fused_native_retry,
 };
 use super::fused_sequence_handoff::{
     DirectFusedNativeHandoffCompletion,
     DirectFusedNativeHandoffExecutionFailure,
 };
 use super::fused_sequence_leased_retry::{
+    DirectFusedNativeLeasedRetryExecutionFailure,
     DirectFusedNativeLeasedRetryFailureRebaseFailure,
     DirectFusedNativeLeasedRetryRebaseFailure,
 };
@@ -80,12 +84,14 @@ use super::fused_sequence_scheduler::{
     DirectFusedNativeScheduleSuspension, DirectFusedNativeYieldTarget,
     schedule_direct_fused_native_handoff,
 };
+use super::fused_sequence_transactional_cached_retry as txn_retry;
 use super::platform::NativeExecutableMemoryAdapter;
 use super::runner::DirectFusedNativeRunner;
 
 /// Complete request for one bounded cache-aware fused retry cycle.
 #[derive(Debug, Eq, PartialEq)]
 pub struct DirectFusedNativeCachedRetryCycleRequest {
+    acquisition_mode: DirectFusedNativeCachedRetryAcquisitionMode,
     attempts: usize,
     host: DirectFusedNativeRetryHost,
     policy: DirectFusedNativeRetryPolicy,
@@ -148,7 +154,7 @@ pub enum DirectFusedNativeCachedRetryRescheduleFailure {
 /// Hard failure retaining prior successful attempt evidence.
 #[derive(Debug)]
 pub enum DirectFusedNativeCachedRetryCycleFailure<MemoryError, RunnerError> {
-    /// Cache acquisition or retry/lease binding failed before semantic rebase.
+    /// Ordinary cache acquisition or binding failed before semantic rebase.
     Cached {
         /// One-based native attempt that failed.
         attempt: usize,
@@ -223,6 +229,15 @@ pub enum DirectFusedNativeCachedRetryCycleFailure<MemoryError, RunnerError> {
         /// Successful attempts completed earlier in this cycle invocation.
         prior_attempts: Vec<DirectFusedNativeCachedRetryAttempt>,
     },
+    /// Transactional cache acquisition or binding failed before execution.
+    TransactionalCached {
+        /// One-based native attempt that failed.
+        attempt: usize,
+        /// Exact transactional acquisition or binding failure ownership.
+        failure: Box<TransactionalCachedRetryFailure<MemoryError, RunnerError>>,
+        /// Successful attempts completed earlier in this cycle invocation.
+        prior_attempts: Vec<DirectFusedNativeCachedRetryAttempt>,
+    },
 }
 
 /// Result of one bounded cache-aware fused retry cycle.
@@ -240,6 +255,24 @@ type CachedRetryCycleAdapterResult<Adapter, Runner> =
 
 type CachedRetryCycleAdapterFailure<Adapter, Runner> =
     DirectFusedNativeCachedRetryFailure<
+        <Adapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as DirectFusedNativeRunner>::Error,
+    >;
+
+type TransactionalCachedRetryFailure<MemoryError, RunnerError> =
+    txn_retry::DirectFusedNativeTransactionalCachedRetryFailure<
+        MemoryError,
+        RunnerError,
+    >;
+
+type CachedRetryCycleSelectedFailure<Adapter, Runner> =
+    DirectFusedNativeSelectedCachedRetryFailure<
+        <Adapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as DirectFusedNativeRunner>::Error,
+    >;
+
+type CachedRetryCycleTransactionalFailure<Adapter, Runner> =
+    TransactionalCachedRetryFailure<
         <Adapter as NativeExecutableMemoryAdapter>::Error,
         <Runner as DirectFusedNativeRunner>::Error,
     >;
@@ -287,7 +320,17 @@ enum DirectFusedNativeCachedRetryProgress<RunnerError> {
 }
 
 impl DirectFusedNativeCachedRetryCycleRequest {
-    /// Constructs one complete bounded cache-aware fused retry request.
+    /// Returns cache-publication semantics selected for every native turn.
+    #[must_use]
+    pub const fn acquisition_mode(
+        &self,
+    ) -> DirectFusedNativeCachedRetryAcquisitionMode {
+        self.acquisition_mode
+    }
+
+    /// Constructs one bounded cache-aware fused retry request.
+    ///
+    /// Ordinary cache acquisition remains the compatibility default.
     #[must_use]
     pub const fn new(
         policy: DirectFusedNativeRetryPolicy,
@@ -296,11 +339,23 @@ impl DirectFusedNativeCachedRetryCycleRequest {
         host: DirectFusedNativeRetryHost,
     ) -> Self {
         Self {
+            acquisition_mode:
+                DirectFusedNativeCachedRetryAcquisitionMode::Ordinary,
             attempts,
             host,
             policy,
             suspension,
         }
+    }
+
+    /// Replaces cache-publication semantics for every native turn.
+    #[must_use]
+    pub const fn with_acquisition_mode(
+        mut self,
+        acquisition_mode: DirectFusedNativeCachedRetryAcquisitionMode,
+    ) -> Self {
+        self.acquisition_mode = acquisition_mode;
+        self
     }
 }
 
@@ -424,6 +479,7 @@ where
     Runner: DirectFusedNativeRunner,
 {
     let DirectFusedNativeCachedRetryCycleRequest {
+        acquisition_mode,
         mut attempts,
         host,
         policy,
@@ -449,6 +505,7 @@ where
             DirectFusedNativeRetryRoute::Native(native_route) => {
                 match execute_native_route(
                     *native_route,
+                    acquisition_mode,
                     &mut context,
                     &native_attempts,
                 )? {
@@ -495,6 +552,7 @@ fn execute_interpreter_route<MemoryError, RunnerError>(
 
 fn execute_native_route<Adapter, Runner>(
     route: DirectFusedNativeRetryRoutingNativeRoute,
+    acquisition_mode: DirectFusedNativeCachedRetryAcquisitionMode,
     context: &mut DirectFusedNativeCachedRetryCycleContext<'_, Adapter, Runner>,
     prior_attempts: &[DirectFusedNativeCachedRetryAttempt],
 ) -> CachedRetryCycleRouteResult<Adapter, Runner>
@@ -503,18 +561,22 @@ where
     Runner: DirectFusedNativeRunner,
 {
     let attempt = route.attempt();
-    let execution_result = execute_cached_direct_fused_native_retry(
+    let selected_request = DirectFusedNativeSelectedCachedRetryRequest::new(
+        acquisition_mode,
+        route.into_retry(),
+    );
+    let execution_result = execute_selected_cached_direct_fused_native_retry(
+        selected_request,
         context.cache,
         context.adapter,
         context.runner,
-        route.into_retry(),
     );
     let execution = match execution_result {
         Ok(successful_execution) => successful_execution,
-        Err(cached_failure) => {
-            return handle_cached_failure(
+        Err(selected_failure) => {
+            return handle_selected_cached_failure(
                 attempt,
-                *cached_failure,
+                *selected_failure,
                 context,
                 prior_attempts,
             );
@@ -585,6 +647,31 @@ fn route_returned_success<MemoryError, RunnerError>(
     }
 }
 
+fn handle_selected_cached_failure<Adapter, Runner>(
+    attempt: usize,
+    selected_failure: CachedRetryCycleSelectedFailure<Adapter, Runner>,
+    context: &mut DirectFusedNativeCachedRetryCycleContext<'_, Adapter, Runner>,
+    prior_attempts: &[DirectFusedNativeCachedRetryAttempt],
+) -> CachedRetryCycleRouteResult<Adapter, Runner>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+    Runner: DirectFusedNativeRunner,
+{
+    match selected_failure {
+        DirectFusedNativeSelectedCachedRetryFailure::Ordinary(failure) => {
+            handle_cached_failure(attempt, *failure, context, prior_attempts)
+        },
+        DirectFusedNativeSelectedCachedRetryFailure::Transactional(failure) => {
+            handle_transactional_cached_failure(
+                attempt,
+                *failure,
+                context,
+                prior_attempts,
+            )
+        },
+    }
+}
+
 fn handle_cached_failure<Adapter, Runner>(
     attempt: usize,
     cached_failure: CachedRetryCycleAdapterFailure<Adapter, Runner>,
@@ -597,38 +684,12 @@ where
 {
     match cached_failure {
         DirectFusedNativeCachedRetryFailure::Execution(execution) => {
-            let rebased = execution.rebase().map_err(|rebase_failure| {
-                Box::new(
-                    DirectFusedNativeCachedRetryCycleFailure::FailureRebase {
-                        attempt,
-                        failure: rebase_failure,
-                        prior_attempts: prior_attempts.to_vec(),
-                    },
-                )
-            })?;
-            let returned = return_direct_fused_native_retry_failure_leases(
-                context.cache,
-                context.adapter,
-                rebased,
+            handle_cached_execution_failure(
+                attempt,
+                execution,
+                context,
+                prior_attempts,
             )
-            .map_err(|return_failure| {
-                Box::new(
-                    DirectFusedNativeCachedRetryCycleFailure::FailureReturn {
-                        attempt,
-                        failure: return_failure,
-                        prior_attempts: prior_attempts.to_vec(),
-                    },
-                )
-            })?;
-            Ok(DirectFusedNativeCachedRetryProgress::Terminal(
-                DirectFusedNativeCachedRetryCycleOutcome::NativeFailure(
-                    Box::new(DirectFusedNativeCachedRetryNativeFailure {
-                        attempt,
-                        failure: returned,
-                        prior_attempts: prior_attempts.to_vec(),
-                    }),
-                ),
-            ))
         },
         failure @ (DirectFusedNativeCachedRetryFailure::Acquisition(_)
         | DirectFusedNativeCachedRetryFailure::Binding(_)) => {
@@ -639,6 +700,76 @@ where
             }))
         },
     }
+}
+
+fn handle_transactional_cached_failure<Adapter, Runner>(
+    attempt: usize,
+    cached_failure: CachedRetryCycleTransactionalFailure<Adapter, Runner>,
+    context: &mut DirectFusedNativeCachedRetryCycleContext<'_, Adapter, Runner>,
+    prior_attempts: &[DirectFusedNativeCachedRetryAttempt],
+) -> CachedRetryCycleRouteResult<Adapter, Runner>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+    Runner: DirectFusedNativeRunner,
+{
+    match cached_failure {
+        TransactionalCachedRetryFailure::Execution(execution) => {
+            handle_cached_execution_failure(
+                attempt,
+                execution,
+                context,
+                prior_attempts,
+            )
+        },
+        failure @ (TransactionalCachedRetryFailure::Acquisition(_)
+        | TransactionalCachedRetryFailure::Binding(_)) => Err(Box::new(
+            DirectFusedNativeCachedRetryCycleFailure::TransactionalCached {
+                attempt,
+                failure: Box::new(failure),
+                prior_attempts: prior_attempts.to_vec(),
+            },
+        )),
+    }
+}
+
+fn handle_cached_execution_failure<Adapter, Runner>(
+    attempt: usize,
+    execution: Box<DirectFusedNativeLeasedRetryExecutionFailure<Runner::Error>>,
+    context: &mut DirectFusedNativeCachedRetryCycleContext<'_, Adapter, Runner>,
+    prior_attempts: &[DirectFusedNativeCachedRetryAttempt],
+) -> CachedRetryCycleRouteResult<Adapter, Runner>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+    Runner: DirectFusedNativeRunner,
+{
+    let rebased = execution.rebase().map_err(|rebase_failure| {
+        Box::new(DirectFusedNativeCachedRetryCycleFailure::FailureRebase {
+            attempt,
+            failure: rebase_failure,
+            prior_attempts: prior_attempts.to_vec(),
+        })
+    })?;
+    let returned = return_direct_fused_native_retry_failure_leases(
+        context.cache,
+        context.adapter,
+        rebased,
+    )
+    .map_err(|return_failure| {
+        Box::new(DirectFusedNativeCachedRetryCycleFailure::FailureReturn {
+            attempt,
+            failure: return_failure,
+            prior_attempts: prior_attempts.to_vec(),
+        })
+    })?;
+    Ok(DirectFusedNativeCachedRetryProgress::Terminal(
+        DirectFusedNativeCachedRetryCycleOutcome::NativeFailure(Box::new(
+            DirectFusedNativeCachedRetryNativeFailure {
+                attempt,
+                failure: returned,
+                prior_attempts: prior_attempts.to_vec(),
+            },
+        )),
+    ))
 }
 
 fn reschedule_guard<MemoryError, RunnerError>(
