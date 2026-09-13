@@ -52,6 +52,7 @@ mod fused_resident;
 mod fused_resident_cache;
 mod fused_sequence;
 mod fused_sequence_execution;
+mod fused_sequence_lease;
 mod fused_sequence_plan;
 mod fused_sequence_transaction;
 mod invocation;
@@ -315,6 +316,11 @@ pub use fused_sequence_execution::{
     DirectFusedNativeSequenceExecutionOutcome,
     DirectFusedNativeSequenceExecutionResult,
     execute_loaded_direct_fused_native_sequence,
+};
+pub use fused_sequence_lease::{
+    DirectFusedNativeLeasedSequence,
+    DirectFusedNativeLeasedSequenceAdmissionError,
+    DirectFusedNativeLeasedSequenceAdmissionFailure,
 };
 pub use fused_sequence_plan::{
     DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,

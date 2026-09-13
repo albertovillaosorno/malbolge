@@ -105,6 +105,24 @@ impl<RunnerError> DirectFusedNativeSequenceExecutionFailure<RunnerError> {
         &self.cause
     }
 
+    pub(super) const fn new(
+        cause: Box<
+            resident::DirectFusedNativeOwnerExecutionFailure<RunnerError>,
+        >,
+        completed_regions: usize,
+        completed_steps: usize,
+        observation: ProfileMachineObservation,
+    ) -> Self {
+        Self {
+            cause,
+            completed_regions,
+            completed_steps,
+            observation,
+            region_index: completed_regions,
+            resume_step: completed_steps,
+        }
+    }
+
     /// Returns the exact runtime observation at the failed region entry.
     #[must_use]
     pub const fn observation(&self) -> ProfileMachineObservation {
@@ -220,14 +238,12 @@ where
                 NativeRegionBuffers::new(&mut *memory, input, &mut *output),
             )
             .map_err(|cause| {
-                Box::new(DirectFusedNativeSequenceExecutionFailure {
+                Box::new(DirectFusedNativeSequenceExecutionFailure::new(
                     cause,
-                    completed_regions: region_index,
+                    region_index,
                     completed_steps,
                     observation,
-                    region_index,
-                    resume_step: completed_steps,
-                })
+                ))
             })?;
         match outcome {
             NativeRegionInvocationOutcome::Applied(next) => {

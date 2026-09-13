@@ -484,8 +484,13 @@ failure resumes before that whole fused region and leaves the mapping reusable.
 One-shot fused sequence orchestration now composes full-plan load, loaded
 execution, and aggregate release. Load/execution failure keeps cleanup retry
 evidence separate from semantic failure, while final-release failure preserves
-the committed Applied or GuardMiss outcome. Fused sequence-cache integration
-remains absent.
+the committed Applied or GuardMiss outcome.
+
+Exact cache-region leases can now be bound to one admitted fused sequence only
+when ordered lease keys match every admitted artifact. Admission rejection
+returns every supplied lease, while execution uses the retained mappings with no
+adapter work and preserves the same region/semantic progress contract. Automatic
+multi-region cache acquisition and rollback policy remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

@@ -223,9 +223,10 @@ use execution_native::{
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
-    DirectFusedNativeLeaseCache,
+    DirectFusedNativeLease, DirectFusedNativeLeaseCache,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
-    DirectFusedNativeLeaseCacheInvalidation,
+    DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedSequence,
+    DirectFusedNativeLeasedSequenceAdmissionError,
     DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeOwnerLoadFailure,
     DirectFusedNativeResidentCacheAcquireFailure,
     DirectFusedNativeResidentCacheDisposition,
@@ -16240,6 +16241,268 @@ fn fused_direct_loaded_sequence_exec_completion_drift_rolls_back()
     loaded
         .release(&mut adapter)
         .map_err(|error| format!("fused drift sequence release: {error}"))
+}
+
+fn fused_direct_leased_sequence(
+    isa: HostIsa,
+    cache: &mut DirectFusedNativeLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> Result<DirectFusedNativeLeasedSequence, String> {
+    let artifact = verified_fused_direct_sequence_object(isa)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused leased plan: {error}"))?;
+    let lease = cache
+        .ensure(adapter, &artifact)
+        .map_err(|error| format!("fused leased ensure: {error}"))?
+        .into_lease();
+    DirectFusedNativeLeasedSequence::new(&plan, vec![lease])
+        .map_err(|failure| failure.error().to_string())
+}
+
+#[test]
+fn fused_direct_sequence_lease_hit_executes_without_adapter_work()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused lease hit plan: {error}"))?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(805)?,
+        native_executable_address(0x3d_0000)?,
+    );
+    let first = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused lease first ensure: {error}"))?
+        .into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused lease hit ensure: {error}"))?
+        .into_lease();
+    if !first.shares_resident_with(&second)
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused sequence lease hit remapped resident"));
+    }
+    let leased = DirectFusedNativeLeasedSequence::new(&plan, vec![second])
+        .map_err(|failure| failure.error().to_string())?;
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = leased
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused leased execution: {error}"))?;
+    if leased.len() != 1
+        || leased.is_empty()
+        || leased.plan() != &plan
+        || outcome.completed_steps() != 2
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused leased sequence execution drifted"));
+    }
+    drop(first);
+    drop(leased.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_lease_rejects_identity_and_retains_lease()
+-> Result<(), String> {
+    let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&x86))
+        .map_err(|error| format!("fused lease identity plan: {error}"))?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(806)?,
+        native_executable_address(0x3e_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &arm)
+        .map_err(|error| format!("fused lease identity ensure: {error}"))?
+        .into_lease();
+    let Err(failure) = DirectFusedNativeLeasedSequence::new(&plan, vec![lease])
+    else {
+        return Err(String::from("fused leased sequence accepted wrong key"));
+    };
+    if failure.error()
+        != (DirectFusedNativeLeasedSequenceAdmissionError::LeaseIdentity {
+            index: 0,
+        })
+        || failure.leases().len() != 1
+        || failure.leases().first().map(DirectFusedNativeLease::key)
+            != Some(arm.key())
+    {
+        return Err(String::from(
+            "fused lease identity rejection lost ownership",
+        ));
+    }
+    drop((*failure).into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_lease_rejects_count_and_retains_leases()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused lease count plan: {error}"))?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(807)?,
+        native_executable_address(0x3f_0000)?,
+    );
+    let lease = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused lease count ensure: {error}"))?
+        .into_lease();
+    let clone = lease.clone();
+    let Err(failure) =
+        DirectFusedNativeLeasedSequence::new(&plan, vec![lease, clone])
+    else {
+        return Err(String::from("fused leased sequence accepted wrong count"));
+    };
+    if failure.error()
+        != (DirectFusedNativeLeasedSequenceAdmissionError::LeaseCount {
+            expected: 1,
+            observed: 2,
+        })
+        || failure.leases().len() != 2
+        || !matches!(
+            (failure.leases().first(), failure.leases().get(1)),
+            (Some(first), Some(second)) if first.shares_resident_with(second)
+        )
+    {
+        return Err(String::from("fused lease count rejection lost ownership"));
+    }
+    drop((*failure).into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_lease_guard_miss_is_resident() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(809)?,
+        native_executable_address(0x41_0000)?,
+    );
+    let leased = fused_direct_leased_sequence(
+        HostIsa::X86_64,
+        &mut cache,
+        &mut adapter,
+    )?;
+    let entry = leased.plan().entry();
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let outcome = leased
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused leased guard: {error}"))?;
+    if outcome
+        != (DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 0,
+            observation: entry,
+        })
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations != loaded_operations
+        || cache.active_len() != 1
+    {
+        return Err(String::from("fused leased guard changed residency"));
+    }
+    drop(leased.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_lease_runner_failure_reuses() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(808)?,
+        native_executable_address(0x40_0000)?,
+    );
+    let leased = fused_direct_leased_sequence(
+        HostIsa::X86_64,
+        &mut cache,
+        &mut adapter,
+    )?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut failing = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = leased.execute(
+        &mut failing,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("fused leased runner failure was ignored"));
+    };
+    if failure.completed_steps() != 0
+        || failure.region_index() != 0
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused leased failure changed residency"));
+    }
+    let mut succeeding =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = leased
+        .execute(
+            &mut succeeding,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused leased recovery: {error}"))?;
+    if outcome.completed_steps() != 2
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused leased sequence was not reusable"));
+    }
+    drop(leased.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn assert_fused_sequence_transaction_applied(

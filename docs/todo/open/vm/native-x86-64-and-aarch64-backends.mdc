@@ -269,8 +269,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   One-shot fused sequence orchestration now composes full-plan load, loaded
   execution, and aggregate release. Load/execution failure keeps cleanup retry
   evidence separate from semantic failure, while final-release failure preserves
-  the committed Applied or GuardMiss outcome. Fused sequence-cache integration
-  remains absent.
+  the committed Applied or GuardMiss outcome.
+
+  Exact cache-region leases can now be bound to one admitted fused sequence only
+  when ordered lease keys match every admitted artifact. Admission rejection
+  returns every supplied lease, while execution uses retained mappings without
+  adapter work and preserves the same region/semantic progress contract.
+  Automatic multi-region cache acquisition and rollback policy remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only
