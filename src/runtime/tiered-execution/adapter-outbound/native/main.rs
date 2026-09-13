@@ -52,6 +52,7 @@ mod fused_resident;
 mod fused_resident_cache;
 mod fused_sequence;
 mod fused_sequence_cache;
+mod fused_sequence_continuation;
 mod fused_sequence_execution;
 mod fused_sequence_lease;
 mod fused_sequence_plan;
@@ -317,6 +318,10 @@ pub use fused_sequence_cache::{
     DirectFusedNativeSequenceCacheAcquireResult,
     DirectFusedNativeSequenceCacheAcquisition,
     acquire_direct_fused_native_sequence,
+};
+pub use fused_sequence_continuation::{
+    DirectFusedNativeContinuation, DirectFusedNativeContinuationError,
+    DirectFusedNativeContinuationReason, DirectFusedNativeContinuationResult,
 };
 pub use fused_sequence_execution::{
     DirectFusedNativeSequenceExecutionFailure,

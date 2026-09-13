@@ -406,8 +406,13 @@ adapter work and preserves the same region/semantic progress contract.
 Ordered cache acquisition now calls the existing per-region lease cache in
 admitted order and returns exact dispositions plus indexed failure ownership.
 Successful `ensure()` effects remain visible; later failure does not restore
-FIFO or retired state and retains every earlier lease. Transactional cache
-rollback and continuation policy remain absent.
+FIFO or retired state and retains every earlier lease.
+
+An immutable fused continuation now validates GuardMiss or indexed failure at
+exact fused-region boundaries. It retains complete/remaining fused keys,
+flattened verified source programs, canonical geometry, final outcome, and both
+region/source-step resume indices; completed work yields no continuation.
+Transactional cache rollback and concrete interpreter handoff remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -591,9 +596,9 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback/continuation policy, concrete executable-memory
-and foreign-call adapters, runtime integration, and concrete instruction-cache
-synchronization remain incomplete.
+fused sequence-cache rollback, concrete fused interpreter handoff, concrete
+executable-memory and foreign-call adapters, runtime integration, and concrete
+instruction-cache synchronization remain incomplete.
 
 ## Invariants
 

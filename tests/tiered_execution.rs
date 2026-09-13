@@ -222,9 +222,10 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
-    DirectFusedNativeLease, DirectFusedNativeLeaseCache,
-    DirectFusedNativeLeaseCacheDisposition,
+    DirectFusedInvocationError, DirectFusedNativeContinuation,
+    DirectFusedNativeContinuationError, DirectFusedNativeContinuationReason,
+    DirectFusedNativeExecutableOwner, DirectFusedNativeLease,
+    DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
     DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedSequence,
     DirectFusedNativeLeasedSequenceAdmissionError,
@@ -16641,6 +16642,215 @@ fn fused_direct_sequence_cache_acquire_exposes_retirement_block()
         .reconcile_retired(&mut adapter)
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+#[test]
+fn fused_direct_continuation_tracks_guard_miss() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused continuation plan: {error}"))?;
+    let outcome = DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+        region_index: 0,
+        resume_step: 0,
+        observation: plan.entry(),
+    };
+    let continuation =
+        DirectFusedNativeContinuation::from_outcome(&plan, outcome)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("fused guard miss lost continuation")
+            })?;
+    let source = artifact.admission().source_plan();
+    let expected_geometry =
+        malbolge::ProfileExecutionGeometry::canonical(current_profile());
+    if continuation.complete_region_keys() == from_ref(artifact.key())
+        && continuation.remaining_region_keys() == from_ref(artifact.key())
+        && continuation.remaining_programs() == source.programs()
+        && continuation.remaining_steps() == 2
+        && continuation.resume_region() == 0
+        && continuation.resume_step() == 0
+        && continuation.observation() == plan.entry()
+        && continuation.expected_exit() == plan.exit()
+        && continuation.expected_outcome() == plan.outcome()
+        && continuation.geometry() == expected_geometry
+        && continuation.reason()
+            == DirectFusedNativeContinuationReason::GuardMiss
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused guard continuation suffix drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_continuation_omits_completed_work() -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+            .map_err(|error| {
+                format!("fused complete continuation plan: {error}")
+            })?;
+        let outcome = DirectFusedNativeSequenceExecutionOutcome::Applied {
+            observation: plan.exit(),
+            regions: plan.len(),
+            semantic_steps: plan.semantic_steps(),
+        };
+        if DirectFusedNativeContinuation::from_outcome(&plan, outcome)
+            .map_err(|error| error.to_string())?
+            .is_some()
+        {
+            return Err(format!("fused completion retained work: {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_continuation_rejects_forged_applied() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused forged applied plan: {error}"))?;
+    let wrong_regions = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::Applied {
+            observation: plan.exit(),
+            regions: 0,
+            semantic_steps: plan.semantic_steps(),
+        },
+    );
+    let wrong_steps = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::Applied {
+            observation: plan.exit(),
+            regions: plan.len(),
+            semantic_steps: 1,
+        },
+    );
+    let wrong_exit = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::Applied {
+            observation: plan.entry(),
+            regions: plan.len(),
+            semantic_steps: plan.semantic_steps(),
+        },
+    );
+    if wrong_regions
+        == Err(DirectFusedNativeContinuationError::AppliedRegions {
+            expected: 1,
+            observed: 0,
+        })
+        && wrong_steps
+            == Err(DirectFusedNativeContinuationError::AppliedSteps {
+                expected: 2,
+                observed: 1,
+            })
+        && wrong_exit
+            == Err(DirectFusedNativeContinuationError::AppliedObservation)
+    {
+        Ok(())
+    } else {
+        Err(String::from("forged fused applied outcome was admitted"))
+    }
+}
+
+#[test]
+fn fused_direct_continuation_rejects_forged_guard() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused forged guard plan: {error}"))?;
+    let wrong_region = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 1,
+            resume_step: 2,
+            observation: plan.exit(),
+        },
+    );
+    let wrong_resume = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 1,
+            observation: plan.entry(),
+        },
+    );
+    let wrong_observation = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 0,
+            observation: plan.exit(),
+        },
+    );
+    if wrong_region
+        == Err(DirectFusedNativeContinuationError::ResumeRegion {
+            observed: 1,
+            regions: 1,
+        })
+        && wrong_resume
+            == Err(DirectFusedNativeContinuationError::ResumeStep {
+                expected: 0,
+                observed: 1,
+            })
+        && wrong_observation
+            == Err(DirectFusedNativeContinuationError::ResumeObservation {
+                region: 0,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("forged fused guard outcome was admitted"))
+    }
+}
+
+#[test]
+fn fused_direct_continuation_tracks_execution_failure() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::AArch64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(813)?,
+        native_executable_address(0x45_0000)?,
+    );
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused continuation load: {error}"))?;
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("fused continuation runner failure ignored"));
+    };
+    let continuation =
+        DirectFusedNativeContinuation::from_failure(&plan, &failure)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| String::from("fused failure lost continuation"))?;
+    let source = plan
+        .artifacts()
+        .first()
+        .ok_or_else(|| String::from("fused continuation artifact missing"))?
+        .admission()
+        .source_plan();
+    if continuation.reason()
+        != DirectFusedNativeContinuationReason::ExecutionFailure
+        || continuation.resume_region() != 0
+        || continuation.resume_step() != 0
+        || continuation.remaining_programs() != source.programs()
+        || continuation.remaining_steps() != 2
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+    {
+        return Err(String::from(
+            "fused failure continuation evidence drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused continuation release: {error}"))
 }
 
 fn assert_fused_sequence_transaction_applied(

@@ -494,8 +494,13 @@ adapter work and preserves the same region/semantic progress contract.
 Ordered cache acquisition now calls the existing per-region lease cache in
 admitted order and returns exact dispositions plus indexed failure ownership.
 Successful `ensure()` effects remain visible; later failure does not restore
-FIFO or retired state and retains every earlier lease. Transactional cache
-rollback and continuation policy remain absent.
+FIFO or retired state and retains every earlier lease.
+
+An immutable fused continuation now validates GuardMiss or indexed failure at
+exact fused-region boundaries. It retains complete/remaining fused keys,
+flattened verified source programs, canonical geometry, final outcome, and both
+region/source-step resume indices; completed work yields no continuation.
+Transactional cache rollback and concrete interpreter handoff remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
