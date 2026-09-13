@@ -222,9 +222,10 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedInvocationError, DirectFusedNativeContinuation,
-    DirectFusedNativeContinuationError, DirectFusedNativeContinuationReason,
-    DirectFusedNativeExecutableOwner, DirectFusedNativeHandoffAdmissionError,
+    DirectFusedInvocationError, DirectFusedNativeCachedRetryFailure,
+    DirectFusedNativeContinuation, DirectFusedNativeContinuationError,
+    DirectFusedNativeContinuationReason, DirectFusedNativeExecutableOwner,
+    DirectFusedNativeHandoffAdmissionError,
     DirectFusedNativeHandoffBudgetOutcome,
     DirectFusedNativeHandoffExecutionCause,
     DirectFusedNativeInterpreterHandoff, DirectFusedNativeLease,
@@ -360,8 +361,9 @@ use execution_native::{
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
-    emit_fused_direct_sequence_coff, execute_cached_verified_native_sequence,
-    execute_direct_fused_native_retry, execute_direct_fused_native_sequence,
+    emit_fused_direct_sequence_coff, execute_cached_direct_fused_native_retry,
+    execute_cached_verified_native_sequence, execute_direct_fused_native_retry,
+    execute_direct_fused_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
@@ -18186,6 +18188,128 @@ fn fused_direct_retry_failure_rebase_completes_cleanup() -> Result<(), String> {
     release
         .retry(&mut adapter)
         .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn fused_direct_cached_retry_inserts_and_executes() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1230)?,
+        native_executable_address(0x7d_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("fused cached retry: {failure:?}"))?;
+    if execution.cache_dispositions().len() != 1
+        || execution
+            .cache_dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || execution.outcome().completed_steps() != 2
+        || execution.transfer().memory() != fixture.final_memory
+        || execution.transfer().output() != fixture.final_output
+    {
+        return Err(String::from("fused cached retry insertion drifted"));
+    }
+    let (_, _, sequence, _, _) = execution.into_parts();
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_cached_retry_hits_without_adapter_work() -> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1231)?,
+        native_executable_address(0x7e_0000)?,
+    );
+    let seed = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        retry.plan(),
+    )
+    .map_err(|error| error.to_string())?;
+    drop(seed.into_sequence().into_leases());
+    let loaded_operations = adapter.operations.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("fused cached hit retry: {failure:?}"))?;
+    let is_hit = matches!(
+        execution.cache_dispositions().first(),
+        Some(item) if item.is_hit(),
+    );
+    if !is_hit || adapter.operations != loaded_operations {
+        return Err(String::from("fused cached retry hit remapped"));
+    }
+    let (_, _, sequence, _, _) = execution.into_parts();
+    drop(sequence.into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_cached_retry_load_failure_restores_retry() -> Result<(), String>
+{
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let expected_plan = retry.plan().clone();
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1232)?,
+        native_executable_address(0x7f_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(failure) = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    ) else {
+        return Err(String::from("fused cached retry ignored load failure"));
+    };
+    let DirectFusedNativeCachedRetryFailure::Acquisition(acquisition) =
+        *failure
+    else {
+        return Err(String::from(
+            "fused cached retry load failure misclassified",
+        ));
+    };
+    if acquisition.failure().index() != 0 || runner.calls != 0 {
+        return Err(String::from("fused cached retry load evidence drifted"));
+    }
+    let (restored_retry, cache_failure) = (*acquisition).into_parts();
+    if restored_retry.plan() == &expected_plan && cache_failure.index() == 0 {
+        Ok(())
+    } else {
+        Err(String::from("fused cached retry load lost ownership"))
+    }
 }
 
 #[test]

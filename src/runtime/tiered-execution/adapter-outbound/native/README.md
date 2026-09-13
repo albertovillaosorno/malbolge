@@ -549,7 +549,12 @@ Already-acquired fused sequence leases can now bind to one admitted fused retry
 only when the acquired sequence plan exactly matches retry authority. Resident
 execution performs no further memory-adapter work; cross-plan rejection restores
 both owners, and runner failure preserves exact rollback state plus the reusable
-leased sequence. Automatic retry cache acquisition, leased semantic rebase, and
+leased sequence.
+
+A one-attempt cached retry coordinator now acquires exact fused-region leases,
+binds them to the admitted retry, and executes resident mappings. Exact hits add
+no adapter work, while acquisition failure restores retry plus indexed cache
+ownership. Leased semantic rebase, explicit lease return, multi-turn policy, and
 transactional cache rollback remain separate.
 
 The retained two-step fixture is produced by the normative VM from a rotate
