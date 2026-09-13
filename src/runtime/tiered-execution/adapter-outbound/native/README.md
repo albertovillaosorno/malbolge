@@ -593,6 +593,13 @@ Post-publication victim cleanup failure reports committed acquisition plus exact
 cleanup ownership rather than being misreported as rollback. The cached
 retry cycle continues to use its ordinary acquisition path independently.
 
+A separate transactional one-attempt cached retry coordinator consumes that
+whole-plan acquisition boundary before lease binding or native execution.
+Pre-publication rollback and post-publication cleanup failure both stop before
+the runner while restoring the admitted retry plus exact transaction ownership;
+success binds the committed leased sequence through the existing resident retry
+executor. The ordinary cached retry and bounded cached cycle remain unchanged.
+
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
 reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and

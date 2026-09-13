@@ -505,6 +505,13 @@ Post-publication victim cleanup failure reports committed acquisition plus exact
 cleanup ownership rather than being misreported as rollback. The cached
 retry cycle continues to use its ordinary acquisition path independently.
 
+A separate transactional one-attempt cached retry coordinator consumes that
+whole-plan acquisition boundary before lease binding or native execution.
+Pre-publication rollback and post-publication cleanup failure both stop before
+the runner while restoring the admitted retry plus exact transaction ownership;
+success binds the committed leased sequence through the existing resident retry
+executor. The ordinary cached retry and bounded cached cycle remain unchanged.
+
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
 prefixes remain committed; a second-step guard miss resumes at index one with
@@ -686,10 +693,9 @@ implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
-prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, leased retry return/policy, concrete
-executable-memory and foreign-call adapters, runtime
-integration, and concrete instruction-cache synchronization remain incomplete.
+prepared invocation contract. Wider fused-template coverage, concrete
+executable-memory and foreign-call adapters, runtime integration, and concrete
+instruction-cache synchronization remain incomplete.
 
 ## Invariants
 

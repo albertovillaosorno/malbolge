@@ -70,6 +70,7 @@ mod fused_sequence_retry_return;
 mod fused_sequence_retry_router;
 mod fused_sequence_scheduler;
 mod fused_sequence_transaction;
+mod fused_sequence_transactional_cached_retry;
 mod invocation;
 mod lifecycle;
 mod loader;
@@ -464,6 +465,13 @@ pub use fused_sequence_transaction::{
     DirectFusedNativeSequenceTransactionFailure,
     DirectFusedNativeSequenceTransactionResult,
     execute_direct_fused_native_sequence,
+};
+pub use fused_sequence_transactional_cached_retry::{
+    DirectFusedNativeTransactionalCachedRetryAcquisitionFailure,
+    DirectFusedNativeTransactionalCachedRetryAcquisitionParts,
+    DirectFusedNativeTransactionalCachedRetryFailure,
+    DirectFusedNativeTransactionalCachedRetryResult,
+    execute_transactional_cached_direct_fused_native_retry,
 };
 pub use invocation::{
     DirectFusedInvocationError, NativeExecutableInvocationBindingError,
