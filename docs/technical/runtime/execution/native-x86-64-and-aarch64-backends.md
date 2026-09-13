@@ -711,10 +711,17 @@ durability error; two deterministic cases cover both states, and one host-real
 filesystem case exercises directory sync without reclassifying commit as
 rollback.
 
+Cached-cycle composition now binds both canonical count-window and latency
+histogram codecs directly to that durability-capable application service. It
+preserves typed canonical write evidence in both `Durable` and committed
+`Published` states; three adapter-neutral cases cover count/latency success and
+post-publication failure, and one host-real count-window case crosses the full
+codec/application/filesystem path.
+
 Histogram refinement, distributed merge, durable/cross-cycle policy
 publication, native object fusion, foreign invocation, runtime clock
-acquisition, cached-cycle durable convenience binding, cross-process
-locking/CAS, and multi-blob transactions remain open.
+acquisition, cross-process locking/CAS, and multi-blob transactions remain
+open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

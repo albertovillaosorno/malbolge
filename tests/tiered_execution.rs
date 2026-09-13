@@ -167,6 +167,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryAssessmentSignal,
     NativeContinuationCachedRetryTelemetryAssessmentThresholds,
     NativeContinuationCachedRetryTelemetryCodecError,
+    NativeContinuationCachedRetryTelemetryDurablePersistence,
     NativeContinuationCachedRetryTelemetryObservation,
     NativeContinuationCachedRetryTelemetryPersistenceError,
     NativeContinuationCachedRetryTelemetryPersistenceLoad,
@@ -185,7 +186,9 @@ use cached_cycle::{
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     persist_cached_retry_latency_histogram,
+    persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_window,
+    persist_cached_retry_telemetry_window_durably,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
@@ -49743,6 +49746,170 @@ fn cached_retry_window_telemetry(
         ),
     ])
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_durable_persistence_confirms_count_window()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "durable count capacity")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "durable count bytes")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit = cached_retry_window_telemetry(
+        1,
+        4,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(hit).map_err(|error| error.to_string())?;
+    let expected = window.snapshot();
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_cached_retry_telemetry_window_durably(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("durable count publication failed: {error:?}"))?;
+    let restored =
+        restore_cached_retry_telemetry_window(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("durable count restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("durable count publication disappeared"));
+    };
+    if outcome.is_durable()
+        && outcome.durability_error().is_none()
+        && outcome.bytes() == bytes
+        && value.snapshot() == expected
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable count publication evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_durable_persistence_confirms_latency_histogram()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(4_096, "durable latency bytes")?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[0, 10, 101])?;
+    let expected = histogram.clone();
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_cached_retry_latency_histogram_durably(
+        &mut store,
+        &histogram,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("durable latency publication failed: {error:?}")
+    })?;
+    let restored =
+        restore_cached_retry_latency_histogram(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("durable latency restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("durable latency publication disappeared"));
+    };
+    if outcome.is_durable() && outcome.bytes() == bytes && value == expected {
+        Ok(())
+    } else {
+        Err(String::from("durable latency publication evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_durable_persistence_retains_committed_failure()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(1, "committed count capacity")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "committed count bytes")?;
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = persist_cached_retry_telemetry_window_durably(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("committed count publication failed: {error:?}")
+    })?;
+    let NativeContinuationCachedRetryTelemetryDurablePersistence::Published {
+        durability_error,
+        write,
+    } = outcome
+    else {
+        return Err(String::from("count durability failure lost publication"));
+    };
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && write.bytes() > 0
+        && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed count durability evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_durably_roundtrips_count_window()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("durable-count")?;
+    let capacity = nonzero_test_limit(2, "file durable count capacity")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "file durable count bytes")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let insertion = cached_retry_window_telemetry(
+        1,
+        5,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let _append = window
+        .append(insertion)
+        .map_err(|error| error.to_string())?;
+    let expected = window.snapshot();
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let outcome = persist_cached_retry_telemetry_window_durably(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file durable count failed: {error:?}"))?;
+    let restored =
+        restore_cached_retry_telemetry_window(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("file durable count restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("file durable count disappeared"));
+    };
+    let result = if outcome.bytes() == bytes && value.snapshot() == expected {
+        Ok(())
+    } else {
+        Err(String::from("file durable count round-trip drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

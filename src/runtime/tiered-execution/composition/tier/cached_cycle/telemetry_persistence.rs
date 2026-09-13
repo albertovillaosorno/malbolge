@@ -38,6 +38,11 @@
 
 use std::num::NonZeroUsize;
 
+use store_port::{
+    NativeContinuationCachedRetryTelemetryBlobStore as BlobStore,
+    NativeContinuationCachedRetryTelemetryDurableBlobStore as DurableBlobStore,
+};
+
 use super::{
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyHistogram,
@@ -54,6 +59,25 @@ use crate::{
     cached_retry_telemetry_blob_store as store_port,
     telemetry_blob_persistence as blob_persistence,
 };
+
+/// Cached-retry publication plus explicit post-publication durability state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationCachedRetryTelemetryDurablePersistence<
+    DurabilityError,
+> {
+    /// Canonical publication and durability confirmation both completed.
+    Durable {
+        /// Exact canonical publication evidence.
+        write: NativeContinuationCachedRetryTelemetryPersistenceWrite,
+    },
+    /// Canonical publication committed, but durability confirmation failed.
+    Published {
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Exact canonical publication evidence.
+        write: NativeContinuationCachedRetryTelemetryPersistenceWrite,
+    },
+}
 
 /// Why one cached-retry telemetry persistence operation failed closed.
 #[derive(Debug, Eq, PartialEq)]
@@ -87,6 +111,22 @@ pub enum NativeContinuationCachedRetryTelemetryPersistenceLoad<Value> {
         value: Value,
     },
 }
+
+/// Result of canonical publication plus durability confirmation.
+pub type NativeContinuationCachedRetryTelemetryDurablePersistenceResult<
+    StoreError,
+    DurabilityError,
+> = Result<
+    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>,
+    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>,
+>;
+
+/// Durable cached-retry publication result specialized to one store type.
+pub type NativeContinuationCachedRetryTelemetryDurableStoreResult<Store> =
+    NativeContinuationCachedRetryTelemetryDurablePersistenceResult<
+        <Store as BlobStore>::Error,
+        <Store as DurableBlobStore>::DurabilityError,
+    >;
 
 /// Result of one cached-retry persistence operation.
 pub type NativeContinuationCachedRetryTelemetryPersistenceResult<
@@ -125,6 +165,11 @@ pub type NativeContinuationCachedRetryTelemetryPersistenceWindowLoadResult<
     StoreError,
 >;
 
+type BlobDurablePersistence<DurabilityError> =
+    blob_persistence::NativeContinuationTelemetryBlobDurablePersistence<
+        DurabilityError,
+    >;
+type PersistenceWrite = NativeContinuationCachedRetryTelemetryPersistenceWrite;
 type BlobLoad =
     blob_persistence::NativeContinuationTelemetryBlobPersistenceLoad;
 type PersistenceLoad<Value> =
@@ -136,12 +181,69 @@ pub struct NativeContinuationCachedRetryTelemetryPersistenceWrite {
     bytes: usize,
 }
 
+impl<DurabilityError>
+    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>
+{
+    /// Returns the exact committed canonical byte count.
+    #[must_use]
+    pub const fn bytes(&self) -> usize {
+        match self {
+            Self::Durable { write } | Self::Published { write, .. } => {
+                write.bytes()
+            },
+        }
+    }
+
+    /// Returns post-publication durability failure when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(&self) -> Option<&DurabilityError> {
+        match self {
+            Self::Durable { .. } => None,
+            Self::Published { durability_error, .. } => Some(durability_error),
+        }
+    }
+
+    /// Reports whether the store explicitly confirmed publication durability.
+    #[must_use]
+    pub const fn is_durable(&self) -> bool {
+        matches!(self, Self::Durable { .. })
+    }
+}
+
 impl NativeContinuationCachedRetryTelemetryPersistenceWrite {
     /// Returns the exact canonical byte count passed to the outbound store.
     #[must_use]
     pub const fn bytes(self) -> usize {
         self.bytes
     }
+}
+
+/// Persists one exact latency histogram and confirms store durability.
+///
+/// # Errors
+///
+/// Returns only codec, byte-limit, or store failure before publication.
+/// Post-publication durability failure remains committed outcome evidence.
+pub fn persist_cached_retry_latency_histogram_durably<Store>(
+    store: &mut Store,
+    histogram: &NativeContinuationCachedRetryLatencyHistogram,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationCachedRetryTelemetryDurableStoreResult<Store>
+where
+    Store: DurableBlobStore,
+{
+    let bytes = encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
+        NativeContinuationCachedRetryTelemetryPersistenceError::LatencyCodec(
+            Box::new(error),
+        )
+    })?;
+    let outcome = blob_persistence::persist_telemetry_blob_durably(
+        store,
+        &bytes,
+        maximum_bytes,
+    )
+    .map_err(NativeContinuationCachedRetryTelemetryPersistenceError::Blob)?;
+    Ok(map_durable_persistence(outcome))
 }
 
 /// Persists one exact latency histogram as canonical bounded bytes.
@@ -159,7 +261,7 @@ pub fn persist_cached_retry_latency_histogram<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     let bytes = encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
         NativeContinuationCachedRetryTelemetryPersistenceError::LatencyCodec(
@@ -174,6 +276,35 @@ where
     Ok(NativeContinuationCachedRetryTelemetryPersistenceWrite {
         bytes: write.bytes(),
     })
+}
+
+/// Persists one exact count window and confirms store durability.
+///
+/// # Errors
+///
+/// Returns only codec, byte-limit, or store failure before publication.
+/// Post-publication durability failure remains committed outcome evidence.
+pub fn persist_cached_retry_telemetry_window_durably<Store>(
+    store: &mut Store,
+    window: &NativeContinuationCachedRetryTelemetryWindow,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationCachedRetryTelemetryDurableStoreResult<Store>
+where
+    Store: DurableBlobStore,
+{
+    let bytes =
+        encode_telemetry_snapshot(&window.snapshot()).map_err(|error| {
+            NativeContinuationCachedRetryTelemetryPersistenceError::CountCodec(
+                Box::new(error),
+            )
+        })?;
+    let outcome = blob_persistence::persist_telemetry_blob_durably(
+        store,
+        &bytes,
+        maximum_bytes,
+    )
+    .map_err(NativeContinuationCachedRetryTelemetryPersistenceError::Blob)?;
+    Ok(map_durable_persistence(outcome))
 }
 
 /// Persists one exact count-telemetry FIFO as canonical bounded bytes.
@@ -191,7 +322,7 @@ pub fn persist_cached_retry_telemetry_window<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     let bytes =
         encode_telemetry_snapshot(&window.snapshot()).map_err(|error| {
@@ -209,6 +340,31 @@ where
     })
 }
 
+fn map_durable_persistence<DurabilityError>(
+    outcome: BlobDurablePersistence<DurabilityError>,
+) -> NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError> {
+    match outcome {
+        BlobDurablePersistence::Durable { write } => {
+                NativeContinuationCachedRetryTelemetryDurablePersistence::
+                    Durable {
+                        write: PersistenceWrite {
+                            bytes: write.bytes(),
+                        },
+                    }
+            },
+        BlobDurablePersistence::Published {
+                durability_error,
+                write,
+            } => NativeContinuationCachedRetryTelemetryDurablePersistence::
+                Published {
+                    durability_error,
+                    write: PersistenceWrite {
+                        bytes: write.bytes(),
+                    },
+                },
+    }
+}
+
 /// Restores one exact latency histogram from canonical bounded bytes.
 ///
 /// # Errors
@@ -222,7 +378,7 @@ pub fn restore_cached_retry_latency_histogram<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     let load = blob_persistence::restore_telemetry_blob(store, maximum_bytes)
         .map_err(
@@ -262,7 +418,7 @@ pub fn restore_cached_retry_telemetry_window<Store>(
     Store::Error,
 >
 where
-    Store: store_port::NativeContinuationCachedRetryTelemetryBlobStore,
+    Store: BlobStore,
 {
     let load = blob_persistence::restore_telemetry_blob(store, maximum_bytes)
         .map_err(

@@ -133,6 +133,9 @@ pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencySnapshotRange,
 };
 pub use telemetry_persistence::{
+    NativeContinuationCachedRetryTelemetryDurablePersistence,
+    NativeContinuationCachedRetryTelemetryDurablePersistenceResult,
+    NativeContinuationCachedRetryTelemetryDurableStoreResult,
     NativeContinuationCachedRetryTelemetryPersistenceError,
     NativeContinuationCachedRetryTelemetryPersistenceLatencyLoad,
     NativeContinuationCachedRetryTelemetryPersistenceLatencyLoadResult,
@@ -142,7 +145,9 @@ pub use telemetry_persistence::{
     NativeContinuationCachedRetryTelemetryPersistenceWindowLoadResult,
     NativeContinuationCachedRetryTelemetryPersistenceWrite,
     persist_cached_retry_latency_histogram,
+    persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_window,
+    persist_cached_retry_telemetry_window_durably,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_window,
 };
