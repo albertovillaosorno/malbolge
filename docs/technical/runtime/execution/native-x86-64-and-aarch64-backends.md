@@ -672,10 +672,17 @@ recommendations. Deferral preserves the request unchanged, while ready evidence
 replaces only its retry policy and retains previous/current policy plus exact
 latency recommendation evidence.
 
-Rebinning, distributed merge, durable/cross-cycle policy publication, native
-object fusion, foreign
-invocation, runtime clock acquisition, durable storage, and cross-process
-coordination remain open.
+Exact histogram coarsening now removes only caller-selected interior source
+bounds while preserving exact bucket totals, extrema, overall samples, exact
+nanosecond totals, and overflow-bin evidence. The target must be an ordered
+subset of source bounds with the same final bound; missing boundaries and final
+overflow-bound drift fail closed. Five cases cover identity, exact coarsening,
+refinement rejection, overflow-bound rejection, and normalization before the
+existing same-schema merge.
+
+Histogram refinement, distributed merge, durable/cross-cycle policy
+publication, native object fusion, foreign invocation, runtime clock
+acquisition, durable storage, and cross-process coordination remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

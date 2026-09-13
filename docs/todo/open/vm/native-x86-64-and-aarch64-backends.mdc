@@ -533,9 +533,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   evidence replaces only its retry policy and retains previous/current policy
   plus exact latency recommendation evidence.
 
-  Rebinning, distributed/durable merge, durable/cross-cycle policy publication,
-  runtime clock acquisition, async
-  queues, durable storage, and broader production orchestration remain pending.
+  Exact histogram coarsening removes only caller-selected interior source
+  bounds while preserving bucket totals, extrema, overall samples, exact
+  nanosecond totals, and overflow-bin evidence. Targets must be ordered source
+  subsets with the same final bound; refinement and overflow-bound drift fail
+  closed. Five cases cover identity, exact coarsening, both rejection classes,
+  and normalization before same-schema merge.
+
+  Histogram refinement, distributed/durable merge, durable/cross-cycle policy
+  publication, runtime clock acquisition, async queues, durable storage, and
+  broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

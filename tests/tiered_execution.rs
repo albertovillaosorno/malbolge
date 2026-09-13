@@ -136,6 +136,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyAssessment,
     NativeContinuationCachedRetryLatencyAssessmentSignal,
     NativeContinuationCachedRetryLatencyAssessmentThresholds,
+    NativeContinuationCachedRetryLatencyCoarseningError,
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
@@ -167,6 +168,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
     assess_cached_retry_latency, assess_cached_retry_telemetry,
+    coarsen_cached_retry_latency_histogram,
     decode_cached_retry_latency_snapshot,
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
@@ -50635,6 +50637,138 @@ fn cached_retry_latency_policy_publication_replaces_request_policy()
         Ok(())
     } else {
         Err(String::from("published latency policy evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_coarsening_identity_preserves_exact_evidence()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[0, 1, 10, 11, 100, 101])?;
+    let before = source.clone();
+    let coarsening = coarsen_cached_retry_latency_histogram(
+        &source,
+        source.upper_bounds().to_vec(),
+    )
+    .map_err(|error| format!("identity coarsening failed: {error:?}"))?;
+    if coarsening.source_bound_count() == 3
+        && coarsening.target_bound_count() == 3
+        && coarsening.removed_bounds() == 0
+        && coarsening.histogram() == &source
+        && source == before
+        && coarsening.into_histogram() == source
+    {
+        Ok(())
+    } else {
+        Err(String::from("identity latency coarsening drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_coarsening_removes_interior_bound_exactly()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[0, 1, 10, 11, 100, 101])?;
+    let before = source.clone();
+    let coarsening =
+        coarsen_cached_retry_latency_histogram(&source, vec![10, 100])
+            .map_err(|error| format!("latency coarsening failed: {error:?}"))?;
+    let histogram = coarsening.histogram();
+    if coarsening.source_bound_count() == 3
+        && coarsening.target_bound_count() == 2
+        && coarsening.removed_bounds() == 1
+        && histogram.upper_bounds() == [10, 100]
+        && histogram.bucket_counts() == [3, 2]
+        && histogram.above_maximum() == 1
+        && histogram.samples() == 6
+        && histogram.total_nanoseconds() == 223
+        && histogram.minimum_nanoseconds() == Some(0)
+        && histogram.maximum_nanoseconds() == Some(101)
+        && source == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("exact latency coarsening evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_coarsening_rejects_missing_boundary()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[1, 10, 11])?;
+    let before = source.clone();
+    let failure = coarsen_cached_retry_latency_histogram(&source, vec![5, 100])
+        .err()
+        .ok_or_else(|| {
+            String::from("latency refinement boundary was admitted")
+        })?;
+    let expected =
+        NativeContinuationCachedRetryLatencyCoarseningError::BoundMissing {
+            index: 0,
+            bound: 5,
+        };
+    if failure == expected && source == before {
+        Ok(())
+    } else {
+        Err(String::from("missing coarsening boundary evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_coarsening_rejects_final_bound_drift()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[1, 10, 101])?;
+    let before = source.clone();
+    let failure = coarsen_cached_retry_latency_histogram(&source, vec![0, 10])
+        .err()
+        .ok_or_else(|| {
+            String::from("latency overflow boundary drift was admitted")
+        })?;
+    let expected = NativeContinuationCachedRetryLatencyCoarseningError::
+        FinalBoundMismatch {
+            source: 100,
+            target: 10,
+        };
+    if failure == expected && source == before {
+        Ok(())
+    } else {
+        Err(String::from("final coarsening bound evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_coarsening_normalizes_for_exact_merge()
+-> Result<(), String> {
+    let mut fine = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut fine, &[0, 1, 10, 101])?;
+    let mut coarse =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut coarse, &[11, 100])?;
+    let coarsened =
+        coarsen_cached_retry_latency_histogram(&fine, vec![10, 100]).map_err(
+            |error| format!("merge normalization failed: {error:?}"),
+        )?;
+    let mut normalized = coarsened.into_histogram();
+    let merge = normalized
+        .merge(&coarse)
+        .map_err(|error| format!("normalized merge failed: {error:?}"))?;
+    if normalized.upper_bounds() == [10, 100]
+        && normalized.bucket_counts() == [3, 2]
+        && normalized.above_maximum() == 1
+        && normalized.samples() == 6
+        && normalized.total_nanoseconds() == 223
+        && normalized.minimum_nanoseconds() == Some(0)
+        && normalized.maximum_nanoseconds() == Some(101)
+        && merge.added_samples() == 2
+        && merge.samples() == 6
+        && merge.total_nanoseconds() == 223
+    {
+        Ok(())
+    } else {
+        Err(String::from("coarsened latency merge evidence drifted"))
     }
 }
 
