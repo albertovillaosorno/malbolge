@@ -53,6 +53,7 @@ mod fused_resident_cache;
 mod fused_sequence;
 mod fused_sequence_cache;
 mod fused_sequence_cached_retry;
+mod fused_sequence_cached_retry_cycle;
 mod fused_sequence_continuation;
 mod fused_sequence_execution;
 mod fused_sequence_handoff;
@@ -336,6 +337,18 @@ pub use fused_sequence_cached_retry::{
     DirectFusedNativeCachedRetryFailure, DirectFusedNativeCachedRetryResult,
     execute_cached_direct_fused_native_retry,
 };
+pub use fused_sequence_cached_retry_cycle::{
+    DirectFusedNativeCachedRetryAttempt,
+    DirectFusedNativeCachedRetryCompletion,
+    DirectFusedNativeCachedRetryCycleFailure,
+    DirectFusedNativeCachedRetryCycleOutcome,
+    DirectFusedNativeCachedRetryCycleRequest,
+    DirectFusedNativeCachedRetryCycleResult,
+    DirectFusedNativeCachedRetryInterpreterOutcome,
+    DirectFusedNativeCachedRetryNativeFailure,
+    DirectFusedNativeCachedRetryRescheduleFailure,
+    execute_cached_direct_fused_native_retry_cycle,
+};
 pub use fused_sequence_continuation::{
     DirectFusedNativeContinuation, DirectFusedNativeContinuationError,
     DirectFusedNativeContinuationReason, DirectFusedNativeContinuationResult,
@@ -417,6 +430,7 @@ pub use fused_sequence_retry_return::{
     DirectFusedNativeRetryLeaseReturn,
     DirectFusedNativeRetryLeaseReturnFailure,
     DirectFusedNativeRetryLeaseReturnFailureParts,
+    DirectFusedNativeRetryLeaseReturnParts,
     DirectFusedNativeRetryLeaseReturnResult,
     return_direct_fused_native_retry_failure_leases,
     return_direct_fused_native_retry_leases,

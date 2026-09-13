@@ -82,6 +82,13 @@ pub struct DirectFusedNativeRetryFailureLeaseReturnFailure<
     reconciliation: Box<DirectFusedNativeLeaseCacheReleaseFailure<MemoryError>>,
 }
 
+/// Semantic, cache, and reconciliation owners after successful lease return.
+pub type DirectFusedNativeRetryLeaseReturnParts = (
+    DirectFusedNativeRetryDisposition,
+    Vec<DirectFusedNativeLeaseCacheDisposition>,
+    DirectFusedNativeLeaseCacheReleaseSummary,
+);
+
 /// Result of explicitly returning leases after successful resident rebase.
 pub type DirectFusedNativeRetryLeaseReturnResult<MemoryError> = Result<
     DirectFusedNativeRetryLeaseReturn,
@@ -122,6 +129,16 @@ impl DirectFusedNativeRetryLeaseReturn {
     #[must_use]
     pub const fn disposition(&self) -> &DirectFusedNativeRetryDisposition {
         &self.disposition
+    }
+
+    /// Consumes this result into semantic, cache, and reconciliation owners.
+    #[must_use]
+    pub fn into_parts(self) -> DirectFusedNativeRetryLeaseReturnParts {
+        (
+            self.disposition,
+            self.cache_dispositions,
+            self.reconciliation,
+        )
     }
 
     /// Returns explicit retired-resident reconciliation evidence.

@@ -489,8 +489,14 @@ native route, and planner fallback applies the configured normative decision
 without consuming an attempt.
 
 Hard policy or planning rejection preserves the exact suspension and canonical
-profile diagnostic. Multi-turn execution and transactional cache rollback
-remain separate.
+profile diagnostic. A bounded cached fused retry cycle now composes routing,
+resident acquisition/execution, semantic rebase, explicit lease return, and
+zero-step `NativeRetry` rescheduling.
+
+Only successfully rebased guard misses continue. Unchanged suffixes reuse active
+cache authority as exact hits, while exhaustion falls back normatively. Load,
+runner, rebase, and reconciliation failures remain terminal with ownership.
+Transactional cache rollback remains separate.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -722,6 +728,7 @@ deterministically without changing guest-visible state silently.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
+
 ## References
 
 ### Host Architecture Baseline

@@ -222,10 +222,12 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedInvocationError, DirectFusedNativeCachedRetryFailure,
-    DirectFusedNativeContinuation, DirectFusedNativeContinuationError,
-    DirectFusedNativeContinuationReason, DirectFusedNativeExecutableOwner,
-    DirectFusedNativeHandoffAdmissionError,
+    DirectFusedInvocationError, DirectFusedNativeCachedRetryCycleFailure,
+    DirectFusedNativeCachedRetryCycleOutcome,
+    DirectFusedNativeCachedRetryCycleRequest,
+    DirectFusedNativeCachedRetryFailure, DirectFusedNativeContinuation,
+    DirectFusedNativeContinuationError, DirectFusedNativeContinuationReason,
+    DirectFusedNativeExecutableOwner, DirectFusedNativeHandoffAdmissionError,
     DirectFusedNativeHandoffBudgetOutcome,
     DirectFusedNativeHandoffExecutionCause,
     DirectFusedNativeInterpreterHandoff, DirectFusedNativeLease,
@@ -248,7 +250,7 @@ use execution_native::{
     DirectFusedNativeRetryRoutingError, DirectFusedNativeRetryRoutingRequest,
     DirectFusedNativeRetryStepPlanningError, DirectFusedNativeRunner,
     DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
-    DirectFusedNativeScheduleStopReason,
+    DirectFusedNativeScheduleStopReason, DirectFusedNativeScheduleSuspension,
     DirectFusedNativeSequenceExecutionOutcome, DirectFusedNativeSequencePlan,
     DirectFusedNativeSequencePlanError, DirectFusedNativeYieldTarget,
     DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
@@ -366,6 +368,7 @@ use execution_native::{
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, execute_cached_direct_fused_native_retry,
+    execute_cached_direct_fused_native_retry_cycle,
     execute_cached_verified_native_sequence, execute_direct_fused_native_retry,
     execute_direct_fused_native_sequence,
     execute_loaded_cached_verified_native_sequence,
@@ -987,7 +990,7 @@ type FusedContinuationFixture =
 
 type FusedRetryPauseFixture = (
     DirectFusedNativeSequencePlan,
-    execution_native::DirectFusedNativeScheduleSuspension,
+    DirectFusedNativeScheduleSuspension,
 );
 
 #[derive(Debug)]
@@ -19148,6 +19151,290 @@ fn fused_direct_cached_retry_load_failure_restores_retry() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("fused cached retry load lost ownership"))
+    }
+}
+
+const fn fused_cached_retry_cycle_request(
+    suspension: DirectFusedNativeScheduleSuspension,
+    max_native_attempts: usize,
+    isa: HostIsa,
+) -> DirectFusedNativeCachedRetryCycleRequest {
+    DirectFusedNativeCachedRetryCycleRequest::new(
+        DirectFusedNativeRetryPolicy::new(
+            max_native_attempts,
+            DirectFusedNativeRetryFallback::complete(),
+        ),
+        suspension,
+        0,
+        DirectFusedNativeRetryHost::new(
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        ),
+    )
+}
+
+#[test]
+fn fused_direct_cached_retry_cycle_falls_back_at_zero_limit()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "fused cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1260)?,
+        native_executable_address(0x87_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        fused_cached_retry_cycle_request(pause, 0, HostIsa::X86_64),
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("zero fused cycle: {failure:?}"))?;
+    let DirectFusedNativeCachedRetryCycleOutcome::Interpreter(interpreter) =
+        outcome
+    else {
+        return Err(String::from("zero fused retry limit entered native"));
+    };
+    let DirectFusedNativeScheduleOutcome::Completed(completion) =
+        interpreter.outcome()
+    else {
+        return Err(String::from("zero fused retry fallback suspended"));
+    };
+    if interpreter.attempts() == 0
+        && interpreter.native_attempts().is_empty()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+        && adapter.operations.is_empty()
+        && runner.calls == 0
+        && cache.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("zero fused retry cycle fallback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_cached_retry_cycle_completes_inserted_attempt()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "fused cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1261)?,
+        native_executable_address(0x88_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        fused_cached_retry_cycle_request(pause, 2, HostIsa::AArch64),
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("complete fused cycle: {failure:?}"))?;
+    let DirectFusedNativeCachedRetryCycleOutcome::NativeCompletion(completion) =
+        outcome
+    else {
+        return Err(String::from(
+            "applied fused cycle did not complete native",
+        ));
+    };
+    let [attempt] = completion.native_attempts() else {
+        return Err(String::from(
+            "applied fused cycle attempt evidence drifted",
+        ));
+    };
+    if completion.attempts() != 1
+        || attempt.attempt() != 1
+        || attempt.completed_steps() != 2
+        || attempt
+            .cache_dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || !attempt.reconciliation().released_keys().is_empty()
+        || completion.completion().state().memory() != expected.final_memory
+        || completion.completion().state().io().output()
+            != expected.final_output
+        || cache.active_len() != 1
+        || runner.calls != 1
+    {
+        return Err(String::from("applied fused cached cycle drifted"));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_cached_retry_cycle_reuses_guard_miss_hit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "fused cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1262)?,
+        native_executable_address(0x89_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        fused_cached_retry_cycle_request(pause, 2, HostIsa::X86_64),
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("guard fused cycle: {failure:?}"))?;
+    let DirectFusedNativeCachedRetryCycleOutcome::Interpreter(interpreter) =
+        outcome
+    else {
+        return Err(String::from("bounded guard cycle did not fall back"));
+    };
+    let [first, second] = interpreter.native_attempts() else {
+        return Err(String::from("guard fused cycle attempt evidence drifted"));
+    };
+    let DirectFusedNativeScheduleOutcome::Completed(completion) =
+        interpreter.outcome()
+    else {
+        return Err(String::from("guard fused cycle fallback suspended"));
+    };
+    if interpreter.attempts() != 2
+        || first.attempt() != 1
+        || second.attempt() != 2
+        || first.completed_steps() != 0
+        || second.completed_steps() != 0
+        || first
+            .cache_dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+        || second
+            .cache_dispositions()
+            .first()
+            .is_none_or(|disposition| !disposition.is_hit())
+        || runner.calls != 2
+        || cache.active_len() != 1
+        || adapter.operations.len() != 4
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("guard fused cached cycle reuse drifted"));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_cached_retry_cycle_keeps_runner_failure_terminal()
+-> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "fused cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1263)?,
+        native_executable_address(0x8a_0000)?,
+    );
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let outcome = execute_cached_direct_fused_native_retry_cycle(
+        fused_cached_retry_cycle_request(pause, 2, HostIsa::AArch64),
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("runner fused cycle: {failure:?}"))?;
+    let DirectFusedNativeCachedRetryCycleOutcome::NativeFailure(failure) =
+        outcome
+    else {
+        return Err(String::from("fused runner failure was auto-retried"));
+    };
+    if failure.attempt() != 1
+        || !failure.prior_attempts().is_empty()
+        || failure.failure().failure().completed_steps() != 0
+        || !matches!(
+            failure.failure().disposition(),
+            DirectFusedNativeRetryDisposition::Resumable(_)
+        )
+        || cache.active_len() != 1
+        || runner.calls != 1
+    {
+        return Err(String::from("fused cached cycle runner failure drifted"));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|release_error| release_error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_cached_retry_cycle_preserves_load_failure() -> Result<(), String> {
+    let (_, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let capacity = nonzero_test_limit(2, "fused cycle capacity")?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1264)?,
+        native_executable_address(0x8b_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(cycle_failure) = execute_cached_direct_fused_native_retry_cycle(
+        fused_cached_retry_cycle_request(pause, 2, HostIsa::X86_64),
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    ) else {
+        return Err(String::from("fused cached cycle ignored load failure"));
+    };
+    let DirectFusedNativeCachedRetryCycleFailure::Cached {
+        attempt,
+        failure: cached_failure,
+        prior_attempts,
+    } = *cycle_failure
+    else {
+        return Err(String::from(
+            "fused cached cycle load failure misclassified",
+        ));
+    };
+    if attempt == 1
+        && prior_attempts.is_empty()
+        && matches!(
+            *cached_failure,
+            DirectFusedNativeCachedRetryFailure::Acquisition(_)
+        )
+        && runner.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused cached cycle load owner drifted"))
     }
 }
 
