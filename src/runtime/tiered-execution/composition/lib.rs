@@ -119,6 +119,8 @@ pub mod retry_router;
 pub mod retry_turn;
 #[path = "../application/telemetry_persistence.rs"]
 pub mod telemetry_blob_persistence;
+#[path = "../adapter-outbound/telemetry/main.rs"]
+pub mod telemetry_file_store;
 
 /// Empty entry point for the Cargo/Jig architecture-validation target.
 fn main() {}

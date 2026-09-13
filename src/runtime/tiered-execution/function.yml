@@ -356,6 +356,15 @@ parts:
     kind: composition
     language: rust
     responsibility: Bind cached-retry telemetry codecs to persistence use cases.
+  - id: part-0065
+    path: adapter-outbound/telemetry/README.md
+    kind: adapter-outbound
+    responsibility: Document filesystem telemetry storage adapter ownership.
+  - id: part-0066
+    path: adapter-outbound/telemetry/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind telemetry blob storage to the host filesystem.
 projects: []
 tests: []
 graph:

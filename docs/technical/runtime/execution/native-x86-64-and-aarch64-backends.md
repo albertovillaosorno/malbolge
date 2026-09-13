@@ -697,10 +697,17 @@ filesystem APIs, policy selection, or telemetry interpretation to the use case.
 Six adapter-neutral cases cover both round trips, missing state, both byte-limit
 guards, and outbound-store failures.
 
-Histogram refinement, distributed merge, durable/cross-cycle policy
-publication, native object fusion, foreign invocation, runtime clock
-acquisition, a concrete durable storage adapter, and cross-process coordination
-remain open.
+A concrete filesystem adapter now binds that port to one explicit destination.
+It probes one byte beyond bounded reads, stages in the destination directory,
+synchronizes complete staging contents, and publishes by `rename` without ever
+removing the previous destination first. Five host-real cases cover missing
+state, overwrite-or-safe-failure semantics, oversized reads, and exact
+count/latency persistence round trips.
+
+Directory-entry fsync/crash durability, histogram refinement, distributed
+merge, durable/cross-cycle policy publication, native object fusion, foreign
+invocation, runtime clock acquisition, cross-process locking/CAS, and
+multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

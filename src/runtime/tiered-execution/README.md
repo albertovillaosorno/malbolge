@@ -14,8 +14,8 @@ It must not bypass another function or architectural kind boundary.
 
 ## Navigation
 
-- `adapter-outbound/`: governed native/cache parts with isolated limit and
-  reclamation transactions.
+- `adapter-outbound/`: governed native/cache parts plus bounded telemetry
+  filesystem storage with staged publication.
 - `application/`: explicit bounded cached-retry telemetry persistence use cases.
 - `composition/`: handoff plus cached/leased retry routing, semantic rebase,
   exact telemetry summaries, latency schema normalization/assessment, policy

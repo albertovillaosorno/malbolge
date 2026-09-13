@@ -119,16 +119,19 @@ pub mod retry_router;
 pub mod retry_turn;
 #[path = "../src/runtime/tiered-execution/application/telemetry_persistence.rs"]
 pub mod telemetry_blob_persistence;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/telemetry/main.rs"]
+pub mod telemetry_file_store;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::panic::resume_unwind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
-use std::thread;
 use std::time::Duration;
+use std::{fs, thread};
 
 use cached_cycle::{
     NativeContinuationCachedRetryAttempt,
@@ -695,6 +698,14 @@ use retry_router::{
 };
 use retry_turn::{
     NativeContinuationRetryTurnOutcome, execute_native_continuation_retry_turn,
+};
+use telemetry_blob_persistence::{
+    NativeContinuationTelemetryBlobPersistenceError as BlobPersistenceError,
+    NativeContinuationTelemetryBlobPersistenceLoad as BlobPersistenceLoad,
+};
+use telemetry_file_store::{
+    NativeContinuationTelemetryFileBlobStore,
+    NativeContinuationTelemetryFileBlobStoreError,
 };
 
 const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
@@ -2036,6 +2047,12 @@ struct TestCachedRetryTelemetryBlobStore {
     replace_calls: usize,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct TestTelemetryFileStoreFixture {
+    destination: PathBuf,
+    directory: PathBuf,
+}
+
 impl telemetry_store_port::NativeContinuationCachedRetryTelemetryBlobStore
     for TestCachedRetryTelemetryBlobStore
 {
@@ -2061,6 +2078,32 @@ impl telemetry_store_port::NativeContinuationCachedRetryTelemetryBlobStore
             self.blob = Some(bytes.to_vec());
             Ok(())
         }
+    }
+}
+
+fn telemetry_file_store_fixture(
+    case_name: &str,
+) -> Result<TestTelemetryFileStoreFixture, String> {
+    let directory =
+        PathBuf::from(".temp/tiered_execution_telemetry_store").join(case_name);
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => {
+            return Err(format!("cannot clear telemetry fixture: {error}"));
+        },
+    }
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("cannot create telemetry fixture: {error}"))?;
+    let destination = directory.join("telemetry.bin");
+    Ok(TestTelemetryFileStoreFixture { destination, directory })
+}
+
+fn remove_telemetry_file_store_fixture(directory: &Path) -> Result<(), String> {
+    match fs::remove_dir_all(directory) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("cannot remove telemetry fixture: {error}")),
     }
 }
 
@@ -49677,6 +49720,195 @@ fn cached_retry_window_telemetry(
         ),
     ])
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_loads_missing_as_absent()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("missing")?;
+    let maximum_bytes = nonzero_test_limit(64, "file store missing bytes")?;
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let load = telemetry_blob_persistence::restore_telemetry_blob(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("missing file load failed: {error:?}"))?;
+    let result = if matches!(load, BlobPersistenceLoad::Missing) {
+        Ok(())
+    } else {
+        Err(String::from("missing file did not load as absent"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_replaces_or_preserves_atomically()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("replace")?;
+    let maximum_bytes = nonzero_test_limit(64, "file store replace bytes")?;
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let _initial_write = telemetry_blob_persistence::persist_telemetry_blob(
+        &mut store,
+        b"old",
+        maximum_bytes,
+    )
+    .map_err(|error| format!("initial file publication failed: {error:?}"))?;
+    let replacement = telemetry_blob_persistence::persist_telemetry_blob(
+        &mut store,
+        b"new",
+        maximum_bytes,
+    );
+    let load = telemetry_blob_persistence::restore_telemetry_blob(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("post-replacement load failed: {error:?}"))?;
+    let BlobPersistenceLoad::Present { bytes } = load else {
+        return Err(String::from("published file disappeared"));
+    };
+    let valid = match replacement {
+        Ok(write) => write.bytes() == 3 && bytes == b"new",
+        Err(BlobPersistenceError::Store(
+            NativeContinuationTelemetryFileBlobStoreError::Publish {
+                cleanup: None,
+                kind: _kind,
+            },
+        )) => bytes == b"old",
+        Err(error) => {
+            return Err(format!("unexpected replacement failure: {error:?}"));
+        },
+    };
+    let result = if valid && store.destination() == fixture.destination {
+        Ok(())
+    } else {
+        Err(String::from("atomic file replacement semantics drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_rejects_oversized_load()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("oversized")?;
+    let write_limit = nonzero_test_limit(64, "file store write bytes")?;
+    let read_limit = nonzero_test_limit(2, "file store read bytes")?;
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let _fixture_write = telemetry_blob_persistence::persist_telemetry_blob(
+        &mut store,
+        b"abc",
+        write_limit,
+    )
+    .map_err(|error| {
+        format!("oversized fixture publication failed: {error:?}")
+    })?;
+    let failure = telemetry_blob_persistence::restore_telemetry_blob(
+        &mut store, read_limit,
+    )
+    .err()
+    .ok_or_else(|| String::from("oversized file load was admitted"))?;
+    let expected = BlobPersistenceError::Store(
+        NativeContinuationTelemetryFileBlobStoreError::LoadByteLimit {
+            maximum_bytes: read_limit,
+        },
+    );
+    let result = if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("oversized file rejection evidence drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_roundtrips_count_window()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("count")?;
+    let capacity = nonzero_test_limit(2, "file count capacity")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "file count bytes")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit = cached_retry_window_telemetry(
+        1,
+        7,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(hit).map_err(|error| error.to_string())?;
+    let expected = window.snapshot();
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let write = persist_cached_retry_telemetry_window(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file count persistence failed: {error:?}"))?;
+    let restored =
+        restore_cached_retry_telemetry_window(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("file count restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("file count persistence restored missing"));
+    };
+    let result = if write.bytes() == bytes && value.snapshot() == expected {
+        Ok(())
+    } else {
+        Err(String::from("file count persistence round-trip drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_telemetry_file_store_roundtrips_latency_histogram()
+-> Result<(), String> {
+    let fixture = telemetry_file_store_fixture("latency")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "file latency bytes")?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[1, 10, 101])?;
+    let expected = histogram.clone();
+    let mut store = NativeContinuationTelemetryFileBlobStore::new(
+        fixture.destination.clone(),
+    );
+    let write = persist_cached_retry_latency_histogram(
+        &mut store,
+        &histogram,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file latency persistence failed: {error:?}"))?;
+    let restored =
+        restore_cached_retry_latency_histogram(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("file latency restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("file latency persistence restored missing"));
+    };
+    let result = if write.bytes() == bytes && value == expected {
+        Ok(())
+    } else {
+        Err(String::from("file latency persistence round-trip drifted"))
+    };
+    remove_telemetry_file_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]
