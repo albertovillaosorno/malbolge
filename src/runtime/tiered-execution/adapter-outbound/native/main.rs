@@ -57,6 +57,7 @@ mod fused_sequence_execution;
 mod fused_sequence_handoff;
 mod fused_sequence_lease;
 mod fused_sequence_plan;
+mod fused_sequence_scheduler;
 mod fused_sequence_transaction;
 mod invocation;
 mod lifecycle;
@@ -346,6 +347,12 @@ pub use fused_sequence_lease::{
 };
 pub use fused_sequence_plan::{
     DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,
+};
+pub use fused_sequence_scheduler::{
+    DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
+    DirectFusedNativeScheduleResult, DirectFusedNativeScheduleStopReason,
+    DirectFusedNativeScheduleSuspension, DirectFusedNativeYieldTarget,
+    schedule_direct_fused_native_handoff,
 };
 pub use fused_sequence_transaction::{
     DirectFusedNativeSequenceTransactionFailure,

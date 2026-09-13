@@ -237,15 +237,17 @@ use execution_native::{
     DirectFusedNativeResidentCacheDisposition,
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRunner,
+    DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
+    DirectFusedNativeScheduleStopReason,
     DirectFusedNativeSequenceExecutionOutcome, DirectFusedNativeSequencePlan,
-    DirectFusedNativeSequencePlanError, DirectFusedSequenceAdmissionError,
-    DirectFusedSequenceObjectError, DirectHaltFetchError,
-    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
-    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError,
+    DirectFusedNativeSequencePlanError, DirectFusedNativeYieldTarget,
+    DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
+    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
+    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRotateError, DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -382,6 +384,7 @@ use execution_native::{
     release_native_executable, release_native_executable_sequence,
     release_register_masked_native_executable,
     release_register_masked_non_graphical_native_executable,
+    schedule_direct_fused_native_handoff,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
     select_cached_verified_execution_geometry_direct_sequence,
@@ -17226,6 +17229,216 @@ fn fused_direct_handoff_budget_resume_rolls_back_drift() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("fused resumed budget rollback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_scheduler_yields_caller() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let retained = continuation.clone();
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory.clone(),
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome = schedule_direct_fused_native_handoff(
+        handoff,
+        DirectFusedNativeScheduleDecision::yield_to(
+            DirectFusedNativeYieldTarget::Caller,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(pause) = outcome else {
+        return Err(String::from("fused caller yield completed work"));
+    };
+    if pause.reason() == DirectFusedNativeScheduleStopReason::CallerYield
+        && pause.continuation() == &retained
+        && pause.interpreter_steps() == 0
+        && pause.resume_step() == 0
+        && pause.remaining_steps() == 2
+        && pause.remaining_programs() == retained.remaining_programs()
+        && pause.state().memory() == fixture.initial_memory
+        && pause.state().io().output().is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused caller yield evidence drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_scheduler_yields_native_retry_after_progress()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::AArch64)?;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let first = schedule_direct_fused_native_handoff(
+        handoff,
+        DirectFusedNativeScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "fused scheduler slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("fused scheduler slice did not suspend"));
+    };
+    let second = pause
+        .resume(DirectFusedNativeScheduleDecision::yield_to(
+            DirectFusedNativeYieldTarget::NativeRetry,
+        ))
+        .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(retry) = second else {
+        return Err(String::from("fused native retry yield completed work"));
+    };
+    if retry.reason() == DirectFusedNativeScheduleStopReason::NativeRetry
+        && retry.interpreter_steps() == 1
+        && retry.resume_step() == 1
+        && retry.remaining_steps() == 1
+        && retry.state().memory() == fixture.first_memory
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused native retry yield evidence drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_scheduler_slices_then_completes() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let first = schedule_direct_fused_native_handoff(
+        handoff,
+        DirectFusedNativeScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "fused scheduler completion slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("fused scheduler slice completed early"));
+    };
+    if pause.reason() != DirectFusedNativeScheduleStopReason::BudgetExhausted {
+        return Err(String::from("fused scheduler budget reason drifted"));
+    }
+    let second = pause
+        .resume(DirectFusedNativeScheduleDecision::complete_interpreter())
+        .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = second else {
+        return Err(String::from("fused scheduler completion stayed paused"));
+    };
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused scheduled completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_scheduler_completes_directly() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::AArch64)?;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome = schedule_direct_fused_native_handoff(
+        handoff,
+        DirectFusedNativeScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("fused direct scheduler completion paused"));
+    };
+    if completion.interpreter_outcome()
+        == (RunOutcome::BudgetExhausted { steps: 2 })
+        && completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused direct scheduler completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_scheduler_propagates_resumed_drift() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let source = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("fused scheduler drift index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    let mut memory = fixture.initial_memory;
+    *memory.get_mut(index).ok_or_else(|| {
+        String::from("fused scheduler drift address missing")
+    })? = observed;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let first = schedule_direct_fused_native_handoff(
+        handoff,
+        DirectFusedNativeScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "fused scheduler drift slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let DirectFusedNativeScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("fused scheduler drift did not suspend"));
+    };
+    let Err(failure) =
+        pause.resume(DirectFusedNativeScheduleDecision::complete_interpreter())
+    else {
+        return Err(String::from("fused scheduler resumed drift was ignored"));
+    };
+    if failure.cause()
+        == (DirectFusedNativeHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_step() == 1
+        && failure.state().memory().get(index).copied() == Some(observed)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused scheduler failure evidence drifted"))
     }
 }
 

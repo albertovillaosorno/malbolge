@@ -512,8 +512,14 @@ Explicit source-step budgets now return an affine suspension with cumulative
 interpreter progress, complete-plan resume step, exact normative checkpoint, and
 remaining verified source programs. Zero budget preserves state, partial budget
 resumes without readmission, and oversized budget completes. Mid-region pauses
-do not claim a new fused-region cache key. Scheduling/native retry and
-transactional cache rollback remain absent.
+do not claim a new fused-region cache key.
+
+An explicit fused scheduler now consumes that affine owner with complete,
+positive interpreter-slice, caller-yield, or native-retry-yield decisions.
+Pauses retain exact checkpoint/source suffix/progress plus a stable stop reason;
+rescheduling consumes the same owner. Native retry remains evidence only: no
+backend is selected, loaded, cached, or invoked. Transactional cache rollback
+and concrete fused native-retry execution remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

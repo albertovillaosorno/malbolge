@@ -424,8 +424,14 @@ Explicit source-step budgets now return an affine suspension with cumulative
 interpreter progress, complete-plan resume step, exact normative checkpoint, and
 remaining verified source programs. Zero budget preserves state, partial budget
 resumes without readmission, and oversized budget completes. Mid-region pauses
-do not claim a new fused-region cache key. Scheduling/native retry and
-transactional cache rollback remain absent.
+do not claim a new fused-region cache key.
+
+An explicit fused scheduler now consumes that affine owner with complete,
+positive interpreter-slice, caller-yield, or native-retry-yield decisions.
+Pauses retain exact checkpoint/source suffix/progress plus a stable stop reason;
+rescheduling consumes the same owner. Native retry remains evidence only: no
+backend is selected, loaded, cached, or invoked. Transactional cache rollback
+and concrete fused native-retry execution remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -609,7 +615,7 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, scheduled/native-retry fused interpreter policy,
+fused sequence-cache rollback, concrete fused native-retry execution,
 concrete executable-memory and foreign-call adapters, runtime integration, and
 concrete instruction-cache synchronization remain incomplete.
 
