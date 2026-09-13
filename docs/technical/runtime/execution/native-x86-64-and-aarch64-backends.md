@@ -429,9 +429,14 @@ do not claim a new fused-region cache key.
 An explicit fused scheduler now consumes that affine owner with complete,
 positive interpreter-slice, caller-yield, or native-retry-yield decisions.
 Pauses retain exact checkpoint/source suffix/progress plus a stable stop reason;
-rescheduling consumes the same owner. Native retry remains evidence only: no
-backend is selected, loaded, cached, or invoked. Transactional cache rollback
-and concrete fused native-retry execution remain absent.
+rescheduling consumes the same owner.
+
+A separate fused retry-admission boundary now binds one caller-replanned fused
+plan to an exact `NativeRetry` suspension before native work. Scheduler reason,
+remaining source programs, ordered fused-region keys, and checkpoint entry must
+all match; rejection returns both owners. A pause inside a fused region has no
+fabricated region identity and therefore rejects the original whole-region plan.
+Transactional cache rollback and concrete fused retry execution remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
