@@ -524,7 +524,14 @@ plan to an exact `NativeRetry` suspension before native work. Scheduler reason,
 remaining source programs, ordered fused-region keys, and checkpoint entry must
 all match; rejection returns both owners. A pause inside a fused region has no
 fabricated region identity and therefore rejects the original whole-region plan.
-Transactional cache rollback and concrete fused retry execution remain absent.
+
+Admitted fused retries now execute through the existing uncached fused sequence
+transaction from checkpoint-derived owned buffers. Success and failure retain
+the original plan/suspension plus exact transferred state; checkpoint
+reconstruction is validated. Guard miss and runner failure preserve region-entry
+state, while committed final-release failure preserves semantic state plus exact
+cleanup retry ownership. Semantic rebase/routing, cached fused retry, and
+transactional cache rollback remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

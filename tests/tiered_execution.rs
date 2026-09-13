@@ -357,7 +357,7 @@ use execution_native::{
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, execute_cached_verified_native_sequence,
-    execute_direct_fused_native_sequence,
+    execute_direct_fused_native_retry, execute_direct_fused_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
@@ -17603,6 +17603,204 @@ fn fused_direct_retry_rejects_cross_isa_region_key() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("fused cross-ISA retry lost owners"))
+    }
+}
+
+fn admitted_fused_direct_retry(
+    isa: HostIsa,
+) -> Result<DirectFusedNativeRetry, String> {
+    let (plan, pause) = fused_direct_retry_pause(
+        isa,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    DirectFusedNativeRetry::new(pause, plan)
+        .map_err(|failure| failure.error().to_string())
+}
+
+#[test]
+fn fused_direct_retry_execution_applies_both_isas() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    for (isa, mapping, base) in [
+        (HostIsa::X86_64, 1200, 0x70_0000),
+        (HostIsa::AArch64, 1201, 0x71_0000),
+    ] {
+        let admitted = admitted_fused_direct_retry(isa)?;
+        let mut adapter = FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping)?,
+            native_executable_address(base)?,
+        );
+        let mut runner =
+            FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+        let execution = execute_direct_fused_native_retry(
+            admitted,
+            &mut adapter,
+            &mut runner,
+        )
+        .map_err(|failure| failure.failure().to_string())?;
+        let expected_outcome =
+            DirectFusedNativeSequenceExecutionOutcome::Applied {
+                observation: execution.plan().exit(),
+                regions: 1,
+                semantic_steps: 2,
+            };
+        if execution.outcome() != expected_outcome
+            || execution.transfer().memory() != expected.final_memory
+            || execution.transfer().output() != expected.final_output
+            || execution.transfer().observation() != execution.plan().exit()
+            || adapter.release_attempts != 1
+        {
+            return Err(format!("fused retry execution drifted: {isa:?}"));
+        }
+        let checkpoint = execution
+            .into_parts()
+            .3
+            .into_checkpoint()
+            .map_err(|error| format!("fused retry checkpoint: {error:?}"))?;
+        if checkpoint.memory() != expected.final_memory
+            || checkpoint.io().output() != expected.final_output
+        {
+            return Err(format!("fused retry checkpoint drifted: {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_retry_execution_preserves_guard_miss() -> Result<(), String> {
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let entry = pause.state().clone();
+    let admitted = DirectFusedNativeRetry::new(pause, plan)
+        .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1202)?,
+        native_executable_address(0x72_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let execution =
+        execute_direct_fused_native_retry(admitted, &mut adapter, &mut runner)
+            .map_err(|failure| failure.failure().to_string())?;
+    if execution.outcome()
+        != (DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 0,
+            observation: execution.plan().entry(),
+        })
+        || execution.transfer().memory() != entry.memory()
+        || execution.transfer().observation() != execution.plan().entry()
+    {
+        return Err(String::from("fused retry guard miss mutated state"));
+    }
+    let checkpoint = execution
+        .into_parts()
+        .3
+        .into_checkpoint()
+        .map_err(|error| format!("fused guard checkpoint: {error:?}"))?;
+    if checkpoint == entry {
+        Ok(())
+    } else {
+        Err(String::from("fused retry guard checkpoint drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_execution_retains_runner_rollback() -> Result<(), String>
+{
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let entry = pause.state().clone();
+    let admitted = DirectFusedNativeRetry::new(pause, plan)
+        .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1203)?,
+        native_executable_address(0x73_0000)?,
+    );
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) =
+        execute_direct_fused_native_retry(admitted, &mut adapter, &mut runner)
+    else {
+        return Err(String::from("fused retry runner failure was ignored"));
+    };
+    let execution = failure.failure().execution_failure().ok_or_else(|| {
+        String::from("fused retry execution failure evidence missing")
+    })?;
+    if execution.completed_steps() != 0
+        || execution.resume_step() != 0
+        || failure.transfer().memory() != entry.memory()
+        || failure.transfer().observation() != failure.plan().entry()
+    {
+        return Err(String::from("fused retry runner rollback drifted"));
+    }
+    let checkpoint =
+        (*failure)
+            .into_parts()
+            .3
+            .into_checkpoint()
+            .map_err(|error| {
+                format!("fused retry rollback checkpoint: {error:?}")
+            })?;
+    if checkpoint == entry {
+        Ok(())
+    } else {
+        Err(String::from("fused retry rollback checkpoint drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_execution_retains_cleanup() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let admitted = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1204)?,
+        native_executable_address(0x74_0000)?,
+    )
+    .with_release_failure_at(1);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(failure) =
+        execute_direct_fused_native_retry(admitted, &mut adapter, &mut runner)
+    else {
+        return Err(String::from("fused retry cleanup failure was ignored"));
+    };
+    let expected_outcome = DirectFusedNativeSequenceExecutionOutcome::Applied {
+        observation: failure.plan().exit(),
+        regions: 1,
+        semantic_steps: 2,
+    };
+    if failure.failure().committed_outcome() != Some(expected_outcome)
+        || failure.transfer().memory() != expected.final_memory
+        || failure.transfer().output() != expected.final_output
+        || failure.transfer().observation() != failure.plan().exit()
+    {
+        return Err(String::from("fused retry cleanup lost committed state"));
+    }
+    let (_, _, transaction, transfer) = (*failure).into_parts();
+    let checkpoint = transfer
+        .into_checkpoint()
+        .map_err(|error| format!("fused cleanup checkpoint: {error:?}"))?;
+    let release = (*transaction)
+        .into_release_failure()
+        .ok_or_else(|| String::from("fused retry cleanup owner missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|error| format!("fused retry cleanup retry: {error}"))?;
+    if checkpoint.memory() == expected.final_memory
+        && checkpoint.io().output() == expected.final_output
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused retry cleanup retry drifted"))
     }
 }
 
