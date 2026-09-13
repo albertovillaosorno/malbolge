@@ -17,7 +17,8 @@
 //   - Outputs: deferred evidence or one exact recommended retry policy.
 //   - Side effects: none.
 // - Split-When:
-//   - Latency-driven recommendation or policy publication gains authority.
+//   - Latency-driven recommendation or durable/cross-cycle publication gains
+//     authority.
 // - Merge-When:
 //   - Caller orchestration owns assessment and publication atomically.
 // - Summary:

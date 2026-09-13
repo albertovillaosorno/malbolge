@@ -17,6 +17,6 @@ It must not bypass another function or architectural kind boundary.
 - `adapter-outbound/`: governed native/cache parts with isolated limit and
   reclamation transactions.
 - `application/`: handoff plus cached/leased retry routing, semantic rebase,
-  exact telemetry summaries, FIFO snapshots/assessment/recommendation, turns,
-  and cycles.
+  exact telemetry summaries, FIFO assessment/recommendation/request publication,
+  turns, and cycles.
 - `domain/`: governed `domain` parts.

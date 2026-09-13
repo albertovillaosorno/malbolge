@@ -20,8 +20,8 @@
 //     ownership.
 //   - Side effects: bounded cache acquisitions and loaded native attempts.
 // - Split-When:
-//   - Policy publication, latency-driven recommendation, or async ownership
-//     gains a lifecycle.
+//   - Durable/cross-cycle policy publication, latency-driven recommendation, or
+//     async ownership gains a lifecycle.
 // - Merge-When:
 //   - Product orchestration owns the complete cached tiered lifecycle.
 // - Summary:
@@ -51,6 +51,8 @@ mod telemetry_latency_codec;
 mod telemetry_latency_merge;
 #[path = "cached_cycle/telemetry_latency_snapshot.rs"]
 mod telemetry_latency_snapshot;
+#[path = "cached_cycle/telemetry_policy_publication.rs"]
+mod telemetry_policy_publication;
 #[path = "cached_cycle/telemetry_recommendation.rs"]
 mod telemetry_recommendation;
 #[path = "cached_cycle/telemetry_snapshot.rs"]
@@ -101,6 +103,10 @@ pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
+};
+pub use telemetry_policy_publication::{
+    NativeContinuationCachedRetryPolicyPublication,
+    publish_cached_retry_policy_recommendation,
 };
 pub use telemetry_recommendation::{
     NativeContinuationCachedRetryPolicyRecommendation,
@@ -551,6 +557,12 @@ impl NativeContinuationCachedRetryCycleRequest {
             policy,
             suspension,
         }
+    }
+
+    /// Returns the retry policy carried by this cycle request.
+    #[must_use]
+    pub const fn policy(&self) -> NativeContinuationRetryPolicy {
+        self.policy
     }
 }
 

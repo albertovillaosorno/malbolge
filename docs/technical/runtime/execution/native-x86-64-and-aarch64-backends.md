@@ -642,7 +642,12 @@ policy.
 
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
-retains exact telemetry and miss violations and does not publish policy.
+retains exact telemetry and miss violations and does not publish policy. A
+separate request-scoped publication boundary consumes that recommendation plus
+one future cached-cycle request. Deferral returns the request unchanged; ready
+evidence replaces only its retry policy while retaining previous/current policy
+and exact recommendation evidence.
+
 Caller-supplied latency histograms preserve inclusive buckets, totals,
 and extrema without reading clocks; validated snapshots transfer complete
 
@@ -651,9 +656,9 @@ Identical-schema histograms merge transactionally with exact rollback on any
 schema or counter failure. Canonical revision-one latency bytes preserve exact
 extrema flags, `u128` totals, and bound/count pairs while repeating snapshot
 validation after decode. Rebinning, distributed merge, latency-driven
-recommendation, policy publication, native object fusion, foreign invocation,
-runtime clock acquisition, durable storage, and cross-process coordination
-remain open.
+recommendation, durable/cross-cycle policy publication, native object fusion,
+foreign invocation, runtime clock acquisition, durable storage, and
+cross-process coordination remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

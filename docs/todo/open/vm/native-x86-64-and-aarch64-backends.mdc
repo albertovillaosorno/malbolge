@@ -503,17 +503,23 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss
-  violations are retained and no policy is published. Caller-supplied latency
-  histograms preserve inclusive buckets, exact totals, and extrema without
+  violations are retained and no policy is published. A separate
+  request-scoped publication boundary consumes that recommendation plus one
+  future cached-cycle request. Deferral returns the request unchanged; ready
+  evidence replaces only its retry policy while retaining previous/current
+  policy and exact recommendation evidence.
+
+  Caller-supplied latency histograms preserve inclusive buckets, exact totals,
+  and extrema without
   reading a clock. Validated snapshots transfer complete histogram state and
   reject impossible count, extrema, total-range, or overflow-bin evidence.
   Identical-schema histograms merge transactionally with exact rollback.
   Canonical revision-one latency bytes preserve extrema flags, `u128` totals,
 
   bound/count pairs, and repeat snapshot validation after decode. Rebinning,
-  distributed/durable merge, latency-driven recommendation, policy publication,
-  runtime clock acquisition, async queues, durable storage, and broader
-  production orchestration remain pending.
+  distributed/durable merge, latency-driven recommendation, durable/cross-cycle
+  policy publication, runtime clock acquisition, async queues, durable storage,
+  and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

@@ -143,6 +143,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
     NativeContinuationCachedRetryNativeFailure,
+    NativeContinuationCachedRetryPolicyPublication,
     NativeContinuationCachedRetryPolicyRecommendation,
     NativeContinuationCachedRetryPolicyRecommendationSet,
     NativeContinuationCachedRetryTelemetry,
@@ -164,7 +165,8 @@ use cached_cycle::{
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
-    recommend_cached_retry_policy, summarize_cached_retry_attempts,
+    publish_cached_retry_policy_recommendation, recommend_cached_retry_policy,
+    summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -50149,6 +50151,87 @@ fn cached_retry_policy_recommendation_retains_miss_evidence()
         Ok(())
     } else {
         Err(String::from("missed telemetry recommendation lost evidence"))
+    }
+}
+
+fn cached_retry_policy_publication_request(
+    policy: NativeContinuationRetryPolicy,
+) -> Result<NativeContinuationCachedRetryCycleRequest, String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    Ok(windows_cached_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    ))
+}
+
+#[test]
+fn cached_retry_policy_publication_defers_without_mutation()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+            observed_attempts: 1,
+            required_attempts: nonzero_test_limit(
+                2,
+                "policy publication attempts",
+            )?,
+        };
+    let publication =
+        publish_cached_retry_policy_recommendation(request, recommendation);
+    if publication.is_published()
+        || publication.recommendation() != recommendation
+        || publication.request().policy() != original_policy
+    {
+        return Err(String::from(
+            "deferred policy publication mutated request",
+        ));
+    }
+    let recovered_request = publication.into_request();
+    if recovered_request.policy() == original_policy {
+        Ok(())
+    } else {
+        Err(String::from("deferred policy owner drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_publication_replaces_request_policy()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let recommended_policy = complete_retry_policy(4);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy: recommended_policy,
+            telemetry,
+        };
+    let publication =
+        publish_cached_retry_policy_recommendation(request, recommendation);
+    let NativeContinuationCachedRetryPolicyPublication::Published {
+        current_policy,
+        previous_policy,
+        recommendation: retained_recommendation,
+        request: published_request,
+    } = publication
+    else {
+        return Err(String::from("ready recommendation did not publish"));
+    };
+    if current_policy == recommended_policy
+        && previous_policy == original_policy
+        && retained_recommendation == recommendation
+        && published_request.policy() == recommended_policy
+    {
+        Ok(())
+    } else {
+        Err(String::from("published policy evidence drifted"))
     }
 }
 
