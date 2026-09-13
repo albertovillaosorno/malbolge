@@ -143,6 +143,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
     NativeContinuationCachedRetryNativeFailure,
+    NativeContinuationCachedRetryPolicyRecommendation,
+    NativeContinuationCachedRetryPolicyRecommendationSet,
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetryAssessment,
     NativeContinuationCachedRetryTelemetryAssessmentMaximums,
@@ -162,7 +164,7 @@ use cached_cycle::{
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
-    summarize_cached_retry_attempts,
+    recommend_cached_retry_policy, summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -50033,6 +50035,120 @@ fn cached_retry_telemetry_assessment_uses_window_totals() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("window telemetry assessment drifted"))
+    }
+}
+
+const fn cached_retry_policy_recommendation_set()
+-> NativeContinuationCachedRetryPolicyRecommendationSet {
+    NativeContinuationCachedRetryPolicyRecommendationSet::new(
+        complete_retry_policy(3),
+        complete_retry_policy(1),
+    )
+}
+
+#[test]
+fn cached_retry_policy_recommendation_defers_insufficient_evidence()
+-> Result<(), String> {
+    let required = nonzero_test_limit(4, "policy recommendation attempts")?;
+    let assessment =
+        NativeContinuationCachedRetryTelemetryAssessment::Insufficient {
+            observed_attempts: 3,
+            required_attempts: required,
+        };
+    let recommendation = recommend_cached_retry_policy(
+        assessment,
+        cached_retry_policy_recommendation_set(),
+    );
+    let NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+        observed_attempts,
+        required_attempts,
+    } = recommendation
+    else {
+        return Err(String::from("insufficient evidence selected policy"));
+    };
+    if observed_attempts == 3
+        && required_attempts == required
+        && recommendation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("policy recommendation defer evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_recommendation_selects_meets_policy()
+-> Result<(), String> {
+    let telemetry = cached_retry_window_telemetry(
+        2,
+        5,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let policies = cached_retry_policy_recommendation_set();
+    let assessment =
+        NativeContinuationCachedRetryTelemetryAssessment::Meets { telemetry };
+    let recommendation = recommend_cached_retry_policy(assessment, policies);
+    let NativeContinuationCachedRetryPolicyRecommendation::Meets {
+        policy,
+        telemetry: recommended_telemetry,
+    } = recommendation
+    else {
+        return Err(String::from("meeting telemetry recommendation drifted"));
+    };
+    if policy == policies.meets()
+        && recommended_telemetry == telemetry
+        && recommendation.policy() == Some(policies.meets())
+        && policies.meets() != policies.misses()
+    {
+        Ok(())
+    } else {
+        Err(String::from("meeting telemetry selected wrong policy"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_recommendation_retains_miss_evidence()
+-> Result<(), String> {
+    let telemetry = cached_retry_window_telemetry(
+        2,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let required = nonzero_test_limit(1, "policy recommendation attempts")?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                0, 0, 0,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                required, 4, 3,
+            ),
+        );
+    let assessment = assess_cached_retry_telemetry(telemetry, thresholds);
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = recommend_cached_retry_policy(assessment, policies);
+    let NativeContinuationCachedRetryPolicyRecommendation::Misses {
+        policy,
+        telemetry: recommended_telemetry,
+        violations,
+    } = recommendation
+    else {
+        return Err(String::from("missed telemetry recommendation drifted"));
+    };
+    if policy == policies.misses()
+        && recommended_telemetry == telemetry
+        && violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::
+                CompletedSteps,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
+        )
+        && recommendation.policy() == Some(policies.misses())
+    {
+        Ok(())
+    } else {
+        Err(String::from("missed telemetry recommendation lost evidence"))
     }
 }
 

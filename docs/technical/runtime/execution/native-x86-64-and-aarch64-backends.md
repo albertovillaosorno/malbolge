@@ -638,16 +638,22 @@ totals,
 transactional capacity changes, validated transfer snapshots, and canonical
 revision-one little-endian snapshot bytes. Explicit inclusive thresholds
 classify insufficient, meeting, or multi-signal miss evidence without selecting
-policy. Caller-supplied latency histograms preserve inclusive buckets, totals,
+policy.
+
+A pure count-based recommendation boundary now maps ready assessments to
+one of two caller-supplied retry policies while insufficient evidence defers; it
+retains exact telemetry and miss violations and does not publish policy.
+Caller-supplied latency histograms preserve inclusive buckets, totals,
 and extrema without reading clocks; validated snapshots transfer complete
 
 histogram state and reject impossible count, range, or overflow-bin evidence.
 Identical-schema histograms merge transactionally with exact rollback on any
 schema or counter failure. Canonical revision-one latency bytes preserve exact
 extrema flags, `u128` totals, and bound/count pairs while repeating snapshot
-validation after decode. Rebinning, distributed merge, native object fusion,
-foreign invocation, telemetry-driven policy, runtime clock acquisition, durable
-storage, and cross-process coordination remain open.
+validation after decode. Rebinning, distributed merge, latency-driven
+recommendation, policy publication, native object fusion, foreign invocation,
+runtime clock acquisition, durable storage, and cross-process coordination
+remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

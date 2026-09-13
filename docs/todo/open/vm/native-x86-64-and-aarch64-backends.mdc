@@ -498,7 +498,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   monotonic sequences, exact totals, transactional capacity changes, validated
   snapshots, canonical revision-one little-endian bytes, and inclusive
 
-  multi-signal assessment without selecting policy. Caller-supplied latency
+  multi-signal assessment without selecting policy.
+
+  A pure count-based
+  recommendation boundary maps ready assessments to one of two caller-supplied
+  retry policies while insufficient evidence defers; exact telemetry and miss
+  violations are retained and no policy is published. Caller-supplied latency
   histograms preserve inclusive buckets, exact totals, and extrema without
   reading a clock. Validated snapshots transfer complete histogram state and
   reject impossible count, extrema, total-range, or overflow-bin evidence.
@@ -506,9 +511,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Canonical revision-one latency bytes preserve extrema flags, `u128` totals,
 
   bound/count pairs, and repeat snapshot validation after decode. Rebinning,
-  distributed/durable merge, automatic recommendation/publication, runtime clock
-  acquisition, async queues, durable storage, and broader production
-  orchestration remain pending.
+  distributed/durable merge, latency-driven recommendation, policy publication,
+  runtime clock acquisition, async queues, durable storage, and broader
+  production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

@@ -316,6 +316,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0057
+    path: composition/tier/cached_cycle/telemetry_recommendation.rs
+    kind: composition
+    language: rust
+    responsibility: Wire concrete tier policy and adapters.
 projects: []
 tests: []
 graph:
