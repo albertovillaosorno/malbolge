@@ -1301,19 +1301,34 @@ historically accurate.
 
 ### "The door is broken. Is this whole game just a corridor?"
 
-I killed everything I could see and expected the door to open automatically.
+This misunderstanding was much more elaborate than I originally recorded. I
+was meeting DOOM through a visual language built around a 320x200 game surface,
+and at first I could barely tell what half the tiny world objects and interface
+cues were supposed to mean on a modern display. I also brought a very modern
+assumption with me: kill everything in the area, then the game will unlock the
+way forward.
 
-It did not.
+So I killed everything I could see and waited for the door to open
+automatically. It did not. I assumed this was our bug.
 
-I assumed this was our bug.
+I had also selected the hardest difficulty for my first serious playthrough.
+Monsters therefore kept reappearing while I was waiting for the nonexistent
+"area cleared" rule to fire. At that point my working theory was essentially:
 
-Then I learned that Space means **Use**.
+> What the hell is this game? Is this what people's grandparents had fun with?
+
+Eventually I asked an AI assistant why the door appeared to do nothing. The
+answer was embarrassingly simple: classic DOOM has a dedicated **Use** action,
+and Space activates it.
 
 My immediate response was approximately:
 
-> How the hell is Space Use? Space is jump.
+> AHHHHHHHH. How the hell is Space Use? Space is jump.
 
-DOOM does not have ordinary jumping.
+DOOM does not have ordinary jumping. The door was fine, the map progression was
+fine, and the game was not waiting for me to kill every monster. I had simply
+imported several decades of later game conventions into 1993 and then blamed
+the software when they were absent.
 
 I added `E` as a secondary Use binding.
 
