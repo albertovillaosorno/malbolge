@@ -224,7 +224,9 @@ use execution_native::{
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectFusedInvocationError, DirectFusedNativeContinuation,
     DirectFusedNativeContinuationError, DirectFusedNativeContinuationReason,
-    DirectFusedNativeExecutableOwner, DirectFusedNativeLease,
+    DirectFusedNativeExecutableOwner, DirectFusedNativeHandoffAdmissionError,
+    DirectFusedNativeHandoffExecutionCause,
+    DirectFusedNativeInterpreterHandoff, DirectFusedNativeLease,
     DirectFusedNativeLeaseCache, DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
     DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedSequence,
@@ -960,6 +962,9 @@ struct CachedRetryTelemetryExpectation {
     insertions: usize,
     retired_keys: usize,
 }
+
+type FusedContinuationFixture =
+    (DirectFusedNativeSequencePlan, DirectFusedNativeContinuation);
 
 #[derive(Debug)]
 struct NativeSequenceFixture {
@@ -16851,6 +16856,178 @@ fn fused_direct_continuation_tracks_execution_failure() -> Result<(), String> {
     loaded
         .release(&mut adapter)
         .map_err(|error| format!("fused continuation release: {error}"))
+}
+
+fn fused_direct_guard_continuation(
+    isa: HostIsa,
+) -> Result<FusedContinuationFixture, String> {
+    let artifact = verified_fused_direct_sequence_object(isa)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused handoff plan: {error}"))?;
+    let continuation = DirectFusedNativeContinuation::from_outcome(
+        &plan,
+        DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 0,
+            observation: plan.entry(),
+        },
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| String::from("fused handoff continuation missing"))?;
+    Ok((plan, continuation))
+}
+
+fn assert_fused_direct_handoff_completion(isa: HostIsa) -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) = fused_direct_guard_continuation(isa)?;
+    let retained = continuation.clone();
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        fixture.initial_memory.clone(),
+        fixture.input.clone(),
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let completion = handoff.execute().map_err(|error| error.to_string())?;
+    if completion.continuation() == &retained
+        && completion.interpreter_outcome()
+            == (RunOutcome::BudgetExhausted { steps: 2 })
+        && completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+        && profile_state_observation(completion.state()) == plan.exit()
+    {
+        Ok(())
+    } else {
+        Err(format!("fused interpreter handoff drifted: {isa:?}"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_completes_both_isas() -> Result<(), String> {
+    assert_fused_direct_handoff_completion(HostIsa::X86_64)?;
+    assert_fused_direct_handoff_completion(HostIsa::AArch64)
+}
+
+#[test]
+fn fused_direct_handoff_accepts_exact_checkpoint() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::AArch64)?;
+    let checkpoint = direct_normative_sequence_state()?;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_checkpoint(
+        continuation,
+        checkpoint,
+    )
+    .map_err(|error| error.to_string())?;
+    let completion = handoff.execute().map_err(|error| error.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == fixture.final_memory
+        && completion.state().io().output() == fixture.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused checkpoint handoff completion drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_rejects_initial_live_in_drift() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let live_in = continuation
+        .remaining_programs()
+        .first()
+        .and_then(|program| program.memory_live_ins.first())
+        .copied()
+        .ok_or_else(|| String::from("fused handoff first live-in missing"))?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("fused handoff live-in index: {error}"))?;
+    let mut memory = fixture.initial_memory.clone();
+    let observed = live_in.value.saturating_add(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("fused handoff live-in unavailable"))? =
+        observed;
+    let result = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        fixture.input,
+        &fixture.initial_output,
+    );
+    if result
+        == Err(DirectFusedNativeHandoffAdmissionError::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused initial live-in drift was admitted"))
+    }
+}
+
+#[test]
+fn fused_direct_handoff_rolls_back_late_live_in_drift() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let (_plan, continuation) =
+        fused_direct_guard_continuation(HostIsa::X86_64)?;
+    let source = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("fused late live-in index: {error}"))?;
+    let mut memory = fixture.initial_memory.clone();
+    let observed = live_in.value.saturating_sub(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("fused late live-in unavailable"))? =
+        observed;
+    let handoff = DirectFusedNativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        fixture.input,
+        &fixture.initial_output,
+    )
+    .map_err(|error| error.to_string())?;
+    let Err(failure) = handoff.execute() else {
+        return Err(String::from("fused late live-in drift was ignored"));
+    };
+    let mut expected_memory = fixture.first_memory.clone();
+    *expected_memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("fused late expected memory missing"))? =
+        observed;
+    let first_output_len = source
+        .admission()
+        .source_plan()
+        .programs()
+        .first()
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.after.output_len)
+        .ok_or_else(|| {
+            String::from("fused first-step output length missing")
+        })?;
+    let expected_output = fixture
+        .first_output
+        .get(..first_output_len)
+        .ok_or_else(|| String::from("fused first-step output unavailable"))?;
+    if failure.cause()
+        == (DirectFusedNativeHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_step() == 1
+        && failure.state().memory() == expected_memory
+        && failure.state().io().output() == expected_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused late handoff rollback evidence drifted"))
+    }
 }
 
 fn assert_fused_sequence_transaction_applied(

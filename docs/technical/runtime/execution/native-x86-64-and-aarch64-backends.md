@@ -412,7 +412,14 @@ An immutable fused continuation now validates GuardMiss or indexed failure at
 exact fused-region boundaries. It retains complete/remaining fused keys,
 flattened verified source programs, canonical geometry, final outcome, and both
 region/source-step resume indices; completed work yields no continuation.
-Transactional cache rollback and concrete interpreter handoff remain absent.
+
+A separate complete fused interpreter handoff now admits an exact checkpoint or
+native transfer buffers, reconstructs the normative profile machine, and
+executes/reprojects every retained one-step source program. Initial live-ins are
+checked before work starts; later source-step mismatch restores that step entry
+while keeping an already admitted prefix. Completion must reproduce the exact
+fused plan exit and total outcome. Budget suspension, scheduling/native retry,
+and transactional cache rollback remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -596,9 +603,9 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, concrete fused interpreter handoff, concrete
-executable-memory and foreign-call adapters, runtime integration, and concrete
-instruction-cache synchronization remain incomplete.
+fused sequence-cache rollback, budgeted/scheduled fused interpreter fallback,
+concrete executable-memory and foreign-call adapters, runtime integration, and
+concrete instruction-cache synchronization remain incomplete.
 
 ## Invariants
 
