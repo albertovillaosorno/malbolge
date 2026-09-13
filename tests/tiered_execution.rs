@@ -393,6 +393,8 @@ use execution_native::{
     release_native_executable, release_native_executable_sequence,
     release_register_masked_native_executable,
     release_register_masked_non_graphical_native_executable,
+    return_direct_fused_native_retry_failure_leases,
+    return_direct_fused_native_retry_leases,
     schedule_direct_fused_native_handoff,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
@@ -18188,6 +18190,223 @@ fn fused_direct_retry_failure_rebase_completes_cleanup() -> Result<(), String> {
     release
         .retry(&mut adapter)
         .map_err(|failure| failure.to_string())
+}
+
+fn fused_retry_first_key(
+    retry: &DirectFusedNativeRetry,
+) -> Result<NativeArtifactKey, String> {
+    retry
+        .plan()
+        .artifacts()
+        .first()
+        .map(|artifact| artifact.key().clone())
+        .ok_or_else(|| String::from("missing fused retry artifact"))
+}
+
+#[test]
+fn fused_direct_cached_retry_return_keeps_active() -> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1250)?,
+        native_executable_address(0x83_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("cached retry return setup: {failure:?}"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let operations = adapter.operations.clone();
+    let returned = return_direct_fused_native_retry_leases(
+        &mut cache,
+        &mut adapter,
+        rebased,
+    )
+    .map_err(|failure| failure.reconciliation().to_string())?;
+    if cache.active_len() != 1
+        || cache.retired_len() != 0
+        || !returned.reconciliation().released_keys().is_empty()
+        || adapter.operations != operations
+        || !matches!(
+            returned.disposition(),
+            DirectFusedNativeRetryDisposition::Completed(_)
+        )
+    {
+        return Err(String::from("active cached retry return drifted"));
+    }
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_cached_retry_return_releases_retired() -> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let key = fused_retry_first_key(&retry)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1251)?,
+        native_executable_address(0x84_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("retired retry setup: {failure:?}"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let invalidation = cache
+        .invalidate_key(&mut adapter, &key)
+        .map_err(|failure| failure.failure().to_string())?;
+    if !matches!(
+        invalidation,
+        DirectFusedNativeLeaseCacheInvalidation::Retired { leases: 1 }
+    ) {
+        return Err(String::from("leased fused retry did not retire"));
+    }
+    let returned = return_direct_fused_native_retry_leases(
+        &mut cache,
+        &mut adapter,
+        rebased,
+    )
+    .map_err(|failure| failure.reconciliation().to_string())?;
+    if returned.reconciliation().released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("retired fused retry return did not release"))
+    }
+}
+
+#[test]
+fn fused_direct_cached_retry_return_preserves_release_retry()
+-> Result<(), String> {
+    let retry = admitted_fused_direct_retry(HostIsa::X86_64)?;
+    let key = fused_retry_first_key(&retry)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1252)?,
+        native_executable_address(0x85_0000)?,
+    )
+    .with_release_failure_at(1);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let execution = execute_cached_direct_fused_native_retry(
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+        retry,
+    )
+    .map_err(|failure| format!("release retry setup: {failure:?}"))?;
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let invalidation = cache
+        .invalidate_key(&mut adapter, &key)
+        .map_err(|failure| failure.failure().to_string())?;
+    if !matches!(
+        invalidation,
+        DirectFusedNativeLeaseCacheInvalidation::Retired { leases: 1 }
+    ) {
+        return Err(String::from("fused retry release fixture did not retire"));
+    }
+    let Err(return_failure) = return_direct_fused_native_retry_leases(
+        &mut cache,
+        &mut adapter,
+        rebased,
+    ) else {
+        return Err(String::from("fused retry return ignored release failure"));
+    };
+    if !matches!(
+        return_failure.disposition(),
+        DirectFusedNativeRetryDisposition::Completed(_)
+    ) || return_failure
+        .reconciliation()
+        .failures()
+        .first()
+        .map(DirectFusedNativeLeaseCacheEntryReleaseFailure::key)
+        != Some(&key)
+    {
+        return Err(String::from("fused retry return lost cleanup evidence"));
+    }
+    let (_, _, reconciliation) = (*return_failure).into_parts();
+    let summary = (*reconciliation)
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if summary.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("fused retry return cleanup retry drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_cached_retry_return_keeps_native_failure() -> Result<(), String>
+{
+    let retry = admitted_fused_direct_retry(HostIsa::AArch64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1253)?,
+        native_executable_address(0x86_0000)?,
+    );
+    let operations_after_load;
+    let rebased = {
+        let mut runner = FakeDirectFusedNativeRunner::new(
+            FakeNativeRunnerBehavior::FailureAfterMutation,
+        );
+        let Err(failure) = execute_cached_direct_fused_native_retry(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+            retry,
+        ) else {
+            return Err(String::from("cached runner failure completed"));
+        };
+        operations_after_load = adapter.operations.clone();
+        (*failure)
+            .into_execution()
+            .ok_or_else(|| String::from("cached execution failure missing"))?
+            .rebase()
+            .map_err(|rebase_failure| rebase_failure.error().to_string())?
+    };
+    let returned = return_direct_fused_native_retry_failure_leases(
+        &mut cache,
+        &mut adapter,
+        rebased,
+    )
+    .map_err(|failure| failure.reconciliation().to_string())?;
+    if returned.failure().completed_steps() == 0
+        && matches!(
+            returned.disposition(),
+            DirectFusedNativeRetryDisposition::Resumable(_)
+        )
+        && adapter.operations == operations_after_load
+        && cache.active_len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed cached retry return drifted"))
+    }
 }
 
 #[test]

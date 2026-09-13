@@ -1062,6 +1062,27 @@ impl DirectFusedNativeLeaseCache {
         self.reconcile_retired(adapter)
     }
 
+    /// Consumes exact leases together, then reconciles retired residents once.
+    ///
+    /// Active lookup authority remains active. Only residents already retired
+    /// before this call can release after all supplied external owners drop.
+    ///
+    /// # Errors
+    ///
+    /// Returns keyed release failures after attempting every releasable retired
+    /// resident.
+    pub fn return_leases<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        leases: Vec<DirectFusedNativeLease>,
+    ) -> DirectFusedNativeLeaseCacheReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        drop(leases);
+        self.reconcile_retired(adapter)
+    }
+
     /// Returns exact active plus retired resident resource usage.
     #[must_use]
     pub const fn usage(&self) -> DirectFusedNativeLeaseCacheUsage {

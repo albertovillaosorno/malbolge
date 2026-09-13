@@ -560,9 +560,13 @@ Successful and failed resident retry executions now rebase through the same
 verified semantic checker as uncached retries while retaining cache dispositions
 and the independently reusable leased sequence. Applied work can complete the
 original plan; guard miss and runner failure return normative resumptions
-without consuming resident ownership. Explicit lease return, multi-turn
-policy, and
-transactional cache rollback remain separate.
+without consuming resident ownership.
+
+An explicit post-rebase return boundary now drops every region lease together,
+keeps active lookup authority intact, and runs one retired-resident
+reconciliation pass. Release failure preserves semantic/native evidence beside
+exact keyed cleanup retry ownership. Multi-turn policy and transactional cache
+rollback remain separate.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
