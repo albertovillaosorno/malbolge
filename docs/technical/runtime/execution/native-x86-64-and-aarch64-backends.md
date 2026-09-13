@@ -448,7 +448,14 @@ A separate semantic rebase now advances only across verified whole fused regions
 and preserves original complete-plan authority. Applied retry work completes the
 original outcome, while guard/load/runner failure returns a scheduler-ready
 normative handoff; cleanup failure may complete semantics while retaining its
-transaction/release owner independently. Host routing, cached fused retry, and
+transaction/release owner independently.
+
+Explicit host routing now replans one `NativeRetry` suspension for Windows
+x86-64/AArch64, regenerates and verifies the exact fused object, and
+readmits the reconstructed plan before native work. Missing target format and a
+one-step
+mid-region suffix route normatively to the interpreter; profile, IR, object, and
+identity drift remain hard ownership-preserving failures. Cached fused retry and
 transactional cache rollback remain absent.
 
 Safe sequence execution now runs those reviewed
@@ -633,8 +640,8 @@ emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
 prepared invocation contract. Wider fused-template coverage, transactional
-fused sequence-cache rollback, fused retry semantic rebase/routing and cached
-retry integration, concrete executable-memory and foreign-call adapters, runtime
+fused sequence-cache rollback, cached fused retry integration, concrete
+executable-memory and foreign-call adapters, runtime
 integration, and concrete instruction-cache synchronization remain incomplete.
 
 ## Invariants

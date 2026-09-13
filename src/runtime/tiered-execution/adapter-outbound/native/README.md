@@ -536,7 +536,14 @@ A separate semantic rebase now advances only across verified whole fused regions
 and preserves original complete-plan authority. Applied retry work completes the
 original outcome, while guard/load/runner failure returns a scheduler-ready
 normative handoff; cleanup failure may complete semantics while retaining its
-transaction/release owner independently. Host routing, cached fused retry, and
+transaction/release owner independently.
+
+Explicit host routing now replans one `NativeRetry` suspension for Windows
+x86-64/AArch64, regenerates and verifies the exact fused object, and
+readmits the reconstructed plan before native work. Missing target format and a
+one-step
+mid-region suffix route normatively to the interpreter; profile, IR, object, and
+identity drift remain hard ownership-preserving failures. Cached fused retry and
 transactional cache rollback remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate

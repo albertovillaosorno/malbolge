@@ -238,8 +238,10 @@ use execution_native::{
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRetry,
     DirectFusedNativeRetryAdmissionError, DirectFusedNativeRetryDisposition,
-    DirectFusedNativeRunner, DirectFusedNativeScheduleDecision,
-    DirectFusedNativeScheduleOutcome, DirectFusedNativeScheduleStopReason,
+    DirectFusedNativeRetryPlanningError, DirectFusedNativeRetryPlanningOutcome,
+    DirectFusedNativeRetryStepPlanningError, DirectFusedNativeRunner,
+    DirectFusedNativeScheduleDecision, DirectFusedNativeScheduleOutcome,
+    DirectFusedNativeScheduleStopReason,
     DirectFusedNativeSequenceExecutionOutcome, DirectFusedNativeSequencePlan,
     DirectFusedNativeSequencePlanError, DirectFusedNativeYieldTarget,
     DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
@@ -379,8 +381,8 @@ use execution_native::{
     load_register_masked_non_graphical_native_sequence,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
-    lower_preflighted_clang_c23, rebase_direct_fused_native_retry,
-    rebase_direct_fused_native_retry_failure,
+    lower_preflighted_clang_c23, plan_direct_fused_native_retry,
+    rebase_direct_fused_native_retry, rebase_direct_fused_native_retry_failure,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable,
     release_execution_geometry_native_executable_sequence,
@@ -17605,6 +17607,179 @@ fn fused_direct_retry_rejects_cross_isa_region_key() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("fused cross-ISA retry lost owners"))
+    }
+}
+
+fn assert_fused_direct_retry_planner_native(
+    isa: HostIsa,
+) -> Result<(), String> {
+    let (expected_plan, pause) = fused_direct_retry_pause(
+        isa,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let outcome = plan_direct_fused_native_retry(
+        pause,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeRetryPlanningOutcome::Native(retry) = outcome else {
+        return Err(format!("fused retry planner fell back: {isa:?}"));
+    };
+    if retry.plan() == &expected_plan
+        && retry.suspension().reason()
+            == DirectFusedNativeScheduleStopReason::NativeRetry
+        && retry.suspension().interpreter_steps() == 0
+    {
+        Ok(())
+    } else {
+        Err(format!("fused retry planner identity drifted: {isa:?}"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_planner_selects_windows_both_isas() -> Result<(), String>
+{
+    assert_fused_direct_retry_planner_native(HostIsa::X86_64)?;
+    assert_fused_direct_retry_planner_native(HostIsa::AArch64)
+}
+
+#[test]
+fn fused_direct_retry_planner_falls_back_for_target_format()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let outcome = plan_direct_fused_native_retry(
+        pause,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    )
+    .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeRetryPlanningOutcome::Interpreter(handoff) = outcome
+    else {
+        return Err(String::from("Linux fused retry planned native work"));
+    };
+    let completion =
+        handoff.execute().map_err(|failure| failure.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused target-format fallback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_planner_falls_back_mid_region() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let (plan, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        1,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let outcome = plan_direct_fused_native_retry(
+        pause,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|failure| failure.to_string())?;
+    let DirectFusedNativeRetryPlanningOutcome::Interpreter(handoff) = outcome
+    else {
+        return Err(String::from("mid-region fused retry planned native work"));
+    };
+    let completion =
+        handoff.execute().map_err(|failure| failure.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused mid-region fallback drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_planner_preserves_profile_failure() -> Result<(), String>
+{
+    let (_plan, pause) = fused_direct_retry_pause(
+        HostIsa::X86_64,
+        0,
+        DirectFusedNativeYieldTarget::NativeRetry,
+    )?;
+    let expected_state = pause.state().clone();
+    let Err(failure) = plan_direct_fused_native_retry(
+        pause,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from(
+            "profile-incompatible fused retry was routed",
+        ));
+    };
+    if failure.error()
+        != (DirectFusedNativeRetryPlanningError::Step {
+            cause: DirectFusedNativeRetryStepPlanningError::Profile,
+            index: 0,
+        })
+        || !failure.profile_diagnostic().is_some_and(|diagnostic| {
+            diagnostic.starts_with("MALBOLGE-PROFILE-001 ")
+        })
+    {
+        return Err(String::from("fused retry profile diagnostic drifted"));
+    }
+    let restored = (*failure).into_suspension();
+    if restored.reason() == DirectFusedNativeScheduleStopReason::NativeRetry
+        && restored.interpreter_steps() == 0
+        && restored.state() == &expected_state
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused profile failure lost suspension"))
+    }
+}
+
+#[test]
+fn fused_direct_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
+    let (_plan, pause) = fused_direct_retry_pause(
+        HostIsa::AArch64,
+        0,
+        DirectFusedNativeYieldTarget::Caller,
+    )?;
+    let expected_state = pause.state().clone();
+    let Err(failure) = plan_direct_fused_native_retry(
+        pause,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    ) else {
+        return Err(String::from("caller yield entered fused retry planning"));
+    };
+    if failure.error()
+        != (DirectFusedNativeRetryPlanningError::ScheduleReason {
+            observed: DirectFusedNativeScheduleStopReason::CallerYield,
+        })
+    {
+        return Err(String::from("fused non-retry rejection drifted"));
+    }
+    let restored = (*failure).into_suspension();
+    if restored.reason() == DirectFusedNativeScheduleStopReason::CallerYield
+        && restored.state() == &expected_state
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused non-retry rejection lost suspension"))
     }
 }
 
