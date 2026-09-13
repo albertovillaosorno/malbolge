@@ -365,6 +365,25 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: Bind telemetry blob storage to the host filesystem.
+  - id: part-0067
+    path: port-outbound/monotonic_clock.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define monotonic interval measurement dependency contract.
+  - id: part-0068
+    path: adapter-outbound/clock/README.md
+    kind: adapter-outbound
+    responsibility: Document monotonic clock adapter ownership.
+  - id: part-0069
+    path: adapter-outbound/clock/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind interval measurement to the standard monotonic clock.
+  - id: part-0070
+    path: composition/tier/cached_cycle/telemetry_latency_clock.rs
+    kind: composition
+    language: rust
+    responsibility: Delimit cached-retry latency around caller work.
 projects: []
 tests: []
 graph:

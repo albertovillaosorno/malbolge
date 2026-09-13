@@ -47,6 +47,8 @@ mod telemetry_codec;
 mod telemetry_latency;
 #[path = "cached_cycle/telemetry_latency_assessment.rs"]
 mod telemetry_latency_assessment;
+#[path = "cached_cycle/telemetry_latency_clock.rs"]
+mod telemetry_latency_clock;
 #[path = "cached_cycle/telemetry_latency_coarsening.rs"]
 mod telemetry_latency_coarsening;
 #[path = "cached_cycle/telemetry_latency_codec.rs"]
@@ -104,6 +106,11 @@ pub use telemetry_latency_assessment::{
     NativeContinuationCachedRetryLatencyAssessmentThresholds,
     NativeContinuationCachedRetryLatencyAssessmentViolations,
     assess_cached_retry_latency,
+};
+pub use telemetry_latency_clock::{
+    NativeContinuationCachedRetryLatencyMeasurement,
+    begin_cached_retry_latency_measurement,
+    finish_cached_retry_latency_measurement,
 };
 pub use telemetry_latency_coarsening::{
     NativeContinuationCachedRetryLatencyCoarsening,

@@ -14,10 +14,11 @@ It must not bypass another function or architectural kind boundary.
 
 ## Navigation
 
-- `adapter-outbound/`: governed native/cache parts plus bounded telemetry
-  filesystem storage with staged publication.
+- `adapter-outbound/`: governed native/cache parts, bounded telemetry storage,
+  and standard monotonic interval timing.
 - `application/`: explicit bounded cached-retry telemetry persistence use cases.
 - `composition/`: handoff plus cached/leased retry routing, semantic rebase,
   exact telemetry summaries, latency schema normalization/assessment, policy
   recommendation/request publication, turns, and cycles.
-- `port-outbound/`: storage-neutral bounded telemetry blob transport contracts.
+- `port-outbound/`: storage-neutral telemetry blob and monotonic clock
+  contracts.

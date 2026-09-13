@@ -43,6 +43,8 @@ pub mod cached_retry_telemetry_blob_store;
 pub mod continuation_scheduler;
 #[path = "../adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
+#[path = "../adapter-outbound/clock/main.rs"]
+pub mod execution_clock;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
 #[path = "tier/geometry_handoff.rs"]
@@ -105,6 +107,8 @@ pub mod geometry_native_sequence;
 pub mod interpreter_handoff;
 #[path = "tier/leased_retry.rs"]
 pub mod leased_retry;
+#[path = "../port-outbound/monotonic_clock.rs"]
+pub mod monotonic_clock;
 #[path = "tier/native_retry.rs"]
 pub mod native_retry;
 #[path = "tier/retry_cycle.rs"]

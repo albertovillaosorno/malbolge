@@ -718,10 +718,17 @@ preserves typed canonical write evidence in both `Durable` and committed
 post-publication failure, and one host-real count-window case crosses the full
 codec/application/filesystem path.
 
+A transport-neutral monotonic interval port now delimits caller-owned cached
+retry work without exposing wall-clock time. A standard `Instant` adapter owns
+interval observation and exact `u64` nanosecond conversion, while cached-cycle
+composition turns the finished interval into the existing explicit latency
+sample without recording it automatically. Two deterministic cases cover exact
+sampling and finish failure; one host-real case records an `Instant` sample into
+the existing histogram as a separate caller step.
+
 Histogram refinement, distributed merge, durable/cross-cycle policy
-publication, native object fusion, foreign invocation, runtime clock
-acquisition, cross-process locking/CAS, and multi-blob transactions remain
-open.
+publication, native object fusion, foreign invocation, cross-process
+locking/CAS, asynchronous timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

@@ -43,6 +43,8 @@ pub mod cached_retry_telemetry_blob_store;
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/clock/main.rs"]
+pub mod execution_clock;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_handoff.rs"]
@@ -105,6 +107,8 @@ pub mod geometry_native_sequence;
 pub mod interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
 pub mod leased_retry;
+#[path = "../src/runtime/tiered-execution/port-outbound/monotonic_clock.rs"]
+pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
@@ -179,12 +183,14 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
     assess_cached_retry_latency, assess_cached_retry_telemetry,
+    begin_cached_retry_latency_measurement,
     coarsen_cached_retry_latency_histogram,
     decode_cached_retry_latency_snapshot,
     decode_cached_retry_telemetry_snapshot,
     derive_common_cached_retry_latency_coarsening,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
+    finish_cached_retry_latency_measurement,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_window,
@@ -209,6 +215,7 @@ use execution_cache::{
     NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
     RegionEffectIdentity,
 };
+use execution_clock::NativeContinuationSystemMonotonicClock;
 use execution_native::{
     BootstrapCompilerError, BootstrapProfilePreflightError,
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
@@ -677,6 +684,7 @@ use malbolge::{
     verify_noop_prefix_halt_profile_width,
     verify_repeated_jump_data_profile_width,
 };
+use monotonic_clock::NativeContinuationMonotonicClock;
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
@@ -2048,6 +2056,11 @@ enum TestCachedRetryTelemetryBlobStoreError {
     Replace,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestMonotonicClockError {
+    Finish,
+}
+
 #[derive(Debug, Default)]
 struct TestCachedRetryTelemetryBlobStore {
     blob: Option<Vec<u8>>,
@@ -2058,10 +2071,39 @@ struct TestCachedRetryTelemetryBlobStore {
     replace_calls: usize,
 }
 
+#[derive(Debug, Default)]
+struct TestMonotonicClock {
+    elapsed_nanoseconds: u64,
+    fail_finish: bool,
+    finishes: usize,
+    starts: usize,
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct TestTelemetryFileStoreFixture {
     destination: PathBuf,
     directory: PathBuf,
+}
+
+impl NativeContinuationMonotonicClock for TestMonotonicClock {
+    type Error = TestMonotonicClockError;
+    type Start = usize;
+
+    fn begin(&mut self) -> Self::Start {
+        self.starts = self.starts.saturating_add(1);
+        self.starts
+    }
+
+    fn elapsed_nanoseconds(
+        &mut self,
+        _start: Self::Start,
+    ) -> Result<u64, Self::Error> {
+        if self.fail_finish {
+            return Err(TestMonotonicClockError::Finish);
+        }
+        self.finishes = self.finishes.saturating_add(1);
+        Ok(self.elapsed_nanoseconds)
+    }
 }
 
 impl telemetry_store_port::NativeContinuationCachedRetryTelemetryBlobStore
@@ -49746,6 +49788,70 @@ fn cached_retry_window_telemetry(
         ),
     ])
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_latency_measurement_propagates_finish_failure()
+-> Result<(), String> {
+    let mut clock = TestMonotonicClock::default();
+    let measurement = begin_cached_retry_latency_measurement(&mut clock);
+    clock.fail_finish = true;
+    let failure =
+        finish_cached_retry_latency_measurement(&mut clock, measurement)
+            .err()
+            .ok_or_else(|| String::from("clock finish failure was ignored"))?;
+    if failure == TestMonotonicClockError::Finish
+        && clock.starts == 1
+        && clock.finishes == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("clock finish failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_measurement_returns_exact_sample() -> Result<(), String>
+{
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 37,
+        ..TestMonotonicClock::default()
+    };
+    let measurement = begin_cached_retry_latency_measurement(&mut clock);
+    let sample =
+        finish_cached_retry_latency_measurement(&mut clock, measurement)
+            .map_err(|error| format!("clock finish failed: {error:?}"))?;
+    if sample.nanoseconds() == 37 && clock.starts == 1 && clock.finishes == 1 {
+        Ok(())
+    } else {
+        Err(String::from("exact clock sample drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_system_clock_records_explicit_sample()
+-> Result<(), String> {
+    let mut clock = NativeContinuationSystemMonotonicClock::new();
+    let measurement = begin_cached_retry_latency_measurement(&mut clock);
+    thread::sleep(Duration::from_millis(1));
+    let sample =
+        finish_cached_retry_latency_measurement(&mut clock, measurement)
+            .map_err(|error| {
+                format!("system clock finish failed: {error:?}")
+            })?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    let record = histogram
+        .record(sample)
+        .map_err(|error| error.to_string())?;
+    if sample.nanoseconds() > 0
+        && record.samples() == 1
+        && histogram.samples() == 1
+        && histogram.total_nanoseconds() == u128::from(sample.nanoseconds())
+    {
+        Ok(())
+    } else {
+        Err(String::from("system clock sample recording drifted"))
+    }
 }
 
 #[test]
