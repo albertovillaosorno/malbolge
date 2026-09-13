@@ -42,6 +42,7 @@ use malbolge::{
     RunOutcome, TargetProfileRequirement, target_profile,
 };
 
+use super::direct::VerifiedDirectFusedSequenceObjectArtifact;
 use super::fused_sequence_execution::{
     DirectFusedNativeSequenceExecutionFailure,
     DirectFusedNativeSequenceExecutionOutcome,
@@ -76,6 +77,8 @@ pub struct DirectFusedNativeContinuation {
 /// Malformed fused outcome/failure evidence rejected before semantic handoff.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectFusedNativeContinuationError {
+    /// Retry plan no longer matches this continuation's exact semantic suffix.
+    AdvancePlanIdentity,
     /// Completed outcome reported a different final observation.
     AppliedObservation,
     /// Completed outcome reported a different fused-region count.
@@ -92,10 +95,12 @@ pub enum DirectFusedNativeContinuationError {
         /// Outcome-reported committed source steps.
         observed: usize,
     },
-    /// Failure progress differs from its failing fused-region boundary.
+    /// Failure/retry progress differs from an exact fused-region boundary.
     FailureProgress,
     /// Retained profile identity no longer resolves canonically.
     ProfileIdentity,
+    /// Absolute region or source-step progress overflowed host indexing.
+    ProgressOverflow,
     /// Resume observation differs from the exact fused-region entry.
     ResumeObservation {
         /// Zero-based fused region at the rejected boundary.
@@ -123,6 +128,9 @@ pub type DirectFusedNativeContinuationResult = Result<
     DirectFusedNativeContinuationError,
 >;
 
+type DirectFusedAdvanceIndicesResult =
+    Result<(usize, usize), DirectFusedNativeContinuationError>;
+
 #[derive(Clone, Copy)]
 struct DirectFusedContinuationResume {
     observation: ProfileMachineObservation,
@@ -131,7 +139,76 @@ struct DirectFusedContinuationResume {
     step: usize,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct DirectFusedContinuationAdvance {
+    pub(super) completed_regions: usize,
+    pub(super) completed_steps: usize,
+    pub(super) observation: ProfileMachineObservation,
+    pub(super) reason: DirectFusedNativeContinuationReason,
+}
+
 impl DirectFusedNativeContinuation {
+    /// Rebases this continuation across exact complete fused retry regions.
+    ///
+    /// This boundary never advances through a partial fused region. The retry
+    /// plan must exactly equal the continuation's current region/program
+    /// suffix.
+    pub(super) fn advance_regions(
+        &self,
+        plan: &DirectFusedNativeSequencePlan,
+        advance: DirectFusedContinuationAdvance,
+    ) -> DirectFusedNativeContinuationResult {
+        if !retry_plan_matches(self, plan) {
+            return Err(
+                DirectFusedNativeContinuationError::AdvancePlanIdentity,
+            );
+        }
+        let (resume_region, resume_step) =
+            validated_advance_indices(self, plan, advance)?;
+        if advance.completed_regions == plan.len() {
+            if advance.observation != self.expected_exit
+                || resume_step != outcome_steps(self.expected_outcome)
+            {
+                return Err(
+                    DirectFusedNativeContinuationError::AppliedObservation,
+                );
+            }
+            return Ok(None);
+        }
+        let Some(next) = plan.artifacts().get(advance.completed_regions) else {
+            return Err(DirectFusedNativeContinuationError::FailureProgress);
+        };
+        if advance.observation != next.admission().source_plan().entry() {
+            return Err(
+                DirectFusedNativeContinuationError::ResumeObservation {
+                    region: resume_region,
+                },
+            );
+        }
+        let remaining_programs = self
+            .remaining_programs
+            .get(advance.completed_steps..)
+            .ok_or(DirectFusedNativeContinuationError::FailureProgress)?
+            .to_vec();
+        let remaining_region_keys = self
+            .remaining_region_keys
+            .get(advance.completed_regions..)
+            .ok_or(DirectFusedNativeContinuationError::FailureProgress)?
+            .to_vec();
+        Ok(Some(Self {
+            complete_region_keys: self.complete_region_keys.clone(),
+            expected_exit: self.expected_exit,
+            expected_outcome: self.expected_outcome,
+            geometry: self.geometry,
+            observation: advance.observation,
+            reason: advance.reason,
+            remaining_programs,
+            remaining_region_keys,
+            resume_region,
+            resume_step,
+        }))
+    }
+
     /// Returns exact complete fused-region artifact identity in plan order.
     #[must_use]
     pub fn complete_region_keys(&self) -> &[NativeArtifactKey] {
@@ -288,11 +365,17 @@ impl Display for DirectFusedNativeContinuationError {
                 f,
                 "completed fused outcome has {observed} of {expected} steps",
             ),
+            Self::AdvancePlanIdentity => {
+                f.write_str("fused continuation retry plan identity drifted")
+            },
             Self::FailureProgress => {
                 f.write_str("fused execution failure progress drifted")
             },
             Self::ProfileIdentity => {
                 f.write_str("fused continuation profile identity unavailable")
+            },
+            Self::ProgressOverflow => {
+                f.write_str("fused continuation progress overflowed")
             },
             Self::ResumeObservation { region } => {
                 write!(f, "fused resume observation differs at {region}")
@@ -388,6 +471,58 @@ fn canonical_geometry(
         return Err(DirectFusedNativeContinuationError::ProfileIdentity);
     }
     Ok(ProfileExecutionGeometry::canonical(profile))
+}
+
+fn validated_advance_indices(
+    continuation: &DirectFusedNativeContinuation,
+    plan: &DirectFusedNativeSequencePlan,
+    advance: DirectFusedContinuationAdvance,
+) -> DirectFusedAdvanceIndicesResult {
+    if advance.completed_regions > plan.len() {
+        return Err(DirectFusedNativeContinuationError::FailureProgress);
+    }
+    let expected_steps = plan
+        .artifacts()
+        .iter()
+        .take(advance.completed_regions)
+        .map(|artifact| artifact.admission().source_plan().len())
+        .sum::<usize>();
+    if advance.completed_steps != expected_steps {
+        return Err(DirectFusedNativeContinuationError::FailureProgress);
+    }
+    let resume_region = continuation
+        .resume_region
+        .checked_add(advance.completed_regions)
+        .ok_or(DirectFusedNativeContinuationError::ProgressOverflow)?;
+    let resume_step = continuation
+        .resume_step
+        .checked_add(advance.completed_steps)
+        .ok_or(DirectFusedNativeContinuationError::ProgressOverflow)?;
+    Ok((resume_region, resume_step))
+}
+
+const fn outcome_steps(outcome: RunOutcome) -> usize {
+    match outcome {
+        RunOutcome::BudgetExhausted { steps }
+        | RunOutcome::Terminated { steps, .. } => steps,
+    }
+}
+
+fn retry_plan_matches(
+    continuation: &DirectFusedNativeContinuation,
+    plan: &DirectFusedNativeSequencePlan,
+) -> bool {
+    let keys_match = plan
+        .artifacts()
+        .iter()
+        .map(VerifiedDirectFusedSequenceObjectArtifact::key)
+        .eq(continuation.remaining_region_keys.iter());
+    let programs_match = plan
+        .artifacts()
+        .iter()
+        .flat_map(|artifact| artifact.admission().source_plan().programs())
+        .eq(continuation.remaining_programs.iter());
+    keys_match && programs_match
 }
 
 fn semantic_step_offset(

@@ -530,7 +530,13 @@ transaction from checkpoint-derived owned buffers. Success and failure retain
 the original plan/suspension plus exact transferred state; checkpoint
 reconstruction is validated. Guard miss and runner failure preserve region-entry
 state, while committed final-release failure preserves semantic state plus exact
-cleanup retry ownership. Semantic rebase/routing, cached fused retry, and
+cleanup retry ownership.
+
+A separate semantic rebase now advances only across verified whole fused regions
+and preserves original complete-plan authority. Applied retry work completes the
+original outcome, while guard/load/runner failure returns a scheduler-ready
+normative handoff; cleanup failure may complete semantics while retaining its
+transaction/release owner independently. Host routing, cached fused retry, and
 transactional cache rollback remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
