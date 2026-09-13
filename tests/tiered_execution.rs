@@ -224,6 +224,7 @@ use execution_native::{
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
     DirectFusedNativeLease, DirectFusedNativeLeaseCache,
+    DirectFusedNativeLeaseCacheDisposition,
     DirectFusedNativeLeaseCacheEntryReleaseFailure,
     DirectFusedNativeLeaseCacheInvalidation, DirectFusedNativeLeasedSequence,
     DirectFusedNativeLeasedSequenceAdmissionError,
@@ -330,9 +331,10 @@ use execution_native::{
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
-    admit_fused_direct_sequence, admit_register_masked_direct_native,
-    compile_preflighted_clang_c23, emit_direct_crazy_coff,
-    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
+    acquire_direct_fused_native_sequence, admit_fused_direct_sequence,
+    admit_register_masked_direct_native, compile_preflighted_clang_c23,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -16501,6 +16503,142 @@ fn fused_direct_sequence_lease_runner_failure_reuses() -> Result<(), String> {
     drop(leased.into_leases());
     let _summary = cache
         .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_cache_acquire_insert_then_hit() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+        .map_err(|error| format!("fused cache sequence plan: {error}"))?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(810)?,
+        native_executable_address(0x42_0000)?,
+    );
+    let first =
+        acquire_direct_fused_native_sequence(&mut cache, &mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+    if first.dispositions().len() != 1
+        || first
+            .dispositions()
+            .first()
+            .is_none_or(DirectFusedNativeLeaseCacheDisposition::is_hit)
+    {
+        return Err(String::from("fused sequence cache insertion drifted"));
+    }
+    let first_leases = first.into_sequence().into_leases();
+    let loaded_operations = adapter.operations.clone();
+    let second =
+        acquire_direct_fused_native_sequence(&mut cache, &mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+    if !matches!(second.dispositions().first(), Some(item) if item.is_hit())
+        || adapter.operations != loaded_operations
+        || second.sequence().plan() != &plan
+    {
+        return Err(String::from("fused sequence cache hit remapped"));
+    }
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = second
+        .sequence()
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused cached sequence execute: {error}"))?;
+    if outcome.completed_steps() != 2
+        || adapter.operations != loaded_operations
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+    {
+        return Err(String::from("fused cached sequence execution drifted"));
+    }
+    drop(first_leases);
+    drop(second.into_sequence().into_leases());
+    let _summary = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_cache_acquire_load_failure_is_indexed()
+-> Result<(), String> {
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let capacity =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(811)?,
+        native_executable_address(0x43_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(failure) =
+        acquire_direct_fused_native_sequence(&mut cache, &mut adapter, &plan)
+    else {
+        return Err(String::from("fused sequence cache ignored load failure"));
+    };
+    if failure.index() != 0
+        || failure.acquired_count() != 0
+        || !failure.acquired_dispositions().is_empty()
+        || failure.admission_error().is_some()
+        || failure.cache_failure().is_none()
+        || !failure.leases().is_empty()
+        || cache.active_len() != 0
+    {
+        return Err(String::from("fused sequence cache load evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_cache_acquire_exposes_retirement_block()
+-> Result<(), String> {
+    let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let arm_plan = DirectFusedNativeSequencePlan::new(from_ref(&arm))
+        .map_err(|error| format!("fused cache blocked plan: {error}"))?;
+    let capacity =
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero cap"))?;
+    let mut cache = DirectFusedNativeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(812)?,
+        native_executable_address(0x44_0000)?,
+    );
+    let live = cache
+        .ensure(&mut adapter, &x86)
+        .map_err(|error| format!("fused cache block seed: {error}"))?
+        .into_lease();
+    let Err(failure) = acquire_direct_fused_native_sequence(
+        &mut cache,
+        &mut adapter,
+        &arm_plan,
+    ) else {
+        return Err(String::from("fused sequence cache ignored live blockage"));
+    };
+    let cache_failure = failure
+        .cache_failure()
+        .ok_or_else(|| String::from("fused sequence cache failure missing"))?;
+    if failure.index() != 0
+        || failure.acquired_count() != 0
+        || cache_failure.block().is_none()
+        || cache_failure.evicted_keys() != from_ref(x86.key())
+        || cache_failure.retired_keys() != from_ref(x86.key())
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+    {
+        return Err(String::from("fused sequence cache blockage was hidden"));
+    }
+    drop(live);
+    let _summary = cache
+        .reconcile_retired(&mut adapter)
         .map_err(|error| error.to_string())?;
     Ok(())
 }

@@ -489,8 +489,13 @@ the committed Applied or GuardMiss outcome.
 Exact cache-region leases can now be bound to one admitted fused sequence only
 when ordered lease keys match every admitted artifact. Admission rejection
 returns every supplied lease, while execution uses the retained mappings with no
-adapter work and preserves the same region/semantic progress contract. Automatic
-multi-region cache acquisition and rollback policy remain absent.
+adapter work and preserves the same region/semantic progress contract.
+
+Ordered cache acquisition now calls the existing per-region lease cache in
+admitted order and returns exact dispositions plus indexed failure ownership.
+Successful `ensure()` effects remain visible; later failure does not restore
+FIFO or retired state and retains every earlier lease. Transactional cache
+rollback and continuation policy remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

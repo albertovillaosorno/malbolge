@@ -275,7 +275,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   when ordered lease keys match every admitted artifact. Admission rejection
   returns every supplied lease, while execution uses retained mappings without
   adapter work and preserves the same region/semantic progress contract.
-  Automatic multi-region cache acquisition and rollback policy remain absent.
+
+  Ordered cache acquisition now calls the existing per-region lease cache in
+  admitted order and returns exact dispositions plus indexed failure ownership.
+  Successful `ensure()` effects remain visible; later failure does not restore
+  FIFO or retired state and retains every earlier lease. Transactional cache
+  rollback and continuation policy remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

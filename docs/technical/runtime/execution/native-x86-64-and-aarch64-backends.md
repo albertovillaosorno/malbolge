@@ -401,8 +401,13 @@ the committed Applied or GuardMiss outcome.
 Exact cache-region leases can now be bound to one admitted fused sequence only
 when ordered lease keys match every admitted artifact. Admission rejection
 returns every supplied lease, while execution uses the retained mappings with no
-adapter work and preserves the same region/semantic progress contract. Automatic
-multi-region cache acquisition and rollback policy remain absent.
+adapter work and preserves the same region/semantic progress contract.
+
+Ordered cache acquisition now calls the existing per-region lease cache in
+admitted order and returns exact dispositions plus indexed failure ownership.
+Successful `ensure()` effects remain visible; later failure does not restore
+FIFO or retired state and retains every earlier lease. Transactional cache
+rollback and continuation policy remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -585,10 +590,10 @@ implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
-prepared invocation contract. Wider fused-template coverage, fused
-sequence-cache integration, concrete executable-memory and foreign-call
-adapters, runtime integration, and concrete instruction-cache synchronization
-remain incomplete.
+prepared invocation contract. Wider fused-template coverage, transactional
+fused sequence-cache rollback/continuation policy, concrete executable-memory
+and foreign-call adapters, runtime integration, and concrete instruction-cache
+synchronization remain incomplete.
 
 ## Invariants
 
