@@ -37,6 +37,8 @@
 pub mod cached_cycle;
 #[path = "tier/cached_retry.rs"]
 pub mod cached_retry;
+#[path = "../port-outbound/blob_store.rs"]
+pub mod cached_retry_telemetry_blob_store;
 #[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../adapter-outbound/cache/main.rs"]
@@ -115,6 +117,8 @@ pub mod retry_policy;
 pub mod retry_router;
 #[path = "tier/retry_turn.rs"]
 pub mod retry_turn;
+#[path = "../application/telemetry_persistence.rs"]
+pub mod telemetry_blob_persistence;
 
 /// Empty entry point for the Cargo/Jig architecture-validation target.
 fn main() {}

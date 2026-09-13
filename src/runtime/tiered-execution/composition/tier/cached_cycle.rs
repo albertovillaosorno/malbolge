@@ -57,6 +57,8 @@ mod telemetry_latency_merge;
 mod telemetry_latency_recommendation;
 #[path = "cached_cycle/telemetry_latency_snapshot.rs"]
 mod telemetry_latency_snapshot;
+#[path = "cached_cycle/telemetry_persistence.rs"]
+mod telemetry_persistence;
 #[path = "cached_cycle/telemetry_policy_publication.rs"]
 mod telemetry_policy_publication;
 #[path = "cached_cycle/telemetry_recommendation.rs"]
@@ -129,6 +131,20 @@ pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
+};
+pub use telemetry_persistence::{
+    NativeContinuationCachedRetryTelemetryPersistenceError,
+    NativeContinuationCachedRetryTelemetryPersistenceLatencyLoad,
+    NativeContinuationCachedRetryTelemetryPersistenceLatencyLoadResult,
+    NativeContinuationCachedRetryTelemetryPersistenceLoad,
+    NativeContinuationCachedRetryTelemetryPersistenceResult,
+    NativeContinuationCachedRetryTelemetryPersistenceWindowLoad,
+    NativeContinuationCachedRetryTelemetryPersistenceWindowLoadResult,
+    NativeContinuationCachedRetryTelemetryPersistenceWrite,
+    persist_cached_retry_latency_histogram,
+    persist_cached_retry_telemetry_window,
+    restore_cached_retry_latency_histogram,
+    restore_cached_retry_telemetry_window,
 };
 pub use telemetry_policy_publication::{
     NativeContinuationCachedRetryLatencyPolicyPublication,

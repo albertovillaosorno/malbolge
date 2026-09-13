@@ -546,9 +546,19 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cases cover identity, partial-overlap merge, final-bound-only reduction, and
   incompatible final bounds.
 
+  Cached-cycle composition binds the canonical count/latency codecs to an
+  explicit persistence application service and reconstructs exact validated
+  owners after load. The application treats payloads as opaque bytes and checks
+  a positive bound before publication and again after adapter loads.
+
+  A storage-neutral outbound blob port binds one adapter-preconfigured location
+  and admits bounded loads plus all-or-nothing replacement. It exposes no paths,
+  filesystem APIs, policy selection, or telemetry interpretation; six cases
+  cover both round trips, missing state, both byte guards, and store failures.
+
   Histogram refinement, distributed/durable merge, durable/cross-cycle policy
-  publication, runtime clock acquisition, async queues, durable storage, and
-  broader production orchestration remain pending.
+  publication, runtime clock acquisition, async queues, a concrete durable
+  storage adapter, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

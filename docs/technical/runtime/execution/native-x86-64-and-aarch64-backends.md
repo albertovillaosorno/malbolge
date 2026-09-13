@@ -686,9 +686,21 @@ the greatest exact shared bound set plus per-side removal counts; four cases
 cover identity, partial overlap with exact merge, final-bound-only reduction,
 and incompatible final bounds.
 
+Cached-cycle composition now binds the existing canonical count/latency codecs
+to an explicit persistence application service and reconstructs exact validated
+owners after load. The application service itself treats payloads as opaque
+bytes, enforcing a positive bound before publication and again after loads.
+
+A storage-neutral outbound blob port binds one adapter-preconfigured location.
+It admits bounded loads and all-or-nothing replacement without exposing paths,
+filesystem APIs, policy selection, or telemetry interpretation to the use case.
+Six adapter-neutral cases cover both round trips, missing state, both byte-limit
+guards, and outbound-store failures.
+
 Histogram refinement, distributed merge, durable/cross-cycle policy
 publication, native object fusion, foreign invocation, runtime clock
-acquisition, durable storage, and cross-process coordination remain open.
+acquisition, a concrete durable storage adapter, and cross-process coordination
+remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

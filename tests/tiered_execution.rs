@@ -37,6 +37,8 @@
 pub mod cached_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/cached_retry.rs"]
 pub mod cached_retry;
+#[path = "../src/runtime/tiered-execution/port-outbound/blob_store.rs"]
+pub mod cached_retry_telemetry_blob_store;
 #[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
@@ -115,6 +117,8 @@ pub mod retry_policy;
 pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
 pub mod retry_turn;
+#[path = "../src/runtime/tiered-execution/application/telemetry_persistence.rs"]
+pub mod telemetry_blob_persistence;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
@@ -161,6 +165,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryAssessmentThresholds,
     NativeContinuationCachedRetryTelemetryCodecError,
     NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryPersistenceError,
+    NativeContinuationCachedRetryTelemetryPersistenceLoad,
     NativeContinuationCachedRetryTelemetrySnapshotError,
     NativeContinuationCachedRetryTelemetrySnapshotMetadata,
     NativeContinuationCachedRetryTelemetrySource,
@@ -175,14 +181,18 @@ use cached_cycle::{
     derive_common_cached_retry_latency_coarsening,
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
+    persist_cached_retry_latency_histogram,
+    persist_cached_retry_telemetry_window,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
-    summarize_cached_retry_attempts,
+    restore_cached_retry_latency_histogram,
+    restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
 };
+use cached_retry_telemetry_blob_store as telemetry_store_port;
 use continuation_scheduler::{
     NativeContinuationScheduleDecision, NativeContinuationScheduleOutcome,
     NativeContinuationScheduleStopReason, NativeContinuationScheduleSuspension,
@@ -2007,6 +2017,49 @@ impl NativeExecutableRunner for FakeNativeSequenceRunner {
             FakeNativeRunnerBehavior::GuardMiss => {
                 Ok(NativeRegionStatus::GuardMiss.code())
             },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestCachedRetryTelemetryBlobStoreError {
+    Load,
+    Replace,
+}
+
+#[derive(Debug, Default)]
+struct TestCachedRetryTelemetryBlobStore {
+    blob: Option<Vec<u8>>,
+    fail_load: bool,
+    fail_replace: bool,
+    last_load_limit: Option<NonZeroUsize>,
+    replace_calls: usize,
+}
+
+impl telemetry_store_port::NativeContinuationCachedRetryTelemetryBlobStore
+    for TestCachedRetryTelemetryBlobStore
+{
+    type Error = TestCachedRetryTelemetryBlobStoreError;
+
+    fn load(
+        &mut self,
+        maximum_bytes: NonZeroUsize,
+    ) -> Result<Option<Vec<u8>>, Self::Error> {
+        self.last_load_limit = Some(maximum_bytes);
+        if self.fail_load {
+            Err(TestCachedRetryTelemetryBlobStoreError::Load)
+        } else {
+            Ok(self.blob.clone())
+        }
+    }
+
+    fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.replace_calls = self.replace_calls.saturating_add(1);
+        if self.fail_replace {
+            Err(TestCachedRetryTelemetryBlobStoreError::Replace)
+        } else {
+            self.blob = Some(bytes.to_vec());
+            Ok(())
         }
     }
 }
@@ -49624,6 +49677,251 @@ fn cached_retry_window_telemetry(
         ),
     ])
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_roundtrips_count_window()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry persistence capacity")?;
+    let maximum_bytes =
+        nonzero_test_limit(4_096, "telemetry persistence bytes")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let insertion = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let _first = window.append(hit).map_err(|error| error.to_string())?;
+    let _second = window
+        .append(insertion)
+        .map_err(|error| error.to_string())?;
+    let expected = window.snapshot();
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let write = persist_cached_retry_telemetry_window(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("count persistence failed: {error:?}"))?;
+    let persisted_bytes =
+        store.blob.as_ref().map(Vec::len).ok_or_else(|| {
+            String::from("count persistence published no blob")
+        })?;
+    let restored =
+        restore_cached_retry_telemetry_window(&mut store, maximum_bytes)
+            .map_err(|error| format!("count restoration failed: {error:?}"))?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("count persistence restored missing state"));
+    };
+    if write.bytes() == persisted_bytes
+        && bytes == persisted_bytes
+        && value.snapshot() == expected
+        && store.last_load_limit == Some(maximum_bytes)
+        && store.replace_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("count persistence round-trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_roundtrips_latency_histogram()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(4_096, "latency persistence bytes")?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[0, 1, 10, 101])?;
+    let expected = histogram.clone();
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let write = persist_cached_retry_latency_histogram(
+        &mut store,
+        &histogram,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("latency persistence failed: {error:?}"))?;
+    let persisted_bytes =
+        store.blob.as_ref().map(Vec::len).ok_or_else(|| {
+            String::from("latency persistence published no blob")
+        })?;
+    let restored =
+        restore_cached_retry_latency_histogram(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("latency restoration failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("latency persistence restored missing state"));
+    };
+    if write.bytes() == persisted_bytes
+        && bytes == persisted_bytes
+        && value == expected
+        && store.last_load_limit == Some(maximum_bytes)
+        && store.replace_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency persistence round-trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_reports_missing_state()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "missing persistence bytes")?;
+    let mut count_store = TestCachedRetryTelemetryBlobStore::default();
+    let mut latency_store = TestCachedRetryTelemetryBlobStore::default();
+    let count =
+        restore_cached_retry_telemetry_window(&mut count_store, maximum_bytes)
+            .map_err(|error| {
+                format!("missing count restoration failed: {error:?}")
+            })?;
+    let latency = restore_cached_retry_latency_histogram(
+        &mut latency_store,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("missing latency restoration failed: {error:?}")
+    })?;
+    if matches!(
+        count,
+        NativeContinuationCachedRetryTelemetryPersistenceLoad::Missing
+    ) && matches!(
+        latency,
+        NativeContinuationCachedRetryTelemetryPersistenceLoad::Missing
+    ) && count_store.last_load_limit == Some(maximum_bytes)
+        && latency_store.last_load_limit == Some(maximum_bytes)
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing persistence state drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_rejects_oversized_load_before_decode()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(1, "oversized load bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(vec![0, 1]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let failure =
+        restore_cached_retry_latency_histogram(&mut store, maximum_bytes)
+            .err()
+            .ok_or_else(|| {
+                String::from("oversized adapter load was decoded")
+            })?;
+    let expected = NativeContinuationCachedRetryTelemetryPersistenceError::Blob(
+        telemetry_blob_persistence::
+            NativeContinuationTelemetryBlobPersistenceError::ByteLimit {
+                maximum_bytes,
+                observed_bytes: 2,
+            },
+    );
+    if failure == expected && store.last_load_limit == Some(maximum_bytes) {
+        Ok(())
+    } else {
+        Err(String::from("oversized load admission drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_rejects_write_limit_before_store()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(1, "persistence write bytes")?;
+    let capacity = nonzero_test_limit(1, "persistence write capacity")?;
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let failure = persist_cached_retry_telemetry_window(
+        &mut store,
+        &window,
+        maximum_bytes,
+    )
+    .err()
+    .ok_or_else(|| String::from("oversized telemetry write reached store"))?;
+    let NativeContinuationCachedRetryTelemetryPersistenceError::Blob(
+        telemetry_blob_persistence::
+            NativeContinuationTelemetryBlobPersistenceError::ByteLimit {
+                maximum_bytes: observed_limit,
+                observed_bytes,
+            },
+    ) = failure
+    else {
+        return Err(String::from("write-limit failure category drifted"));
+    };
+    if observed_limit == maximum_bytes
+        && observed_bytes > maximum_bytes.get()
+        && store.replace_calls == 0
+        && store.blob.is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("write limit mutated outbound store"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_persistence_retains_store_failures()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(4_096, "store failure bytes")?;
+    let histogram = cached_retry_latency_histogram()?;
+    let mut replace_store = TestCachedRetryTelemetryBlobStore {
+        fail_replace: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let replace_failure = persist_cached_retry_latency_histogram(
+        &mut replace_store,
+        &histogram,
+        maximum_bytes,
+    )
+    .err()
+    .ok_or_else(|| String::from("replace store failure was ignored"))?;
+    let mut load_store = TestCachedRetryTelemetryBlobStore {
+        fail_load: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let load_failure =
+        restore_cached_retry_telemetry_window(&mut load_store, maximum_bytes)
+            .err()
+            .ok_or_else(|| String::from("load store failure was ignored"))?;
+    if replace_failure
+        == NativeContinuationCachedRetryTelemetryPersistenceError::Blob(
+            telemetry_blob_persistence::
+                NativeContinuationTelemetryBlobPersistenceError::Store(
+                    TestCachedRetryTelemetryBlobStoreError::Replace,
+                ),
+        )
+        && load_failure
+            == NativeContinuationCachedRetryTelemetryPersistenceError::Blob(
+                telemetry_blob_persistence::
+                    NativeContinuationTelemetryBlobPersistenceError::Store(
+                        TestCachedRetryTelemetryBlobStoreError::Load,
+                    ),
+            )
+        && replace_store.replace_calls == 1
+        && replace_store.blob.is_none()
+        && load_store.last_load_limit == Some(maximum_bytes)
+    {
+        Ok(())
+    } else {
+        Err(String::from("outbound store failure evidence drifted"))
+    }
 }
 
 #[test]

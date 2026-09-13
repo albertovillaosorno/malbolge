@@ -341,6 +341,21 @@ parts:
     kind: composition
     language: rust
     responsibility: Wire concrete tier policy and adapters.
+  - id: part-0062
+    path: port-outbound/blob_store.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define core-required outbound dependency contracts.
+  - id: part-0063
+    path: application/telemetry_persistence.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate cached-retry telemetry persistence use cases.
+  - id: part-0064
+    path: composition/tier/cached_cycle/telemetry_persistence.rs
+    kind: composition
+    language: rust
+    responsibility: Bind cached-retry telemetry codecs to persistence use cases.
 projects: []
 tests: []
 graph:
