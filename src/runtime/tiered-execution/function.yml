@@ -389,6 +389,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Encode canonical native retry-policy snapshots.
+  - id: part-0072
+    path: composition/tier/policy_store.rs
+    kind: composition
+    language: rust
+    responsibility: Bind retry-policy codec to bounded blob persistence.
 projects: []
 tests: []
 graph:

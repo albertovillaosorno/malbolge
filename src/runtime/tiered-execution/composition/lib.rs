@@ -123,6 +123,8 @@ pub mod retry_planner;
 pub mod retry_policy;
 #[path = "tier/policy_codec.rs"]
 pub mod retry_policy_codec;
+#[path = "tier/policy_store.rs"]
+pub mod retry_policy_persistence;
 #[path = "tier/retry_router.rs"]
 pub mod retry_router;
 #[path = "tier/retry_turn.rs"]

@@ -123,6 +123,8 @@ pub mod retry_planner;
 pub mod retry_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_codec.rs"]
 pub mod retry_policy_codec;
+#[path = "../src/runtime/tiered-execution/composition/tier/policy_store.rs"]
+pub mod retry_policy_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_router.rs"]
 pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
@@ -718,6 +720,13 @@ use retry_policy_codec::{
     NativeContinuationRetryPolicyCodecError,
     decode_native_continuation_retry_policy_snapshot,
     encode_native_continuation_retry_policy_snapshot,
+};
+use retry_policy_persistence::{
+    NativeContinuationRetryPolicyDurablePersistence,
+    NativeContinuationRetryPolicyPersistenceError,
+    NativeContinuationRetryPolicyPersistenceLoad,
+    persist_native_continuation_retry_policy_durably,
+    restore_native_continuation_retry_policy,
 };
 use retry_router::{
     NativeContinuationRetryHost, NativeContinuationRetryRoute,
@@ -47759,6 +47768,182 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
     } else {
         Err(String::from("non-retry planning lost suspension"))
     }
+}
+
+#[test]
+fn native_retry_policy_persistence_roundtrips_policy() -> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(32, "policy persistence bytes")?;
+    let policy = complete_retry_policy(5);
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_native_continuation_retry_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("policy persistence failed: {error:?}"))?;
+    let restored =
+        restore_native_continuation_retry_policy(&mut store, maximum_bytes)
+            .map_err(|error| format!("policy restoration failed: {error:?}"))?;
+    let NativeContinuationRetryPolicyPersistenceLoad::Restored {
+        bytes,
+        policy: restored_policy,
+    } = restored
+    else {
+        return Err(String::from("persisted policy disappeared"));
+    };
+    if outcome.is_durable()
+        && outcome.bytes() == 32
+        && bytes == 32
+        && restored_policy == policy
+    {
+        Ok(())
+    } else {
+        Err(String::from("persisted retry policy drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_persistence_rejects_corrupt_load() -> Result<(), String>
+{
+    let maximum_bytes = nonzero_test_limit(32, "corrupt policy bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(vec![0; 32]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        restore_native_continuation_retry_policy(&mut store, maximum_bytes)
+            .err()
+            .ok_or_else(|| {
+                String::from("corrupt policy bytes were accepted")
+            })?;
+    if error
+        == NativeContinuationRetryPolicyPersistenceError::Codec(
+            NativeContinuationRetryPolicyCodecError::Magic,
+        )
+    {
+        Ok(())
+    } else {
+        Err(format!("corrupt policy rejection drifted: {error:?}"))
+    }
+}
+
+#[test]
+fn native_retry_policy_persistence_rejects_write_limit_before_store()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(31, "small policy bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let error = persist_native_continuation_retry_policy_durably(
+        &mut store,
+        complete_retry_policy(1),
+        maximum_bytes,
+    )
+    .err()
+    .ok_or_else(|| String::from("undersized policy limit was accepted"))?;
+    let NativeContinuationRetryPolicyPersistenceError::Blob(
+        BlobPersistenceError::ByteLimit {
+            maximum_bytes: observed_limit,
+            observed_bytes,
+        },
+    ) = error
+    else {
+        return Err(format!("policy byte-limit evidence drifted: {error:?}"));
+    };
+    if observed_limit == maximum_bytes
+        && observed_bytes == 32
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("policy byte limit reached outbound store"))
+    }
+}
+
+#[test]
+fn native_retry_policy_persistence_reports_missing_state() -> Result<(), String>
+{
+    let maximum_bytes = nonzero_test_limit(32, "missing policy bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let restored =
+        restore_native_continuation_retry_policy(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("missing policy restore failed: {error:?}")
+            })?;
+    if restored == NativeContinuationRetryPolicyPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("missing policy invented durable state"))
+    }
+}
+
+#[test]
+fn native_retry_policy_persistence_retains_committed_durability_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(32, "committed policy bytes")?;
+    let policy = complete_retry_policy(2);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = persist_native_continuation_retry_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("policy publication failed early: {error:?}"))?;
+    let NativeContinuationRetryPolicyDurablePersistence::Published {
+        durability_error,
+        write,
+    } = outcome
+    else {
+        return Err(String::from("policy durability failure lost publication"));
+    };
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && write.bytes() == 32
+        && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed policy durability evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_file_store_roundtrips_durably() -> Result<(), String> {
+    let fixture = file_blob_store_fixture("durable-policy")?;
+    let maximum_bytes = nonzero_test_limit(32, "file policy bytes")?;
+    let step_budget = nonzero_test_limit(4, "file policy slice")?;
+    let policy = NativeContinuationRetryPolicy::new(
+        6,
+        NativeContinuationRetryFallback::sliced(step_budget),
+    );
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let outcome = persist_native_continuation_retry_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file policy persistence failed: {error:?}"))?;
+    let restored =
+        restore_native_continuation_retry_policy(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("file policy restoration failed: {error:?}")
+            })?;
+    let NativeContinuationRetryPolicyPersistenceLoad::Restored {
+        bytes,
+        policy: restored_policy,
+    } = restored
+    else {
+        return Err(String::from("file policy publication disappeared"));
+    };
+    let result =
+        if outcome.bytes() == 32 && bytes == 32 && restored_policy == policy {
+            Ok(())
+        } else {
+            Err(String::from("file policy round-trip drifted"))
+        };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

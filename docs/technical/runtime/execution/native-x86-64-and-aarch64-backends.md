@@ -690,6 +690,17 @@ snapshot evidence.
 Five cases cover canonical complete/sliced bytes plus semantic, framing, and
 length rejection. The codec still owns no storage or publication authority.
 
+Typed retry-policy persistence now binds that codec to the generalized opaque
+blob service. Missing durable policy remains explicit, corrupt bytes fail codec
+validation, byte limits reject before outbound publication, and durability
+confirmation preserves either `Durable` or committed `Published` evidence. Five
+adapter-neutral cases cover those paths; one host-real filesystem case
+round-trips a sliced policy through canonical bytes and directory durability.
+
+This persists one caller-selected policy document only. It does not create a
+shared active-policy owner, automatically mutate future cached-cycle requests,
+or provide cross-process compare-and-swap or locking semantics.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered

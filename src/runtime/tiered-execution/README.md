@@ -18,6 +18,7 @@ It must not bypass another function or architectural kind boundary.
   storage, and standard monotonic interval timing.
 - `application/`: explicit bounded opaque-blob persistence use cases.
 - `composition/`: handoff plus cached/leased retry routing, semantic rebase,
-  exact telemetry summaries, latency schema normalization/assessment, policy
-  recommendation/request publication, turns, and cycles.
+  exact telemetry summaries, latency schema normalization/assessment, retry
+  policy snapshot/codec/persistence, recommendation/request publication, turns,
+  and cycles.
 - `port-outbound/`: storage-neutral bounded-blob and monotonic clock contracts.
