@@ -384,6 +384,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Delimit cached-retry latency around caller work.
+  - id: part-0071
+    path: composition/tier/policy_codec.rs
+    kind: composition
+    language: rust
+    responsibility: Encode canonical native retry-policy snapshots.
 projects: []
 tests: []
 graph:

@@ -540,6 +540,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cover complete and sliced round trips. This remains transfer evidence only;
   durable/global policy ownership is still pending.
 
+  A fixed 32-byte revision-one policy codec now preserves that snapshot as
+  canonical little-endian transfer bytes. Decode validates framing, reserved
+  fields, explicit fallback tag, complete/sliced budget semantics, host integer
+  representation, and exact length before reconstruction. Five cases cover both
+  canonical forms plus semantic, framing, and length rejection. Storage and
+  cross-cycle publication remain separate pending authority.
+
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source

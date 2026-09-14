@@ -117,6 +117,8 @@ pub mod retry_cycle;
 pub mod retry_planner;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_policy.rs"]
 pub mod retry_policy;
+#[path = "../src/runtime/tiered-execution/composition/tier/policy_codec.rs"]
+pub mod retry_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_router.rs"]
 pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
@@ -702,6 +704,11 @@ use retry_policy::{
     NativeContinuationRetryFallback, NativeContinuationRetryFallbackSnapshot,
     NativeContinuationRetryPolicy, NativeContinuationRetryPolicyError,
     NativeContinuationRetryPolicyOutcome,
+};
+use retry_policy_codec::{
+    NativeContinuationRetryPolicyCodecError,
+    decode_native_continuation_retry_policy_snapshot,
+    encode_native_continuation_retry_policy_snapshot,
 };
 use retry_router::{
     NativeContinuationRetryHost, NativeContinuationRetryRoute,
@@ -47754,6 +47761,160 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
     } else {
         Err(String::from("non-retry planning lost suspension"))
     }
+}
+
+#[test]
+fn native_retry_policy_codec_roundtrips_complete_canonical_bytes()
+-> Result<(), String> {
+    let snapshot = complete_retry_policy(4).snapshot();
+    let bytes = encode_native_continuation_retry_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let expected = [
+        b'M', b'B', b'R', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0, 0, 0, 0, 0,
+        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let decoded = decode_native_continuation_retry_policy_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes == expected
+        && decoded == snapshot
+        && encode_native_continuation_retry_policy_snapshot(decoded)
+            .map_err(|error| error.to_string())?
+            == expected
+    {
+        Ok(())
+    } else {
+        Err(String::from("complete retry policy codec drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_codec_roundtrips_sliced_canonical_bytes()
+-> Result<(), String> {
+    let budget = nonzero_test_limit(3, "policy codec slice")?;
+    let snapshot = NativeContinuationRetryPolicy::new(
+        7,
+        NativeContinuationRetryFallback::sliced(budget),
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_retry_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let expected = [
+        b'M', b'B', b'R', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0, 1, 0, 0, 0,
+        7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let decoded = decode_native_continuation_retry_policy_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes == expected && decoded == snapshot {
+        Ok(())
+    } else {
+        Err(String::from("sliced retry policy codec drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_codec_rejects_fallback_semantic_drift()
+-> Result<(), String> {
+    let mut bytes = encode_native_continuation_retry_policy_snapshot(
+        complete_retry_policy(2).snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    *bytes
+        .get_mut(24)
+        .ok_or_else(|| String::from("policy codec budget byte missing"))? = 1;
+    if decode_native_continuation_retry_policy_snapshot(&bytes)
+        != Err(NativeContinuationRetryPolicyCodecError::CompleteBudget {
+            observed: 1,
+        })
+    {
+        return Err(String::from("complete policy payload drift was accepted"));
+    }
+    *bytes
+        .get_mut(12)
+        .ok_or_else(|| String::from("policy codec fallback byte missing"))? = 1;
+    *bytes
+        .get_mut(24)
+        .ok_or_else(|| String::from("policy codec budget byte missing"))? = 0;
+    if decode_native_continuation_retry_policy_snapshot(&bytes)
+        != Err(NativeContinuationRetryPolicyCodecError::SliceBudgetZero)
+    {
+        return Err(String::from("zero sliced policy budget was accepted"));
+    }
+    *bytes
+        .get_mut(12)
+        .ok_or_else(|| String::from("policy codec fallback byte missing"))? = 9;
+    if decode_native_continuation_retry_policy_snapshot(&bytes)
+        != Err(NativeContinuationRetryPolicyCodecError::FallbackKind {
+            observed: 9,
+        })
+    {
+        return Err(String::from("unknown retry fallback tag was accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_retry_policy_codec_rejects_framing_drift() -> Result<(), String> {
+    let bytes = encode_native_continuation_retry_policy_snapshot(
+        complete_retry_policy(2).snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut magic = bytes.clone();
+    let magic_first = magic
+        .first_mut()
+        .ok_or_else(|| String::from("policy codec magic byte missing"))?;
+    *magic_first ^= 1;
+    if decode_native_continuation_retry_policy_snapshot(&magic)
+        != Err(NativeContinuationRetryPolicyCodecError::Magic)
+    {
+        return Err(String::from("retry policy magic drift was accepted"));
+    }
+    let mut version = bytes.clone();
+    *version
+        .get_mut(8)
+        .ok_or_else(|| String::from("policy codec revision byte missing"))? = 2;
+    if decode_native_continuation_retry_policy_snapshot(&version)
+        != Err(NativeContinuationRetryPolicyCodecError::Version { observed: 2 })
+    {
+        return Err(String::from("retry policy revision drift was accepted"));
+    }
+    let mut reserved = bytes;
+    *reserved
+        .get_mut(10)
+        .ok_or_else(|| String::from("policy codec reserved byte missing"))? = 1;
+    if decode_native_continuation_retry_policy_snapshot(&reserved)
+        != Err(NativeContinuationRetryPolicyCodecError::ReservedHeader {
+            observed: 1,
+        })
+    {
+        return Err(String::from("retry policy reserved bits were accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_retry_policy_codec_rejects_length_drift() -> Result<(), String> {
+    let bytes = encode_native_continuation_retry_policy_snapshot(
+        complete_retry_policy(2).snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    let short = bytes
+        .get(..31)
+        .ok_or_else(|| String::from("policy codec short fixture missing"))?;
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for drifted in [short, trailing.as_slice()] {
+        let Err(NativeContinuationRetryPolicyCodecError::Length {
+            expected,
+            observed,
+        }) = decode_native_continuation_retry_policy_snapshot(drifted)
+        else {
+            return Err(String::from("retry policy length drift was accepted"));
+        };
+        if expected != 32 || !matches!(observed, 31 | 33) {
+            return Err(String::from("retry policy length evidence drifted"));
+        }
+    }
+    Ok(())
 }
 
 #[test]
