@@ -394,6 +394,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Bind retry-policy codec to bounded blob persistence.
+  - id: part-0073
+    path: composition/tier/policy_owner.rs
+    kind: composition
+    language: rust
+    responsibility: Own process-local revisioned active retry policy.
 projects: []
 tests: []
 graph:

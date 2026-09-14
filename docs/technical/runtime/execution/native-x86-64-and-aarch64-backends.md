@@ -701,6 +701,19 @@ This persists one caller-selected policy document only. It does not create a
 shared active-policy owner, automatically mutate future cached-cycle requests,
 or provide cross-process compare-and-swap or locking semantics.
 
+A separate process-local active-policy owner now carries one exact retry
+policy plus a monotonic `u64` revision across cached cycles. New owners begin at
+revision zero; matching expected revisions publish the candidate and advance
+exactly once, while stale revisions return conflict evidence without mutation.
+Revision
+exhaustion also fails closed without changing active state. Four cases cover
+initial state, successful publication, stale conflict, and exhaustion.
+
+The owner can reconstruct validated `(policy, revision)` state for future
+durable restoration, but it does not itself persist state or coordinate another
+process.
+Filesystem/distributed CAS and locking therefore remain separate pending ports.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered

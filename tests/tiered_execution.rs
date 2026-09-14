@@ -123,6 +123,8 @@ pub mod retry_planner;
 pub mod retry_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_codec.rs"]
 pub mod retry_policy_codec;
+#[path = "../src/runtime/tiered-execution/composition/tier/policy_owner.rs"]
+pub mod retry_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_store.rs"]
 pub mod retry_policy_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_router.rs"]
@@ -720,6 +722,12 @@ use retry_policy_codec::{
     NativeContinuationRetryPolicyCodecError,
     decode_native_continuation_retry_policy_snapshot,
     encode_native_continuation_retry_policy_snapshot,
+};
+use retry_policy_owner::{
+    NativeContinuationRetryPolicyOwner,
+    NativeContinuationRetryPolicyOwnerError,
+    NativeContinuationRetryPolicyOwnerUpdate,
+    NativeContinuationRetryPolicyRevision, NativeContinuationRetryPolicyState,
 };
 use retry_policy_persistence::{
     NativeContinuationRetryPolicyDurablePersistence,
@@ -47767,6 +47775,128 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("non-retry planning lost suspension"))
+    }
+}
+
+#[test]
+fn native_retry_policy_owner_rejects_revision_exhaustion_without_mutation()
+-> Result<(), String> {
+    let current_policy = complete_retry_policy(2);
+    let candidate = complete_retry_policy(9);
+    let revision = NativeContinuationRetryPolicyRevision::from_value(u64::MAX);
+    let state =
+        NativeContinuationRetryPolicyState::new(current_policy, revision);
+    let mut owner = NativeContinuationRetryPolicyOwner::from_state(state);
+    let error = owner
+        .compare_and_swap(revision, candidate)
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted active policy revision advanced")
+        })?;
+    if error
+        == (NativeContinuationRetryPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        })
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "active retry policy exhaustion evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn native_retry_policy_owner_starts_with_exact_initial_state()
+-> Result<(), String> {
+    let policy = complete_retry_policy(2);
+    let owner = NativeContinuationRetryPolicyOwner::new(policy);
+    let state = owner.state();
+    if state.policy() == policy
+        && state.revision() == NativeContinuationRetryPolicyRevision::initial()
+        && state.revision().value() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("active retry policy initial state drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_owner_publishes_matching_revision() -> Result<(), String>
+{
+    let initial = complete_retry_policy(2);
+    let candidate = complete_retry_policy(4);
+    let mut owner = NativeContinuationRetryPolicyOwner::new(initial);
+    let update = owner
+        .compare_and_swap(owner.state().revision(), candidate)
+        .map_err(|error| {
+            format!("matching active policy update failed: {error:?}")
+        })?;
+    let NativeContinuationRetryPolicyOwnerUpdate::Published {
+        current,
+        previous,
+    } = update
+    else {
+        return Err(String::from("matching active policy update conflicted"));
+    };
+    if previous.policy() == initial
+        && previous.revision().value() == 0
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "active retry policy publication evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn native_retry_policy_owner_rejects_stale_revision_without_mutation()
+-> Result<(), String> {
+    let initial = complete_retry_policy(2);
+    let first = complete_retry_policy(3);
+    let stale_candidate = complete_retry_policy(7);
+    let mut owner = NativeContinuationRetryPolicyOwner::new(initial);
+    let initial_revision = owner.state().revision();
+    let first_update = owner
+        .compare_and_swap(initial_revision, first)
+        .map_err(|error| {
+            format!("first active policy update failed: {error:?}")
+        })?;
+    let NativeContinuationRetryPolicyOwnerUpdate::Published { current, .. } =
+        first_update
+    else {
+        return Err(String::from("first active policy update conflicted"));
+    };
+    let conflict = owner
+        .compare_and_swap(initial_revision, stale_candidate)
+        .map_err(|error| {
+            format!("stale active policy update failed: {error:?}")
+        })?;
+    let NativeContinuationRetryPolicyOwnerUpdate::Conflict {
+        candidate,
+        current: observed,
+        expected,
+    } = conflict
+    else {
+        return Err(String::from("stale active policy update was published"));
+    };
+    if candidate == stale_candidate
+        && expected == initial_revision
+        && observed == current
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "active retry policy conflict evidence drifted",
+        ))
     }
 }
 
