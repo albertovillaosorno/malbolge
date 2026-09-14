@@ -714,6 +714,13 @@ durable restoration, but it does not itself persist state or coordinate another
 process.
 Filesystem/distributed CAS and locking therefore remain separate pending ports.
 
+A separate explicit request-binding boundary now consumes one immutable
+active state plus one future cached-cycle request. It replaces only that
+request's retry policy and retains the active revision, active state, and
+previous request policy as evidence. One case binds a revision-one owner state
+into a different request.
+Nothing subscribes requests to the owner or mutates future requests implicitly.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered

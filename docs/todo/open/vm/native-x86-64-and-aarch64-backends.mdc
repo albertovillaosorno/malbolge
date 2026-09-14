@@ -567,6 +567,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   CAS/locking
   remain pending.
 
+  An explicit request-binding boundary now consumes one immutable active state
+  plus one future cached-cycle request. It replaces only that request policy
+  and retains active revision/state plus the previous request policy. One case
+  covers revisioned binding. Requests do not subscribe to the owner and future
+  requests
+  are never mutated implicitly.
+
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source

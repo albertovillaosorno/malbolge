@@ -151,6 +151,7 @@ use blob_persistence::{
 };
 use blob_store as telemetry_store_port;
 use cached_cycle::{
+    NativeContinuationCachedRetryActivePolicyPublication,
     NativeContinuationCachedRetryAttempt,
     NativeContinuationCachedRetryCompletion,
     NativeContinuationCachedRetryCycleFailure,
@@ -208,6 +209,7 @@ use cached_cycle::{
     persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_window,
     persist_cached_retry_telemetry_window_durably,
+    publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
@@ -51565,6 +51567,37 @@ fn cached_retry_policy_publication_request(
         0,
         HostIsa::X86_64,
     ))
+}
+
+#[test]
+fn cached_retry_active_policy_publication_binds_revisioned_state()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let active_policy = complete_retry_policy(5);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let mut owner =
+        NativeContinuationRetryPolicyOwner::new(complete_retry_policy(3));
+    let update = owner
+        .compare_and_swap(owner.state().revision(), active_policy)
+        .map_err(|error| format!("active policy setup failed: {error:?}"))?;
+    let NativeContinuationRetryPolicyOwnerUpdate::Published {
+        current: active_state,
+        ..
+    } = update
+    else {
+        return Err(String::from("active policy setup conflicted"));
+    };
+    let publication = publish_cached_retry_active_policy(request, active_state);
+    if publication.active_state() != active_state
+        || publication.revision() != active_state.revision()
+        || publication.previous_policy() != original_policy
+        || publication.request().policy() != active_policy
+    {
+        return Err(String::from("active policy request binding drifted"));
+    }
+    let NativeContinuationCachedRetryActivePolicyPublication { .. } =
+        publication;
+    Ok(())
 }
 
 #[test]

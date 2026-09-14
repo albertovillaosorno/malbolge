@@ -159,8 +159,10 @@ pub use telemetry_persistence::{
     restore_cached_retry_telemetry_window,
 };
 pub use telemetry_policy_publication::{
+    NativeContinuationCachedRetryActivePolicyPublication,
     NativeContinuationCachedRetryLatencyPolicyPublication,
     NativeContinuationCachedRetryPolicyPublication,
+    publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_policy_recommendation,
 };

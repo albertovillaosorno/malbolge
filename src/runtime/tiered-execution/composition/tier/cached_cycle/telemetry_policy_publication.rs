@@ -40,6 +40,49 @@ use super::{
     NativeContinuationCachedRetryPolicyRecommendation,
 };
 use crate::retry_policy::NativeContinuationRetryPolicy;
+use crate::retry_policy_owner::{
+    NativeContinuationRetryPolicyRevision, NativeContinuationRetryPolicyState,
+};
+
+/// Request owner after binding one explicit active-policy state.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryActivePolicyPublication {
+    active_state: NativeContinuationRetryPolicyState,
+    previous_policy: NativeContinuationRetryPolicy,
+    request: Box<NativeContinuationCachedRetryCycleRequest>,
+}
+
+impl NativeContinuationCachedRetryActivePolicyPublication {
+    /// Returns the exact active state bound into this request.
+    #[must_use]
+    pub const fn active_state(&self) -> NativeContinuationRetryPolicyState {
+        self.active_state
+    }
+
+    /// Consumes publication evidence into the cached-cycle request owner.
+    #[must_use]
+    pub fn into_request(self) -> NativeContinuationCachedRetryCycleRequest {
+        *self.request
+    }
+
+    /// Returns the policy carried by the request before active-state binding.
+    #[must_use]
+    pub const fn previous_policy(&self) -> NativeContinuationRetryPolicy {
+        self.previous_policy
+    }
+
+    /// Returns the request carrying the bound active policy.
+    #[must_use]
+    pub fn request(&self) -> &NativeContinuationCachedRetryCycleRequest {
+        &self.request
+    }
+
+    /// Returns the exact active-policy revision bound into this request.
+    #[must_use]
+    pub const fn revision(&self) -> NativeContinuationRetryPolicyRevision {
+        self.active_state.revision()
+    }
+}
 
 /// Request owner after one explicit latency-recommendation publication
 /// decision.
@@ -162,6 +205,21 @@ impl NativeContinuationCachedRetryPolicyPublication {
             Self::Deferred { request, .. }
             | Self::Published { request, .. } => request,
         }
+    }
+}
+
+/// Binds one explicit active-policy state into one future cached-cycle request.
+#[must_use]
+pub fn publish_cached_retry_active_policy(
+    mut request: NativeContinuationCachedRetryCycleRequest,
+    active_state: NativeContinuationRetryPolicyState,
+) -> NativeContinuationCachedRetryActivePolicyPublication {
+    let previous_policy = request.policy;
+    request.policy = active_state.policy();
+    NativeContinuationCachedRetryActivePolicyPublication {
+        active_state,
+        previous_policy,
+        request: Box::new(request),
     }
 }
 
