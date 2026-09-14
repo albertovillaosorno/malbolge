@@ -533,6 +533,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   evidence replaces only its retry policy and retains previous/current policy
   plus exact latency recommendation evidence.
 
+  Retry policy now owns an immutable canonical snapshot containing exact maximum
+  native attempts and either complete fallback or one positive sliced fallback
+  budget. Reconstruction uses that representation directly instead of scheduler
+  behavior, and the internal sliced form is nonzero by construction. Two cases
+  cover complete and sliced round trips. This remains transfer evidence only;
+  durable/global policy ownership is still pending.
+
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source

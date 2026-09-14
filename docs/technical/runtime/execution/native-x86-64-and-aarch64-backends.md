@@ -672,6 +672,16 @@ recommendations. Deferral preserves the request unchanged, while ready evidence
 replaces only its retry policy and retains previous/current policy plus exact
 latency recommendation evidence.
 
+Retry policies now expose an immutable canonical snapshot owned by the policy
+boundary itself: exact maximum native attempts plus either complete normative
+fallback or one positive sliced fallback budget. Reconstruction consumes that
+representation directly rather than inferring fallback state from scheduler
+behavior. The internal sliced form also carries `NonZeroUsize`, so invalid zero
+slice state is unrepresentable.
+
+Two cases cover complete and sliced round trips. This is transfer evidence only;
+no durable/global policy owner is introduced.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered

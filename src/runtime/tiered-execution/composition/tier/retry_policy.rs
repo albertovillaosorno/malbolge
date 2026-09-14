@@ -45,20 +45,38 @@ use crate::interpreter_handoff::NativeInterpreterHandoff;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NativeContinuationRetryFallbackKind {
     Complete,
-    Slice,
+    Slice(NonZeroUsize),
 }
 
 /// Configured normative fallback after the native retry limit is reached.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationRetryFallback {
     kind: NativeContinuationRetryFallbackKind,
-    step_budget: usize,
+}
+
+/// Immutable canonical representation of one retry fallback.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationRetryFallbackSnapshot {
+    /// Exhausted native retries complete through normative interpretation.
+    Complete,
+    /// Exhausted native retries execute one positive interpreter slice.
+    Sliced {
+        /// Positive normative interpreter step budget.
+        step_budget: NonZeroUsize,
+    },
 }
 
 /// Explicit immutable retry-attempt policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationRetryPolicy {
     fallback: NativeContinuationRetryFallback,
+    max_native_attempts: usize,
+}
+
+/// Immutable canonical representation of one complete retry policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryPolicySnapshot {
+    fallback: NativeContinuationRetryFallbackSnapshot,
     max_native_attempts: usize,
 }
 
@@ -122,7 +140,6 @@ impl NativeContinuationRetryFallback {
     pub const fn complete() -> Self {
         Self {
             kind: NativeContinuationRetryFallbackKind::Complete,
-            step_budget: 0,
         }
     }
 
@@ -131,13 +148,23 @@ impl NativeContinuationRetryFallback {
             NativeContinuationRetryFallbackKind::Complete => {
                 NativeContinuationScheduleDecision::complete_interpreter()
             },
-            NativeContinuationRetryFallbackKind::Slice => {
-                let Some(step_budget) = NonZeroUsize::new(self.step_budget)
-                else {
-                    return NativeContinuationScheduleDecision::
-                        complete_interpreter();
-                };
+            NativeContinuationRetryFallbackKind::Slice(step_budget) => {
                 NativeContinuationScheduleDecision::interpret(step_budget)
+            },
+        }
+    }
+
+    /// Reconstructs one fallback from canonical immutable evidence.
+    #[must_use]
+    pub const fn from_snapshot(
+        snapshot: NativeContinuationRetryFallbackSnapshot,
+    ) -> Self {
+        match snapshot {
+            NativeContinuationRetryFallbackSnapshot::Complete => {
+                Self::complete()
+            },
+            NativeContinuationRetryFallbackSnapshot::Sliced { step_budget } => {
+                Self::sliced(step_budget)
             },
         }
     }
@@ -146,8 +173,20 @@ impl NativeContinuationRetryFallback {
     #[must_use]
     pub const fn sliced(step_budget: NonZeroUsize) -> Self {
         Self {
-            kind: NativeContinuationRetryFallbackKind::Slice,
-            step_budget: step_budget.get(),
+            kind: NativeContinuationRetryFallbackKind::Slice(step_budget),
+        }
+    }
+
+    /// Captures exact fallback representation without scheduler inference.
+    #[must_use]
+    pub const fn snapshot(self) -> NativeContinuationRetryFallbackSnapshot {
+        match self.kind {
+            NativeContinuationRetryFallbackKind::Complete => {
+                NativeContinuationRetryFallbackSnapshot::Complete
+            },
+            NativeContinuationRetryFallbackKind::Slice(step_budget) => {
+                NativeContinuationRetryFallbackSnapshot::Sliced { step_budget }
+            },
         }
     }
 }
@@ -199,6 +238,19 @@ impl NativeContinuationRetryPolicy {
     #[must_use]
     pub const fn fallback_decision(self) -> NativeContinuationScheduleDecision {
         self.fallback.decision()
+    }
+
+    /// Reconstructs one policy from exact canonical immutable evidence.
+    #[must_use]
+    pub const fn from_snapshot(
+        snapshot: NativeContinuationRetryPolicySnapshot,
+    ) -> Self {
+        Self {
+            fallback: NativeContinuationRetryFallback::from_snapshot(
+                snapshot.fallback,
+            ),
+            max_native_attempts: snapshot.max_native_attempts,
+        }
     }
 
     /// Returns the configured maximum native attempt count.
@@ -259,6 +311,40 @@ impl NativeContinuationRetryPolicy {
                 handoff: suspension.into_handoff(),
             },
         )))
+    }
+
+    /// Captures the exact retry policy without behavioral inference.
+    #[must_use]
+    pub const fn snapshot(self) -> NativeContinuationRetryPolicySnapshot {
+        NativeContinuationRetryPolicySnapshot {
+            fallback: self.fallback.snapshot(),
+            max_native_attempts: self.max_native_attempts,
+        }
+    }
+}
+
+impl NativeContinuationRetryFallbackSnapshot {
+    /// Returns positive slice budget, or `None` for complete interpretation.
+    #[must_use]
+    pub const fn step_budget(self) -> Option<NonZeroUsize> {
+        match self {
+            Self::Complete => None,
+            Self::Sliced { step_budget } => Some(step_budget),
+        }
+    }
+}
+
+impl NativeContinuationRetryPolicySnapshot {
+    /// Returns exact canonical fallback evidence.
+    #[must_use]
+    pub const fn fallback(self) -> NativeContinuationRetryFallbackSnapshot {
+        self.fallback
+    }
+
+    /// Returns the configured maximum native attempt count.
+    #[must_use]
+    pub const fn max_native_attempts(self) -> usize {
+        self.max_native_attempts
     }
 }
 

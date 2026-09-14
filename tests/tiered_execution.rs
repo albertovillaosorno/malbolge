@@ -699,8 +699,9 @@ use retry_planner::{
     NativeContinuationRetryStepPlanningError, plan_native_continuation_retry,
 };
 use retry_policy::{
-    NativeContinuationRetryFallback, NativeContinuationRetryPolicy,
-    NativeContinuationRetryPolicyError, NativeContinuationRetryPolicyOutcome,
+    NativeContinuationRetryFallback, NativeContinuationRetryFallbackSnapshot,
+    NativeContinuationRetryPolicy, NativeContinuationRetryPolicyError,
+    NativeContinuationRetryPolicyOutcome,
 };
 use retry_router::{
     NativeContinuationRetryHost, NativeContinuationRetryRoute,
@@ -47753,6 +47754,42 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
     } else {
         Err(String::from("non-retry planning lost suspension"))
     }
+}
+
+#[test]
+fn native_retry_policy_snapshot_roundtrips_complete_fallback()
+-> Result<(), String> {
+    let policy = complete_retry_policy(4);
+    let snapshot = policy.snapshot();
+    if snapshot.max_native_attempts() != 4
+        || snapshot.fallback()
+            != NativeContinuationRetryFallbackSnapshot::Complete
+        || snapshot.fallback().step_budget().is_some()
+        || NativeContinuationRetryPolicy::from_snapshot(snapshot) != policy
+    {
+        return Err(String::from("complete retry policy snapshot drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_retry_policy_snapshot_roundtrips_sliced_fallback()
+-> Result<(), String> {
+    let step_budget = nonzero_test_limit(3, "policy snapshot slice")?;
+    let policy = NativeContinuationRetryPolicy::new(
+        7,
+        NativeContinuationRetryFallback::sliced(step_budget),
+    );
+    let snapshot = policy.snapshot();
+    if snapshot.max_native_attempts() != 7
+        || snapshot.fallback().step_budget() != Some(step_budget)
+        || NativeContinuationRetryFallback::from_snapshot(snapshot.fallback())
+            != NativeContinuationRetryFallback::sliced(step_budget)
+        || NativeContinuationRetryPolicy::from_snapshot(snapshot) != policy
+    {
+        return Err(String::from("sliced retry policy snapshot drifted"));
+    }
+    Ok(())
 }
 
 #[test]
