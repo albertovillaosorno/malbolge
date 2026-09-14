@@ -127,6 +127,8 @@ pub mod retry_policy_codec;
 pub mod retry_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_store.rs"]
 pub mod retry_policy_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/policy_state.rs"]
+pub mod retry_policy_state_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_router.rs"]
 pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
@@ -735,8 +737,16 @@ use retry_policy_persistence::{
     NativeContinuationRetryPolicyDurablePersistence,
     NativeContinuationRetryPolicyPersistenceError,
     NativeContinuationRetryPolicyPersistenceLoad,
+    NativeContinuationRetryPolicyStatePersistenceLoad,
     persist_native_continuation_retry_policy_durably,
+    persist_native_continuation_retry_policy_state_durably,
     restore_native_continuation_retry_policy,
+    restore_native_continuation_retry_policy_state,
+};
+use retry_policy_state_codec::{
+    NativeContinuationRetryPolicyStateCodecError,
+    decode_native_continuation_retry_policy_state,
+    encode_native_continuation_retry_policy_state,
 };
 use retry_router::{
     NativeContinuationRetryHost, NativeContinuationRetryRoute,
@@ -47778,6 +47788,140 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
     } else {
         Err(String::from("non-retry planning lost suspension"))
     }
+}
+
+#[test]
+fn native_retry_policy_state_persistence_roundtrips_revisioned_state()
+-> Result<(), String> {
+    let maximum_bytes =
+        nonzero_test_limit(52, "policy state persistence bytes")?;
+    let state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(6),
+        NativeContinuationRetryPolicyRevision::from_value(11),
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_native_continuation_retry_policy_state_durably(
+        &mut store,
+        state,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("policy state persistence failed: {error:?}"))?;
+    let restored = restore_native_continuation_retry_policy_state(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("policy state restore failed: {error:?}"))?;
+    let NativeContinuationRetryPolicyStatePersistenceLoad::Restored {
+        bytes,
+        state: restored_state,
+    } = restored
+    else {
+        return Err(String::from("persisted active policy state disappeared"));
+    };
+    let owner = NativeContinuationRetryPolicyOwner::from_state(restored_state);
+    if outcome.is_durable()
+        && outcome.bytes() == 52
+        && bytes == 52
+        && restored_state == state
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable active policy state drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_file_store_roundtrips_durably()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("durable-policy-state")?;
+    let maximum_bytes = nonzero_test_limit(52, "file policy state bytes")?;
+    let state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(7),
+        NativeContinuationRetryPolicyRevision::from_value(13),
+    );
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let outcome = persist_native_continuation_retry_policy_state_durably(
+        &mut store,
+        state,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("file policy state persistence failed: {error:?}")
+    })?;
+    let restored = restore_native_continuation_retry_policy_state(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file policy state restore failed: {error:?}"))?;
+    let NativeContinuationRetryPolicyStatePersistenceLoad::Restored {
+        bytes,
+        state: restored_state,
+    } = restored
+    else {
+        return Err(String::from("file active policy state disappeared"));
+    };
+    let result =
+        if outcome.bytes() == 52 && bytes == 52 && restored_state == state {
+            Ok(())
+        } else {
+            Err(String::from("file active policy state drifted"))
+        };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn native_retry_policy_state_codec_roundtrips_revisioned_policy()
+-> Result<(), String> {
+    let policy = complete_retry_policy(5);
+    let state = NativeContinuationRetryPolicyState::new(
+        policy,
+        NativeContinuationRetryPolicyRevision::from_value(9),
+    );
+    let bytes = encode_native_continuation_retry_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    let decoded = decode_native_continuation_retry_policy_state(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == 52 && decoded == state {
+        Ok(())
+    } else {
+        Err(String::from("revisioned policy state codec drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_codec_rejects_outer_and_nested_drift()
+-> Result<(), String> {
+    let state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(3),
+    );
+    let mut bytes = encode_native_continuation_retry_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    let first = bytes
+        .first_mut()
+        .ok_or_else(|| String::from("policy state magic byte missing"))?;
+    *first ^= 1;
+    if decode_native_continuation_retry_policy_state(&bytes)
+        != Err(NativeContinuationRetryPolicyStateCodecError::Magic)
+    {
+        return Err(String::from("policy state magic drift was accepted"));
+    }
+    let mut nested = encode_native_continuation_retry_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    *nested
+        .get_mut(20)
+        .ok_or_else(|| String::from("nested policy magic byte missing"))? ^= 1;
+    if decode_native_continuation_retry_policy_state(&nested)
+        != Err(NativeContinuationRetryPolicyStateCodecError::Policy(
+            NativeContinuationRetryPolicyCodecError::Magic,
+        ))
+    {
+        return Err(String::from("nested policy drift was accepted"));
+    }
+    Ok(())
 }
 
 #[test]

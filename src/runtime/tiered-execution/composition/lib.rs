@@ -127,6 +127,8 @@ pub mod retry_policy_codec;
 pub mod retry_policy_owner;
 #[path = "tier/policy_store.rs"]
 pub mod retry_policy_persistence;
+#[path = "tier/policy_state.rs"]
+pub mod retry_policy_state_codec;
 #[path = "tier/retry_router.rs"]
 pub mod retry_router;
 #[path = "tier/retry_turn.rs"]

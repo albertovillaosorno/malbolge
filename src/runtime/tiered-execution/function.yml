@@ -399,6 +399,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Own process-local revisioned active retry policy.
+  - id: part-0074
+    path: composition/tier/policy_state.rs
+    kind: composition
+    language: rust
+    responsibility: Encode revisioned active retry-policy state.
 projects: []
 tests: []
 graph:

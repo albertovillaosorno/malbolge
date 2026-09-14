@@ -574,6 +574,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   requests
   are never mutated implicitly.
 
+  Revisioned active state now has a fixed 52-byte revision-one codec carrying
+  the exact `u64` owner revision plus the existing canonical 32-byte policy
+  frame. Outer and nested framing both fail closed; two cases cover exact round
+  trip and corruption. Typed persistence durably restores that state and can
+  reconstruct the owner.
+
+  One adapter-neutral and one host-real filesystem case cover durable round
+  trips. Filesystem replacement is still unconditional, so durable revision
+  evidence does not yet provide cross-process CAS/locking.
+
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source

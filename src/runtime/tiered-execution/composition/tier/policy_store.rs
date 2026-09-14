@@ -47,6 +47,12 @@ use crate::retry_policy_codec::{
     decode_native_continuation_retry_policy_snapshot,
     encode_native_continuation_retry_policy_snapshot,
 };
+use crate::retry_policy_owner::NativeContinuationRetryPolicyState;
+use crate::retry_policy_state_codec::{
+    NativeContinuationRetryPolicyStateCodecError,
+    decode_native_continuation_retry_policy_state,
+    encode_native_continuation_retry_policy_state,
+};
 use crate::{blob_persistence, blob_store as store_port};
 
 /// Retry-policy publication plus explicit post-publication durability state.
@@ -73,6 +79,8 @@ pub enum NativeContinuationRetryPolicyPersistenceError<StoreError> {
     Blob(blob_persistence::NativeContinuationBlobPersistenceError<StoreError>),
     /// Canonical retry-policy framing or semantics failed.
     Codec(NativeContinuationRetryPolicyCodecError),
+    /// Canonical revisioned active-policy framing or semantics failed.
+    StateCodec(NativeContinuationRetryPolicyStateCodecError),
 }
 
 /// Result of one bounded retry-policy restoration.
@@ -86,6 +94,20 @@ pub enum NativeContinuationRetryPolicyPersistenceLoad {
         bytes: usize,
         /// Reconstructed retry policy.
         policy: NativeContinuationRetryPolicy,
+    },
+}
+
+/// Result of one bounded revisioned active-policy restoration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationRetryPolicyStatePersistenceLoad {
+    /// No durable active-policy state exists at the configured location.
+    Missing,
+    /// Canonical bytes reconstructed exact active revision and policy.
+    Restored {
+        /// Exact canonical byte count returned by the adapter.
+        bytes: usize,
+        /// Reconstructed revisioned active-policy state.
+        state: NativeContinuationRetryPolicyState,
     },
 }
 
@@ -224,6 +246,27 @@ where
     Ok(map_durable_persistence(outcome))
 }
 
+/// Persists exact revisioned active-policy state and confirms durability.
+///
+/// # Errors
+///
+/// Returns codec, byte-limit, or store failure before publication.
+pub fn persist_native_continuation_retry_policy_state_durably<Store>(
+    store: &mut Store,
+    state: NativeContinuationRetryPolicyState,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationRetryPolicyDurableStoreResult<Store>
+where
+    Store: DurableBlobStore,
+{
+    let bytes = encode_native_continuation_retry_policy_state(state)
+        .map_err(NativeContinuationRetryPolicyPersistenceError::StateCodec)?;
+    let outcome =
+        blob_persistence::persist_blob_durably(store, &bytes, maximum_bytes)
+            .map_err(NativeContinuationRetryPolicyPersistenceError::Blob)?;
+    Ok(map_durable_persistence(outcome))
+}
+
 /// Restores one exact retry policy from canonical bounded bytes.
 ///
 /// # Errors
@@ -252,4 +295,34 @@ where
         bytes: length,
         policy: NativeContinuationRetryPolicy::from_snapshot(snapshot),
     })
+}
+/// Restores exact revisioned active-policy state from canonical bounded bytes.
+///
+/// # Errors
+///
+/// Returns store, byte-limit, or state-codec evidence without inventing state.
+pub fn restore_native_continuation_retry_policy_state<Store>(
+    store: &mut Store,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationRetryPolicyPersistenceResult<
+    NativeContinuationRetryPolicyStatePersistenceLoad,
+    Store::Error,
+>
+where
+    Store: BlobStore,
+{
+    let load = blob_persistence::restore_blob(store, maximum_bytes)
+        .map_err(NativeContinuationRetryPolicyPersistenceError::Blob)?;
+    let BlobLoad::Present { bytes } = load else {
+        return Ok(NativeContinuationRetryPolicyStatePersistenceLoad::Missing);
+    };
+    let length = bytes.len();
+    let state = decode_native_continuation_retry_policy_state(&bytes)
+        .map_err(NativeContinuationRetryPolicyPersistenceError::StateCodec)?;
+    Ok(
+        NativeContinuationRetryPolicyStatePersistenceLoad::Restored {
+            bytes: length,
+            state,
+        },
+    )
 }

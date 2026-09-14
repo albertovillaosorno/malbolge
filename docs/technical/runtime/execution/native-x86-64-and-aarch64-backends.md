@@ -721,6 +721,19 @@ previous request policy as evidence. One case binds a revision-one owner state
 into a different request.
 Nothing subscribes requests to the owner or mutates future requests implicitly.
 
+Revisioned active state now has a separate fixed 52-byte revision-one codec. The
+outer frame carries one exact `u64` owner revision and embeds the existing
+canonical 32-byte policy frame; outer framing and nested policy validation both
+fail closed. Two cases cover exact round trip plus outer/nested corruption.
+
+Typed policy persistence can now durably publish and restore that revisioned
+state through the same opaque blob service. One adapter-neutral case restores an
+owner with the exact revision/policy, and one host-real filesystem case crosses
+the state codec, bounded application service, staged file publication, and
+directory durability confirmation. Durable revision evidence still does not make
+filesystem replacement conditional on an expected revision, so cross-process
+CAS/locking remains open.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered
