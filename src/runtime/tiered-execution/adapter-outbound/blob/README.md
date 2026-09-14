@@ -1,9 +1,9 @@
-# Cached-retry telemetry filesystem adapter
+# Tiered-execution filesystem blob adapter
 
 ## Purpose
 
-Bind the storage-neutral cached-retry telemetry blob port to one explicit host
-filesystem path without granting the adapter telemetry, retry-policy, or
+Bind the storage-neutral tiered-execution blob port to one explicit host
+filesystem path without granting the adapter application, retry-policy, or
 codec authority.
 
 ## Owns

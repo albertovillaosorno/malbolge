@@ -709,18 +709,21 @@ to an explicit persistence application service and reconstructs exact validated
 owners after load. The application service itself treats payloads as opaque
 bytes, enforcing a positive bound before publication and again after loads.
 
-A storage-neutral outbound blob port binds one adapter-preconfigured location.
-It admits bounded loads and all-or-nothing replacement without exposing paths,
-filesystem APIs, policy selection, or telemetry interpretation to the use case.
-Six adapter-neutral cases cover both round trips, missing state, both byte-limit
-guards, and outbound-store failures.
+The storage-neutral outbound blob port now names only opaque single-blob
+transport. It admits bounded loads and all-or-nothing replacement without
+exposing paths, filesystem APIs, policy selection, or payload interpretation.
+The bounded application service likewise owns only byte limits and publication
+state; typed telemetry codecs remain composition clients. Six adapter-neutral
+cases retain both telemetry round trips, missing state, byte guards, and store
+failures across that generalized boundary.
 
-A concrete filesystem adapter now binds that port to one explicit destination.
-It probes one byte beyond bounded reads, stages in the destination directory,
-synchronizes complete staging contents, and publishes by `rename` without ever
-removing the previous destination first. Five host-real cases cover missing
-state, overwrite-or-safe-failure semantics, oversized reads, and exact
-count/latency persistence round trips.
+The concrete filesystem adapter is also payload-neutral and binds that port to
+one explicit destination. It probes one byte beyond bounded reads, stages in
+the destination directory, synchronizes complete staging contents, and
+publishes by `rename` without ever removing the previous destination first.
+Host-real cases retain missing, overwrite-or-safe-failure, oversized-read, and
+exact count/latency evidence while leaving the adapter reusable by other typed
+composition clients.
 
 A separate post-publication durability capability now confirms the destination
 directory after replacement. Application orchestration returns `Durable` after

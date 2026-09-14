@@ -33,12 +33,14 @@
 
 //! Canonical module topology for the complete tiered-execution function.
 
+#[path = "../application/blob_persistence.rs"]
+pub mod blob_persistence;
+#[path = "../port-outbound/blob_store.rs"]
+pub mod blob_store;
 #[path = "tier/cached_cycle.rs"]
 pub mod cached_cycle;
 #[path = "tier/cached_retry.rs"]
 pub mod cached_retry;
-#[path = "../port-outbound/blob_store.rs"]
-pub mod cached_retry_telemetry_blob_store;
 #[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../adapter-outbound/cache/main.rs"]
@@ -47,6 +49,8 @@ pub mod execution_cache;
 pub mod execution_clock;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../adapter-outbound/blob/main.rs"]
+pub mod file_blob_store;
 #[path = "tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
 #[path = "tier/geometry_native.rs"]
@@ -123,10 +127,6 @@ pub mod retry_policy_codec;
 pub mod retry_router;
 #[path = "tier/retry_turn.rs"]
 pub mod retry_turn;
-#[path = "../application/telemetry_persistence.rs"]
-pub mod telemetry_blob_persistence;
-#[path = "../adapter-outbound/telemetry/main.rs"]
-pub mod telemetry_file_store;
 
 /// Empty entry point for the Cargo/Jig architecture-validation target.
 fn main() {}

@@ -565,16 +565,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   owners after load. The application treats payloads as opaque bytes and checks
   a positive bound before publication and again after adapter loads.
 
-  A storage-neutral outbound blob port binds one adapter-preconfigured location
-  and admits bounded loads plus all-or-nothing replacement. It exposes no paths,
-  filesystem APIs, policy selection, or telemetry interpretation; six cases
-  cover both round trips, missing state, both byte guards, and store failures.
+  The storage-neutral outbound blob port and bounded application service now
+  name only opaque single-blob transport, byte limits, and publication state.
+  They expose no paths, filesystem APIs, policy selection, or payload
+  interpretation; typed telemetry codecs remain composition clients. Six
+  adapter-neutral cases retain both telemetry round trips, missing state, byte
+  guards, and store failures across that generalized boundary.
 
-  A concrete filesystem adapter binds that port to one explicit destination. It
-  probes beyond bounded reads, stages beside the destination, synchronizes all
-  staged bytes, and publishes by `rename` without deleting prior state first.
-  Five host-real cases cover missing state, overwrite-or-safe-failure behavior,
-  oversized reads, and exact count/latency persistence round trips.
+  The concrete filesystem adapter is likewise payload-neutral. It probes beyond
+  bounded reads, stages beside one explicit destination, synchronizes staged
+  bytes, and publishes by `rename` without deleting prior state first. Host-real
+  cases retain missing, overwrite-or-safe-failure, oversized-read, and exact
+  count/latency evidence while permitting other typed composition clients.
 
   A separate durability capability now confirms the destination directory only
   after replacement commits. The application reports either confirmed

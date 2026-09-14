@@ -9,10 +9,10 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Filesystem binding for one preconfigured cached-retry telemetry blob.
+//   - Filesystem binding for one preconfigured opaque byte blob.
 // - Must-Not:
-//   - Interpret telemetry bytes, choose byte limits, infer policy, or remove a
-//     published destination before replacement.
+//   - Interpret application bytes, choose byte limits, infer policy, or remove
+//     a published destination before replacement.
 // - Allows:
 //   - Inputs: explicit destination path plus admitted bounded blob operations.
 //   - Outputs: absent/present bytes or exact filesystem failure evidence.
@@ -22,7 +22,7 @@
 // - Merge-When:
 //   - One filesystem adapter owns the same single-blob lifecycle everywhere.
 // - Summary:
-//   - Binds telemetry blob storage to fail-closed standard filesystem I/O.
+//   - Binds opaque blob storage to fail-closed standard filesystem I/O.
 // - Description:
 //   - Staged bytes sync before rename; failed publication preserves
 //     destination.
@@ -33,7 +33,7 @@
 //   - Missing files load as absent; staging never deletes a published blob.
 //
 
-//! Filesystem-backed outbound adapter for one cached-retry telemetry blob.
+//! Filesystem-backed outbound adapter for one opaque tiered-execution blob.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read as _, Write as _};
@@ -42,10 +42,9 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::cached_retry_telemetry_blob_store::{
-    NativeContinuationCachedRetryTelemetryBlobLoadResult,
-    NativeContinuationCachedRetryTelemetryBlobStore,
-    NativeContinuationCachedRetryTelemetryDurableBlobStore,
+use crate::blob_store::{
+    NativeContinuationBlobLoadResult, NativeContinuationBlobStore,
+    NativeContinuationDurableBlobStore,
 };
 
 const MAX_STAGING_ATTEMPTS: usize = 64;
@@ -53,7 +52,7 @@ static NEXT_STAGING_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Why a committed filesystem publication could not confirm durability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NativeContinuationTelemetryFileBlobDurabilityError {
+pub enum NativeContinuationFileBlobDurabilityError {
     /// Configured destination does not expose a parent directory.
     InvalidDestination,
     /// Opening the destination directory for durability confirmation failed.
@@ -68,9 +67,9 @@ pub enum NativeContinuationTelemetryFileBlobDurabilityError {
     },
 }
 
-/// Why filesystem-backed telemetry blob storage failed closed.
+/// Why filesystem-backed blob storage failed closed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NativeContinuationTelemetryFileBlobStoreError {
+pub enum NativeContinuationFileBlobStoreError {
     /// Caller byte limit cannot be represented by the host read API.
     ByteLimitRepresentation {
         /// Exact positive bound that could not be represented.
@@ -125,16 +124,16 @@ pub enum NativeContinuationTelemetryFileBlobStoreError {
     },
 }
 
-type NativeContinuationTelemetryStagingOpenResult =
-    Result<(File, PathBuf), NativeContinuationTelemetryFileBlobStoreError>;
+type NativeContinuationFileStagingOpenResult =
+    Result<(File, PathBuf), NativeContinuationFileBlobStoreError>;
 
-/// Filesystem-backed store for one explicit cached-retry telemetry blob path.
+/// Filesystem-backed store for one explicit tiered-execution blob path.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativeContinuationTelemetryFileBlobStore {
+pub struct NativeContinuationFileBlobStore {
     destination: PathBuf,
 }
 
-impl NativeContinuationTelemetryFileBlobStore {
+impl NativeContinuationFileBlobStore {
     /// Returns the exact adapter-owned destination path.
     #[must_use]
     pub fn destination(&self) -> &Path {
@@ -143,11 +142,10 @@ impl NativeContinuationTelemetryFileBlobStore {
 
     fn destination_directory(
         &self,
-    ) -> Result<&Path, NativeContinuationTelemetryFileBlobDurabilityError> {
+    ) -> Result<&Path, NativeContinuationFileBlobDurabilityError> {
         let Some(parent) = self.destination.parent() else {
             return Err(
-                NativeContinuationTelemetryFileBlobDurabilityError::
-                    InvalidDestination,
+                NativeContinuationFileBlobDurabilityError::InvalidDestination,
             );
         };
         if parent.as_os_str().is_empty() {
@@ -163,7 +161,7 @@ impl NativeContinuationTelemetryFileBlobStore {
         Self { destination }
     }
 
-    fn open_staging(&self) -> NativeContinuationTelemetryStagingOpenResult {
+    fn open_staging(&self) -> NativeContinuationFileStagingOpenResult {
         for _attempt in 0..MAX_STAGING_ATTEMPTS {
             let staging_id = next_staging_id()?;
             let staging = self.staging_path(staging_id)?;
@@ -176,23 +174,23 @@ impl NativeContinuationTelemetryFileBlobStore {
                 Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
                 Err(error) => {
                     return Err(
-                        NativeContinuationTelemetryFileBlobStoreError::
-                            StagingOpen { kind: error.kind() },
+                        NativeContinuationFileBlobStoreError::StagingOpen {
+                            kind: error.kind(),
+                        },
                     );
                 },
             }
         }
-        Err(NativeContinuationTelemetryFileBlobStoreError::StagingExhausted)
+        Err(NativeContinuationFileBlobStoreError::StagingExhausted)
     }
 
     fn staging_path(
         &self,
         staging_id: u64,
-    ) -> Result<PathBuf, NativeContinuationTelemetryFileBlobStoreError> {
+    ) -> Result<PathBuf, NativeContinuationFileBlobStoreError> {
         let Some(file_name) = self.destination.file_name() else {
             return Err(
-                NativeContinuationTelemetryFileBlobStoreError::
-                    InvalidDestination,
+                NativeContinuationFileBlobStoreError::InvalidDestination,
             );
         };
         let mut staging_name = file_name.to_os_string();
@@ -201,57 +199,50 @@ impl NativeContinuationTelemetryFileBlobStore {
     }
 }
 
-impl NativeContinuationCachedRetryTelemetryBlobStore
-    for NativeContinuationTelemetryFileBlobStore
-{
-    type Error = NativeContinuationTelemetryFileBlobStoreError;
+impl NativeContinuationBlobStore for NativeContinuationFileBlobStore {
+    type Error = NativeContinuationFileBlobStoreError;
 
     fn load(
         &mut self,
         maximum_bytes: NonZeroUsize,
-    ) -> NativeContinuationCachedRetryTelemetryBlobLoadResult<Self::Error> {
+    ) -> NativeContinuationBlobLoadResult<Self::Error> {
         let mut file = match File::open(&self.destination) {
             Ok(file) => file,
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 return Ok(None);
             },
             Err(error) => {
-                return Err(
-                    NativeContinuationTelemetryFileBlobStoreError::Open {
-                        kind: error.kind(),
-                    },
-                );
+                return Err(NativeContinuationFileBlobStoreError::Open {
+                    kind: error.kind(),
+                });
             },
         };
         let read_limit =
             u64::try_from(maximum_bytes.get()).map_err(|_error| {
-                NativeContinuationTelemetryFileBlobStoreError::
-                ByteLimitRepresentation { maximum_bytes }
+                NativeContinuationFileBlobStoreError::ByteLimitRepresentation {
+                    maximum_bytes,
+                }
             })?;
         let mut bytes = Vec::new();
         {
             let mut bounded = (&mut file).take(read_limit);
             let _read_bytes =
                 bounded.read_to_end(&mut bytes).map_err(|error| {
-                    NativeContinuationTelemetryFileBlobStoreError::Read {
+                    NativeContinuationFileBlobStoreError::Read {
                         kind: error.kind(),
                     }
                 })?;
         }
         let mut extra = [0u8; 1];
         let extra_bytes = file.read(&mut extra).map_err(|error| {
-            NativeContinuationTelemetryFileBlobStoreError::Read {
-                kind: error.kind(),
-            }
+            NativeContinuationFileBlobStoreError::Read { kind: error.kind() }
         })?;
         if extra_bytes == 0 {
             Ok(Some(bytes))
         } else {
-            Err(
-                NativeContinuationTelemetryFileBlobStoreError::LoadByteLimit {
-                    maximum_bytes,
-                },
-            )
+            Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
+                maximum_bytes,
+            })
         }
     }
 
@@ -259,45 +250,41 @@ impl NativeContinuationCachedRetryTelemetryBlobStore
         let (mut staging_file, staging_path) = self.open_staging()?;
         if let Err(error) = staging_file.write_all(bytes) {
             drop(staging_file);
-            return Err(NativeContinuationTelemetryFileBlobStoreError::Write {
+            return Err(NativeContinuationFileBlobStoreError::Write {
                 cleanup: cleanup_staging(&staging_path),
                 kind: error.kind(),
             });
         }
         if let Err(error) = staging_file.sync_all() {
             drop(staging_file);
-            return Err(NativeContinuationTelemetryFileBlobStoreError::Sync {
+            return Err(NativeContinuationFileBlobStoreError::Sync {
                 cleanup: cleanup_staging(&staging_path),
                 kind: error.kind(),
             });
         }
         drop(staging_file);
         if let Err(error) = fs::rename(&staging_path, &self.destination) {
-            return Err(
-                NativeContinuationTelemetryFileBlobStoreError::Publish {
-                    cleanup: cleanup_staging(&staging_path),
-                    kind: error.kind(),
-                },
-            );
+            return Err(NativeContinuationFileBlobStoreError::Publish {
+                cleanup: cleanup_staging(&staging_path),
+                kind: error.kind(),
+            });
         }
         Ok(())
     }
 }
 
-impl NativeContinuationCachedRetryTelemetryDurableBlobStore
-    for NativeContinuationTelemetryFileBlobStore
-{
-    type DurabilityError = NativeContinuationTelemetryFileBlobDurabilityError;
+impl NativeContinuationDurableBlobStore for NativeContinuationFileBlobStore {
+    type DurabilityError = NativeContinuationFileBlobDurabilityError;
 
     fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
         let directory_path = self.destination_directory()?;
         let directory = File::open(directory_path).map_err(|error| {
-            NativeContinuationTelemetryFileBlobDurabilityError::OpenDirectory {
+            NativeContinuationFileBlobDurabilityError::OpenDirectory {
                 kind: error.kind(),
             }
         })?;
         directory.sync_all().map_err(|error| {
-            NativeContinuationTelemetryFileBlobDurabilityError::SyncDirectory {
+            NativeContinuationFileBlobDurabilityError::SyncDirectory {
                 kind: error.kind(),
             }
         })
@@ -312,14 +299,12 @@ fn cleanup_staging(staging_path: &Path) -> Option<ErrorKind> {
     }
 }
 
-fn next_staging_id()
--> Result<u64, NativeContinuationTelemetryFileBlobStoreError> {
+fn next_staging_id() -> Result<u64, NativeContinuationFileBlobStoreError> {
     NEXT_STAGING_ID
         .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
             current.checked_add(1)
         })
         .map_err(|_current| {
-            NativeContinuationTelemetryFileBlobStoreError::
-                StagingSequenceExhausted
+            NativeContinuationFileBlobStoreError::StagingSequenceExhausted
         })
 }

@@ -347,24 +347,24 @@ parts:
     language: rust
     responsibility: Define core-required outbound dependency contracts.
   - id: part-0063
-    path: application/telemetry_persistence.rs
+    path: application/blob_persistence.rs
     kind: application
     language: rust
-    responsibility: Coordinate cached-retry telemetry persistence use cases.
+    responsibility: Coordinate bounded opaque-blob persistence use cases.
   - id: part-0064
     path: composition/tier/cached_cycle/telemetry_persistence.rs
     kind: composition
     language: rust
     responsibility: Bind cached-retry telemetry codecs to persistence use cases.
   - id: part-0065
-    path: adapter-outbound/telemetry/README.md
+    path: adapter-outbound/blob/README.md
     kind: adapter-outbound
-    responsibility: Document filesystem telemetry storage adapter ownership.
+    responsibility: Document filesystem blob storage adapter ownership.
   - id: part-0066
-    path: adapter-outbound/telemetry/main.rs
+    path: adapter-outbound/blob/main.rs
     kind: adapter-outbound
     language: rust
-    responsibility: Bind telemetry blob storage to the host filesystem.
+    responsibility: Bind opaque blob storage to the host filesystem.
   - id: part-0067
     path: port-outbound/monotonic_clock.rs
     kind: port-outbound
