@@ -581,8 +581,19 @@ synchronization, and hardening remain adapters rather than VM semantics.
   reconstruct the owner.
 
   One adapter-neutral and one host-real filesystem case cover durable round
-  trips. Filesystem replacement is still unconditional, so durable revision
-  evidence does not yet provide cross-process CAS/locking.
+  trips.
+
+  The opaque blob port/application boundary now also supports bounded
+  compare-and-swap publication. Exact mismatch bytes return as conflict
+  evidence; successful publication can then confirm durability without
+  reclassifying a committed sync failure as rollback. The filesystem adapter
+  uses one persistent sibling advisory lock across compare plus staged rename,
+  and ordinary replacement honors that same lock.
+
+  Two adapter-neutral cases cover match and conflict, one covers committed
+  durability failure, and one host-real race proves exactly one cooperating
+  missing-state publisher commits. Arbitrary writers that bypass the adapter
+  remain outside this lock contract.
 
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
@@ -635,7 +646,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure; one host-real case records a measured sample separately.
 
   Histogram refinement, distributed/durable merge, durable/cross-cycle policy
-  publication, async queues/timers, cross-process locking/CAS, multi-blob
+  publication, typed active-policy CAS, async queues/timers, multi-blob
   transactions, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry

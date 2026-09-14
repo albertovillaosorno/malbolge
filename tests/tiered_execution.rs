@@ -146,10 +146,12 @@ use std::time::Duration;
 use std::{fs, thread};
 
 use blob_persistence::{
+    NativeContinuationBlobConditionalDurablePersistence as BlobCasDurable,
+    NativeContinuationBlobConditionalPersistence as BlobConditionalPersistence,
     NativeContinuationBlobDurablePersistence as BlobDurablePersistence,
     NativeContinuationBlobPersistenceError as BlobPersistenceError,
     NativeContinuationBlobPersistenceLoad as BlobPersistenceLoad,
-    persist_blob_durably,
+    compare_and_swap_blob, compare_and_swap_blob_durably, persist_blob_durably,
 };
 use blob_store as telemetry_store_port;
 use cached_cycle::{
@@ -2167,6 +2169,37 @@ impl telemetry_store_port::NativeContinuationBlobStore
             self.blob = Some(bytes.to_vec());
             Ok(())
         }
+    }
+}
+
+impl telemetry_store_port::NativeContinuationConditionalBlobStore
+    for TestCachedRetryTelemetryBlobStore
+{
+    fn compare_and_swap(
+        &mut self,
+        expected: Option<&[u8]>,
+        replacement: &[u8],
+        _maximum_bytes: NonZeroUsize,
+    ) -> Result<
+        telemetry_store_port::NativeContinuationBlobConditionalPublication,
+        Self::Error,
+    > {
+        if self.blob.as_deref() != expected {
+            return Ok(
+                telemetry_store_port::
+                    NativeContinuationBlobConditionalPublication::Conflict {
+                        current: self.blob.clone(),
+                    },
+            );
+        }
+        telemetry_store_port::NativeContinuationBlobStore::replace(
+            self,
+            replacement,
+        )?;
+        Ok(
+            telemetry_store_port::
+                NativeContinuationBlobConditionalPublication::Published,
+        )
     }
 }
 
@@ -50669,6 +50702,151 @@ fn cached_retry_file_blob_store_durably_roundtrips_count_window()
         Ok(())
     } else {
         Err(String::from("file durable count round-trip drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_blob_conditional_persistence_publishes_exact_match()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "conditional blob bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(b"old".to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_blob(&mut store, Some(b"old"), b"new", maximum_bytes)
+            .map_err(|error| {
+                format!("conditional publication failed: {error:?}")
+            })?;
+    let BlobConditionalPersistence::Published { write } = outcome else {
+        return Err(String::from(
+            "matching conditional publication conflicted",
+        ));
+    };
+    if write.bytes() == 3
+        && store.blob.as_deref() == Some(b"new")
+        && store.replace_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("conditional publication evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_conditional_persistence_retains_conflict_state()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "conditional conflict bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(b"current".to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = compare_and_swap_blob(
+        &mut store,
+        Some(b"stale"),
+        b"candidate",
+        maximum_bytes,
+    )
+    .map_err(|error| format!("conditional conflict failed: {error:?}"))?;
+    let BlobConditionalPersistence::Conflict { current } = outcome else {
+        return Err(String::from("stale conditional publication committed"));
+    };
+    if current.as_deref() == Some(b"current")
+        && store.blob.as_deref() == Some(b"current")
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("conditional conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_conditional_durability_retains_committed_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "conditional durability bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(b"old".to_vec()),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = compare_and_swap_blob_durably(
+        &mut store,
+        Some(b"old"),
+        b"new",
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("conditional durable publish failed: {error:?}")
+    })?;
+    let BlobCasDurable::Published { durability_error, write } = outcome else {
+        return Err(String::from("conditional durability failure lost commit"));
+    };
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && write.bytes() == 3
+        && store.blob.as_deref() == Some(b"new")
+    {
+        Ok(())
+    } else {
+        Err(String::from("conditional durable evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_store_serializes_conditional_publishers()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("conditional-race")?;
+    let maximum_bytes = nonzero_test_limit(64, "conditional race bytes")?;
+    let barrier = Arc::new(Barrier::new(3));
+    let first_barrier = Arc::clone(&barrier);
+    let first_path = fixture.destination.clone();
+    let first = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(first_path);
+        let _first_wait = first_barrier.wait();
+        compare_and_swap_blob(&mut store, None, b"alpha", maximum_bytes)
+            .map_err(|error| format!("first conditional publisher: {error:?}"))
+    });
+    let second_barrier = Arc::clone(&barrier);
+    let second_path = fixture.destination.clone();
+    let second = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(second_path);
+        let _second_wait = second_barrier.wait();
+        compare_and_swap_blob(&mut store, None, b"bravo", maximum_bytes)
+            .map_err(|error| format!("second conditional publisher: {error:?}"))
+    });
+    let _main_wait = barrier.wait();
+    let first_outcome = first.join().map_err(|_panic| {
+        String::from("first conditional publisher panicked")
+    })??;
+    let second_outcome = second.join().map_err(|_panic| {
+        String::from("second conditional publisher panicked")
+    })??;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let load = blob_persistence::restore_blob(&mut store, maximum_bytes)
+        .map_err(|error| {
+            format!("conditional race reload failed: {error:?}")
+        })?;
+    let BlobPersistenceLoad::Present { bytes } = load else {
+        return Err(String::from("conditional race published no bytes"));
+    };
+    let valid = match (first_outcome, second_outcome) {
+        (
+            BlobConditionalPersistence::Published { .. },
+            BlobConditionalPersistence::Conflict { current },
+        ) => bytes == b"alpha" && current.as_deref() == Some(b"alpha"),
+        (
+            BlobConditionalPersistence::Conflict { current },
+            BlobConditionalPersistence::Published { .. },
+        ) => bytes == b"bravo" && current.as_deref() == Some(b"bravo"),
+        _ => false,
+    };
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("conditional publishers were not serialized"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

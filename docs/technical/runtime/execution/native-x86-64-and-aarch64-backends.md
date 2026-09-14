@@ -730,9 +730,20 @@ Typed policy persistence can now durably publish and restore that revisioned
 state through the same opaque blob service. One adapter-neutral case restores an
 owner with the exact revision/policy, and one host-real filesystem case crosses
 the state codec, bounded application service, staged file publication, and
-directory durability confirmation. Durable revision evidence still does not make
-filesystem replacement conditional on an expected revision, so cross-process
-CAS/locking remains open.
+directory durability confirmation.
+
+The opaque blob boundary now also exposes optional conditional publication. The
+application checks expected/replacement bounds, preserves exact conflict bytes,
+and confirms durability only after a successful conditional commit. The
+filesystem adapter serializes cooperating publishers through one persistent
+sibling file lock that spans bounded compare plus staged rename; ordinary
+replacement honors the same lock.
+
+Two adapter-neutral cases cover match/conflict, one case preserves committed
+durability failure, and one host-real race proves that exactly one missing-state
+publisher commits while the loser observes the committed bytes as conflict
+evidence. Non-cooperating filesystem writers remain outside this advisory-lock
+contract.
 
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
@@ -792,8 +803,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Histogram refinement, distributed merge, durable/cross-cycle policy
-publication, native object fusion, foreign invocation, cross-process
-locking/CAS, asynchronous timing, and multi-blob transactions remain open.
+publication, native object fusion, foreign invocation, typed active-policy CAS,
+asynchronous timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

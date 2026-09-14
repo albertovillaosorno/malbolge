@@ -18,7 +18,7 @@
 //   - Outputs: absent/present owned bytes or adapter-local failure evidence.
 //   - Side effects: delegated entirely to the selected outbound adapter.
 // - Split-When:
-//   - Multi-object transactions or compare-and-swap publication gain semantics.
+//   - Multi-object transactions or distributed consensus gain semantics.
 // - Merge-When:
 //   - One outbound storage contract owns the same bounded blob lifecycle.
 // - Summary:
@@ -34,6 +34,23 @@
 //! Outbound bounded blob-storage contract for tiered execution.
 
 use std::num::NonZeroUsize;
+
+/// Result of one bounded conditional blob publication attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobConditionalPublication {
+    /// Expected bytes differed from the exact bounded current publication.
+    Conflict {
+        /// Current bounded bytes observed while publication authority was
+        /// held.
+        current: Option<Vec<u8>>,
+    },
+    /// Expected bytes matched and replacement committed atomically.
+    Published,
+}
+
+/// Conditional publication result returned by one blob-store adapter.
+pub type NativeContinuationBlobConditionalPublicationResult<StoreError> =
+    Result<NativeContinuationBlobConditionalPublication, StoreError>;
 
 /// Result of confirming durability after one committed blob replacement.
 pub type NativeContinuationBlobDurabilityResult<DurabilityError> =
@@ -73,6 +90,32 @@ pub trait NativeContinuationBlobStore {
     /// Returns only adapter-local publication failures.
     fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
 }
+/// Optional optimistic-concurrency publication for one blob store.
+///
+/// Implementations must serialize cooperating conditional publishers around the
+/// compare plus replacement operation. `expected = None` matches only missing
+/// state; `Some(bytes)` matches only exact current bytes.
+pub trait NativeContinuationConditionalBlobStore:
+    NativeContinuationBlobStore
+{
+    /// Atomically compares current bytes and conditionally publishes
+    /// replacement.
+    ///
+    /// Conflict returns the exact bounded current publication observed while
+    /// conditional publication authority was held.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local bounded-read, coordination, or publication
+    /// failure.
+    fn compare_and_swap(
+        &mut self,
+        expected: Option<&[u8]>,
+        replacement: &[u8],
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error>;
+}
+
 /// Optional post-publication durability confirmation for one blob store.
 ///
 /// This capability is deliberately separate from `replace`: publication has

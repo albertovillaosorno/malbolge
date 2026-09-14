@@ -18,14 +18,14 @@
 //   - Outputs: absent/present bytes or exact filesystem failure evidence.
 //   - Side effects: bounded file reads and same-directory staged publication.
 // - Split-When:
-//   - Crash-durable directory syncing or multi-process locking gains semantics.
+//   - Multi-object transactions or distributed consensus gains semantics.
 // - Merge-When:
 //   - One filesystem adapter owns the same single-blob lifecycle everywhere.
 // - Summary:
 //   - Binds opaque blob storage to fail-closed standard filesystem I/O.
 // - Description:
-//   - Staged bytes sync before rename; failed publication preserves
-//     destination.
+//   - A stable sibling lock serializes cooperating publishers around compare
+//     and staged rename; failed publication preserves destination.
 // - Usage:
 //   - Construct with one explicit file path and pass through the blob-store
 //     port.
@@ -43,8 +43,10 @@ use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::blob_store::{
+    NativeContinuationBlobConditionalPublication,
+    NativeContinuationBlobConditionalPublicationResult,
     NativeContinuationBlobLoadResult, NativeContinuationBlobStore,
-    NativeContinuationDurableBlobStore,
+    NativeContinuationConditionalBlobStore, NativeContinuationDurableBlobStore,
 };
 
 const MAX_STAGING_ATTEMPTS: usize = 64;
@@ -81,6 +83,16 @@ pub enum NativeContinuationFileBlobStoreError {
     LoadByteLimit {
         /// Exact positive bound supplied by application orchestration.
         maximum_bytes: NonZeroUsize,
+    },
+    /// Acquiring the stable sibling publication lock failed.
+    Lock {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+    /// Opening the stable sibling publication-lock file failed.
+    LockOpen {
+        /// Host filesystem error category.
+        kind: ErrorKind,
     },
     /// Opening an existing destination failed for a reason other than absence.
     Open {
@@ -155,10 +167,44 @@ impl NativeContinuationFileBlobStore {
         }
     }
 
+    fn lock_path(
+        &self,
+    ) -> Result<PathBuf, NativeContinuationFileBlobStoreError> {
+        let Some(file_name) = self.destination.file_name() else {
+            return Err(
+                NativeContinuationFileBlobStoreError::InvalidDestination,
+            );
+        };
+        let mut lock_name = file_name.to_os_string();
+        lock_name.push(".lock");
+        Ok(self.destination.with_file_name(lock_name))
+    }
+
     /// Binds one filesystem adapter to an explicit destination path.
     #[must_use]
     pub const fn new(destination: PathBuf) -> Self {
         Self { destination }
+    }
+
+    fn open_publication_lock(
+        &self,
+    ) -> Result<File, NativeContinuationFileBlobStoreError> {
+        let lock_path = self.lock_path()?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(lock_path)
+            .map_err(|error| {
+                NativeContinuationFileBlobStoreError::LockOpen {
+                    kind: error.kind(),
+                }
+            })?;
+        file.lock().map_err(|error| {
+            NativeContinuationFileBlobStoreError::Lock { kind: error.kind() }
+        })?;
+        Ok(file)
     }
 
     fn open_staging(&self) -> NativeContinuationFileStagingOpenResult {
@@ -182,6 +228,35 @@ impl NativeContinuationFileBlobStore {
             }
         }
         Err(NativeContinuationFileBlobStoreError::StagingExhausted)
+    }
+
+    fn replace_locked(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(), NativeContinuationFileBlobStoreError> {
+        let (mut staging_file, staging_path) = self.open_staging()?;
+        if let Err(error) = staging_file.write_all(bytes) {
+            drop(staging_file);
+            return Err(NativeContinuationFileBlobStoreError::Write {
+                cleanup: cleanup_staging(&staging_path),
+                kind: error.kind(),
+            });
+        }
+        if let Err(error) = staging_file.sync_all() {
+            drop(staging_file);
+            return Err(NativeContinuationFileBlobStoreError::Sync {
+                cleanup: cleanup_staging(&staging_path),
+                kind: error.kind(),
+            });
+        }
+        drop(staging_file);
+        if let Err(error) = fs::rename(&staging_path, &self.destination) {
+            return Err(NativeContinuationFileBlobStoreError::Publish {
+                cleanup: cleanup_staging(&staging_path),
+                kind: error.kind(),
+            });
+        }
+        Ok(())
     }
 
     fn staging_path(
@@ -247,29 +322,31 @@ impl NativeContinuationBlobStore for NativeContinuationFileBlobStore {
     }
 
     fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
-        let (mut staging_file, staging_path) = self.open_staging()?;
-        if let Err(error) = staging_file.write_all(bytes) {
-            drop(staging_file);
-            return Err(NativeContinuationFileBlobStoreError::Write {
-                cleanup: cleanup_staging(&staging_path),
-                kind: error.kind(),
-            });
+        let _lock = self.open_publication_lock()?;
+        self.replace_locked(bytes)
+    }
+}
+
+impl NativeContinuationConditionalBlobStore
+    for NativeContinuationFileBlobStore
+{
+    fn compare_and_swap(
+        &mut self,
+        expected: Option<&[u8]>,
+        replacement: &[u8],
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error> {
+        let _lock = self.open_publication_lock()?;
+        let current = self.load(maximum_bytes)?;
+        if current.as_deref() != expected {
+            return Ok(
+                NativeContinuationBlobConditionalPublication::Conflict {
+                    current,
+                },
+            );
         }
-        if let Err(error) = staging_file.sync_all() {
-            drop(staging_file);
-            return Err(NativeContinuationFileBlobStoreError::Sync {
-                cleanup: cleanup_staging(&staging_path),
-                kind: error.kind(),
-            });
-        }
-        drop(staging_file);
-        if let Err(error) = fs::rename(&staging_path, &self.destination) {
-            return Err(NativeContinuationFileBlobStoreError::Publish {
-                cleanup: cleanup_staging(&staging_path),
-                kind: error.kind(),
-            });
-        }
-        Ok(())
+        self.replace_locked(replacement)?;
+        Ok(NativeContinuationBlobConditionalPublication::Published)
     }
 }
 

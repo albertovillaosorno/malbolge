@@ -37,10 +37,48 @@ use std::num::NonZeroUsize;
 
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
+    NativeContinuationConditionalBlobStore as ConditionalBlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 
 use crate::blob_store as store_port;
+
+/// Outcome of conditional publication plus explicit durability confirmation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobConditionalDurablePersistence<DurabilityError> {
+    /// Expected bytes differed; no replacement or durability check occurred.
+    Conflict {
+        /// Exact bounded current publication observed by the outbound store.
+        current: Option<Vec<u8>>,
+    },
+    /// Conditional publication and durability confirmation both completed.
+    Durable {
+        /// Exact committed byte count.
+        write: NativeContinuationBlobPersistenceWrite,
+    },
+    /// Conditional publication committed, then durability confirmation failed.
+    Published {
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Exact committed byte count.
+        write: NativeContinuationBlobPersistenceWrite,
+    },
+}
+
+/// Outcome of one admitted optimistic-concurrency blob publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobConditionalPersistence {
+    /// Expected bytes differed; no replacement occurred.
+    Conflict {
+        /// Exact bounded current publication observed by the outbound store.
+        current: Option<Vec<u8>>,
+    },
+    /// Expected bytes matched and replacement committed.
+    Published {
+        /// Exact committed byte count.
+        write: NativeContinuationBlobPersistenceWrite,
+    },
+}
 
 /// Outcome after publication plus explicit durability confirmation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,6 +127,22 @@ pub enum NativeContinuationBlobPersistenceLoad {
 pub type NativeContinuationBlobPersistenceResult<Value, StoreError> =
     Result<Value, NativeContinuationBlobPersistenceError<StoreError>>;
 
+/// Result of conditional publication plus optional durability confirmation.
+pub type NativeContinuationBlobConditionalDurablePersistenceResult<
+    StoreError,
+    DurabilityError,
+> = Result<
+    NativeContinuationBlobConditionalDurablePersistence<DurabilityError>,
+    NativeContinuationBlobPersistenceError<StoreError>,
+>;
+
+/// Conditional durable result specialized to one outbound store type.
+pub type NativeContinuationBlobConditionalDurableStoreResult<Store> =
+    NativeContinuationBlobConditionalDurablePersistenceResult<
+        <Store as BlobStore>::Error,
+        <Store as DurableBlobStore>::DurabilityError,
+    >;
+
 /// Result of publication plus optional durability confirmation.
 pub type NativeContinuationBlobDurablePersistenceResult<
     StoreError,
@@ -109,6 +163,45 @@ pub type NativeContinuationBlobDurableStoreResult<Store> =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationBlobPersistenceWrite {
     bytes: usize,
+}
+
+impl<DurabilityError>
+    NativeContinuationBlobConditionalDurablePersistence<DurabilityError>
+{
+    /// Returns committed byte count, or `None` when comparison conflicted.
+    #[must_use]
+    pub const fn bytes(&self) -> Option<usize> {
+        match self {
+            Self::Conflict { .. } => None,
+            Self::Durable { write } | Self::Published { write, .. } => {
+                Some(write.bytes())
+            },
+        }
+    }
+
+    /// Returns the exact bounded conflict publication, when comparison failed.
+    #[must_use]
+    pub fn conflict(&self) -> Option<&[u8]> {
+        match self {
+            Self::Conflict { current } => current.as_deref(),
+            Self::Durable { .. } | Self::Published { .. } => None,
+        }
+    }
+
+    /// Returns post-publication durability failure when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(&self) -> Option<&DurabilityError> {
+        match self {
+            Self::Published { durability_error, .. } => Some(durability_error),
+            Self::Conflict { .. } | Self::Durable { .. } => None,
+        }
+    }
+
+    /// Reports whether conditional publication committed durably.
+    #[must_use]
+    pub const fn is_durable(&self) -> bool {
+        matches!(self, Self::Durable { .. })
+    }
 }
 
 impl<DurabilityError>
@@ -145,6 +238,100 @@ impl NativeContinuationBlobPersistenceWrite {
     #[must_use]
     pub const fn bytes(self) -> usize {
         self.bytes
+    }
+}
+
+/// Conditionally persists one blob and confirms durability after commit.
+///
+/// # Errors
+///
+/// Returns only byte-limit or store failure before publication. Conflict is
+/// non-mutating evidence; post-publication durability failure remains
+/// committed.
+pub fn compare_and_swap_blob_durably<Store>(
+    store: &mut Store,
+    expected: Option<&[u8]>,
+    replacement: &[u8],
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationBlobConditionalDurableStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let write = match compare_and_swap_blob(
+        store,
+        expected,
+        replacement,
+        maximum_bytes,
+    )? {
+        NativeContinuationBlobConditionalPersistence::Conflict { current } => {
+            return Ok(
+                NativeContinuationBlobConditionalDurablePersistence::Conflict {
+                    current,
+                },
+            );
+        },
+        NativeContinuationBlobConditionalPersistence::Published { write } => {
+            write
+        },
+    };
+    match store.confirm_durability() {
+        Ok(()) => Ok(
+            NativeContinuationBlobConditionalDurablePersistence::Durable {
+                write,
+            },
+        ),
+        Err(durability_error) => Ok(
+            NativeContinuationBlobConditionalDurablePersistence::Published {
+                durability_error,
+                write,
+            },
+        ),
+    }
+}
+
+/// Conditionally persists one blob under an explicit positive byte bound.
+///
+/// # Errors
+///
+/// Returns byte-limit or outbound coordination/publication failure. Conflict is
+/// successful evidence and never mutates the current publication.
+pub fn compare_and_swap_blob<Store>(
+    store: &mut Store,
+    expected: Option<&[u8]>,
+    replacement: &[u8],
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationBlobPersistenceResult<
+    NativeContinuationBlobConditionalPersistence,
+    Store::Error,
+>
+where
+    Store: ConditionalBlobStore,
+{
+    if let Some(expected_bytes) = expected {
+        admit_byte_limit(expected_bytes.len(), maximum_bytes)?;
+    }
+    admit_byte_limit(replacement.len(), maximum_bytes)?;
+    let outcome = store
+        .compare_and_swap(expected, replacement, maximum_bytes)
+        .map_err(NativeContinuationBlobPersistenceError::Store)?;
+    match outcome {
+        store_port::NativeContinuationBlobConditionalPublication::Published => {
+            Ok(NativeContinuationBlobConditionalPersistence::Published {
+                write: NativeContinuationBlobPersistenceWrite {
+                    bytes: replacement.len(),
+                },
+            })
+        },
+        store_port::NativeContinuationBlobConditionalPublication::Conflict {
+            current,
+        } => {
+            if let Some(current_bytes) = &current {
+                admit_byte_limit(current_bytes.len(), maximum_bytes)?;
+            }
+            Ok(NativeContinuationBlobConditionalPersistence::Conflict {
+                current,
+            })
+        },
     }
 }
 

@@ -12,6 +12,7 @@ codec authority.
 - same-directory collision-resistant staging files;
 - complete staging writes and file-content synchronization before publication;
 - atomic `rename` publication when the host filesystem supports replacement;
+- one persistent sibling lock file for cooperating publication/CAS callers;
 - best-effort cleanup of adapter-owned staging files after rejected writes,
   synchronization, or publication.
 
@@ -22,7 +23,8 @@ codec authority.
 - directory creation or destination discovery;
 - removal of a previously published destination before replacement;
 - directory-entry synchronization after successful publication;
-- cross-process locking, compare-and-swap, or multi-blob transactions.
+- protection from writers that do not honor this adapter's sibling lock;
+- multi-blob transactions or distributed consensus.
 
 ## Failure semantics
 
@@ -33,6 +35,13 @@ closes the staging handle, then renames it onto the destination. If staging,
 writing,
 synchronization, or rename fails, the adapter never removes the previously
 published destination and returns exact filesystem error-category evidence.
+
+Conditional publication uses the same persistent sibling lock for the complete
+bounded read/compare/staged-replace operation. `None` matches only a missing
+destination; `Some(bytes)` matches only exact current bytes. A mismatch returns
+the exact bounded current publication observed while the lock is held. The lock
+is advisory/cooperative: arbitrary writers bypassing this adapter are outside
+its synchronization contract.
 
 On hosts where standard-library `rename` does not replace an existing file
 atomically, an overwrite may fail safely instead of deleting the destination.
