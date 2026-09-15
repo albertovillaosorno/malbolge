@@ -916,18 +916,23 @@ Explicit generation reclamation now runs under the same exclusive sibling lock.
 It validates the current manifest and verifies both current members exist
 before deletion, and considers only exact generation filenames reconstructed
 through the adapter's own naming rule. Missing manifest state treats every
-exact owned
-member as unreferenced; non-UTF-8 manifest basenames fail before deletion.
+exact owned member as unreferenced; non-UTF-8 manifest basenames fail before
+deletion.
 
 The pass attempts every eligible deletion and retains completed removals beside
 exact failed paths/error kinds. Directory sync after deletion is committed
 durability evidence rather than rollback, and repeated passes rescan
 idempotently. Publication itself still performs no automatic cleanup.
 
-Five focused reclamation cases cover current-generation preservation plus exact
-foreign-name filtering, current-member prevalidation, missing-manifest
-idempotency, partial deletion evidence, and malformed-manifest rejection before
-any eligible orphan is removed.
+A caller may additionally preserve exact opaque revisions already in its
+possession. The adapter compares those revisions for equality only; it does not
+infer chronological order or choose a retention window.
+
+Six focused reclamation cases cover current-generation preservation plus exact
+foreign-name filtering, caller-preserved revisions, current-member
+prevalidation,
+missing-manifest idempotency, partial deletion evidence, and malformed-manifest
+rejection before any eligible orphan is removed.
 
 Pair CAS now compares an opaque publication revision rather than payload bytes.
 Versioned load returns one bounded pair plus the revision observed from the same
@@ -1024,7 +1029,7 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, reclamation scheduling/retention policy, and
+invocation, asynchronous timing, reclamation scheduling/retention selection, and
 general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before

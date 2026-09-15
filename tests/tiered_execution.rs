@@ -569,6 +569,7 @@ use file_blob_pair_store::{
     NativeContinuationFileBlobPairMember,
     NativeContinuationFileBlobPairReclamation,
     NativeContinuationFileBlobPairReclamationError,
+    NativeContinuationFileBlobPairRevision,
     NativeContinuationFileBlobPairStore,
     NativeContinuationFileBlobPairStoreError,
 };
@@ -2532,6 +2533,8 @@ impl telemetry_store_port::NativeContinuationDurableBlobStore
     }
 }
 
+type TestFileBlobPair<'bytes> = (&'bytes [u8], &'bytes [u8]);
+
 fn file_blob_store_fixture(
     case_name: &str,
 ) -> Result<TestTelemetryFileStoreFixture, String> {
@@ -2548,6 +2551,53 @@ fn file_blob_store_fixture(
         .map_err(|error| format!("cannot create telemetry fixture: {error}"))?;
     let destination = directory.join("telemetry.bin");
     Ok(TestTelemetryFileStoreFixture { destination, directory })
+}
+
+fn file_blob_pair_generation_members(
+    directory: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("cannot inspect pair fixture: {error}"))?;
+    let mut members = Vec::new();
+    for entry_result in entries {
+        let entry = entry_result
+            .map_err(|error| format!("cannot inspect pair entry: {error}"))?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let member_suffix =
+            name.rsplit_once('.').map(|(_prefix, suffix)| suffix);
+        if name.starts_with("telemetry.bin.generation.")
+            && matches!(member_suffix, Some("first" | "second"))
+        {
+            members.push(path);
+        }
+    }
+    members.sort();
+    Ok(members)
+}
+
+fn publish_file_blob_pair_revision(
+    store: &mut NativeContinuationFileBlobPairStore,
+    expected: Option<&NativeContinuationFileBlobPairRevision>,
+    pair: TestFileBlobPair<'_>,
+    maximum_bytes: NonZeroUsize,
+) -> Result<NativeContinuationFileBlobPairRevision, String> {
+    let request = BlobPairPersistenceRequest::new(
+        pair.0,
+        pair.1,
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let outcome = compare_and_swap_blob_pair(store, expected, request)
+        .map_err(|error| format!("file pair publication failed: {error:?}"))?;
+    let PairCasPersistence::Published { revision, .. } = outcome else {
+        return Err(String::from(
+            "file pair publication unexpectedly conflicted",
+        ));
+    };
+    Ok(revision)
 }
 
 fn file_blob_pair_generation_member(
@@ -52313,6 +52363,60 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
         Ok(())
     } else {
         Err(String::from("file durability publication evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclamation_preserves_exact_revision()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-reclaim-preserved")?;
+    let maximum_bytes = nonzero_test_limit(64, "pair preserved bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let preserved_revision = publish_file_blob_pair_revision(
+        &mut store,
+        None,
+        (b"preserved-first", b"preserved-second"),
+        maximum_bytes,
+    )?;
+    let _current_revision = publish_file_blob_pair_revision(
+        &mut store,
+        Some(&preserved_revision),
+        (b"current-first", b"current-second"),
+        maximum_bytes,
+    )?;
+    let orphan_first = fixture
+        .directory
+        .join("telemetry.bin.generation.99.99.first");
+    let orphan_second = fixture
+        .directory
+        .join("telemetry.bin.generation.99.99.second");
+    fs::write(&orphan_first, b"orphan-first").map_err(|error| {
+        format!("cannot write preserved-test orphan: {error}")
+    })?;
+    fs::write(&orphan_second, b"orphan-second").map_err(|error| {
+        format!("cannot write preserved-test orphan: {error}")
+    })?;
+    let first = store
+        .reclaim_generations_preserving(&[preserved_revision])
+        .map_err(|error| format!("preserving reclamation failed: {error:?}"))?;
+    let preserved_count =
+        file_blob_pair_generation_members(&fixture.directory)?.len();
+    let second = store.reclaim_generations().map_err(|error| {
+        format!("unpreserved reclamation failed: {error:?}")
+    })?;
+    let final_count =
+        file_blob_pair_generation_members(&fixture.directory)?.len();
+    let valid = first.removed().len() == 2
+        && preserved_count == 4
+        && second.removed().len() == 2
+        && final_count == 2;
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("exact revision preservation drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

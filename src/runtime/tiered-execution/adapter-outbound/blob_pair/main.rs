@@ -662,6 +662,26 @@ impl NativeContinuationFileBlobPairStore {
     pub fn reclaim_generations(
         &mut self,
     ) -> NativeContinuationFileBlobPairReclamationResult {
+        self.reclaim_generations_preserving(&[])
+    }
+
+    /// Reclaims superseded generation members except exact caller-preserved
+    /// revisions.
+    ///
+    /// The current manifest generation is always preserved independently of the
+    /// caller-provided revision set. Revision equality is the only retention
+    /// relation interpreted by this adapter.
+    ///
+    /// # Errors
+    ///
+    /// Returns only pre-deletion lock, manifest, directory-open,
+    /// directory-entry, or manifest-name failures. Removal and post-removal
+    /// durability failures are committed cleanup evidence in the successful
+    /// result.
+    pub fn reclaim_generations_preserving(
+        &mut self,
+        preserved: &[NativeContinuationFileBlobPairRevision],
+    ) -> NativeContinuationFileBlobPairReclamationResult {
         let _lock = self
             .open_publication_lock()
             .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
@@ -673,7 +693,7 @@ impl NativeContinuationFileBlobPairStore {
                 NativeContinuationFileBlobPairReclamationError::Store,
             )?;
         }
-        let candidates = self.reclamation_candidates(current)?;
+        let candidates = self.reclamation_candidates(current, preserved)?;
         let mut failures = Vec::new();
         let mut removed = Vec::new();
         for path in candidates {
@@ -769,6 +789,7 @@ impl NativeContinuationFileBlobPairStore {
     fn reclamation_candidates(
         &self,
         current: Option<NativeContinuationFileBlobPairRevision>,
+        preserved: &[NativeContinuationFileBlobPairRevision],
     ) -> Result<Vec<PathBuf>, NativeContinuationFileBlobPairReclamationError>
     {
         let Some(manifest_name) =
@@ -793,11 +814,14 @@ impl NativeContinuationFileBlobPairStore {
                 }
             })?;
             let path = entry.path();
-            let revision =
+            let candidate_revision =
                 self.reclamation_candidate(&path, manifest_name).map_err(
                     NativeContinuationFileBlobPairReclamationError::Store,
                 )?;
-            if revision.is_some() && revision != current {
+            if let Some(revision) = candidate_revision
+                && Some(revision) != current
+                && !preserved.contains(&revision)
+            {
                 candidates.push(path);
             }
         }

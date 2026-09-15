@@ -38,6 +38,11 @@ manifest basename. Missing manifest state treats every exact owned generation
 member as unreferenced. Non-UTF-8 manifest basenames fail before deletion
 because the adapter cannot prove exact cross-platform ownership safely.
 
+`reclaim_generations_preserving()` additionally accepts opaque revisions that
+the caller already owns and preserves every exact matching generation. The
+adapter compares revisions for equality only; it never orders revisions,
+chooses a retention window, or infers which historical generations matter.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.
@@ -63,6 +68,6 @@ is post-publication durability evidence and must not be interpreted as rollback.
 - telemetry framing, validation, assessment, or policy selection;
 - pair byte-limit selection;
 - directory creation or manifest discovery;
-- reclamation scheduling, retention policy, or background garbage collection;
+- reclamation scheduling, retention selection, or background garbage collection;
 - protection from writers that ignore the sibling lock;
 - general N-object transactions or distributed consensus.
