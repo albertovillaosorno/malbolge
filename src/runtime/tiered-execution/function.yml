@@ -449,6 +449,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Publish ordered count telemetry with one-shot durable CAS.
+  - id: part-0084
+    path: composition/tier/cached_cycle/telemetry_ordered_cas_retry.rs
+    kind: composition
+    language: rust
+    responsibility: Retry ordered count CAS conflicts within caller budget.
 projects: []
 tests: []
 graph:

@@ -541,6 +541,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   rejection, race conflict, and committed sync failure. One host-real case
   advances state through two independent filesystem-store instances.
 
+  A synchronous retry layer accepts a positive caller-selected attempt limit.
+  Only typed CAS conflict retries, and every retry starts from a fresh bounded
+  load of the complete combined document. If the refreshed watermark reaches or
+  exceeds submitted order, stale-order rejection stops instead of rebasing it.
+
+  Four cases cover refreshed success, conflict becoming stale, final conflict
+  retention, and no retry after committed durability failure. No sleep, backoff,
+  or order rewrite is inferred.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

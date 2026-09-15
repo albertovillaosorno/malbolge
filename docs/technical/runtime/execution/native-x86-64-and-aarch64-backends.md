@@ -683,6 +683,16 @@ authority, stale rejection, race conflict, and committed sync failure. One
 host-real case advances state through two independent filesystem-store
 instances.
 
+A separate synchronous retry layer accepts a positive caller-selected attempt
+limit for ordered publication. Only typed CAS conflict retries, and every retry
+starts from a fresh bounded load of the complete combined document. If that load
+shows a watermark at or beyond the submitted order, normal stale-order rejection
+stops the operation instead of rebasing the caller's order.
+
+Four deterministic cases cover refreshed success, conflict-to-stale transition,
+final conflict retention, and no retry after committed durability failure. No
+sleep, backoff, or order rewrite is inferred.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

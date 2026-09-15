@@ -204,6 +204,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryOrderedCas,
     NativeContinuationCachedRetryTelemetryOrderedCasError,
     NativeContinuationCachedRetryTelemetryOrderedCasRequest,
+    NativeContinuationCachedRetryTelemetryOrderedCasRetry,
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,
     NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad,
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
@@ -243,6 +244,7 @@ use cached_cycle::{
     publish_cached_retry_policy_recommendation,
     publish_cached_retry_policy_recommendation_durably,
     publish_cached_retry_telemetry_ordered_batch_durably,
+    publish_cached_retry_telemetry_ordered_batch_durably_with_retries,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
@@ -833,6 +835,10 @@ type OrderedTelemetryDurablePersistence =
 type OrderedTelemetryCas = NativeContinuationCachedRetryTelemetryOrderedCas<
     TestCachedRetryTelemetryBlobDurabilityError,
 >;
+type OrderedTelemetryCasRetry =
+    NativeContinuationCachedRetryTelemetryOrderedCasRetry<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
 type OrderedTelemetryCasError =
     NativeContinuationCachedRetryTelemetryOrderedCasError<
         TestCachedRetryTelemetryBlobStoreError,
@@ -50801,6 +50807,30 @@ fn encode_cached_retry_ordered_window_for_test(
         .map_err(|error| format!("ordered window encode failed: {error:?}"))
 }
 
+fn cached_retry_ordered_race_store(
+    capacity: NonZeroUsize,
+    expected_order: OrderedTelemetryBatchOrder,
+    raced_order: OrderedTelemetryBatchOrder,
+    telemetry: NativeContinuationCachedRetryTelemetry,
+) -> Result<TestCachedRetryTelemetryBlobStore, String> {
+    let expected = cached_retry_ordered_window_with_batch(
+        capacity,
+        expected_order,
+        telemetry,
+    )?;
+    let mut raced = expected.clone();
+    let _raced = raced
+        .append_ordered_batch(raced_order, &[telemetry])
+        .map_err(|error| format!("ordered race setup failed: {error:?}"))?;
+    Ok(TestCachedRetryTelemetryBlobStore {
+        blob: Some(encode_cached_retry_ordered_window_for_test(&expected)?),
+        blobs_before_compare: VecDeque::from([
+            encode_cached_retry_ordered_window_for_test(&raced)?,
+        ]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    })
+}
+
 fn publish_ordered_file_cas_for_test(
     store: &mut NativeContinuationFileBlobStore,
     request: NativeContinuationCachedRetryTelemetryOrderedCasRequest<'_>,
@@ -52081,6 +52111,191 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
         Ok(())
     } else {
         Err(String::from("outbound store failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_retry_refreshes_after_conflict()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered retry capacity")?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let raced_order = OrderedTelemetryBatchOrder::from_value(15);
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = cached_retry_ordered_race_store(
+        capacity,
+        expected_order,
+        raced_order,
+        summary,
+    )?;
+    let batch = [summary];
+    let request = NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+        capacity,
+        submitted,
+        &batch,
+        nonzero_test_limit(4_096, "ordered retry bytes")?,
+    );
+    let retry: OrderedTelemetryCasRetry =
+        publish_cached_retry_telemetry_ordered_batch_durably_with_retries(
+            &mut store,
+            request,
+            nonzero_test_limit(3, "ordered retry attempts")?,
+        )
+        .map_err(|error| format!("ordered retry refresh failed: {error:?}"))?;
+    let OrderedTelemetryCas::Durable { current, previous, .. } =
+        retry.outcome()
+    else {
+        return Err(String::from("refreshed ordered retry did not commit"));
+    };
+    if retry.attempts() == 2
+        && current.last_order() == Some(submitted)
+        && previous.as_deref().and_then(
+            NativeContinuationCachedRetryTelemetryOrderedWindow::last_order,
+        ) == Some(raced_order)
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry refresh drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_retry_stops_when_order_becomes_stale()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered stale retry capacity")?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let raced_order = OrderedTelemetryBatchOrder::from_value(30);
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = cached_retry_ordered_race_store(
+        capacity,
+        expected_order,
+        raced_order,
+        summary,
+    )?;
+    let error =
+        publish_cached_retry_telemetry_ordered_batch_durably_with_retries(
+            &mut store,
+            NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+                capacity,
+                submitted,
+                &[summary],
+                nonzero_test_limit(4_096, "ordered stale retry bytes")?,
+            ),
+            nonzero_test_limit(3, "ordered stale retry attempts")?,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("stale ordered retry unexpectedly committed")
+        })?;
+    if error
+        == OrderedTelemetryCasError::Ordered(
+            OrderedTelemetryWindowError::OrderNotAdvanced {
+                current: raced_order,
+                submitted,
+            },
+        )
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered stale retry evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_retry_retains_final_conflict()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered conflict retry capacity")?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let raced_order = OrderedTelemetryBatchOrder::from_value(15);
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = cached_retry_ordered_race_store(
+        capacity,
+        expected_order,
+        raced_order,
+        summary,
+    )?;
+    let retry =
+        publish_cached_retry_telemetry_ordered_batch_durably_with_retries(
+            &mut store,
+            NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+                capacity,
+                submitted,
+                &[summary],
+                nonzero_test_limit(4_096, "ordered conflict retry bytes")?,
+            ),
+            nonzero_test_limit(1, "ordered conflict retry attempts")?,
+        )
+        .map_err(|error| format!("ordered final conflict failed: {error:?}"))?;
+    let OrderedTelemetryCas::Conflict { current, expected } = retry.outcome()
+    else {
+        return Err(String::from("ordered retry conflict disappeared"));
+    };
+    if retry.attempts() == 1
+        && current
+            .as_deref()
+            .is_some_and(|value| value.last_order() == Some(raced_order))
+        && expected
+            .as_deref()
+            .is_some_and(|value| value.last_order() == Some(expected_order))
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered final conflict drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_retry_does_not_retry_committed_failure()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "ordered committed retry capacity")?;
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let retry =
+        publish_cached_retry_telemetry_ordered_batch_durably_with_retries(
+            &mut store,
+            NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+                capacity,
+                submitted,
+                &[summary],
+                nonzero_test_limit(4_096, "ordered committed retry bytes")?,
+            ),
+            nonzero_test_limit(3, "ordered committed retry attempts")?,
+        )
+        .map_err(|error| {
+            format!("ordered committed retry failed: {error:?}")
+        })?;
+    if retry.attempts() == 1
+        && matches!(retry.outcome(), OrderedTelemetryCas::Published { .. })
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed ordered CAS was retried"))
     }
 }
 
