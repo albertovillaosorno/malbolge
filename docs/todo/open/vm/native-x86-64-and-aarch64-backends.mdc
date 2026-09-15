@@ -727,7 +727,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Six deterministic cases cover atomic replacement, preserved prior state, both
   write bounds, oversized adapter output, missing state, and committed
   durability
-  failure. A concrete filesystem pair adapter and pair CAS remain open.
+  failure.
 
   Cached-cycle composition now fixes canonical count-window bytes as the first
   pair member and canonical latency-histogram bytes as the second. Atomic
@@ -737,8 +737,20 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure retains the complete new pair.
 
   Five deterministic cases cover typed atomic round trip, missing state, count
-  corruption, latency corruption, and committed durability failure. A concrete
-  atomic pair adapter is still required underneath this binding.
+  corruption, latency corruption, and committed durability failure.
+
+  A concrete filesystem pair adapter now binds one explicit manifest path. It
+  writes and synchronizes two immutable same-directory generation members, then
+  writes and synchronizes a staging manifest; atomic manifest `rename` is the
+  sole commit point. Readers follow one complete manifest to immutable members
+  and cannot combine generations.
+
+  A persistent sibling lock serializes cooperating publishers. Crashes before
+  manifest commit may leave ignored orphan generations, while directory sync
+  remains explicit post-commit durability confirmation. Five host-real cases
+  cover missing state, replacement, bounded reads, concurrent complete-pair
+  publication, and typed count-plus-latency durable round trip. Pair CAS and
+  generation reclamation remain open.
 
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
@@ -765,8 +777,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Merge backoff/cancellation policy, async queues/timers, multi-blob
-  transactions, and broader production orchestration remain pending.
+  Merge backoff/cancellation policy, async queues/timers, pair CAS, pair
+  generation reclamation, general N-object transactions, and broader production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

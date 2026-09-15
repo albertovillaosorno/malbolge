@@ -469,6 +469,15 @@ parts:
     kind: composition
     language: rust
     responsibility: Persist count and latency telemetry as one atomic pair.
+  - id: part-0088
+    path: adapter-outbound/blob_pair/README.md
+    kind: adapter-outbound
+    responsibility: Document filesystem atomic blob-pair adapter ownership.
+  - id: part-0089
+    path: adapter-outbound/blob_pair/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind atomic blob-pair storage to filesystem generations.
 projects: []
 tests: []
 graph:

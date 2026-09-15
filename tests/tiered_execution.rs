@@ -53,6 +53,8 @@ pub mod execution_cache;
 pub mod execution_clock;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/blob_pair/main.rs"]
+pub mod file_blob_pair_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/blob/main.rs"]
 pub mod file_blob_store;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_handoff.rs"]
@@ -161,6 +163,7 @@ use blob_pair_persistence::{
     persist_blob_pair, persist_blob_pair_durably, restore_blob_pair,
 };
 use blob_pair_store as telemetry_pair_store_port;
+use blob_pair_store::NativeContinuationBlobPairStore as PairStorePort;
 use blob_persistence::{
     NativeContinuationBlobConditionalDurablePersistence as BlobCasDurable,
     NativeContinuationBlobConditionalPersistence as BlobConditionalPersistence,
@@ -543,6 +546,10 @@ use execution_native::{
     verify_direct_output, verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_non_graphical, verify_direct_rotate,
     verify_fused_direct_sequence,
+};
+use file_blob_pair_store::{
+    NativeContinuationFileBlobPairMember, NativeContinuationFileBlobPairStore,
+    NativeContinuationFileBlobPairStoreError,
 };
 use file_blob_store::{
     NativeContinuationFileBlobStore, NativeContinuationFileBlobStoreError,
@@ -51996,6 +52003,233 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
         Ok(())
     } else {
         Err(String::from("file durability publication evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_loads_missing_as_absent()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-missing")?;
+    let maximum_bytes = nonzero_test_limit(64, "file pair missing bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let load = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .map_err(|error| format!("missing file pair load failed: {error:?}"))?;
+    let result = if load == BlobPairPersistenceLoad::Missing
+        && store.manifest() == fixture.destination
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing file pair did not load as absent"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_replaces_or_preserves_atomically()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-replace")?;
+    let maximum_bytes = nonzero_test_limit(64, "file pair replace bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let initial = BlobPairPersistenceRequest::new(
+        b"old-first",
+        b"old-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _initial_write = persist_blob_pair(&mut store, initial)
+        .map_err(|error| format!("initial file pair failed: {error:?}"))?;
+    let replacement = BlobPairPersistenceRequest::new(
+        b"new-first",
+        b"new-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let replaced = persist_blob_pair(&mut store, replacement);
+    let restored = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .map_err(|error| format!("file pair restore failed: {error:?}"))?;
+    let BlobPairPersistenceLoad::Present { first, second } = restored else {
+        return Err(String::from("file pair publication disappeared"));
+    };
+    let valid = match replaced {
+        Ok(write) => {
+            write.first_bytes() == 9
+                && write.second_bytes() == 10
+                && first == b"new-first"
+                && second == b"new-second"
+        },
+        Err(BlobPairPersistenceError::Store(
+            NativeContinuationFileBlobPairStoreError::ManifestPublish {
+                cleanup: None,
+                kind: _kind,
+            },
+        )) => first == b"old-first" && second == b"old-second",
+        Err(error) => {
+            return Err(format!("unexpected file pair failure: {error:?}"));
+        },
+    };
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("atomic file pair replacement drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_rejects_oversized_member()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-oversized")?;
+    let write_limit = nonzero_test_limit(64, "file pair write bytes")?;
+    let read_limit = nonzero_test_limit(3, "file pair short read bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"oversized",
+        b"ok",
+        write_limit,
+        write_limit,
+    );
+    let _write = persist_blob_pair(&mut store, request)
+        .map_err(|error| format!("file pair setup failed: {error:?}"))?;
+    let error = restore_blob_pair(&mut store, read_limit, write_limit)
+        .err()
+        .ok_or_else(|| {
+            String::from("oversized file pair member was accepted")
+        })?;
+    let result = if error
+        == BlobPairPersistenceError::Store(
+            NativeContinuationFileBlobPairStoreError::LoadByteLimit {
+                maximum_bytes: read_limit,
+                member: NativeContinuationFileBlobPairMember::First,
+            },
+        ) {
+        Ok(())
+    } else {
+        Err(String::from("file pair byte-limit evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_serializes_publishers()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-concurrent")?;
+    let manifest_path = fixture.destination.clone();
+    let publish_barrier = Arc::new(Barrier::new(3));
+    let publish = |first: &'static [u8], second: &'static [u8]| {
+        let thread_manifest = manifest_path.clone();
+        let thread_barrier = Arc::clone(&publish_barrier);
+        thread::spawn(move || {
+            let mut store =
+                NativeContinuationFileBlobPairStore::new(thread_manifest);
+            let _wait = thread_barrier.wait();
+            PairStorePort::replace_pair(&mut store, first, second)
+        })
+    };
+    let alpha_thread = publish(b"alpha-first", b"alpha-second");
+    let beta_thread = publish(b"beta-first", b"beta-second");
+    let _wait = publish_barrier.wait();
+    let alpha_result = alpha_thread
+        .join()
+        .map_err(|_panic| String::from("alpha pair publisher panicked"))?;
+    let beta_result = beta_thread
+        .join()
+        .map_err(|_panic| String::from("beta pair publisher panicked"))?;
+    if alpha_result.is_err() && beta_result.is_err() {
+        return Err(String::from("both file pair publishers failed"));
+    }
+    let maximum_bytes = nonzero_test_limit(64, "concurrent file pair bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let restored = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .map_err(|error| {
+            format!("concurrent file pair restore failed: {error:?}")
+        })?;
+    let BlobPairPersistenceLoad::Present {
+        first: restored_first,
+        second: restored_second,
+    } = restored
+    else {
+        return Err(String::from("concurrent file pair publication missing"));
+    };
+    let complete_alpha =
+        restored_first == b"alpha-first" && restored_second == b"alpha-second";
+    let complete_beta =
+        restored_first == b"beta-first" && restored_second == b"beta-second";
+    let result = if complete_alpha || complete_beta {
+        Ok(())
+    } else {
+        Err(String::from("concurrent file pair mixed generations"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_durably_roundtrips_telemetry()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-telemetry")?;
+    let count_limit = nonzero_test_limit(4_096, "file pair count bytes")?;
+    let latency_limit = nonzero_test_limit(4_096, "file pair latency bytes")?;
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "file pair count capacity")?,
+    );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(summary).map_err(|error| error.to_string())?;
+    let expected_window = window.snapshot();
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[1, 10, 101])?;
+    let expected_histogram = histogram.clone();
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let outcome = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &window,
+            &histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| {
+        format!("file telemetry pair persist failed: {error:?}")
+    })?;
+    let restored = restore_cached_retry_telemetry_pair(
+        &mut store,
+        count_limit,
+        latency_limit,
+    )
+    .map_err(|error| {
+        format!("file telemetry pair restore failed: {error:?}")
+    })?;
+    let NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Restored {
+        histogram: restored_histogram,
+        window: restored_window,
+        ..
+    } = restored
+    else {
+        return Err(String::from("file telemetry pair missing"));
+    };
+    let write = outcome.write();
+    let result = if write.count_bytes() > 0
+        && write.latency_bytes() > 0
+        && restored_window.snapshot() == expected_window
+        && *restored_histogram == expected_histogram
+    {
+        Ok(())
+    } else {
+        Err(String::from("file telemetry pair round trip drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

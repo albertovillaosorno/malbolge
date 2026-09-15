@@ -882,8 +882,7 @@ durability reported separately from rollback.
 
 Six deterministic cases cover atomic replacement, preserved prior state on
 failure, both write bounds, malicious oversized load output, missing state, and
-committed durability failure. No concrete filesystem pair adapter is claimed
-yet.
+committed durability failure.
 
 Cached-cycle composition now binds canonical count-window bytes to the first
 member and canonical latency-histogram bytes to the second member of that atomic
@@ -894,8 +893,23 @@ pair state never invents one side. Post-commit durability failure retains the
 complete newly encoded pair.
 
 Five deterministic cases cover atomic typed round trip, missing state, count
-corruption, latency corruption, and committed durability failure. The typed
-binding still requires a genuinely atomic pair-store adapter underneath it.
+corruption, latency corruption, and committed durability failure.
+
+A concrete filesystem pair adapter now binds the atomic pair port to one
+explicit
+manifest path. Each publication writes and synchronizes two immutable
+same-directory generation members, then writes and synchronizes a staging
+manifest. Atomic manifest `rename` is the sole commit point; readers follow one
+complete manifest to immutable members and therefore never combine generations.
+
+A persistent sibling lock serializes cooperating publishers. Crashes before the
+manifest commit may leave unreferenced generations, but those are ignored and
+never become current pair state. Directory synchronization remains a separate
+post-commit durability confirmation.
+
+Five host-real cases cover missing state, replacement, bounded reads, concurrent
+complete-pair publication, and the full typed count-plus-latency durable round
+trip. Generation reclamation remains open.
 
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
@@ -928,8 +942,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, concrete atomic-pair adapters, pair CAS, and general
-N-object transactions remain open.
+asynchronous timing, pair CAS, pair-generation reclamation, and general N-object
+transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

@@ -53,6 +53,8 @@ pub mod execution_cache;
 pub mod execution_clock;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../adapter-outbound/blob_pair/main.rs"]
+pub mod file_blob_pair_store;
 #[path = "../adapter-outbound/blob/main.rs"]
 pub mod file_blob_store;
 #[path = "tier/geometry_handoff.rs"]
