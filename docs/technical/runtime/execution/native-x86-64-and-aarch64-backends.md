@@ -976,7 +976,7 @@ The opaque filesystem revision now also has a separate canonical 24-byte
 `MBPREV01` codec: magic plus little-endian epoch and generation. Decode rejects
 wrong size, magic, and zero generation while preserving field opacity. Three
 focused codec cases cover exact canonical round trip and fail-closed malformed
-representations; durable retention persistence remains a separate concern.
+representations.
 
 
 Exact retained-revision sets now also have canonical `MBPRET01` framing: magic,
@@ -985,6 +985,14 @@ order. Both directions reject duplicates; decode also rejects malformed nested
 revision bytes and count/length drift. Four focused cases cover canonical round
 trip plus duplicate, framing, and nested-revision rejection. Ordering remains
 caller evidence and is never interpreted as time or retention priority.
+
+
+A typed composition journal now persists those exact retention frames through
+the existing bounded durable blob application service. Missing storage remains
+explicit, present state reconstructs the exact process-local retention owner,
+and post-publication durability failure remains committed evidence. Three
+focused cases cover missing state, durable round trip, and committed durability
+failure without adding selection or scheduling policy.
 
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and

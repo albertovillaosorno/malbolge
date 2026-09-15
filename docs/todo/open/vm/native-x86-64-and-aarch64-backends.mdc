@@ -820,7 +820,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   `MBPREV01` codec carrying magic plus little-endian epoch and generation.
   Decode rejects wrong size, magic, and zero generation while retaining opaque
   semantics. Three focused cases cover canonical round trip and malformed
-  representations; durable retention persistence remains separate.
+  representations.
 
 
   Exact retained-revision sets now also have canonical `MBPRET01` framing:
@@ -829,6 +829,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   nested revisions and count/length drift. Four focused cases cover exact round
   trip plus duplicate, framing, and nested-member rejection without assigning
   chronology or retention priority to the preserved order.
+
+
+  A typed composition journal now persists those exact retention frames through
+  the existing bounded durable blob service. Missing storage remains explicit,
+  present bytes rebuild the exact process-local retention owner, and
+  post-publication durability failure remains committed evidence. Three focused
+  cases cover missing state, durable round trip, and committed durability
+  failure without adding retention selection or cleanup scheduling.
 
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and

@@ -508,6 +508,12 @@ parts:
     kind: application
     language: rust
     responsibility: Track caller-selected exact pair revisions for retention.
+  - id: part-0096
+    path: composition/pair_retention.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist exact filesystem pair retention through blob storage.
 projects: []
 tests: []
 graph:

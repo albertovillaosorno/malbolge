@@ -72,6 +72,13 @@ revisions in caller order. Encode and decode reject duplicates, malformed nested
 revisions, and count/length drift. Frame order is preserved evidence only and
 still carries no chronology, expiry, or automatic retention policy.
 
+
+Composition now binds this frame to the existing bounded blob persistence
+service as an explicit durable retention journal. Missing storage remains
+`Missing`; present bytes rebuild the exact process-local retention owner, and a
+post-publication durability failure remains committed evidence. Journal storage
+still does not select revisions or schedule reclamation.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

@@ -125,6 +125,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "pair_retention.rs"]
+pub mod pair_retention_journal;
 #[path = "tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "tier/retry_planner.rs"]

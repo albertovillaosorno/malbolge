@@ -125,6 +125,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/composition/pair_retention.rs"]
+pub mod pair_retention_journal;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_planner.rs"]
@@ -801,6 +803,11 @@ use monotonic_clock::NativeContinuationMonotonicClock;
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
+};
+use pair_retention_journal::{
+    NativeContinuationFileBlobPairRetentionJournalLoad,
+    persist_file_blob_pair_retention_journal_durably,
+    restore_file_blob_pair_retention_journal,
 };
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
@@ -52898,6 +52905,87 @@ fn test_file_blob_pair_revision(
     bytes[16..24].copy_from_slice(&generation.to_le_bytes());
     NativeContinuationFileBlobPairRevision::decode(&bytes)
         .map_err(|error| format!("cannot build test revision: {error:?}"))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_reports_missing()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let load =
+        restore_file_blob_pair_retention_journal(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("retention journal load failed: {error:?}")
+            })?;
+    if load == NativeContinuationFileBlobPairRetentionJournalLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("missing retention journal was invented"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_roundtrips_durably()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let first = test_file_blob_pair_revision(20, 2)?;
+    let second = test_file_blob_pair_revision(20, 9)?;
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    let _first = retention.retain(first);
+    let _second = retention.retain(second);
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_file_blob_pair_retention_journal_durably(
+        &mut store,
+        &retention,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("retention journal persist failed: {error:?}"))?;
+    if !outcome.is_durable() {
+        return Err(String::from("retention journal was not durable"));
+    }
+    let load =
+        restore_file_blob_pair_retention_journal(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("retention journal restore failed: {error:?}")
+            })?;
+    let NativeContinuationFileBlobPairRetentionJournalLoad::Present {
+        retention: restored,
+    } = load
+    else {
+        return Err(String::from("durable retention journal disappeared"));
+    };
+    if restored.revisions() == [first, second] {
+        Ok(())
+    } else {
+        Err(String::from("durable retention journal drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_retains_committed_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let revision = test_file_blob_pair_revision(21, 4)?;
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    let _inserted = retention.retain(revision);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = persist_file_blob_pair_retention_journal_durably(
+        &mut store,
+        &retention,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("committed journal persist failed: {error:?}"))?;
+    if outcome.durability_error()
+        == Some(&TestCachedRetryTelemetryBlobDurabilityError::Confirm)
+        && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("retention journal committed failure drifted"))
+    }
 }
 
 #[test]
