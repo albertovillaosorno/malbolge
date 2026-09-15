@@ -747,10 +747,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   A persistent sibling lock serializes cooperating publishers. Crashes before
   manifest commit may leave ignored orphan generations, while directory sync
-  remains explicit post-commit durability confirmation. Five host-real cases
+  remains explicit post-commit durability confirmation. Eight host-real cases
   cover missing state, replacement, bounded reads, concurrent complete-pair
-  publication, and typed count-plus-latency durable round trip. Pair CAS and
-  generation reclamation remain open.
+  publication, orphan invisibility, malformed manifests, missing referenced
+  members, and the typed durable telemetry round trip. Pair CAS and generation
+  reclamation remain open.
 
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged

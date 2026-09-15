@@ -907,9 +907,10 @@ manifest commit may leave unreferenced generations, but those are ignored and
 never become current pair state. Directory synchronization remains a separate
 post-commit durability confirmation.
 
-Five host-real cases cover missing state, replacement, bounded reads, concurrent
-complete-pair publication, and the full typed count-plus-latency durable round
-trip. Generation reclamation remains open.
+Eight host-real cases cover missing state, replacement, bounded reads,
+concurrent complete-pair publication, orphan invisibility, malformed manifests,
+missing referenced members, and the typed durable telemetry round trip.
+Generation reclamation remains open.
 
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in

@@ -2427,6 +2427,26 @@ fn file_blob_store_fixture(
     Ok(TestTelemetryFileStoreFixture { destination, directory })
 }
 
+fn file_blob_pair_generation_member(
+    directory: &Path,
+    suffix: &str,
+) -> Result<PathBuf, String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("cannot inspect pair fixture: {error}"))?;
+    for entry_result in entries {
+        let entry = entry_result
+            .map_err(|error| format!("cannot inspect pair entry: {error}"))?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.ends_with(suffix) {
+            return Ok(path);
+        }
+    }
+    Err(format!("pair generation member {suffix} is missing"))
+}
+
 fn remove_file_blob_store_fixture(directory: &Path) -> Result<(), String> {
     match fs::remove_dir_all(directory) {
         Ok(()) => Ok(()),
@@ -52003,6 +52023,93 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
         Ok(())
     } else {
         Err(String::from("file durability publication evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_ignores_orphan_generations()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-orphan")?;
+    let first = fixture.directory.join("telemetry.bin.generation.9.9.first");
+    let second = fixture
+        .directory
+        .join("telemetry.bin.generation.9.9.second");
+    fs::write(first, b"orphan-first")
+        .map_err(|error| format!("cannot write first orphan: {error}"))?;
+    fs::write(second, b"orphan-second")
+        .map_err(|error| format!("cannot write second orphan: {error}"))?;
+    let maximum_bytes = nonzero_test_limit(64, "orphan pair bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let load = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .map_err(|error| format!("orphan pair load failed: {error:?}"))?;
+    let result = if load == BlobPairPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("orphan generation became current pair"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_rejects_malformed_manifest()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-bad-manifest")?;
+    fs::write(&fixture.destination, [0u8; 24])
+        .map_err(|error| format!("cannot write malformed manifest: {error}"))?;
+    let maximum_bytes = nonzero_test_limit(64, "malformed pair bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let error = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .err()
+        .ok_or_else(|| String::from("malformed pair manifest was accepted"))?;
+    let result = if error
+        == BlobPairPersistenceError::Store(
+            NativeContinuationFileBlobPairStoreError::ManifestMagic,
+        ) {
+        Ok(())
+    } else {
+        Err(String::from("malformed manifest evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_store_rejects_missing_member()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-missing-member")?;
+    let maximum_bytes = nonzero_test_limit(64, "missing member pair bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"first",
+        b"second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _write = persist_blob_pair(&mut store, request)
+        .map_err(|error| format!("missing member setup failed: {error:?}"))?;
+    let second_path =
+        file_blob_pair_generation_member(&fixture.directory, ".second")?;
+    fs::remove_file(second_path)
+        .map_err(|error| format!("cannot remove second generation: {error}"))?;
+    let error = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .err()
+        .ok_or_else(|| String::from("missing pair member was accepted"))?;
+    let expected = BlobPairPersistenceError::Store(
+        NativeContinuationFileBlobPairStoreError::GenerationOpen {
+            kind: ErrorKind::NotFound,
+            member: NativeContinuationFileBlobPairMember::Second,
+        },
+    );
+    let result = if error == expected {
+        Ok(())
+    } else {
+        Err(String::from("missing pair member evidence drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
