@@ -671,6 +671,18 @@ failure remains committed `Published` evidence. Three deterministic cases cover
 round trip, committed durability failure, and missing state, plus one host-real
 filesystem round trip.
 
+One-shot ordered publication now loads that complete bounded document, decodes
+it, applies one caller-ordered batch, and conditionally publishes against the
+exact raw bytes originally loaded. Missing state uses a caller-supplied initial
+capacity only until the first commit; persisted capacity remains authoritative
+afterward. Stale order fails before CAS, while races return decoded current and
+expected combined state without retry.
+
+Five deterministic cases cover missing initialization, persisted-capacity
+authority, stale rejection, race conflict, and committed sync failure. One
+host-real case advances state through two independent filesystem-store
+instances.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

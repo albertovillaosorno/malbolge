@@ -444,6 +444,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Persist ordered count telemetry state durably.
+  - id: part-0083
+    path: composition/tier/cached_cycle/telemetry_ordered_cas.rs
+    kind: composition
+    language: rust
+    responsibility: Publish ordered count telemetry with one-shot durable CAS.
 projects: []
 tests: []
 graph:

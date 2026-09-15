@@ -201,6 +201,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryCodecError,
     NativeContinuationCachedRetryTelemetryDurablePersistence,
     NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryOrderedCas,
+    NativeContinuationCachedRetryTelemetryOrderedCasError,
+    NativeContinuationCachedRetryTelemetryOrderedCasRequest,
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,
     NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad,
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
@@ -239,6 +242,7 @@ use cached_cycle::{
     publish_cached_retry_latency_policy_recommendation_durably,
     publish_cached_retry_policy_recommendation,
     publish_cached_retry_policy_recommendation_durably,
+    publish_cached_retry_telemetry_ordered_batch_durably,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
@@ -816,6 +820,8 @@ type LatencyDurableMergeRetry =
     NativeContinuationCachedRetryLatencyDurableMergeRetry<
         TestCachedRetryTelemetryBlobDurabilityError,
     >;
+type OrderedTelemetryBatchOrder =
+    NativeContinuationCachedRetryTelemetryBatchOrder;
 type OrderedTelemetryWindowError =
     NativeContinuationCachedRetryTelemetryOrderedWindowError;
 type OrderedTelemetryStateCodecError =
@@ -823,6 +829,13 @@ type OrderedTelemetryStateCodecError =
 type OrderedTelemetryDurablePersistence =
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
         TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type OrderedTelemetryCas = NativeContinuationCachedRetryTelemetryOrderedCas<
+    TestCachedRetryTelemetryBlobDurabilityError,
+>;
+type OrderedTelemetryCasError =
+    NativeContinuationCachedRetryTelemetryOrderedCasError<
+        TestCachedRetryTelemetryBlobStoreError,
     >;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
@@ -50767,6 +50780,47 @@ fn cached_retry_window_telemetry(
     .map_err(|error| error.to_string())
 }
 
+fn cached_retry_ordered_window_with_batch(
+    capacity: NonZeroUsize,
+    order: NativeContinuationCachedRetryTelemetryBatchOrder,
+    telemetry: NativeContinuationCachedRetryTelemetry,
+) -> Result<NativeContinuationCachedRetryTelemetryOrderedWindow, String> {
+    let mut ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity),
+    );
+    let _publication = ordered
+        .append_ordered_batch(order, &[telemetry])
+        .map_err(|error| format!("ordered window setup failed: {error:?}"))?;
+    Ok(ordered)
+}
+
+fn encode_cached_retry_ordered_window_for_test(
+    ordered: &NativeContinuationCachedRetryTelemetryOrderedWindow,
+) -> Result<Vec<u8>, String> {
+    encode_cached_retry_telemetry_ordered_state(ordered)
+        .map_err(|error| format!("ordered window encode failed: {error:?}"))
+}
+
+fn publish_ordered_file_cas_for_test(
+    store: &mut NativeContinuationFileBlobStore,
+    request: NativeContinuationCachedRetryTelemetryOrderedCasRequest<'_>,
+) -> Result<(), String> {
+    let outcome =
+        publish_cached_retry_telemetry_ordered_batch_durably(store, request)
+            .map_err(|error| {
+                format!("ordered file CAS publication: {error:?}")
+            })?;
+    if matches!(
+        outcome,
+        NativeContinuationCachedRetryTelemetryOrderedCas::Durable { .. }
+            | NativeContinuationCachedRetryTelemetryOrderedCas::Published { .. }
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("ordered file CAS publication conflicted"))
+    }
+}
+
 #[test]
 fn cached_retry_latency_measurement_propagates_finish_failure()
 -> Result<(), String> {
@@ -52031,6 +52085,285 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
 }
 
 #[test]
+fn cached_retry_telemetry_ordered_cas_initializes_missing_state()
+-> Result<(), String> {
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let capacity = nonzero_test_limit(3, "ordered CAS initial capacity")?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(40);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let outcome = publish_cached_retry_telemetry_ordered_batch_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            order,
+            &[summary],
+            nonzero_test_limit(4_096, "ordered CAS bytes")?,
+        ),
+    )
+    .map_err(|error| format!("ordered CAS initialization failed: {error:?}"))?;
+    let OrderedTelemetryCas::Durable {
+        current,
+        previous,
+        publication,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("ordered CAS did not commit"));
+    };
+    if previous.is_none()
+        && current.last_order() == Some(order)
+        && current.window().capacity() == capacity
+        && current.window().last_sequence() == Some(1)
+        && publication.previous_order().is_none()
+        && publication.current_order() == order
+        && publication.batch().appended() == 1
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered CAS initialization drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_keeps_persisted_capacity()
+-> Result<(), String> {
+    let persisted_capacity =
+        nonzero_test_limit(2, "ordered CAS persisted capacity")?;
+    let mut persisted =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+            NativeContinuationCachedRetryTelemetryWindow::new(
+                persisted_capacity,
+            ),
+        );
+    let first = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let first_order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(10);
+    let _append = persisted
+        .append_ordered_batch(first_order, &[first])
+        .map_err(|error| format!("ordered CAS setup failed: {error:?}"))?;
+    let bytes = encode_cached_retry_telemetry_ordered_state(&persisted)
+        .map_err(|error| {
+            format!("ordered CAS setup encoding failed: {error:?}")
+        })?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(bytes),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let second = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let second_order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(20);
+    let outcome = publish_cached_retry_telemetry_ordered_batch_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            nonzero_test_limit(9, "ignored ordered CAS initial capacity")?,
+            second_order,
+            &[second],
+            nonzero_test_limit(4_096, "ordered CAS persisted bytes")?,
+        ),
+    )
+    .map_err(|error| format!("ordered CAS update failed: {error:?}"))?;
+    let OrderedTelemetryCas::Durable { current, previous, .. } = outcome else {
+        return Err(String::from("ordered CAS update did not commit"));
+    };
+    if current.window().capacity() == persisted_capacity
+        && previous.as_deref().is_some_and(|value| {
+            value.window().capacity() == persisted_capacity
+                && value.last_order() == Some(first_order)
+        })
+        && current.last_order() == Some(second_order)
+    {
+        Ok(())
+    } else {
+        Err(String::from("persisted ordered capacity drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_rejects_stale_before_compare()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "ordered CAS stale capacity")?;
+    let mut persisted =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+            NativeContinuationCachedRetryTelemetryWindow::new(capacity),
+        );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let current_order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(50);
+    let _append = persisted
+        .append_ordered_batch(current_order, &[summary])
+        .map_err(|error| format!("ordered stale setup failed: {error:?}"))?;
+    let bytes = encode_cached_retry_telemetry_ordered_state(&persisted)
+        .map_err(|error| format!("ordered stale encoding failed: {error:?}"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let submitted =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(49);
+    let error: OrderedTelemetryCasError =
+        publish_cached_retry_telemetry_ordered_batch_durably(
+            &mut store,
+            NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+                capacity,
+                submitted,
+                &[summary],
+                nonzero_test_limit(4_096, "ordered stale bytes")?,
+            ),
+        )
+        .err()
+        .ok_or_else(|| String::from("stale ordered CAS published"))?;
+    if error
+        == OrderedTelemetryCasError::Ordered(
+            OrderedTelemetryWindowError::OrderNotAdvanced {
+                current: current_order,
+                submitted,
+            },
+        )
+        && store.compare_and_swap_calls == 0
+        && store.blob.as_deref() == Some(bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale ordered CAS mutated storage"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_returns_race_conflict_once()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered CAS race capacity")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let expected_state = cached_retry_ordered_window_with_batch(
+        capacity,
+        expected_order,
+        summary,
+    )?;
+    let mut raced = expected_state.clone();
+    let raced_order = OrderedTelemetryBatchOrder::from_value(30);
+    let _raced = raced
+        .append_ordered_batch(raced_order, &[summary])
+        .map_err(|error| format!("ordered race current setup: {error:?}"))?;
+    let expected_bytes =
+        encode_cached_retry_ordered_window_for_test(&expected_state)?;
+    let raced_bytes = encode_cached_retry_ordered_window_for_test(&raced)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let outcome = publish_cached_retry_telemetry_ordered_batch_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            submitted,
+            &[summary],
+            nonzero_test_limit(4_096, "ordered race bytes")?,
+        ),
+    )
+    .map_err(|error| {
+        format!("ordered race failed before conflict: {error:?}")
+    })?;
+    let OrderedTelemetryCas::Conflict {
+        current,
+        expected: conflict_expected,
+    } = outcome
+    else {
+        return Err(String::from("ordered race did not return conflict"));
+    };
+    if current
+        .as_deref()
+        .is_some_and(|value| value.last_order() == Some(raced_order))
+        && conflict_expected
+            .as_deref()
+            .is_some_and(|value| value.last_order() == Some(expected_order))
+        && store.compare_and_swap_calls == 1
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered race conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_cas_retains_committed_sync_failure()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "ordered CAS sync capacity")?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(70);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = publish_cached_retry_telemetry_ordered_batch_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            order,
+            &[summary],
+            nonzero_test_limit(4_096, "ordered CAS sync bytes")?,
+        ),
+    )
+    .map_err(|error| {
+        format!("ordered CAS committed failure errored: {error:?}")
+    })?;
+    let OrderedTelemetryCas::Published {
+        current,
+        durability_error,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("ordered CAS sync failure vanished"));
+    };
+    let stored = store
+        .blob
+        .as_deref()
+        .map(decode_cached_retry_telemetry_ordered_state)
+        .transpose()
+        .map_err(|error| format!("stored ordered CAS decode: {error:?}"))?
+        .ok_or_else(|| String::from("committed ordered CAS blob missing"))?;
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && current.last_order() == Some(order)
+        && stored.last_order() == Some(order)
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered committed sync evidence drifted"))
+    }
+}
+
+#[test]
 fn cached_retry_telemetry_ordered_persistence_roundtrips_combined_state()
 -> Result<(), String> {
     let mut ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
@@ -52125,6 +52458,65 @@ fn cached_retry_telemetry_ordered_persistence_reports_missing_state()
     } else {
         Err(String::from("ordered missing state was invented"))
     }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_file_cas_progresses_persisted_state()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("ordered-cas")?;
+    let capacity = nonzero_test_limit(2, "ordered file CAS capacity")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "ordered file CAS bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let first_order = OrderedTelemetryBatchOrder::from_value(10);
+    let mut first_store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    publish_ordered_file_cas_for_test(
+        &mut first_store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            first_order,
+            &[summary],
+            maximum_bytes,
+        ),
+    )?;
+    let second_order = OrderedTelemetryBatchOrder::from_value(20);
+    let mut second_store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    publish_ordered_file_cas_for_test(
+        &mut second_store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            nonzero_test_limit(9, "ignored ordered file CAS capacity")?,
+            second_order,
+            &[summary],
+            maximum_bytes,
+        ),
+    )?;
+    let restored = restore_cached_retry_telemetry_ordered_state(
+        &mut second_store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("ordered file CAS restore: {error:?}"))?;
+    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
+        value, ..
+    } = restored
+    else {
+        return Err(String::from("ordered file CAS state missing"));
+    };
+    let result = if value.last_order() == Some(second_order)
+        && value.window().capacity() == capacity
+        && value.window().last_sequence() == Some(2)
+        && value.window().len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered file CAS state drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

@@ -529,6 +529,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cases cover round trip, committed failure, and missing state; one host-real
   filesystem case crosses the full persistence path.
 
+  One-shot ordered publication now loads the complete bounded document, applies
+  one caller-ordered batch, and CAS-publishes against the exact raw bytes
+  loaded.
+  Missing state uses caller-supplied initial capacity only before first
+  commit;
+  persisted capacity remains authoritative. Stale order fails before CAS, and a
+  race returns decoded current/expected combined state without retry.
+
+  Five deterministic cases cover initialization, capacity authority, stale
+  rejection, race conflict, and committed sync failure. One host-real case
+  advances state through two independent filesystem-store instances.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

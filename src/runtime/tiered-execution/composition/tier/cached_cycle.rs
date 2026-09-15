@@ -64,6 +64,8 @@ mod telemetry_latency_recommendation;
 mod telemetry_latency_refinement;
 #[path = "cached_cycle/telemetry_latency_snapshot.rs"]
 mod telemetry_latency_snapshot;
+#[path = "cached_cycle/telemetry_ordered_cas.rs"]
+mod telemetry_ordered_cas;
 #[path = "cached_cycle/telemetry_ordered_persistence.rs"]
 mod telemetry_ordered_persistence;
 #[path = "cached_cycle/telemetry_ordered_state.rs"]
@@ -172,6 +174,14 @@ pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
+};
+pub use telemetry_ordered_cas::{
+    NativeContinuationCachedRetryTelemetryOrderedCas,
+    NativeContinuationCachedRetryTelemetryOrderedCasError,
+    NativeContinuationCachedRetryTelemetryOrderedCasRequest,
+    NativeContinuationCachedRetryTelemetryOrderedCasResult,
+    NativeContinuationCachedRetryTelemetryOrderedCasStoreResult,
+    publish_cached_retry_telemetry_ordered_batch_durably,
 };
 pub use telemetry_ordered_persistence::{
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,
