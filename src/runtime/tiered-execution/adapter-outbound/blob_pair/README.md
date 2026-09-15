@@ -93,6 +93,16 @@ reorder, or select revisions. Refreshing expected state and blindly replaying
 the same whole-set replacement would overwrite another writer's explicit
 retention choices, so retry requires caller-owned reconciliation.
 
+
+A separate composition retry layer now accepts that caller-owned reconciliation
+callback plus a positive attempt budget. It restores typed current retention
+once, invokes the callback before every CAS attempt, and feeds any typed
+conflict state into the next callback invocation. Exhausted conflict budget
+returns the
+final conflict unchanged; callback failure, successful durability, and committed
+post-publication durability failure stop immediately. The runtime still chooses
+no union, intersection, ordering, backoff, or retention policy.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

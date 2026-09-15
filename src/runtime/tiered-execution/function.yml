@@ -514,6 +514,12 @@ parts:
     language: rust
     responsibility: >-
       Persist exact filesystem pair retention through blob storage.
+  - id: part-0097
+    path: composition/pair_retention_retry.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Reconcile exact pair retention before bounded journal CAS retry.
 projects: []
 tests: []
 graph:

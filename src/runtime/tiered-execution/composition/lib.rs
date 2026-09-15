@@ -127,6 +127,8 @@ pub mod monotonic_clock;
 pub mod native_retry;
 #[path = "pair_retention.rs"]
 pub mod pair_retention_journal;
+#[path = "pair_retention_retry.rs"]
+pub mod pair_retention_reconciliation;
 #[path = "tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "tier/retry_planner.rs"]

@@ -1011,6 +1011,16 @@ remains out of scope because refreshing the expectation and replaying a
 whole-set replacement would discard concurrent caller-selected retention unless
 an explicit reconciliation policy chooses the new set.
 
+
+A separate caller-directed reconciliation layer now supplies the safe retry
+mechanism without choosing that policy. It performs one bounded typed restore,
+invokes a caller callback before each CAS attempt, and uses each typed conflict
+as the callback input for the next attempt. Five focused cases cover missing
+initialization, fresh conflict reconciliation, exhausted-budget conflict,
+callback rejection before CAS, and committed durability failure stopping after
+one attempt. No union, intersection, revision ordering, backoff, or automatic
+retention policy is inferred.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

@@ -854,6 +854,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   replacement would discard concurrent caller-selected retention unless an
   explicit reconciliation policy chooses the new set.
 
+
+  A separate caller-directed reconciliation layer now supplies safe bounded
+  retry without choosing that policy. It performs one typed restore, invokes a
+  caller callback before every CAS attempt, and feeds each typed conflict into
+  the callback before the next attempt. Five focused cases cover missing
+  initialization, refreshed conflict reconciliation, exhausted-budget conflict,
+  callback rejection before CAS, and committed durability failure stopping
+  after one attempt. Union/intersection, revision ordering, backoff, and
+  automatic retention policy remain caller-owned or pending.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

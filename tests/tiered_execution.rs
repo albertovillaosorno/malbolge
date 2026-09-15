@@ -127,6 +127,8 @@ pub mod monotonic_clock;
 pub mod native_retry;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention.rs"]
 pub mod pair_retention_journal;
+#[path = "../src/runtime/tiered-execution/composition/pair_retention_retry.rs"]
+pub mod pair_retention_reconciliation;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_planner.rs"]
@@ -811,6 +813,10 @@ use pair_retention_journal::{
     compare_and_swap_file_blob_pair_retention_journal_durably,
     persist_file_blob_pair_retention_journal_durably,
     restore_file_blob_pair_retention_journal,
+};
+use pair_retention_reconciliation::{
+    NativeContinuationFileBlobPairRetentionReconcileError,
+    reconcile_file_blob_pair_retention_journal_durably_with_retries,
 };
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
@@ -52931,6 +52937,216 @@ fn independent_file_blob_stores(
         NativeContinuationFileBlobStore::new(destination.to_path_buf()),
         NativeContinuationFileBlobStore::new(destination.to_path_buf()),
     )
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reconciliation_initializes_missing()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention reconciliation")?;
+    let maximum_attempts = nonzero_test_limit(2, "retention attempts")?;
+    let revision = test_file_blob_pair_revision(50, 1)?;
+    let mut calls = 0usize;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let result =
+        reconcile_file_blob_pair_retention_journal_durably_with_retries(
+            &mut store,
+            maximum_bytes,
+            maximum_attempts,
+            |current| {
+                calls = calls.saturating_add(1);
+                if current.is_some() {
+                    return Err("unexpected current state");
+                }
+                Ok(test_file_blob_pair_retention(&[revision]))
+            },
+        )
+        .map_err(|error| {
+            format!("retention reconciliation failed: {error:?}")
+        })?;
+    if result.attempts() == 1
+        && calls == 1
+        && matches!(
+            result.outcome(),
+            NativeContinuationFileBlobPairRetentionJournalCas::Durable { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retention reconciliation initialization drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reconciliation_refreshes_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention reconciliation")?;
+    let maximum_attempts = nonzero_test_limit(3, "retention attempts")?;
+    let first = test_file_blob_pair_revision(51, 1)?;
+    let raced = test_file_blob_pair_revision(51, 2)?;
+    let requested = test_file_blob_pair_revision(51, 3)?;
+    let first_bytes =
+        encode_file_blob_pair_retention(&[first]).map_err(|error| {
+            format!("cannot encode initial retention: {error:?}")
+        })?;
+    let raced_bytes = encode_file_blob_pair_retention(&[raced])
+        .map_err(|error| format!("cannot encode raced retention: {error:?}"))?;
+    let mut observed = Vec::new();
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let result =
+        reconcile_file_blob_pair_retention_journal_durably_with_retries(
+            &mut store,
+            maximum_bytes,
+            maximum_attempts,
+            |current| {
+                observed.push(
+                    current.map(|retention| retention.revisions().to_vec()),
+                );
+                let mut replacement = current.cloned().unwrap_or_default();
+                let _inserted = replacement.retain(requested);
+                Ok::<_, &'static str>(replacement)
+            },
+        )
+        .map_err(|error| {
+            format!("retention conflict retry failed: {error:?}")
+        })?;
+    let expected_observed = vec![Some(vec![first]), Some(vec![raced])];
+    if result.attempts() == 2
+        && observed == expected_observed
+        && store.compare_and_swap_calls == 2
+        && matches!(
+            result.outcome(),
+            NativeContinuationFileBlobPairRetentionJournalCas::Durable { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retention conflict was not reconciled freshly",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reconciliation_retains_final_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention reconciliation")?;
+    let maximum_attempts = nonzero_test_limit(1, "retention attempts")?;
+    let first = test_file_blob_pair_revision(52, 1)?;
+    let raced = test_file_blob_pair_revision(52, 2)?;
+    let first_bytes =
+        encode_file_blob_pair_retention(&[first]).map_err(|error| {
+            format!("cannot encode initial retention: {error:?}")
+        })?;
+    let raced_bytes = encode_file_blob_pair_retention(&[raced])
+        .map_err(|error| format!("cannot encode raced retention: {error:?}"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let result =
+        reconcile_file_blob_pair_retention_journal_durably_with_retries(
+            &mut store,
+            maximum_bytes,
+            maximum_attempts,
+            |current| {
+                Ok::<_, &'static str>(current.cloned().unwrap_or_default())
+            },
+        )
+        .map_err(|error| {
+            format!("retention final conflict failed: {error:?}")
+        })?;
+    let NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+        current: Some(current),
+    } = result.outcome()
+    else {
+        return Err(String::from("retention final conflict disappeared"));
+    };
+    if result.attempts() == 1
+        && current.revisions() == [raced]
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("retention final conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reconcile_stops_on_error()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention reconciliation")?;
+    let maximum_attempts = nonzero_test_limit(2, "retention attempts")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let error =
+        reconcile_file_blob_pair_retention_journal_durably_with_retries(
+            &mut store,
+            maximum_bytes,
+            maximum_attempts,
+            |_current| {
+                Err::<NativeContinuationBlobPairRetention<_>, _>("rejected")
+            },
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("retention callback rejection was ignored")
+        })?;
+    if matches!(
+        error,
+        NativeContinuationFileBlobPairRetentionReconcileError::Reconciliation(
+            "rejected"
+        )
+    ) && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retention callback failure retried unexpectedly",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reconciliation_stops_on_commit()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention reconciliation")?;
+    let maximum_attempts = nonzero_test_limit(3, "retention attempts")?;
+    let revision = test_file_blob_pair_revision(53, 1)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let result =
+        reconcile_file_blob_pair_retention_journal_durably_with_retries(
+            &mut store,
+            maximum_bytes,
+            maximum_attempts,
+            |_current| {
+                Ok::<_, &'static str>(test_file_blob_pair_retention(&[
+                    revision,
+                ]))
+            },
+        )
+        .map_err(|error| {
+            format!("retention committed retry failed: {error:?}")
+        })?;
+    if result.attempts() == 1
+        && store.compare_and_swap_calls == 1
+        && matches!(
+            result.outcome(),
+            NativeContinuationFileBlobPairRetentionJournalCas::Published { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed retention publication was retried"))
+    }
 }
 
 #[test]
