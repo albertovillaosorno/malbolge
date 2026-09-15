@@ -52,6 +52,8 @@ mod telemetry_latency_clock;
 mod telemetry_latency_coarsening;
 #[path = "cached_cycle/telemetry_latency_codec.rs"]
 mod telemetry_latency_codec;
+#[path = "cached_cycle/telemetry_latency_durable_merge.rs"]
+mod telemetry_latency_durable_merge;
 #[path = "cached_cycle/telemetry_latency_merge.rs"]
 mod telemetry_latency_merge;
 #[path = "cached_cycle/telemetry_latency_recommendation.rs"]
@@ -130,6 +132,13 @@ pub use telemetry_latency_codec::{
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyCodecField,
     decode_cached_retry_latency_snapshot, encode_cached_retry_latency_snapshot,
+};
+pub use telemetry_latency_durable_merge::{
+    NativeContinuationCachedRetryLatencyDurableMerge,
+    NativeContinuationCachedRetryLatencyDurableMergeError,
+    NativeContinuationCachedRetryLatencyDurableMergeResult,
+    NativeContinuationCachedRetryLatencyDurableMergeStoreResult,
+    merge_cached_retry_latency_histogram_durably,
 };
 pub use telemetry_latency_merge::{
     NativeContinuationCachedRetryLatencyMergeError,

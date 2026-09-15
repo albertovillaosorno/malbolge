@@ -709,10 +709,10 @@ Revision
 exhaustion also fails closed without changing active state. Four cases cover
 initial state, successful publication, stale conflict, and exhaustion.
 
-The owner can reconstruct validated `(policy, revision)` state for future
-durable restoration, but it does not itself persist state or coordinate another
-process.
-Filesystem/distributed CAS and locking therefore remain separate pending ports.
+The owner can reconstruct validated `(policy, revision)` state for durable
+restoration, but it does not itself persist state or coordinate another process.
+The conditional blob port and filesystem coordination used for that publication
+are separate boundaries described below.
 
 A separate explicit request-binding boundary now consumes one immutable
 active state plus one future cached-cycle request. It replaces only that
@@ -786,8 +786,18 @@ and incompatible final bounds.
 A normalized exact merge now composes that common-schema derivation with both
 coarsenings and the existing transactional same-schema merge. It retains how
 many bounds each side removed and never mutates either source. Two cases cover
-different compatible schemas and incompatible final overflow bounds. Durable or
-distributed merge publication remains a separate coordination problem.
+different compatible schemas and incompatible final overflow bounds.
+
+One-shot durable latency merge now loads bounded raw bytes and decodes exact
+current histogram state. It performs that normalized merge and conditionally
+publishes against the same raw bytes originally observed. Missing state
+initializes from the submitted source.
+
+Conflict returns decoded current/expected state without retry. Durability
+failure after CAS remains committed `Published` evidence. Five deterministic
+cases cover
+initialization, normalization, conflict, sync failure, and incompatible schema,
+plus one host-real filesystem round trip.
 
 Cached-cycle composition now binds the existing canonical count/latency codecs
 to an explicit persistence application service and reconstructs exact validated
@@ -832,8 +842,8 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Distributed merge, native object fusion, foreign invocation, asynchronous
-timing, and multi-blob transactions remain open.
+Automatic merge-conflict retry, native object fusion, foreign invocation,
+asynchronous timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

@@ -419,6 +419,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Refine latency schema from exact sample witness.
+  - id: part-0078
+    path: composition/tier/cached_cycle/telemetry_latency_durable_merge.rs
+    kind: composition
+    language: rust
+    responsibility: Merge latency telemetry with one-shot durable CAS.
 projects: []
 tests: []
 graph:

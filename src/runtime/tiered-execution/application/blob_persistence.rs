@@ -18,7 +18,7 @@
 //   - Outputs: missing/present owned bytes or exact publication evidence.
 //   - Side effects: one delegated bounded load or atomic replacement per call.
 // - Split-When:
-//   - Multi-blob transactions, migration, or durable merge gains authority.
+//   - Multi-blob transactions or migration gains application authority.
 // - Merge-When:
 //   - Another application service owns the exact bounded blob use case.
 // - Summary:

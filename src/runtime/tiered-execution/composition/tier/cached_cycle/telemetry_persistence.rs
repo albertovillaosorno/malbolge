@@ -20,7 +20,7 @@
 //   - Side effects: delegated through the bounded persistence application use
 //     case.
 // - Split-When:
-//   - Durable merge, migration, or multi-blob transactions gain authority.
+//   - Migration or multi-blob transactions gain authority.
 // - Merge-When:
 //   - Cached-cycle orchestration directly owns canonical persistence policy.
 // - Summary:

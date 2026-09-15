@@ -635,7 +635,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   inputs independently, and invokes the existing transactional same-schema
   merge. It retains per-side removed-bound counts and leaves both sources
   unchanged. Two cases cover compatible different schemas and incompatible
-  final bounds. Durable/distributed merge publication remains pending.
+  final bounds.
+
+  One-shot durable latency merge now loads bounded raw bytes, decodes exact
+  current state, normalizes/merges once, and conditionally publishes against
+  those exact loaded bytes. Missing state initializes from the submitted source.
+  Conflict returns decoded current/expected state without hidden retry, while
+  post-CAS durability failure remains committed publication evidence.
+
+  Five deterministic cases cover initialization, normalization, conflict, sync
+  failure, and incompatible schema; one host-real filesystem case crosses the
+  complete durable merge path.
 
   Cached-cycle composition binds the canonical count/latency codecs to an
   explicit persistence application service and reconstructs exact validated
@@ -674,8 +684,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Distributed/durable merge, async queues/timers, multi-blob transactions,
-  and broader production orchestration remain pending.
+  Automatic merge-conflict retry, async queues/timers, multi-blob
+  transactions, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
