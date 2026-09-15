@@ -951,8 +951,21 @@ for future conflict reconciliation while keeping both telemetry channels atomic.
 
 Four focused cases cover atomic ordered-pair round trip, explicit missing state,
 committed durability failure, and a host-real cross-instance filesystem restore.
-Ordered-pair CAS/reconciliation remains separate; no storage-contention order is
-inferred from this persistence layer.
+The persistence layer itself still infers no order from storage contention.
+
+One-shot ordered-pair reconciliation now performs a fresh versioned load, then
+transactionally appends one caller-ordered count batch and exactly normalizes
+and
+merges its latency delta before one durable revision CAS. Missing state uses the
+caller capacity and submitted latency as its initial state. Existing persisted
+capacity and external-order watermark remain authoritative.
+
+Four focused cases cover missing-state initialization, exact existing-state
+reconciliation, stale-order rejection before CAS, and committed durability
+failure. Concurrent CAS conflict remains a typed non-mutating outcome and is not
+retried by this layer. A future bounded retry must repeat the complete fresh
+load/reconciliation so a newer watermark can reject stale work rather than
+rebasing it.
 
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
@@ -985,8 +998,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, ordered-pair CAS/reconciliation/retry, pair-generation
-reclamation, and general N-object transactions remain open.
+asynchronous timing, ordered-pair conflict retry, pair-generation reclamation,
+and general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

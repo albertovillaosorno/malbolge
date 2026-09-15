@@ -87,6 +87,14 @@ impl<'state>
     }
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct DecodedCachedRetryTelemetryOrderedPair {
+    pub count_bytes: usize,
+    pub histogram: NativeContinuationCachedRetryLatencyHistogram,
+    pub latency_bytes: usize,
+    pub ordered: NativeContinuationCachedRetryTelemetryOrderedWindow,
+}
+
 /// Durable ordered telemetry-pair publication plus explicit durability state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryTelemetryOrderedPairDurablePersistence<
@@ -308,21 +316,39 @@ where
     let PairLoad::Present { first, second } = load else {
         return Ok(OrderedPairLoad::Missing);
     };
+    let decoded = decode_cached_retry_telemetry_ordered_pair(&first, &second)?;
+    Ok(OrderedPairLoad::Restored {
+        count_bytes: decoded.count_bytes,
+        histogram: Box::new(decoded.histogram),
+        latency_bytes: decoded.latency_bytes,
+        ordered: Box::new(decoded.ordered),
+    })
+}
+
+pub(super) fn decode_cached_retry_telemetry_ordered_pair<StoreError>(
+    first: &[u8],
+    second: &[u8],
+) -> Result<
+    DecodedCachedRetryTelemetryOrderedPair,
+    NativeContinuationCachedRetryTelemetryOrderedPairPersistenceError<
+        StoreError,
+    >,
+> {
     let count_bytes = first.len();
-    let ordered = decode_ordered(&first)
+    let ordered = decode_ordered(first)
         .map_err(|error| PairError::OrderedCodec(Box::new(error)))?;
     let latency_bytes = second.len();
-    let latency_snapshot = decode_latency(&second)
+    let latency_snapshot = decode_latency(second)
         .map_err(|error| PairError::LatencyCodec(Box::new(error)))?;
     let histogram =
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
             latency_snapshot,
         )
         .map_err(|error| PairError::LatencySnapshot(Box::new(error)))?;
-    Ok(OrderedPairLoad::Restored {
+    Ok(DecodedCachedRetryTelemetryOrderedPair {
         count_bytes,
-        histogram: Box::new(histogram),
+        histogram,
         latency_bytes,
-        ordered: Box::new(ordered),
+        ordered,
     })
 }

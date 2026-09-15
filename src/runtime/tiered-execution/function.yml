@@ -488,6 +488,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Persist ordered count and latency telemetry atomically.
+  - id: part-0092
+    path: composition/tier/cached_cycle/telemetry_ordered_pair_reconciliation.rs
+    kind: composition
+    language: rust
+    responsibility: Reconcile ordered count and latency deltas before pair CAS.
 projects: []
 tests: []
 graph:

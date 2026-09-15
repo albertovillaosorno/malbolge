@@ -70,6 +70,8 @@ mod telemetry_ordered_cas;
 mod telemetry_ordered_cas_retry;
 #[path = "cached_cycle/telemetry_ordered_pair_persistence.rs"]
 mod telemetry_ordered_pair_persistence;
+#[path = "cached_cycle/telemetry_ordered_pair_reconciliation.rs"]
+mod telemetry_ordered_pair_reconciliation;
 #[path = "cached_cycle/telemetry_ordered_persistence.rs"]
 mod telemetry_ordered_persistence;
 #[path = "cached_cycle/telemetry_ordered_state.rs"]
@@ -207,6 +209,14 @@ pub use telemetry_ordered_pair_persistence::{
     NativeContinuationCachedRetryTelemetryOrderedPairPersistenceWrite,
     persist_cached_retry_telemetry_ordered_pair_durably,
     restore_cached_retry_telemetry_ordered_pair,
+};
+pub use telemetry_ordered_pair_reconciliation::{
+    NativeContinuationCachedRetryOrderedPairReconciliation,
+    NativeContinuationCachedRetryOrderedPairReconciliationError,
+    NativeContinuationCachedRetryOrderedPairReconciliationRequest,
+    NativeContinuationCachedRetryOrderedPairReconciliationStoreResult,
+    NativeContinuationCachedRetryOrderedPairVersionedState,
+    reconcile_cached_retry_telemetry_ordered_pair_durably,
 };
 pub use telemetry_ordered_persistence::{
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,

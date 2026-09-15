@@ -208,6 +208,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
     NativeContinuationCachedRetryNativeFailure,
+    NativeContinuationCachedRetryOrderedPairReconciliation,
+    NativeContinuationCachedRetryOrderedPairReconciliationError,
+    NativeContinuationCachedRetryOrderedPairReconciliationRequest,
     NativeContinuationCachedRetryPolicyPublication,
     NativeContinuationCachedRetryPolicyRecommendation,
     NativeContinuationCachedRetryPolicyRecommendationSet,
@@ -278,6 +281,7 @@ use cached_cycle::{
     publish_cached_retry_telemetry_ordered_batch_durably,
     publish_cached_retry_telemetry_ordered_batch_durably_with_retries,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
+    reconcile_cached_retry_telemetry_ordered_pair_durably,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_ordered_pair,
@@ -881,6 +885,17 @@ type OrderedTelemetryPairDurablePersistence =
     NativeContinuationCachedRetryTelemetryOrderedPairDurablePersistence<
         TestBlobPairDurabilityError,
     >;
+type OrderedPairReconciliation =
+    NativeContinuationCachedRetryOrderedPairReconciliation<
+        u64,
+        TestBlobPairDurabilityError,
+    >;
+type OrderedPairReconciliationError =
+    NativeContinuationCachedRetryOrderedPairReconciliationError<
+        TestBlobPairStoreError,
+    >;
+type OrderedPairReconciliationRequest<'state> =
+    NativeContinuationCachedRetryOrderedPairReconciliationRequest<'state>;
 type OrderedTelemetryPairLoad =
     NativeContinuationCachedRetryTelemetryOrderedPairPersistenceLoad;
 type OrderedTelemetryPairRequest<'state> =
@@ -52919,6 +52934,197 @@ fn cached_retry_telemetry_pair_state(
     let mut histogram = cached_retry_latency_histogram()?;
     record_cached_retry_latencies(&mut histogram, &[latency])?;
     Ok((window, histogram))
+}
+
+#[test]
+fn cached_retry_ordered_pair_reconciliation_initializes() -> Result<(), String>
+{
+    let capacity = nonzero_test_limit(3, "ordered reconcile capacity")?;
+    let order = OrderedTelemetryBatchOrder::from_value(10);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut latency, &[10])?;
+    let limit = nonzero_test_limit(4_096, "ordered reconcile bytes")?;
+    let mut store = TestBlobPairStore::default();
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, order),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, request,
+    )
+    .map_err(|error| format!("ordered reconcile init failed: {error:?}"))?;
+    let OrderedPairReconciliation::Durable { current, publication } = outcome
+    else {
+        return Err(String::from("ordered reconcile init did not commit"));
+    };
+    if current.ordered().last_order() == Some(order)
+        && current.ordered().window().len() == 1
+        && current.histogram().samples() == 1
+        && publication.current_order() == order
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered reconcile init evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_reconciliation_merges_current()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered reconcile merge capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered reconcile merge bytes")?;
+    let first = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let second = cached_retry_window_telemetry(
+        1,
+        4,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut first_latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut first_latency, &[10])?;
+    let mut second_latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut second_latency, &[100])?;
+    let mut store = TestBlobPairStore::default();
+    let first_batch = [first];
+    let first_request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        &first_batch,
+        &first_latency,
+        (limit, limit),
+    );
+    let _first = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store,
+        first_request,
+    )
+    .map_err(|error| format!("first ordered reconcile failed: {error:?}"))?;
+    let second_batch = [second];
+    let second_order = OrderedTelemetryBatchOrder::from_value(20);
+    let second_request = OrderedPairReconciliationRequest::new(
+        (capacity, second_order),
+        &second_batch,
+        &second_latency,
+        (limit, limit),
+    );
+    let outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store,
+        second_request,
+    )
+    .map_err(|error| format!("second ordered reconcile failed: {error:?}"))?;
+    let OrderedPairReconciliation::Durable { current, .. } = outcome else {
+        return Err(String::from("second ordered reconcile did not commit"));
+    };
+    if current.ordered().last_order() == Some(second_order)
+        && current.ordered().window().len() == 2
+        && current.histogram().samples() == 2
+        && current.histogram().total_nanoseconds() == 110
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered reconcile merge evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_reconciliation_rejects_stale_order()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered reconcile stale capacity")?;
+    let order = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut latency, &[10])?;
+    let limit = nonzero_test_limit(4_096, "ordered reconcile stale bytes")?;
+    let mut store = TestBlobPairStore::default();
+    let batch = [summary];
+    let first = OrderedPairReconciliationRequest::new(
+        (capacity, order),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let _published = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, first,
+    )
+    .map_err(|error| format!("ordered stale setup failed: {error:?}"))?;
+    let replace_calls = store.replace_calls;
+    let stale = OrderedPairReconciliationRequest::new(
+        (capacity, order),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let error = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, stale,
+    )
+    .err()
+    .ok_or_else(|| String::from("stale ordered reconcile was accepted"))?;
+    if matches!(
+        error,
+        OrderedPairReconciliationError::Ordered(
+            NativeContinuationCachedRetryTelemetryOrderedWindowError::
+                OrderNotAdvanced { .. }
+        )
+    ) && store.replace_calls == replace_calls
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale ordered reconcile evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_reconciliation_retains_committed_failure()
+-> Result<(), String> {
+    let capacity =
+        nonzero_test_limit(2, "ordered reconcile committed capacity")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let latency = cached_retry_latency_histogram()?;
+    let limit = nonzero_test_limit(4_096, "ordered reconcile committed bytes")?;
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(1)),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, request,
+    )
+    .map_err(|error| {
+        format!("ordered committed reconcile failed: {error:?}")
+    })?;
+    if matches!(outcome, OrderedPairReconciliation::Published {
+        durability_error: TestBlobPairDurabilityError::Confirm,
+        ..
+    }) && store.pair.is_some()
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered reconcile committed evidence drifted"))
+    }
 }
 
 #[test]
