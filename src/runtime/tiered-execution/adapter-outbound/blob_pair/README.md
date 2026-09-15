@@ -16,10 +16,17 @@ first read one complete manifest and then load only the two immutable members it
 names indirectly through its process/generation token.
 
 A persistent sibling `.lock` file serializes cooperating publishers around
-immutable-generation creation and manifest replacement. Readers do not need the
-lock because generation files are immutable and are not reclaimed by this
-adapter. A crash before manifest replacement can therefore leave unreferenced
-generation files, but those files are never visible as current pair state.
+immutable-generation creation and manifest replacement. Revision-conditional
+publication compares the opaque manifest generation while that same lock is
+held.
+Conflict returns the complete current bounded pair plus its revision; byte-equal
+newer generations still conflict with stale revisions, preventing ABA.
+
+Readers do not need the lock because generation files are immutable and are not
+reclaimed by this adapter. A crash before manifest replacement can therefore
+leave unreferenced generation files, but those files are never visible as
+current
+pair state.
 
 ## Failure semantics
 
@@ -40,6 +47,5 @@ is post-publication durability evidence and must not be interpreted as rollback.
 - pair byte-limit selection;
 - directory creation or manifest discovery;
 - generation reclamation or garbage collection;
-- pair compare-and-swap semantics;
 - protection from writers that ignore the sibling lock;
 - general N-object transactions or distributed consensus.

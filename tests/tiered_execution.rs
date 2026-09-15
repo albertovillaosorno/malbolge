@@ -155,12 +155,16 @@ use std::time::Duration;
 use std::{fs, thread};
 
 use blob_pair_persistence::{
+    NativeContinuationBlobPairConditionalDurablePersistence as PairCasDurable,
+    NativeContinuationBlobPairConditionalPersistence as PairCasPersistence,
     NativeContinuationBlobPairDurablePersistence as BlobPairDurablePersistence,
     NativeContinuationBlobPairMember as BlobPairMember,
     NativeContinuationBlobPairPersistenceError as BlobPairPersistenceError,
     NativeContinuationBlobPairPersistenceLoad as BlobPairPersistenceLoad,
     NativeContinuationBlobPairPersistenceRequest as BlobPairPersistenceRequest,
+    compare_and_swap_blob_pair, compare_and_swap_blob_pair_durably,
     persist_blob_pair, persist_blob_pair_durably, restore_blob_pair,
+    restore_blob_pair_versioned,
 };
 use blob_pair_store as telemetry_pair_store_port;
 use blob_pair_store::NativeContinuationBlobPairStore as PairStorePort;
@@ -2222,6 +2226,7 @@ struct TestBlobPairStore {
     last_load_limits: Option<(NonZeroUsize, NonZeroUsize)>,
     pair: Option<telemetry_pair_store_port::NativeContinuationBlobPair>,
     replace_calls: usize,
+    revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2286,12 +2291,80 @@ impl telemetry_pair_store_port::NativeContinuationBlobPairStore
         if self.fail_replace {
             return Err(TestBlobPairStoreError::Replace);
         }
+        let Some(revision) = self.revision.checked_add(1) else {
+            return Err(TestBlobPairStoreError::Replace);
+        };
         self.pair =
             Some(telemetry_pair_store_port::NativeContinuationBlobPair {
                 first: first.to_vec(),
                 second: second.to_vec(),
             });
+        self.revision = revision;
         Ok(())
+    }
+}
+
+impl telemetry_pair_store_port::NativeContinuationConditionalBlobPairStore
+    for TestBlobPairStore
+{
+    type Revision = u64;
+
+    fn compare_and_swap_pair(
+        &mut self,
+        request: telemetry_pair_store_port::
+            NativeContinuationBlobPairConditionalRequest<'_, Self::Revision>,
+    ) -> Result<
+        telemetry_pair_store_port::
+            NativeContinuationBlobPairConditionalPublication<Self::Revision>,
+        Self::Error,
+    >{
+        let current_revision = self.pair.as_ref().map(|_pair| self.revision);
+        if current_revision.as_ref() != request.expected {
+            let current = self.pair.clone().map(|pair| {
+                telemetry_pair_store_port::NativeContinuationVersionedBlobPair {
+                    pair,
+                    revision: self.revision,
+                }
+            });
+            return Ok(
+                telemetry_pair_store_port::
+                    NativeContinuationBlobPairConditionalPublication::Conflict {
+                        current,
+                    },
+            );
+        }
+        PairStorePort::replace_pair(self, request.first, request.second)?;
+        Ok(
+            telemetry_pair_store_port::
+                NativeContinuationBlobPairConditionalPublication::Published {
+                    revision: self.revision,
+                },
+        )
+    }
+
+    fn load_pair_versioned(
+        &mut self,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> Result<
+        Option<
+            telemetry_pair_store_port::NativeContinuationVersionedBlobPair<
+                Self::Revision,
+            >,
+        >,
+        Self::Error,
+    > {
+        let loaded_pair = PairStorePort::load_pair(
+            self,
+            first_maximum_bytes,
+            second_maximum_bytes,
+        )?;
+        Ok(loaded_pair.map(|pair| {
+            telemetry_pair_store_port::NativeContinuationVersionedBlobPair {
+                pair,
+                revision: self.revision,
+            }
+        }))
     }
 }
 
@@ -51278,6 +51351,173 @@ fn cached_retry_blob_pair_persistence_failure_preserves_previous_pair()
 }
 
 #[test]
+fn cached_retry_blob_pair_versioned_load_keeps_revision() -> Result<(), String>
+{
+    let maximum_bytes = nonzero_test_limit(64, "versioned pair bytes")?;
+    let mut store = TestBlobPairStore::default();
+    let request = BlobPairPersistenceRequest::new(
+        b"first",
+        b"second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _write = persist_blob_pair(&mut store, request)
+        .map_err(|error| format!("versioned pair setup failed: {error:?}"))?;
+    let loaded =
+        restore_blob_pair_versioned(&mut store, maximum_bytes, maximum_bytes)
+            .map_err(|error| format!("versioned pair load failed: {error:?}"))?
+            .ok_or_else(|| {
+                String::from("versioned pair unexpectedly missing")
+            })?;
+    if loaded.first == b"first"
+        && loaded.second == b"second"
+        && loaded.revision == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("versioned pair load evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_cas_initializes_missing_revision()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "pair CAS initialize bytes")?;
+    let mut store = TestBlobPairStore::default();
+    let request = BlobPairPersistenceRequest::new(
+        b"first",
+        b"second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let outcome = compare_and_swap_blob_pair(&mut store, None, request)
+        .map_err(|error| format!("pair CAS initialize failed: {error:?}"))?;
+    let PairCasPersistence::Published { revision, write } = outcome else {
+        return Err(String::from("missing pair CAS did not publish"));
+    };
+    if revision == 1
+        && write.first_bytes() == 5
+        && write.second_bytes() == 6
+        && store.pair.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pair CAS initialize evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_cas_retains_stale_conflict() -> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "pair CAS conflict bytes")?;
+    let mut store = TestBlobPairStore::default();
+    let initial = BlobPairPersistenceRequest::new(
+        b"same",
+        b"bytes",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _first = persist_blob_pair(&mut store, initial)
+        .map_err(|error| format!("pair CAS first setup failed: {error:?}"))?;
+    let stale_revision = store.revision;
+    let _second = persist_blob_pair(&mut store, initial)
+        .map_err(|error| format!("pair CAS second setup failed: {error:?}"))?;
+    let replacement = BlobPairPersistenceRequest::new(
+        b"new",
+        b"pair",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let outcome = compare_and_swap_blob_pair(
+        &mut store,
+        Some(&stale_revision),
+        replacement,
+    )
+    .map_err(|error| format!("pair CAS conflict failed: {error:?}"))?;
+    let PairCasPersistence::Conflict { current: Some(current) } = outcome
+    else {
+        return Err(String::from("stale pair revision did not conflict"));
+    };
+    if current.revision == 2
+        && current.first == b"same"
+        && current.second == b"bytes"
+        && store.revision == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("pair CAS conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_versioned_load_rechecks_bounds() -> Result<(), String>
+{
+    let short = nonzero_test_limit(3, "versioned pair short bytes")?;
+    let long = nonzero_test_limit(64, "versioned pair long bytes")?;
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: b"oversized".to_vec(),
+            second: b"ok".to_vec(),
+        }),
+        revision: 7,
+        ..TestBlobPairStore::default()
+    };
+    let error = restore_blob_pair_versioned(&mut store, short, long)
+        .err()
+        .ok_or_else(|| String::from("oversized versioned pair was accepted"))?;
+    if error
+        == (BlobPairPersistenceError::ByteLimit {
+            member: BlobPairMember::First,
+            maximum_bytes: short,
+            observed_bytes: 9,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("versioned pair bound evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_cas_durability_retains_committed_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(64, "pair CAS durable bytes")?;
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let request = BlobPairPersistenceRequest::new(
+        b"first",
+        b"second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let outcome = compare_and_swap_blob_pair_durably(&mut store, None, request)
+        .map_err(|error| {
+            format!("pair CAS durable publish failed: {error:?}")
+        })?;
+    let PairCasDurable::Published {
+        durability_error,
+        revision,
+        write,
+    } = outcome
+    else {
+        return Err(String::from(
+            "pair CAS durability failure was not committed",
+        ));
+    };
+    if durability_error == TestBlobPairDurabilityError::Confirm
+        && revision == 1
+        && write.first_bytes() == 5
+        && write.second_bytes() == 6
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("pair CAS durability evidence drifted"))
+    }
+}
+
+#[test]
 fn cached_retry_blob_pair_persistence_checks_both_write_bounds()
 -> Result<(), String> {
     let mut first_store = TestBlobPairStore::default();
@@ -52110,6 +52350,133 @@ fn cached_retry_file_blob_pair_store_rejects_missing_member()
         Ok(())
     } else {
         Err(String::from("missing pair member evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_cas_advances_revision() -> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-cas-advance")?;
+    let maximum_bytes = nonzero_test_limit(64, "file pair CAS bytes")?;
+    let mut first_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let initial = BlobPairPersistenceRequest::new(
+        b"first-a",
+        b"second-a",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let initial_outcome =
+        compare_and_swap_blob_pair(&mut first_store, None, initial).map_err(
+            |error| format!("file pair CAS initialize failed: {error:?}"),
+        )?;
+    let PairCasPersistence::Published {
+        revision: first_revision, ..
+    } = initial_outcome
+    else {
+        return Err(String::from("file pair CAS did not initialize"));
+    };
+    let mut second_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let replacement = BlobPairPersistenceRequest::new(
+        b"first-b",
+        b"second-b",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let second_outcome = compare_and_swap_blob_pair(
+        &mut second_store,
+        Some(&first_revision),
+        replacement,
+    )
+    .map_err(|error| format!("file pair CAS advance failed: {error:?}"))?;
+    let PairCasPersistence::Published {
+        revision: second_revision,
+        ..
+    } = second_outcome
+    else {
+        return Err(String::from("file pair CAS did not advance"));
+    };
+    let loaded = restore_blob_pair_versioned(
+        &mut second_store,
+        maximum_bytes,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file pair versioned load failed: {error:?}"))?
+    .ok_or_else(|| String::from("file pair versioned state missing"))?;
+    let result = if first_revision != second_revision
+        && loaded.revision == second_revision
+        && loaded.first == b"first-b"
+        && loaded.second == b"second-b"
+    {
+        Ok(())
+    } else {
+        Err(String::from("file pair CAS revision did not advance"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_cas_rejects_aba() -> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-cas-aba")?;
+    let maximum_bytes = nonzero_test_limit(64, "file pair ABA bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let same = BlobPairPersistenceRequest::new(
+        b"same-first",
+        b"same-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let first_outcome = compare_and_swap_blob_pair(&mut store, None, same)
+        .map_err(|error| {
+            format!("file pair ABA initialize failed: {error:?}")
+        })?;
+    let PairCasPersistence::Published {
+        revision: stale_revision, ..
+    } = first_outcome
+    else {
+        return Err(String::from("file pair ABA initialization conflicted"));
+    };
+    let _same_again = persist_blob_pair(&mut store, same).map_err(|error| {
+        format!("file pair ABA republish failed: {error:?}")
+    })?;
+    let current =
+        restore_blob_pair_versioned(&mut store, maximum_bytes, maximum_bytes)
+            .map_err(|error| {
+                format!("file pair ABA current load failed: {error:?}")
+            })?
+            .ok_or_else(|| {
+                String::from("file pair ABA current state missing")
+            })?;
+    let replacement = BlobPairPersistenceRequest::new(
+        b"new-first",
+        b"new-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let outcome = compare_and_swap_blob_pair(
+        &mut store,
+        Some(&stale_revision),
+        replacement,
+    )
+    .map_err(|error| format!("file pair ABA stale CAS failed: {error:?}"))?;
+    let PairCasPersistence::Conflict { current: Some(conflict) } = outcome
+    else {
+        return Err(String::from(
+            "file pair ABA stale revision did not conflict",
+        ));
+    };
+    let result = if current.revision != stale_revision
+        && conflict.revision == current.revision
+        && conflict.first == b"same-first"
+        && conflict.second == b"same-second"
+    {
+        Ok(())
+    } else {
+        Err(String::from("file pair ABA conflict evidence drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

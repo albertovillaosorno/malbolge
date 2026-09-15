@@ -912,16 +912,21 @@ concurrent complete-pair publication, orphan invisibility, malformed manifests,
 missing referenced members, and the typed durable telemetry round trip.
 Generation reclamation remains open.
 
-The reviewed pair-CAS boundary must compare an opaque publication revision, not
-the two payload byte strings. A versioned load should return one bounded pair
-plus the exact revision observed at the same manifest commit point; conditional
-replacement should match only that revision, with `None` matching only absence.
+Pair CAS now compares an opaque publication revision rather than payload bytes.
+Versioned load returns one bounded pair plus the revision observed from the same
+manifest commit point. Conditional replacement matches only that revision, while
+`None` matches only missing state; application orchestration rechecks both
+returned member bounds and confirms durability only after a committed CAS.
 
-For the filesystem adapter, the canonical manifest bytes are sufficient revision
-evidence because each committed generation token is unique. A stale revision
-must therefore conflict even when a newer generation contains byte-identical
-payloads, avoiding ABA. Conflict should retain the current bounded pair plus its
-revision while publication authority is held; no automatic retry is implied.
+The filesystem adapter uses its process/generation manifest token as the opaque
+revision. The persistent sibling lock spans current-manifest comparison through
+new-generation creation and manifest replacement. A stale revision conflicts
+even when a newer generation contains byte-identical payloads, avoiding ABA, and
+returns the complete current bounded pair plus its newer revision without retry.
+
+Five adapter-neutral cases cover versioned load, missing-state initialization,
+stale conflict, post-load bound rejection, and committed durability failure. Two
+host-real CAS cases cover revision advance and byte-identical ABA rejection.
 
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
@@ -954,8 +959,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, pair CAS, pair-generation reclamation, and general N-object
-transactions remain open.
+asynchronous timing, typed cached-cycle pair CAS binding, pair-CAS retry,
+pair-generation reclamation, and general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

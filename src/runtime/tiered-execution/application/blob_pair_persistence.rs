@@ -17,7 +17,7 @@
 //   - Outputs: missing/present pair bytes or exact publication evidence.
 //   - Side effects: one delegated atomic pair load or replacement per call.
 // - Split-When:
-//   - Pair CAS, migration, or N-object transactions gain application authority.
+//   - Migration or N-object transactions gain application authority.
 // - Merge-When:
 //   - Another application service owns the exact bounded pair use case.
 // - Summary:
@@ -36,10 +36,19 @@ use std::num::NonZeroUsize;
 
 use pair_store::{
     NativeContinuationBlobPairStore as PairStore,
+    NativeContinuationConditionalBlobPairStore as ConditionalPairStore,
     NativeContinuationDurableBlobPairStore as DurablePairStore,
 };
 
 use crate::blob_pair_store as pair_store;
+
+type PairConditionalPublication<Revision> =
+    pair_store::NativeContinuationBlobPairConditionalPublication<Revision>;
+type PairConditionalDurable<Revision, DurabilityError> =
+    NativeContinuationBlobPairConditionalDurablePersistence<
+        Revision,
+        DurabilityError,
+    >;
 
 /// Immutable bounded request for one atomic pair publication.
 #[derive(Clone, Copy, Debug)]
@@ -132,6 +141,63 @@ pub struct NativeContinuationBlobPairPersistenceWrite {
     second_bytes: usize,
 }
 
+/// Bounded pair plus opaque publication revision returned to application code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationBlobPairVersionedLoad<Revision> {
+    /// Exact first member bytes.
+    pub first: Vec<u8>,
+    /// Opaque adapter-owned revision observed with both members.
+    pub revision: Revision,
+    /// Exact second member bytes.
+    pub second: Vec<u8>,
+}
+
+/// Outcome of one bounded revision-conditional atomic pair publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobPairConditionalPersistence<Revision> {
+    /// Current publication differed from caller expectation.
+    Conflict {
+        /// Complete bounded current publication, or absence.
+        current: Option<NativeContinuationBlobPairVersionedLoad<Revision>>,
+    },
+    /// Replacement committed under a fresh opaque revision.
+    Published {
+        /// Fresh adapter-owned revision assigned at commit.
+        revision: Revision,
+        /// Exact committed member byte counts.
+        write: NativeContinuationBlobPairPersistenceWrite,
+    },
+}
+
+/// Durable outcome of one revision-conditional pair publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobPairConditionalDurablePersistence<
+    Revision,
+    DurabilityError,
+> {
+    /// Current publication differed from caller expectation.
+    Conflict {
+        /// Complete bounded current publication, or absence.
+        current: Option<NativeContinuationBlobPairVersionedLoad<Revision>>,
+    },
+    /// Conditional publication and durability confirmation completed.
+    Durable {
+        /// Fresh adapter-owned revision assigned at commit.
+        revision: Revision,
+        /// Exact committed member byte counts.
+        write: NativeContinuationBlobPairPersistenceWrite,
+    },
+    /// Conditional publication committed, then durability confirmation failed.
+    Published {
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Fresh adapter-owned revision assigned at commit.
+        revision: Revision,
+        /// Exact committed member byte counts.
+        write: NativeContinuationBlobPairPersistenceWrite,
+    },
+}
+
 /// Result of one atomic pair persistence use case.
 pub type NativeContinuationBlobPairPersistenceResult<Value, StoreError> =
     Result<Value, NativeContinuationBlobPairPersistenceError<StoreError>>;
@@ -140,6 +206,34 @@ pub type NativeContinuationBlobPairPersistenceResult<Value, StoreError> =
 pub type NativeContinuationBlobPairDurableStoreResult<Store> = Result<
     NativeContinuationBlobPairDurablePersistence<
         <Store as DurablePairStore>::DurabilityError,
+    >,
+    NativeContinuationBlobPairPersistenceError<<Store as PairStore>::Error>,
+>;
+
+/// Conditional pair result specialized to one outbound store type.
+pub type NativeContinuationBlobPairConditionalStoreResult<Store> = Result<
+    NativeContinuationBlobPairConditionalPersistence<
+        <Store as ConditionalPairStore>::Revision,
+    >,
+    NativeContinuationBlobPairPersistenceError<<Store as PairStore>::Error>,
+>;
+
+/// Durable conditional pair result specialized to one outbound store type.
+pub type NativeContinuationBlobPairConditionalDurableStoreResult<Store> =
+    Result<
+        NativeContinuationBlobPairConditionalDurablePersistence<
+            <Store as ConditionalPairStore>::Revision,
+            <Store as DurablePairStore>::DurabilityError,
+        >,
+        NativeContinuationBlobPairPersistenceError<<Store as PairStore>::Error>,
+    >;
+
+/// Versioned pair load result specialized to one outbound store type.
+pub type NativeContinuationBlobPairVersionedStoreLoadResult<Store> = Result<
+    Option<
+        NativeContinuationBlobPairVersionedLoad<
+            <Store as ConditionalPairStore>::Revision,
+        >,
     >,
     NativeContinuationBlobPairPersistenceError<<Store as PairStore>::Error>,
 >;
@@ -233,6 +327,151 @@ where
     Ok(NativeContinuationBlobPairPersistenceWrite {
         first_bytes: request.first.len(),
         second_bytes: request.second.len(),
+    })
+}
+
+/// Conditionally persists both blobs against one opaque expected revision.
+///
+/// # Errors
+///
+/// Returns byte-limit or pair-store failure before a typed outcome is produced.
+pub fn compare_and_swap_blob_pair<Store>(
+    store: &mut Store,
+    expected: Option<&Store::Revision>,
+    request: NativeContinuationBlobPairPersistenceRequest<'_>,
+) -> NativeContinuationBlobPairConditionalStoreResult<Store>
+where
+    Store: ConditionalPairStore,
+{
+    admit_member(
+        NativeContinuationBlobPairMember::First,
+        request.first.len(),
+        request.first_maximum_bytes,
+    )?;
+    admit_member(
+        NativeContinuationBlobPairMember::Second,
+        request.second.len(),
+        request.second_maximum_bytes,
+    )?;
+    let outcome = store
+        .compare_and_swap_pair(
+            pair_store::NativeContinuationBlobPairConditionalRequest {
+                expected,
+                first: request.first,
+                first_maximum_bytes: request.first_maximum_bytes,
+                second: request.second,
+                second_maximum_bytes: request.second_maximum_bytes,
+            },
+        )
+        .map_err(NativeContinuationBlobPairPersistenceError::Store)?;
+    match outcome {
+        PairConditionalPublication::Conflict { current } => {
+            Ok(NativeContinuationBlobPairConditionalPersistence::Conflict {
+                current: current
+                    .map(|value| admit_versioned_pair(value, request))
+                    .transpose()?,
+            })
+        },
+        PairConditionalPublication::Published { revision } => Ok(
+            NativeContinuationBlobPairConditionalPersistence::Published {
+                revision,
+                write: NativeContinuationBlobPairPersistenceWrite {
+                    first_bytes: request.first.len(),
+                    second_bytes: request.second.len(),
+                },
+            },
+        ),
+    }
+}
+
+/// Conditionally persists one pair and confirms durability only after commit.
+///
+/// # Errors
+///
+/// Returns only prepublication byte-limit/store failures. Conflict is
+/// non-mutating evidence; durability failure after commit remains committed.
+pub fn compare_and_swap_blob_pair_durably<Store>(
+    store: &mut Store,
+    expected: Option<&Store::Revision>,
+    request: NativeContinuationBlobPairPersistenceRequest<'_>,
+) -> NativeContinuationBlobPairConditionalDurableStoreResult<Store>
+where
+    Store: ConditionalPairStore + DurablePairStore,
+{
+    let (revision, write) =
+        match compare_and_swap_blob_pair(store, expected, request)? {
+            NativeContinuationBlobPairConditionalPersistence::Conflict {
+                current,
+            } => {
+                return Ok(PairConditionalDurable::Conflict { current });
+            },
+            NativeContinuationBlobPairConditionalPersistence::Published {
+                revision,
+                write,
+            } => (revision, write),
+        };
+    match store.confirm_pair_durability() {
+        Ok(()) => Ok(PairConditionalDurable::Durable { revision, write }),
+        Err(durability_error) => Ok(PairConditionalDurable::Published {
+            durability_error,
+            revision,
+            write,
+        }),
+    }
+}
+
+/// Loads one complete bounded pair together with its opaque revision.
+///
+/// # Errors
+///
+/// Returns pair-store or post-load first/second byte-limit failure.
+pub fn restore_blob_pair_versioned<Store>(
+    store: &mut Store,
+    first_maximum_bytes: NonZeroUsize,
+    second_maximum_bytes: NonZeroUsize,
+) -> NativeContinuationBlobPairVersionedStoreLoadResult<Store>
+where
+    Store: ConditionalPairStore,
+{
+    let value = store
+        .load_pair_versioned(first_maximum_bytes, second_maximum_bytes)
+        .map_err(NativeContinuationBlobPairPersistenceError::Store)?;
+    value
+        .map(|versioned| {
+            admit_versioned_pair(
+                versioned,
+                NativeContinuationBlobPairPersistenceRequest::new(
+                    &[],
+                    &[],
+                    first_maximum_bytes,
+                    second_maximum_bytes,
+                ),
+            )
+        })
+        .transpose()
+}
+
+fn admit_versioned_pair<Revision, StoreError>(
+    value: pair_store::NativeContinuationVersionedBlobPair<Revision>,
+    request: NativeContinuationBlobPairPersistenceRequest<'_>,
+) -> NativeContinuationBlobPairPersistenceResult<
+    NativeContinuationBlobPairVersionedLoad<Revision>,
+    StoreError,
+> {
+    admit_member(
+        NativeContinuationBlobPairMember::First,
+        value.pair.first.len(),
+        request.first_maximum_bytes,
+    )?;
+    admit_member(
+        NativeContinuationBlobPairMember::Second,
+        value.pair.second.len(),
+        request.second_maximum_bytes,
+    )?;
+    Ok(NativeContinuationBlobPairVersionedLoad {
+        first: value.pair.first,
+        revision: value.revision,
+        second: value.pair.second,
     })
 }
 

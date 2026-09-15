@@ -19,8 +19,7 @@
 //   - Side effects: immutable generation writes and atomic manifest
 //     replacement.
 // - Split-When:
-//   - Pair CAS, generation reclamation, or N-object transactions gain
-//     semantics.
+//   - Generation reclamation or N-object transactions gain semantics.
 // - Merge-When:
 //   - One filesystem adapter owns this exact generation-pointer lifecycle.
 // - Summary:
@@ -46,8 +45,13 @@ use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::blob_pair_store::{
-    NativeContinuationBlobPair, NativeContinuationBlobPairLoadResult,
-    NativeContinuationBlobPairStore, NativeContinuationDurableBlobPairStore,
+    NativeContinuationBlobPair,
+    NativeContinuationBlobPairConditionalPublication,
+    NativeContinuationBlobPairConditionalRequest,
+    NativeContinuationBlobPairLoadResult, NativeContinuationBlobPairStore,
+    NativeContinuationConditionalBlobPairStore,
+    NativeContinuationDurableBlobPairStore,
+    NativeContinuationVersionedBlobPair,
 };
 
 const MANIFEST_BYTES: usize = 24;
@@ -193,8 +197,9 @@ pub enum NativeContinuationFileBlobPairStoreError {
     SequenceExhausted,
 }
 
+/// Opaque filesystem publication revision for one committed blob pair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct PairGeneration {
+pub struct NativeContinuationFileBlobPairRevision {
     generation: u64,
     process: u64,
 }
@@ -207,8 +212,14 @@ pub struct NativeContinuationFileBlobPairStore {
 
 type PairStoreError = NativeContinuationFileBlobPairStoreError;
 
-type PairGenerationOpenResult = Result<
-    (PairGeneration, File, PathBuf, File, PathBuf),
+type NativeContinuationFileBlobPairRevisionOpenResult = Result<
+    (
+        NativeContinuationFileBlobPairRevision,
+        File,
+        PathBuf,
+        File,
+        PathBuf,
+    ),
     NativeContinuationFileBlobPairStoreError,
 >;
 
@@ -218,7 +229,7 @@ type PairManifestStagingOpenResult =
 impl NativeContinuationFileBlobPairStore {
     fn generation_path(
         &self,
-        generation: PairGeneration,
+        generation: NativeContinuationFileBlobPairRevision,
         member: NativeContinuationFileBlobPairMember,
     ) -> Result<PathBuf, NativeContinuationFileBlobPairStoreError> {
         let Some(file_name) = self.manifest.file_name() else {
@@ -293,9 +304,11 @@ impl NativeContinuationFileBlobPairStore {
         Self { manifest }
     }
 
-    fn open_generation(&self) -> PairGenerationOpenResult {
+    fn open_generation(
+        &self,
+    ) -> NativeContinuationFileBlobPairRevisionOpenResult {
         for _attempt in 0..MAX_STAGING_ATTEMPTS {
-            let generation = PairGeneration {
+            let generation = NativeContinuationFileBlobPairRevision {
                 generation: next_pair_id()?,
                 process: u64::from(process::id()),
             };
@@ -396,7 +409,7 @@ impl NativeContinuationFileBlobPairStore {
 
     fn publish_manifest(
         &self,
-        generation: PairGeneration,
+        generation: NativeContinuationFileBlobPairRevision,
     ) -> Result<(), NativeContinuationFileBlobPairStoreError> {
         let bytes = encode_manifest(generation);
         let (mut staging, staging_path) = self.open_manifest_staging()?;
@@ -432,7 +445,7 @@ impl NativeContinuationFileBlobPairStore {
 
     fn read_generation_member(
         &self,
-        generation: PairGeneration,
+        generation: NativeContinuationFileBlobPairRevision,
         member: NativeContinuationFileBlobPairMember,
         maximum_bytes: NonZeroUsize,
     ) -> Result<Vec<u8>, NativeContinuationFileBlobPairStoreError> {
@@ -474,7 +487,10 @@ impl NativeContinuationFileBlobPairStore {
         }
     }
 
-    fn read_manifest(&self) -> Result<Option<PairGeneration>, PairStoreError> {
+    fn read_manifest(
+        &self,
+    ) -> Result<Option<NativeContinuationFileBlobPairRevision>, PairStoreError>
+    {
         let mut file = match File::open(&self.manifest) {
             Ok(file) => file,
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -502,7 +518,10 @@ impl NativeContinuationFileBlobPairStore {
         &self,
         first: &[u8],
         second: &[u8],
-    ) -> Result<(), NativeContinuationFileBlobPairStoreError> {
+    ) -> Result<
+        NativeContinuationFileBlobPairRevision,
+        NativeContinuationFileBlobPairStoreError,
+    > {
         let (
             generation,
             mut first_file,
@@ -522,7 +541,35 @@ impl NativeContinuationFileBlobPairStore {
         )?;
         drop(first_file);
         drop(second_file);
-        self.publish_manifest(generation)
+        self.publish_manifest(generation)?;
+        Ok(generation)
+    }
+
+    fn versioned_pair(
+        &self,
+        revision: NativeContinuationFileBlobPairRevision,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> Result<
+        NativeContinuationVersionedBlobPair<
+            NativeContinuationFileBlobPairRevision,
+        >,
+        NativeContinuationFileBlobPairStoreError,
+    > {
+        let first = self.read_generation_member(
+            revision,
+            NativeContinuationFileBlobPairMember::First,
+            first_maximum_bytes,
+        )?;
+        let second = self.read_generation_member(
+            revision,
+            NativeContinuationFileBlobPairMember::Second,
+            second_maximum_bytes,
+        )?;
+        Ok(NativeContinuationVersionedBlobPair {
+            pair: NativeContinuationBlobPair { first, second },
+            revision,
+        })
     }
 }
 
@@ -534,20 +581,17 @@ impl NativeContinuationBlobPairStore for NativeContinuationFileBlobPairStore {
         first_maximum_bytes: NonZeroUsize,
         second_maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobPairLoadResult<Self::Error> {
-        let Some(generation) = self.read_manifest()? else {
+        let Some(revision) = self.read_manifest()? else {
             return Ok(None);
         };
-        let first = self.read_generation_member(
-            generation,
-            NativeContinuationFileBlobPairMember::First,
-            first_maximum_bytes,
-        )?;
-        let second = self.read_generation_member(
-            generation,
-            NativeContinuationFileBlobPairMember::Second,
-            second_maximum_bytes,
-        )?;
-        Ok(Some(NativeContinuationBlobPair { first, second }))
+        Ok(Some(
+            self.versioned_pair(
+                revision,
+                first_maximum_bytes,
+                second_maximum_bytes,
+            )?
+            .pair,
+        ))
     }
 
     fn replace_pair(
@@ -556,7 +600,66 @@ impl NativeContinuationBlobPairStore for NativeContinuationFileBlobPairStore {
         second: &[u8],
     ) -> Result<(), Self::Error> {
         let _lock = self.open_publication_lock()?;
-        self.replace_pair_locked(first, second)
+        let _revision = self.replace_pair_locked(first, second)?;
+        Ok(())
+    }
+}
+
+impl NativeContinuationConditionalBlobPairStore
+    for NativeContinuationFileBlobPairStore
+{
+    type Revision = NativeContinuationFileBlobPairRevision;
+
+    fn compare_and_swap_pair(
+        &mut self,
+        request: NativeContinuationBlobPairConditionalRequest<
+            '_,
+            Self::Revision,
+        >,
+    ) -> Result<
+        NativeContinuationBlobPairConditionalPublication<Self::Revision>,
+        Self::Error,
+    > {
+        let _lock = self.open_publication_lock()?;
+        let current_revision = self.read_manifest()?;
+        if current_revision.as_ref() != request.expected {
+            let current = current_revision
+                .map(|revision| {
+                    self.versioned_pair(
+                        revision,
+                        request.first_maximum_bytes,
+                        request.second_maximum_bytes,
+                    )
+                })
+                .transpose()?;
+            return Ok(
+                NativeContinuationBlobPairConditionalPublication::Conflict {
+                    current,
+                },
+            );
+        }
+        let revision =
+            self.replace_pair_locked(request.first, request.second)?;
+        Ok(
+            NativeContinuationBlobPairConditionalPublication::Published {
+                revision,
+            },
+        )
+    }
+
+    fn load_pair_versioned(
+        &mut self,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> Result<
+        Option<NativeContinuationVersionedBlobPair<Self::Revision>>,
+        Self::Error,
+    > {
+        let Some(revision) = self.read_manifest()? else {
+            return Ok(None);
+        };
+        self.versioned_pair(revision, first_maximum_bytes, second_maximum_bytes)
+            .map(Some)
     }
 }
 
@@ -590,7 +693,10 @@ fn cleanup_staging(path: &Path) -> Option<ErrorKind> {
 
 fn decode_manifest(
     bytes: &[u8],
-) -> Result<PairGeneration, NativeContinuationFileBlobPairStoreError> {
+) -> Result<
+    NativeContinuationFileBlobPairRevision,
+    NativeContinuationFileBlobPairStoreError,
+> {
     if bytes.len() != MANIFEST_BYTES {
         return Err(NativeContinuationFileBlobPairStoreError::ManifestSize {
             observed_bytes: bytes.len(),
@@ -628,10 +734,12 @@ fn decode_manifest(
             NativeContinuationFileBlobPairStoreError::ManifestGenerationZero,
         );
     }
-    Ok(PairGeneration { generation, process })
+    Ok(NativeContinuationFileBlobPairRevision { generation, process })
 }
 
-fn encode_manifest(generation: PairGeneration) -> [u8; MANIFEST_BYTES] {
+fn encode_manifest(
+    generation: NativeContinuationFileBlobPairRevision,
+) -> [u8; MANIFEST_BYTES] {
     let mut bytes = [0u8; MANIFEST_BYTES];
     bytes[..8].copy_from_slice(&MANIFEST_MAGIC);
     bytes[8..16].copy_from_slice(&generation.process.to_le_bytes());

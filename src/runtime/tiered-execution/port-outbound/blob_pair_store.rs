@@ -92,6 +92,99 @@ pub trait NativeContinuationBlobPairStore {
     ) -> Result<(), Self::Error>;
 }
 
+/// One atomically observed blob pair plus its opaque publication revision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationVersionedBlobPair<Revision> {
+    /// Complete opaque pair observed at this revision.
+    pub pair: NativeContinuationBlobPair,
+    /// Adapter-owned opaque publication revision.
+    pub revision: Revision,
+}
+
+/// Outcome of one revision-conditional atomic pair publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobPairConditionalPublication<Revision> {
+    /// Current publication revision differed from caller expectation.
+    Conflict {
+        /// Complete bounded current pair plus revision, or absence.
+        current: Option<NativeContinuationVersionedBlobPair<Revision>>,
+    },
+    /// Replacement committed under a fresh opaque revision.
+    Published {
+        /// Exact opaque revision assigned to the committed replacement.
+        revision: Revision,
+    },
+}
+
+/// Immutable revision-conditional pair publication request.
+#[derive(Clone, Copy, Debug)]
+pub struct NativeContinuationBlobPairConditionalRequest<'request, Revision> {
+    /// Opaque expected revision, or absence expectation.
+    pub expected: Option<&'request Revision>,
+    /// First replacement member bytes.
+    pub first: &'request [u8],
+    /// Positive first-member read/conflict bound.
+    pub first_maximum_bytes: NonZeroUsize,
+    /// Second replacement member bytes.
+    pub second: &'request [u8],
+    /// Positive second-member read/conflict bound.
+    pub second_maximum_bytes: NonZeroUsize,
+}
+
+/// Conditional publication result specialized to one pair store.
+pub type NativeContinuationConditionalBlobPairStoreResult<Store> = Result<
+    NativeContinuationBlobPairConditionalPublication<
+        <Store as NativeContinuationConditionalBlobPairStore>::Revision,
+    >,
+    <Store as NativeContinuationBlobPairStore>::Error,
+>;
+
+/// Versioned load result specialized to one pair store.
+pub type NativeContinuationVersionedBlobPairStoreLoadResult<Store> = Result<
+    Option<
+        NativeContinuationVersionedBlobPair<
+            <Store as NativeContinuationConditionalBlobPairStore>::Revision,
+        >,
+    >,
+    <Store as NativeContinuationBlobPairStore>::Error,
+>;
+
+/// Optional revision-conditional publication for one atomic blob-pair store.
+pub trait NativeContinuationConditionalBlobPairStore:
+    NativeContinuationBlobPairStore + Sized
+{
+    /// Adapter-owned opaque publication revision.
+    type Revision: Clone + Eq;
+
+    /// Conditionally replaces both blobs when current revision matches
+    /// expected.
+    ///
+    /// `None` matches only missing publication. Conflict returns the complete
+    /// bounded current pair plus its opaque revision and performs no mutation.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local coordination, read, or publication failures.
+    fn compare_and_swap_pair(
+        &mut self,
+        request: NativeContinuationBlobPairConditionalRequest<
+            '_,
+            Self::Revision,
+        >,
+    ) -> NativeContinuationConditionalBlobPairStoreResult<Self>;
+
+    /// Loads one complete bounded pair and revision from one manifest commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local read, representation, or transaction failures.
+    fn load_pair_versioned(
+        &mut self,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationVersionedBlobPairStoreLoadResult<Self>;
+}
+
 /// Optional post-publication durability confirmation for one blob-pair store.
 ///
 /// Publication has already committed before confirmation begins, so durability
