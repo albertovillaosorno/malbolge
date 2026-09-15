@@ -656,6 +656,14 @@ FIFO failure likewise leaves the previous order unchanged. Four cases cover
 arbitrary first order, gaps, stale rejection, and transactional failure. The
 owner neither sources order nor reads a clock.
 
+Ordered count ownership now also has a canonical revision-one outer frame. It
+records explicit order presence plus the exact `u64` watermark and nests the
+existing canonical count-window bytes with an exact length. Absent order
+requires
+a zero value, and nested count semantics are revalidated during decode. Five
+cases cover ordered/unordered round trips, absent-order canonicality, reserved
+flags, and nested corruption.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

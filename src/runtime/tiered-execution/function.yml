@@ -434,6 +434,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Couple external batch order to count telemetry retention.
+  - id: part-0081
+    path: composition/tier/cached_cycle/telemetry_ordered_state.rs
+    kind: composition
+    language: rust
+    responsibility: Encode ordered count telemetry state canonically.
 projects: []
 tests: []
 graph:

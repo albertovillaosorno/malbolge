@@ -517,6 +517,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Four cases cover first order, gaps, stale rejection, and transactional
   failure. No ordering source or clock is inferred.
 
+  Ordered count ownership now has a canonical revision-one outer frame. It
+  carries explicit order presence plus the exact `u64` watermark and nests the
+  existing count-window bytes with exact length. Absent order requires zero and
+  nested count semantics are revalidated. Five cases cover both round trips,
+  absent-order canonicality, reserved flags, and nested corruption.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

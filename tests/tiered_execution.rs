@@ -201,6 +201,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryCodecError,
     NativeContinuationCachedRetryTelemetryDurablePersistence,
     NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
     NativeContinuationCachedRetryTelemetryOrderedWindowError,
     NativeContinuationCachedRetryTelemetryPersistenceError,
@@ -216,9 +217,11 @@ use cached_cycle::{
     begin_cached_retry_latency_measurement,
     coarsen_cached_retry_latency_histogram,
     decode_cached_retry_latency_snapshot,
+    decode_cached_retry_telemetry_ordered_state,
     decode_cached_retry_telemetry_snapshot,
     derive_common_cached_retry_latency_coarsening,
     encode_cached_retry_latency_snapshot,
+    encode_cached_retry_telemetry_ordered_state,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     finish_cached_retry_latency_measurement,
     merge_cached_retry_latency_histogram_durably,
@@ -811,6 +814,8 @@ type LatencyDurableMergeRetry =
     >;
 type OrderedTelemetryWindowError =
     NativeContinuationCachedRetryTelemetryOrderedWindowError;
+type OrderedTelemetryStateCodecError =
+    NativeContinuationCachedRetryTelemetryOrderedStateCodecError;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
 type CrazyCacheFailure<MemoryError> =
@@ -52014,6 +52019,149 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
         Ok(())
     } else {
         Err(String::from("outbound store failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_state_roundtrips_committed_order()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(3, "ordered state capacity")?,
+    );
+    let mut ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(77);
+    let _published = ordered
+        .append_ordered_batch(order, &[summary])
+        .map_err(|error| format!("ordered state setup failed: {error:?}"))?;
+    let bytes = encode_cached_retry_telemetry_ordered_state(&ordered)
+        .map_err(|error| format!("ordered state encode failed: {error:?}"))?;
+    let restored = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .map_err(|error| format!("ordered state decode failed: {error:?}"))?;
+    let reencoded = encode_cached_retry_telemetry_ordered_state(&restored)
+        .map_err(|error| format!("ordered state reencode failed: {error:?}"))?;
+    if restored.last_order() == Some(order)
+        && restored.window().snapshot() == ordered.window().snapshot()
+        && reencoded == bytes
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered telemetry state round trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_state_roundtrips_absent_order()
+-> Result<(), String> {
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "unordered state capacity")?,
+    );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(summary).map_err(|error| error.to_string())?;
+    let ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let bytes = encode_cached_retry_telemetry_ordered_state(&ordered)
+        .map_err(|error| format!("unordered state encode failed: {error:?}"))?;
+    let restored = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .map_err(|error| format!("unordered state decode failed: {error:?}"))?;
+    if restored.last_order().is_none()
+        && restored.window().snapshot() == ordered.window().snapshot()
+    {
+        Ok(())
+    } else {
+        Err(String::from("absent ordered telemetry watermark drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_state_rejects_absent_order_value()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "ordered state absent capacity")?,
+    );
+    let ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let mut bytes = encode_cached_retry_telemetry_ordered_state(&ordered)
+        .map_err(|error| format!("ordered absent encode failed: {error:?}"))?;
+    let order_bytes = bytes
+        .get_mut(12..20)
+        .ok_or_else(|| String::from("ordered state order bytes missing"))?;
+    order_bytes.copy_from_slice(&9u64.to_le_bytes());
+    let error = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .err()
+        .ok_or_else(|| {
+            String::from("noncanonical absent order was accepted")
+        })?;
+    if error
+        == (OrderedTelemetryStateCodecError::AbsentOrderValue { observed: 9 })
+    {
+        Ok(())
+    } else {
+        Err(String::from("absent order rejection evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_state_rejects_reserved_flags()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "ordered state flags capacity")?,
+    );
+    let ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let mut bytes = encode_cached_retry_telemetry_ordered_state(&ordered)
+        .map_err(|error| format!("ordered flags encode failed: {error:?}"))?;
+    let flag_bytes = bytes
+        .get_mut(10..12)
+        .ok_or_else(|| String::from("ordered state flag bytes missing"))?;
+    flag_bytes.copy_from_slice(&2u16.to_le_bytes());
+    let error = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .err()
+        .ok_or_else(|| String::from("ordered reserved flags were accepted"))?;
+    if error == (OrderedTelemetryStateCodecError::Flags { observed: 2 }) {
+        Ok(())
+    } else {
+        Err(String::from("ordered flag rejection evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_state_retains_nested_rejection()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "ordered nested capacity")?,
+    );
+    let ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let mut bytes = encode_cached_retry_telemetry_ordered_state(&ordered)
+        .map_err(|error| format!("ordered nested encode failed: {error:?}"))?;
+    let nested_magic = bytes
+        .get_mut(28)
+        .ok_or_else(|| String::from("ordered nested payload missing"))?;
+    *nested_magic ^= 0xff;
+    let error = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .err()
+        .ok_or_else(|| {
+            String::from("corrupt nested count state was accepted")
+        })?;
+    if matches!(
+        error,
+        OrderedTelemetryStateCodecError::Telemetry(inner)
+            if *inner == NativeContinuationCachedRetryTelemetryCodecError::Magic
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("nested ordered state rejection drifted"))
     }
 }
 
