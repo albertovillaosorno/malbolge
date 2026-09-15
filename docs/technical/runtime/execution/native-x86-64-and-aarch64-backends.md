@@ -902,15 +902,22 @@ same-directory generation members, then writes and synchronizes a staging
 manifest. Atomic manifest `rename` is the sole commit point; readers follow one
 complete manifest to immutable members and therefore never combine generations.
 
-A persistent sibling lock serializes cooperating publishers. Crashes before the
-manifest commit may leave unreferenced generations, but those are ignored and
-never become current pair state. Directory synchronization remains a separate
-post-commit durability confirmation.
+A persistent sibling lock coordinates cooperating readers and publishers.
+Readers hold a shared lock from manifest observation through both immutable
+member reads; generation creation, conditional comparison, and manifest
+replacement hold the exclusive lock. This removes the manifest-to-member race
+that would otherwise make later generation reclamation unsafe.
 
-Eight host-real cases cover missing state, replacement, bounded reads,
-concurrent complete-pair publication, orphan invisibility, malformed manifests,
-missing referenced members, and the typed durable telemetry round trip.
-Generation reclamation remains open.
+Crashes before the manifest commit may still leave unreferenced generations,
+but those are ignored and never become current pair state. Directory
+synchronization remains a separate post-commit durability confirmation.
+Generation deletion itself remains a separate cleanup capability.
+
+Nine host-real cases cover missing state, replacement, bounded reads,
+shared-read
+lock coordination, concurrent complete-pair publication, orphan invisibility,
+malformed manifests, missing referenced members, and the typed durable telemetry
+round trip. Generation reclamation remains open.
 
 Pair CAS now compares an opaque publication revision rather than payload bytes.
 Versioned load returns one bounded pair plus the revision observed from the same

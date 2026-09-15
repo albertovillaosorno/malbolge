@@ -52639,6 +52639,47 @@ fn cached_retry_file_blob_pair_store_rejects_oversized_member()
 }
 
 #[test]
+fn cached_retry_file_blob_pair_store_coordinates_read_locks()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-read-lock")?;
+    let store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let first_read = store
+        .open_read_lock_for_test()
+        .map_err(|error| format!("first pair read lock failed: {error:?}"))?;
+    let second_read = store
+        .open_read_lock_for_test()
+        .map_err(|error| format!("second pair read lock failed: {error:?}"))?;
+    let file_name = fixture.destination.file_name().ok_or_else(|| {
+        String::from("pair read-lock manifest filename missing")
+    })?;
+    let mut lock_name = file_name.to_os_string();
+    lock_name.push(".lock");
+    let lock_path = fixture.destination.with_file_name(lock_name);
+    let contender = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|error| {
+            format!("pair exclusive contender open failed: {error}")
+        })?;
+    if contender.try_lock().is_ok() {
+        return Err(String::from(
+            "exclusive pair lock bypassed shared readers",
+        ));
+    }
+    drop(second_read);
+    drop(first_read);
+    contender.try_lock().map_err(|error| {
+        format!("pair exclusive lock stayed blocked: {error}")
+    })?;
+    contender
+        .unlock()
+        .map_err(|error| format!("pair exclusive unlock failed: {error}"))?;
+    remove_file_blob_store_fixture(&fixture.directory)
+}
+
+#[test]
 fn cached_retry_file_blob_pair_store_serializes_publishers()
 -> Result<(), String> {
     let fixture = file_blob_store_fixture("pair-concurrent")?;

@@ -745,13 +745,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   sole commit point. Readers follow one complete manifest to immutable members
   and cannot combine generations.
 
-  A persistent sibling lock serializes cooperating publishers. Crashes before
-  manifest commit may leave ignored orphan generations, while directory sync
-  remains explicit post-commit durability confirmation. Eight host-real cases
-  cover missing state, replacement, bounded reads, concurrent complete-pair
-  publication, orphan invisibility, malformed manifests, missing referenced
-  members, and the typed durable telemetry round trip. Pair generation
-  reclamation remains open.
+  A persistent sibling lock now coordinates cooperating readers and publishers.
+  Readers hold a shared lock from manifest observation through both immutable
+  member reads; generation creation, conditional comparison, and manifest
+  replacement hold the exclusive lock. This removes the manifest-to-member race
+  that would otherwise make later generation reclamation unsafe.
+
+  Crashes before manifest commit may still leave ignored orphan generations,
+  while directory sync remains explicit post-commit durability confirmation.
+  Nine host-real cases cover missing state, replacement, bounded reads,
+  shared-read lock coordination, concurrent complete-pair publication, orphan
+  invisibility, malformed manifests, missing referenced members, and the typed
+  durable telemetry round trip. Pair-generation deletion remains open.
 
   Pair CAS now compares an opaque publication revision rather than pair payload
   bytes. Versioned load returns the bounded pair plus revision observed from the

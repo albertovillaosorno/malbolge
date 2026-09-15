@@ -26,7 +26,7 @@
 //   - Binds atomic opaque blob-pair storage to filesystem generation
 //     indirection.
 // - Description:
-//   - One stable lock serializes generation creation and manifest publication.
+//   - One stable lock coordinates reads, generation creation, and publication.
 // - Usage:
 //   - Construct with one explicit manifest path and pass through pair-store
 //     port.
@@ -135,12 +135,12 @@ pub enum NativeContinuationFileBlobPairStoreError {
         /// Pair member that exceeded its bound.
         member: NativeContinuationFileBlobPairMember,
     },
-    /// Acquiring the stable sibling publication lock failed.
+    /// Acquiring the stable sibling pair-operation lock failed.
     Lock {
         /// Host filesystem error category.
         kind: ErrorKind,
     },
-    /// Opening the stable sibling publication lock failed.
+    /// Opening the stable sibling pair-operation lock failed.
     LockOpen {
         /// Host filesystem error category.
         kind: ErrorKind,
@@ -407,6 +407,35 @@ impl NativeContinuationFileBlobPairStore {
         Ok(file)
     }
 
+    fn open_read_lock(
+        &self,
+    ) -> Result<File, NativeContinuationFileBlobPairStoreError> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.lock_path()?)
+            .map_err(|error| {
+                NativeContinuationFileBlobPairStoreError::LockOpen {
+                    kind: error.kind(),
+                }
+            })?;
+        file.lock_shared().map_err(|error| {
+            NativeContinuationFileBlobPairStoreError::Lock {
+                kind: error.kind(),
+            }
+        })?;
+        Ok(file)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_read_lock_for_test(
+        &self,
+    ) -> Result<File, NativeContinuationFileBlobPairStoreError> {
+        self.open_read_lock()
+    }
+
     fn publish_manifest(
         &self,
         generation: NativeContinuationFileBlobPairRevision,
@@ -581,6 +610,7 @@ impl NativeContinuationBlobPairStore for NativeContinuationFileBlobPairStore {
         first_maximum_bytes: NonZeroUsize,
         second_maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobPairLoadResult<Self::Error> {
+        let _lock = self.open_read_lock()?;
         let Some(revision) = self.read_manifest()? else {
             return Ok(None);
         };
@@ -655,6 +685,7 @@ impl NativeContinuationConditionalBlobPairStore
         Option<NativeContinuationVersionedBlobPair<Self::Revision>>,
         Self::Error,
     > {
+        let _lock = self.open_read_lock()?;
         let Some(revision) = self.read_manifest()? else {
             return Ok(None);
         };

@@ -15,18 +15,18 @@ Atomic `rename` of that staging manifest is the single commit point. Readers
 first read one complete manifest and then load only the two immutable members it
 names indirectly through its process/generation token.
 
-A persistent sibling `.lock` file serializes cooperating publishers around
-immutable-generation creation and manifest replacement. Revision-conditional
-publication compares the opaque manifest generation while that same lock is
-held.
-Conflict returns the complete current bounded pair plus its revision; byte-equal
-newer generations still conflict with stale revisions, preventing ABA.
+A persistent sibling `.lock` file coordinates cooperating readers and
+publishers. Readers hold a shared lock from manifest observation through both
+immutable member reads. Generation creation, manifest replacement, and
+revision-conditional comparison hold the exclusive lock. Conflict returns the
+complete current bounded pair plus its revision; byte-equal newer generations
+still conflict with stale revisions, preventing ABA.
 
-Readers do not need the lock because generation files are immutable and are not
-reclaimed by this adapter. A crash before manifest replacement can therefore
-leave unreferenced generation files, but those files are never visible as
-current
-pair state.
+Shared reader locking is a prerequisite for safe generation reclamation: a
+future exclusive reclaimer can know that no cooperating reader still depends on
+an older manifest generation. This adapter does not delete generations yet. A
+crash before manifest replacement can therefore leave unreferenced generation
+files, but those files are never visible as current pair state.
 
 ## Failure semantics
 
