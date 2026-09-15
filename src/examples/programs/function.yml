@@ -71,6 +71,44 @@ parts:
     kind: contract
     language: c
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0009
+    path: contract/self_host/stress/README.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0010
+    path: contract/self_host/stress/arithmetic_stress.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0011
+    path: contract/self_host/stress/control_flow_stress.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0012
+    path: contract/self_host/stress/memory_permutation_stress.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0013
+    path: contract/self_host/stress/call_chain_stress.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0014
+    path: contract/self_host/stress/state_machine_stress.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0015
+    path: contract/self_host/snake/README.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0016
+    path: contract/self_host/snake/snake_classic.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
 projects: []
 tests: []
 graph:

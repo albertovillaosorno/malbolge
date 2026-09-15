@@ -36,16 +36,28 @@
 use std::env::temp_dir;
 #[cfg(windows)]
 use std::fs::{remove_file, write};
+#[cfg(target_os = "linux")]
+use std::io::Write as _;
 use std::path::Path;
 #[cfg(windows)]
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::process::Stdio;
 #[cfg(windows)]
 use std::process::id;
 
 use malbolge as _;
 
 const EXPECTED_OUTPUT: &[u8] = b"Hello, World!\n";
+const STRESS_FIXTURES: [&str; 5] = [
+    "arithmetic_stress.c",
+    "control_flow_stress.c",
+    "memory_permutation_stress.c",
+    "call_chain_stress.c",
+    "state_machine_stress.c",
+];
+const STRESS_OUTPUT: &[u8] = b"OK\n";
 
 #[cfg(windows)]
 struct InvalidTemporaryCSource {
@@ -104,6 +116,90 @@ fn hello_world_stress_debug_run_preserves_exact_bytes() -> Result<(), String> {
         return Err(format!(
             "native debug stderr was not empty: {}",
             String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn compact_stress_fixtures_reach_exact_oracles() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory =
+        root.join("src/examples/programs/contract/self_host/stress");
+
+    for fixture in STRESS_FIXTURES {
+        let source = directory.join(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .current_dir(root)
+            .arg(&source)
+            .output()
+            .map_err(|error| format!("failed to run {fixture}: {error}"))?;
+        if !output.status.success()
+            || output.stdout != STRESS_OUTPUT
+            || !output.stderr.is_empty()
+        {
+            return Err(format!(
+                concat!(
+                    "stress fixture failed: fixture={} status={} ",
+                    "stdout={:?} stderr={}"
+                ),
+                fixture,
+                output.status,
+                output.stdout,
+                String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn snake_script_grows_and_quits_without_hosted_guest_abi() -> Result<(), String>
+{
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = root
+        .join("src/examples/programs/contract/self_host")
+        .join("snake/snake_classic.c");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .current_dir(root)
+        .arg(source)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start Snake debug run: {error}"))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| String::from("Snake debug stdin was not piped"))?;
+    stdin
+        .write_all(b"dddssaq\n")
+        .map_err(|error| format!("failed to write Snake commands: {error}"))?;
+    drop(stdin);
+    let output = child.wait_with_output().map_err(|error| {
+        format!("failed to wait for Snake debug run: {error}")
+    })?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Snake debug run failed: status={} stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    if !output.stderr.is_empty() {
+        return Err(format!(
+            "Snake debug stderr was not empty: {}",
+            String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    if !output.stdout.starts_with(b"\x1b[2J\x1b[HMalbolge Snake")
+        || !output.stdout.ends_with(b"Bye. Score: 1 Length: 4\n")
+    {
+        return Err(format!(
+            "Snake scripted output contract failed: stdout={:?}",
+            output.stdout,
         ));
     }
     Ok(())

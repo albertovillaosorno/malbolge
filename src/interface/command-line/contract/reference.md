@@ -100,15 +100,18 @@ keyboard/mouse input, audio, files, and clock. Linux obtains SDL2 compiler/linke
 flags from `pkg-config`. No adapter embeds an IWAD or becomes part of `doom.c` or
 `doom.malbolge`.
 
-When executable C tokens reference the function-like identifier
-`__malbolge_output_byte`, the CLI links
-`src/interface/command-line/adapter-outbound/adapters/guest/output.c` as a
-separate host-only debug translation unit. Lexical discovery applies C line
+When executable C tokens reference the function-like identifiers
+`__malbolge_input_word` or `__malbolge_output_byte`, the CLI links the matching
+`src/interface/command-line/adapter-outbound/adapters/guest/` C translation unit
+for native debugging only. Input returns bytes `0..255` or classic EOF word
+`59048`; output preserves the low byte exactly.
+
+Lexical discovery applies C line
 splicing and ignores comments, string literals, character literals, identifier
 prefixes, and non-function-like uses. The guest source still includes no hosted
-headers and calls no host libc routine. The adapter maps the byte-output
-boundary to native stdout only for `.c` debug execution. It is not linked into
-generated `.malbolge` artifacts and is not evidence that C-to-Malbolge lowering,
+headers and calls no host libc routine. The adapters map input/output only for
+`.c` debug execution. They are not linked into generated `.malbolge` artifacts
+and are not evidence that C-to-Malbolge lowering,
 
 the guest runtime, libc, or `libm` is implemented.
 

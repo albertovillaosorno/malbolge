@@ -164,6 +164,9 @@ fn build_c_run_plan(
     } else {
         plain_c_run_plan(arguments)
     };
+    if adapters.guest_input() {
+        add_guest_input_adapter(&mut plan)?;
+    }
     if adapters.guest_output() {
         add_guest_output_adapter(&mut plan)?;
     }
@@ -179,6 +182,23 @@ fn plain_c_run_plan(arguments: &[OsString]) -> CRunPlan {
         linker_arguments: Vec::new(),
         working_directory: None,
     }
+}
+
+fn add_guest_input_adapter(plan: &mut CRunPlan) -> Result<(), String> {
+    let root = repository_root().ok_or_else(|| {
+        String::from("cannot locate repository root for guest input adapter")
+    })?;
+    let adapter = root.join(
+        "src/interface/command-line/adapter-outbound/adapters/guest/input.c",
+    );
+    if !adapter.is_file() {
+        return Err(format!(
+            "guest input adapter is missing: {}",
+            adapter.display(),
+        ));
+    }
+    plan.extra_sources.push(adapter);
+    Ok(())
 }
 
 fn add_guest_output_adapter(plan: &mut CRunPlan) -> Result<(), String> {

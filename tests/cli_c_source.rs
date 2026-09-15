@@ -39,6 +39,23 @@ use c_source::inspect_c_source;
 use malbolge as _;
 
 #[test]
+fn guest_input_requires_exact_function_like_code_token() {
+    let declaration =
+        inspect_c_source(b"unsigned int __malbolge_input_word(void);");
+    assert!(declaration.guest_input());
+
+    for source in [
+        b"// __malbolge_input_word()\nint main(void){return 0;}".as_slice(),
+        b"/* __malbolge_input_word() */ int main(void){return 0;}",
+        b"const char *x = \"__malbolge_input_word()\";",
+        b"int __malbolge_input_word_suffix;",
+        b"int __malbolge_input_word;",
+    ] {
+        assert!(!inspect_c_source(source).guest_input());
+    }
+}
+
+#[test]
 fn guest_output_requires_exact_function_like_code_token() {
     let declaration =
         inspect_c_source(b"void __malbolge_output_byte(unsigned int value);");

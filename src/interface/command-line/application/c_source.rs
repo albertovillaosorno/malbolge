@@ -38,6 +38,7 @@ use std::slice::Iter;
 
 const DOOM_HOST_MARKERS: [&[u8]; 2] =
     [b"DoomHost_GuestMemoryRegion", b"DoomHost_VideoInitialize"];
+const GUEST_INPUT_MARKER: &[u8] = b"__malbolge_input_word";
 const GUEST_OUTPUT_MARKER: &[u8] = b"__malbolge_output_byte";
 
 type SourceBytes<'source> = Peekable<Copied<Iter<'source, u8>>>;
@@ -46,6 +47,7 @@ type SourceBytes<'source> = Peekable<Copied<Iter<'source, u8>>>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CSourceAdapters {
     doom_host: bool,
+    guest_input: bool,
     guest_output: bool,
 }
 
@@ -54,6 +56,12 @@ impl CSourceAdapters {
     #[must_use]
     pub const fn doom_host(self) -> bool {
         self.doom_host
+    }
+
+    /// Whether the source references the fundamental guest input-word symbol.
+    #[must_use]
+    pub const fn guest_input(self) -> bool {
+        self.guest_input
     }
 
     /// Whether the source references the fundamental guest byte-output symbol.
@@ -71,6 +79,7 @@ pub fn inspect_c_source(source: &[u8]) -> CSourceAdapters {
         doom_host: DOOM_HOST_MARKERS
             .iter()
             .all(|marker| contains_function_identifier(&spliced, marker)),
+        guest_input: contains_function_identifier(&spliced, GUEST_INPUT_MARKER),
         guest_output: contains_function_identifier(
             &spliced,
             GUEST_OUTPUT_MARKER,

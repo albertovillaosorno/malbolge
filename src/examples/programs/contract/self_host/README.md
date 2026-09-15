@@ -6,6 +6,10 @@ the long-term self-hosting conformance goal.
 - `hello-world/` contains a self-checking freestanding C stress fixture. Its
   native CLI execution proves only debug scaffolding and exact byte
   preservation; no generated Malbolge artifact is checked in.
+- `stress/` contains five compact self-checking compiler stress fixtures with
+  fixed oracles and no hosted dependencies.
+- `snake/` contains a Linux-only playable turn-based Snake fixture whose guest
+  source uses only fundamental Malbolge byte input/output intrinsics.
 - `doom/` reserves the future canonical location for `doom.malbolge`. Generated
   products remain local and ignored.
 
