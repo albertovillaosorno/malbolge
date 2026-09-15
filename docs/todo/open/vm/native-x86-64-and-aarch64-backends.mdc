@@ -729,6 +729,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   durability
   failure. A concrete filesystem pair adapter and pair CAS remain open.
 
+  Cached-cycle composition now fixes canonical count-window bytes as the first
+  pair member and canonical latency-histogram bytes as the second. Atomic
+  restore
+  loads both before independently repeating their existing codec and snapshot
+  validation. Missing pair state invents neither side, and committed durability
+  failure retains the complete new pair.
+
+  Five deterministic cases cover typed atomic round trip, missing state, count
+  corruption, latency corruption, and committed durability failure. A concrete
+  atomic pair adapter is still required underneath this binding.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real

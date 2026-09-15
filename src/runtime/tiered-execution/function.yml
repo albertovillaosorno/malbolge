@@ -464,6 +464,11 @@ parts:
     kind: application
     language: rust
     responsibility: Coordinate bounded atomic blob-pair persistence.
+  - id: part-0087
+    path: composition/tier/cached_cycle/telemetry_pair_persistence.rs
+    kind: composition
+    language: rust
+    responsibility: Persist count and latency telemetry as one atomic pair.
 projects: []
 tests: []
 graph:

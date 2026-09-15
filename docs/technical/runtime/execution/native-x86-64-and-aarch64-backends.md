@@ -885,6 +885,18 @@ failure, both write bounds, malicious oversized load output, missing state, and
 committed durability failure. No concrete filesystem pair adapter is claimed
 yet.
 
+Cached-cycle composition now binds canonical count-window bytes to the first
+member and canonical latency-histogram bytes to the second member of that atomic
+pair. Restoration atomically loads both members, then independently repeats each
+existing codec and snapshot validation before reconstructing live owners.
+Missing
+pair state never invents one side. Post-commit durability failure retains the
+complete newly encoded pair.
+
+Five deterministic cases cover atomic typed round trip, missing state, count
+corruption, latency corruption, and committed durability failure. The typed
+binding still requires a genuinely atomic pair-store adapter underneath it.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and

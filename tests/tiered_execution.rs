@@ -223,6 +223,10 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
     NativeContinuationCachedRetryTelemetryOrderedWindowError,
+    NativeContinuationCachedRetryTelemetryPairDurablePersistence,
+    NativeContinuationCachedRetryTelemetryPairPersistenceError,
+    NativeContinuationCachedRetryTelemetryPairPersistenceLoad,
+    NativeContinuationCachedRetryTelemetryPairPersistenceRequest,
     NativeContinuationCachedRetryTelemetryPersistenceError,
     NativeContinuationCachedRetryTelemetryPersistenceLoad,
     NativeContinuationCachedRetryTelemetrySnapshotError,
@@ -249,6 +253,7 @@ use cached_cycle::{
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_ordered_state_durably,
+    persist_cached_retry_telemetry_pair_durably,
     persist_cached_retry_telemetry_window,
     persist_cached_retry_telemetry_window_durably,
     publish_cached_retry_active_policy,
@@ -262,7 +267,8 @@ use cached_cycle::{
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_ordered_state,
-    restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
+    restore_cached_retry_telemetry_pair, restore_cached_retry_telemetry_window,
+    summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -834,6 +840,14 @@ type LatencyDurableMergeError =
 type LatencyDurableMergeRetry =
     NativeContinuationCachedRetryLatencyDurableMergeRetry<
         TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type TelemetryPairDurablePersistence =
+    NativeContinuationCachedRetryTelemetryPairDurablePersistence<
+        TestBlobPairDurabilityError,
+    >;
+type TelemetryPairPersistenceError =
+    NativeContinuationCachedRetryTelemetryPairPersistenceError<
+        TestBlobPairStoreError,
     >;
 type OrderedTelemetryBatchOrder =
     NativeContinuationCachedRetryTelemetryBatchOrder;
@@ -52153,6 +52167,179 @@ fn cached_retry_file_blob_store_roundtrips_latency_histogram()
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
+}
+
+#[test]
+fn cached_retry_telemetry_pair_persistence_roundtrips_atomically()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry pair capacity")?;
+    let count_limit = nonzero_test_limit(4_096, "telemetry pair count bytes")?;
+    let latency_limit =
+        nonzero_test_limit(4_096, "telemetry pair latency bytes")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let summary = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(summary).map_err(|error| error.to_string())?;
+    let expected_window = window.snapshot();
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[1, 10, 101])?;
+    let expected_histogram = histogram.clone();
+    let mut store = TestBlobPairStore::default();
+    let outcome = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &window,
+            &histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| format!("typed pair publication failed: {error:?}"))?;
+    let restored = restore_cached_retry_telemetry_pair(
+        &mut store,
+        count_limit,
+        latency_limit,
+    )
+    .map_err(|error| format!("typed pair restoration failed: {error:?}"))?;
+    let NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Restored {
+        count_bytes,
+        histogram: restored_histogram,
+        latency_bytes,
+        window: restored_window,
+    } = restored
+    else {
+        return Err(String::from("typed pair state disappeared"));
+    };
+    let write = outcome.write();
+    if outcome.is_durable()
+        && write.count_bytes() == count_bytes
+        && write.latency_bytes() == latency_bytes
+        && restored_window.snapshot() == expected_window
+        && *restored_histogram == expected_histogram
+        && store.replace_calls == 1
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed telemetry pair round trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_persistence_reports_missing_state()
+-> Result<(), String> {
+    let mut store = TestBlobPairStore::default();
+    let load = restore_cached_retry_telemetry_pair(
+        &mut store,
+        nonzero_test_limit(128, "missing typed pair count bytes")?,
+        nonzero_test_limit(128, "missing typed pair latency bytes")?,
+    )
+    .map_err(|error| format!("missing typed pair load failed: {error:?}"))?;
+    if matches!(
+        load,
+        NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Missing
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("missing typed pair state was invented"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_persistence_rejects_count_corruption()
+-> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10])?;
+    let latency = encode_cached_retry_latency_snapshot(&histogram.snapshot())
+        .map_err(|error| {
+        format!("latency setup encoding failed: {error:?}")
+    })?;
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: b"bad-count".to_vec(),
+            second: latency,
+        }),
+        ..TestBlobPairStore::default()
+    };
+    let error = restore_cached_retry_telemetry_pair(
+        &mut store,
+        nonzero_test_limit(4_096, "corrupt pair count bytes")?,
+        nonzero_test_limit(4_096, "corrupt pair latency bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("corrupt count pair was accepted"))?;
+    if matches!(error, TelemetryPairPersistenceError::CountCodec(_)) {
+        Ok(())
+    } else {
+        Err(String::from("count corruption evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_persistence_rejects_latency_corruption()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "corrupt pair capacity")?,
+    );
+    let count = encode_cached_retry_telemetry_snapshot(&window.snapshot())
+        .map_err(|error| format!("count setup encoding failed: {error:?}"))?;
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: count,
+            second: b"bad-latency".to_vec(),
+        }),
+        ..TestBlobPairStore::default()
+    };
+    let error = restore_cached_retry_telemetry_pair(
+        &mut store,
+        nonzero_test_limit(4_096, "corrupt latency count bytes")?,
+        nonzero_test_limit(4_096, "corrupt latency pair bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("corrupt latency pair was accepted"))?;
+    if matches!(error, TelemetryPairPersistenceError::LatencyCodec(_)) {
+        Ok(())
+    } else {
+        Err(String::from("latency corruption evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_persistence_retains_committed_failure()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "committed typed pair capacity")?,
+    );
+    let histogram = cached_retry_latency_histogram()?;
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let outcome = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &window,
+            &histogram,
+            nonzero_test_limit(4_096, "committed typed pair count bytes")?,
+            nonzero_test_limit(4_096, "committed typed pair latency bytes")?,
+        ),
+    )
+    .map_err(|error| format!("committed typed pair failed early: {error:?}"))?;
+    if matches!(outcome, TelemetryPairDurablePersistence::Published {
+        durability_error: TestBlobPairDurabilityError::Confirm,
+        ..
+    }) && store.pair.is_some()
+        && store.replace_calls == 1
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed pair committed failure drifted"))
+    }
 }
 
 #[test]

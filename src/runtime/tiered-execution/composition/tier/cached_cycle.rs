@@ -74,6 +74,8 @@ mod telemetry_ordered_persistence;
 mod telemetry_ordered_state;
 #[path = "cached_cycle/telemetry_ordered_window.rs"]
 mod telemetry_ordered_window;
+#[path = "cached_cycle/telemetry_pair_persistence.rs"]
+mod telemetry_pair_persistence;
 #[path = "cached_cycle/telemetry_persistence.rs"]
 mod telemetry_persistence;
 #[path = "cached_cycle/telemetry_policy_durable_publication.rs"]
@@ -210,6 +212,17 @@ pub use telemetry_ordered_window::{
     NativeContinuationCachedRetryTelemetryOrderedWindow,
     NativeContinuationCachedRetryTelemetryOrderedWindowAppend,
     NativeContinuationCachedRetryTelemetryOrderedWindowError,
+};
+pub use telemetry_pair_persistence::{
+    NativeContinuationCachedRetryTelemetryPairDurablePersistence,
+    NativeContinuationCachedRetryTelemetryPairDurableStoreResult,
+    NativeContinuationCachedRetryTelemetryPairLoadStoreResult,
+    NativeContinuationCachedRetryTelemetryPairPersistenceError,
+    NativeContinuationCachedRetryTelemetryPairPersistenceLoad,
+    NativeContinuationCachedRetryTelemetryPairPersistenceRequest,
+    NativeContinuationCachedRetryTelemetryPairPersistenceWrite,
+    persist_cached_retry_telemetry_pair_durably,
+    restore_cached_retry_telemetry_pair,
 };
 pub use telemetry_persistence::{
     NativeContinuationCachedRetryTelemetryDurablePersistence,
