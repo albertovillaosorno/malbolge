@@ -503,6 +503,11 @@ parts:
     kind: application
     language: rust
     responsibility: Orchestrate explicit atomic pair generation reclamation.
+  - id: part-0095
+    path: application/blob_pair_retention.rs
+    kind: application
+    language: rust
+    responsibility: Track caller-selected exact pair revisions for retention.
 projects: []
 tests: []
 graph:

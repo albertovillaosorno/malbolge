@@ -777,6 +777,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   proves exact forwarding; the host-real preservation case crosses application,
   port, and filesystem adapter together.
 
+
+  A process-local exact-retention owner now records only opaque revisions the
+  caller explicitly retains or releases. Duplicate retain is a no-op, release
+  uses exact equality, and insertion order has no temporal semantics. The
+  reclamation request borrows that preserve slice directly; one focused case
+  covers membership and the forwarding case consumes it.
+
   Six focused cases cover current-generation preservation and foreign-name
   filtering, caller-preserved revisions, current-member prevalidation,
   missing-manifest idempotency, partial deletion evidence, and
@@ -872,7 +879,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure; one host-real case records a measured sample separately.
 
   Merge backoff/cancellation/fairness policy, async queues/timers, reclamation
-  scheduling/retention selection, general N-object transactions, and broader
+  scheduling/automatic durable retention policy, general N-object
+  transactions, and broader
   production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry

@@ -935,6 +935,12 @@ preserve slice unchanged and delegates exactly one pass. One adapter-neutral
 case proves exact forwarding, while the host-real preservation case crosses the
 application, port, and filesystem adapter together.
 
+A process-local exact-retention owner now records only opaque revisions the
+caller explicitly retains or releases. Duplicate retain is a no-op, release is
+exact equality, and the exposed insertion order has no chronological meaning.
+The resulting preserve slice feeds the reclamation request directly. One focused
+case covers membership changes and the forwarding case consumes that owner.
+
 Six focused reclamation cases cover current-generation preservation plus exact
 foreign-name filtering, caller-preserved revisions, current-member
 prevalidation,
@@ -1036,7 +1042,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, reclamation scheduling/retention selection, and
+invocation, asynchronous timing, reclamation scheduling/automatic durable
+retention policy, and
 general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before

@@ -44,10 +44,12 @@ adapter compares revisions for equality only; it never orders revisions,
 chooses a retention window, or infers which historical generations matter.
 
 The optional storage-neutral reclaimable-pair port exposes this operation
-without
-filesystem types. Its application use case forwards one caller-selected exact
-preserve slice unchanged and runs one reclamation pass; selection and scheduling
-remain outside the adapter and application service.
+without filesystem types. Its reclamation application use case forwards one
+caller-selected exact preserve slice unchanged and runs one reclamation pass.
+A separate process-local retention owner records only revisions callers
+explicitly retain or release; equality controls membership and insertion order
+has no temporal meaning. Automatic selection and scheduling remain outside the
+adapter.
 
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file

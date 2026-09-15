@@ -37,6 +37,8 @@
 pub mod blob_pair_persistence;
 #[path = "../src/runtime/tiered-execution/application/blob_pair_reclamation.rs"]
 pub mod blob_pair_reclamation;
+#[path = "../src/runtime/tiered-execution/application/blob_pair_retention.rs"]
+pub mod blob_pair_retention;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_pair_store.rs"]
 pub mod blob_pair_store;
 #[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
@@ -173,6 +175,7 @@ use blob_pair_reclamation::{
     NativeContinuationBlobPairReclamationRequest as BlobPairReclamationRequest,
     reclaim_blob_pair_generations,
 };
+use blob_pair_retention::NativeContinuationBlobPairRetention;
 use blob_pair_store as telemetry_pair_store_port;
 use blob_pair_store::NativeContinuationBlobPairStore as PairStorePort;
 use blob_persistence::{
@@ -52394,18 +52397,45 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
 }
 
 #[test]
+fn cached_retry_blob_pair_retention_tracks_explicit_membership()
+-> Result<(), String> {
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    let first_insert = retention.retain(7u64);
+    let second_insert = retention.retain(3u64);
+    let duplicate_insert = retention.retain(7u64);
+    let missing_release = retention.release(&11u64);
+    let present_release = retention.release(&3u64);
+    let valid = first_insert
+        && second_insert
+        && !duplicate_insert
+        && !missing_release
+        && present_release
+        && retention.revisions() == [7u64];
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from(
+            "explicit blob-pair retention membership drifted",
+        ))
+    }
+}
+
+#[test]
 fn cached_retry_blob_pair_reclamation_forwards_exact_revisions()
 -> Result<(), String> {
-    let preserved = [9u64, 2, 9];
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    let _first = retention.retain(9u64);
+    let _second = retention.retain(2u64);
+    let _duplicate = retention.retain(9u64);
     let mut store = TestBlobPairStore::default();
-    let request = BlobPairReclamationRequest::new(&preserved);
+    let request = BlobPairReclamationRequest::new(retention.revisions());
     let evidence = reclaim_blob_pair_generations(&mut store, &request)
         .map_err(|error| {
             format!("pair reclamation forwarding failed: {error:?}")
         })?;
-    if evidence == preserved
+    if evidence == [9u64, 2]
         && store.reclamation_calls == 1
-        && store.last_preserved_revisions == preserved
+        && store.last_preserved_revisions == [9u64, 2]
     {
         Ok(())
     } else {

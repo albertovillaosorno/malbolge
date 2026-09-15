@@ -19,7 +19,7 @@
 //   - Outputs: adapter-owned reclamation evidence or pre-cleanup failure.
 //   - Side effects: exactly one delegated reclamation pass per call.
 // - Split-When:
-//   - Retention selection or asynchronous scheduling gains application policy.
+//   - Automatic retention or asynchronous scheduling gains application policy.
 // - Merge-When:
 //   - Another application service owns the exact same reclamation use case.
 // - Summary:
