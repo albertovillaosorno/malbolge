@@ -919,6 +919,16 @@ lock coordination, concurrent complete-pair publication, orphan invisibility,
 malformed manifests, missing referenced members, and the typed durable telemetry
 round trip. Generation reclamation remains open.
 
+The remaining reclamation contract is now explicit. Reclamation is a separate
+exclusive-lock operation and validates the current manifest before deletion. It
+keeps the two current members and touches only exact generation names owned by
+the configured manifest basename.
+
+It must attempt every eligible deletion and return completed removals together
+with exact failed paths/error kinds. Directory sync after deletion is committed
+durability evidence rather than rollback. A repeated pass rescans and is
+idempotent. No automatic cleanup is folded into publication.
+
 Pair CAS now compares an opaque publication revision rather than payload bytes.
 Versioned load returns one bounded pair plus the revision observed from the same
 manifest commit point. Conditional replacement matches only that revision, while

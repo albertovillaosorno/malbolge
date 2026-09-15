@@ -28,6 +28,24 @@ an older manifest generation. This adapter does not delete generations yet. A
 crash before manifest replacement can therefore leave unreferenced generation
 files, but those files are never visible as current pair state.
 
+## Reclamation boundary
+
+Generation deletion remains explicit and is not part of replacement. A future
+reclamation pass must acquire the exclusive sibling lock, validate the current
+manifest before deleting anything, preserve both members named by that manifest,
+and consider only exact generation-member names owned by this manifest basename.
+Missing manifest state may treat every exact owned generation member as
+unreferenced. Staging manifests, the lock, the current manifest, and foreign or
+prefix-near files are never reclamation candidates.
+
+Reclamation must attempt every eligible file and retain exact cleanup evidence.
+If some removals succeed before another fails, the result must report completed
+removals beside the failed paths and host error kinds rather than claiming
+rollback. Directory synchronization after removals is a separate committed
+durability boundary: sync failure must preserve evidence that deletion already
+changed process-visible filesystem state. Repeating reclamation must be
+idempotent by rescanning under the exclusive lock.
+
 ## Failure semantics
 
 A missing manifest means no pair has been published. A malformed manifest,
