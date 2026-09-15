@@ -753,6 +753,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   members, and the typed durable telemetry round trip. Pair CAS and generation
   reclamation remain open.
 
+  The reviewed pair-CAS boundary should compare an opaque publication revision,
+  not pair payload bytes. A versioned load should return the bounded pair plus
+  the revision observed at the same commit point, and `None` should match only
+  missing state.
+
+  Filesystem manifest bytes can serve as that opaque revision because every
+  committed generation token is unique. A stale revision must conflict even when
+  a newer generation contains byte-identical payloads, preventing ABA. Conflict
+  should retain the current bounded pair plus revision without automatic retry.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real

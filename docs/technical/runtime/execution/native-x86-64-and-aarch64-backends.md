@@ -912,6 +912,17 @@ concurrent complete-pair publication, orphan invisibility, malformed manifests,
 missing referenced members, and the typed durable telemetry round trip.
 Generation reclamation remains open.
 
+The reviewed pair-CAS boundary must compare an opaque publication revision, not
+the two payload byte strings. A versioned load should return one bounded pair
+plus the exact revision observed at the same manifest commit point; conditional
+replacement should match only that revision, with `None` matching only absence.
+
+For the filesystem adapter, the canonical manifest bytes are sufficient revision
+evidence because each committed generation token is unique. A stale revision
+must therefore conflict even when a newer generation contains byte-identical
+payloads, avoiding ABA. Conflict should retain the current bounded pair plus its
+revision while publication authority is held; no automatic retry is implied.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and
