@@ -1053,9 +1053,16 @@ constructors retain their historical sibling-lock behavior; new
 `with_coordination(...)` constructors let either adapter join one caller-owned
 lock domain without changing publication or read semantics.
 
-Two host-real cases
-cover shared-guard identity and unchanged blob/pair round trips under one
-explicit coordinator. Prelocked adapter operations remain the next prerequisite.
+Two host-real cases cover shared-guard identity and unchanged blob/pair round
+trips under one explicit coordinator.
+
+The guarded prelocked seam is now implemented as well. Crate-internal bounded
+blob load/CAS and pair-generation reclamation require one matching exclusive
+guard and reject foreign guards before state access. One host-real case holds a
+single exclusive guard across blob CAS/load and pair reclamation without nested
+lock acquisition; another proves a foreign guard is rejected by both adapters.
+Journal-driven reclamation can now be built on this primitive, but no such
+cross-object orchestration is implied by the adapters themselves.
 
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and

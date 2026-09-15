@@ -27,8 +27,13 @@ Filesystem locking is now provided by one reusable coordination adapter. The
 legacy constructors still derive their existing sibling lock paths, while
 `with_coordination(...)` lets both the single-blob and pair adapters join one
 explicit caller-selected lock domain. Coordination guards are non-cloneable and
-carry exact lock-path identity. This layer changes no storage semantics and does
-not yet expose prelocked mutation operations.
+carry exact lock-path identity. This layer changes no storage semantics.
+
+Crate-internal prelocked operations now require one matching exclusive guard for
+bounded blob load/CAS and pair-generation reclamation. They reject a guard from
+a different coordinator before state access or deletion. One host-real case
+holds one guard once across blob CAS/load and pair reclamation, proving that the
+shared lock boundary no longer requires recursive acquisition.
 
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older

@@ -105,6 +105,8 @@ pub enum NativeContinuationFileBlobPairStoreError {
         /// Pair member whose read required the bound.
         member: NativeContinuationFileBlobPairMember,
     },
+    /// Supplied prelocked guard belongs to a different coordination path.
+    CoordinationMismatch,
     /// No collision-free immutable generation was available in the retry
     /// budget.
     GenerationExhausted,
@@ -823,9 +825,21 @@ impl NativeContinuationFileBlobPairStore {
         &mut self,
         preserved: &[NativeContinuationFileBlobPairRevision],
     ) -> NativeContinuationFileBlobPairReclamationResult {
-        let _lock = self
-            .open_publication_lock()
+        let coordination = self
+            .coordination()
             .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
+        let guard = coordination.acquire_exclusive().map_err(|error| {
+            NativeContinuationFileBlobPairReclamationError::Store(
+                map_coordination_error(error),
+            )
+        })?;
+        self.reclaim_generations_preserving_prelocked(&guard, preserved)
+    }
+
+    fn reclaim_generations_preserving_locked(
+        &mut self,
+        preserved: &[NativeContinuationFileBlobPairRevision],
+    ) -> NativeContinuationFileBlobPairReclamationResult {
         let current = self
             .read_manifest()
             .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
@@ -874,6 +888,16 @@ impl NativeContinuationFileBlobPairStore {
                 removed,
             })
         }
+    }
+
+    pub(crate) fn reclaim_generations_preserving_prelocked(
+        &mut self,
+        guard: &NativeContinuationFileExclusiveGuard,
+        preserved: &[NativeContinuationFileBlobPairRevision],
+    ) -> NativeContinuationFileBlobPairReclamationResult {
+        self.require_exclusive_guard(guard)
+            .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
+        self.reclaim_generations_preserving_locked(preserved)
     }
 
     fn reclamation_candidate(
@@ -996,6 +1020,17 @@ impl NativeContinuationFileBlobPairStore {
         drop(second_file);
         self.publish_manifest(generation)?;
         Ok(generation)
+    }
+
+    fn require_exclusive_guard(
+        &self,
+        guard: &NativeContinuationFileExclusiveGuard,
+    ) -> Result<(), NativeContinuationFileBlobPairStoreError> {
+        if self.coordination()?.matches_exclusive(guard) {
+            Ok(())
+        } else {
+            Err(NativeContinuationFileBlobPairStoreError::CoordinationMismatch)
+        }
     }
 
     fn validate_generation_members(

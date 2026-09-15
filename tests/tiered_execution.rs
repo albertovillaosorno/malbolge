@@ -193,6 +193,7 @@ use blob_persistence::{
     compare_and_swap_blob, compare_and_swap_blob_durably, persist_blob_durably,
 };
 use blob_store as telemetry_store_port;
+use blob_store::NativeContinuationBlobConditionalPublication as BlobCasPub;
 use cached_cycle::{
     NativeContinuationCachedRetryActivePolicyPublication,
     NativeContinuationCachedRetryAttempt,
@@ -593,6 +594,7 @@ use file_blob_pair_store::{
     encode_file_blob_pair_retention,
 };
 use file_blob_store::{
+    NativeContinuationFileBlobPrelockedCasRequest,
     NativeContinuationFileBlobStore, NativeContinuationFileBlobStoreError,
 };
 use file_coordination::NativeContinuationFileCoordination;
@@ -2562,10 +2564,7 @@ impl telemetry_store_port::NativeContinuationConditionalBlobStore
             self,
             replacement,
         )?;
-        Ok(
-            telemetry_store_port::
-                NativeContinuationBlobConditionalPublication::Published,
-        )
+        Ok(BlobCasPub::Published)
     }
 }
 
@@ -53948,6 +53947,110 @@ fn cached_retry_file_coordination_binds_blob_and_pair_adapters()
         Err(String::from(
             "shared filesystem coordination changed storage",
         ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_coordination_prelocked_blob_and_reclamation()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("prelocked-coordination")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let maximum_bytes = nonzero_test_limit(64, "prelocked bytes")?;
+    let blob = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("journal.bin"),
+        coordination.clone(),
+    );
+    let mut pair = NativeContinuationFileBlobPairStore::with_coordination(
+        fixture.directory.join("pair.bin"),
+        coordination.clone(),
+    );
+    PairStorePort::replace_pair(&mut pair, b"first-a", b"second-a").map_err(
+        |error| format!("first coordinated pair publish failed: {error:?}"),
+    )?;
+    PairStorePort::replace_pair(&mut pair, b"first-b", b"second-b").map_err(
+        |error| format!("second coordinated pair publish failed: {error:?}"),
+    )?;
+    let guard = coordination
+        .acquire_exclusive()
+        .map_err(|error| format!("exclusive coordination failed: {error:?}"))?;
+    let publication = blob
+        .compare_and_swap_prelocked(
+            &guard,
+            NativeContinuationFileBlobPrelockedCasRequest::new(
+                None,
+                b"journal",
+                maximum_bytes,
+            ),
+        )
+        .map_err(|error| format!("prelocked blob CAS failed: {error:?}"))?;
+    let reclaimed = pair
+        .reclaim_generations_preserving_prelocked(&guard, &[])
+        .map_err(|error| {
+            format!("prelocked pair reclamation failed: {error:?}")
+        })?;
+    let restored = blob
+        .load_prelocked(&guard, maximum_bytes)
+        .map_err(|error| format!("prelocked blob load failed: {error:?}"))?;
+    let valid = matches!(publication, BlobCasPub::Published)
+        && reclaimed.removed().len() == 2
+        && restored.as_deref() == Some(b"journal");
+    drop(guard);
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from(
+            "shared prelocked transaction evidence drifted",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_coordination_rejects_foreign_prelocked_guard()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("prelocked-coordination-mismatch")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let foreign = NativeContinuationFileCoordination::new(
+        fixture.directory.join("foreign.coordination.lock"),
+    );
+    let maximum_bytes = nonzero_test_limit(64, "foreign guard bytes")?;
+    let blob = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("journal.bin"),
+        coordination.clone(),
+    );
+    let mut pair = NativeContinuationFileBlobPairStore::with_coordination(
+        fixture.directory.join("pair.bin"),
+        coordination,
+    );
+    let guard = foreign
+        .acquire_exclusive()
+        .map_err(|error| format!("foreign coordination failed: {error:?}"))?;
+    let blob_error = blob
+        .load_prelocked(&guard, maximum_bytes)
+        .err()
+        .ok_or_else(|| String::from("foreign blob guard was accepted"))?;
+    let pair_error = pair
+        .reclaim_generations_preserving_prelocked(&guard, &[])
+        .err()
+        .ok_or_else(|| String::from("foreign pair guard was accepted"))?;
+    drop(guard);
+    let valid = blob_error
+        == NativeContinuationFileBlobStoreError::CoordinationMismatch
+        && pair_error
+            == NativeContinuationFileBlobPairReclamationError::Store(
+                NativeContinuationFileBlobPairStoreError::CoordinationMismatch,
+            );
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("foreign prelocked guard evidence drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

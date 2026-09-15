@@ -82,6 +82,8 @@ pub enum NativeContinuationFileBlobStoreError {
         /// Exact positive bound that could not be represented.
         maximum_bytes: NonZeroUsize,
     },
+    /// Supplied prelocked guard belongs to a different coordination path.
+    CoordinationMismatch,
     /// Configured destination does not name one file entry.
     InvalidDestination,
     /// A loaded file contained more bytes than the caller admitted.
@@ -144,6 +146,30 @@ pub enum NativeContinuationFileBlobStoreError {
 type NativeContinuationFileStagingOpenResult =
     Result<(File, PathBuf), NativeContinuationFileBlobStoreError>;
 
+/// One conditional blob replacement performed under caller-held coordination.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NativeContinuationFileBlobPrelockedCasRequest<'bytes> {
+    expected: Option<&'bytes [u8]>,
+    maximum_bytes: NonZeroUsize,
+    replacement: &'bytes [u8],
+}
+
+impl<'bytes> NativeContinuationFileBlobPrelockedCasRequest<'bytes> {
+    /// Binds exact expected/replacement bytes and the bounded current read.
+    #[must_use]
+    pub(crate) const fn new(
+        expected: Option<&'bytes [u8]>,
+        replacement: &'bytes [u8],
+        maximum_bytes: NonZeroUsize,
+    ) -> Self {
+        Self {
+            expected,
+            maximum_bytes,
+            replacement,
+        }
+    }
+}
+
 /// Filesystem-backed store for one explicit tiered-execution blob path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobStore {
@@ -152,6 +178,25 @@ pub struct NativeContinuationFileBlobStore {
 }
 
 impl NativeContinuationFileBlobStore {
+    pub(crate) fn compare_and_swap_prelocked(
+        &self,
+        guard: &NativeContinuationFileExclusiveGuard,
+        request: NativeContinuationFileBlobPrelockedCasRequest<'_>,
+    ) -> NativeContinuationBlobConditionalPublicationResult<
+        NativeContinuationFileBlobStoreError,
+    > {
+        let current = self.load_prelocked(guard, request.maximum_bytes)?;
+        if current.as_deref() != request.expected {
+            return Ok(
+                NativeContinuationBlobConditionalPublication::Conflict {
+                    current,
+                },
+            );
+        }
+        self.replace_locked(request.replacement)?;
+        Ok(NativeContinuationBlobConditionalPublication::Published)
+    }
+
     fn coordination(
         &self,
     ) -> Result<
@@ -185,6 +230,61 @@ impl NativeContinuationFileBlobStore {
             Ok(Path::new("."))
         } else {
             Ok(parent)
+        }
+    }
+
+    pub(crate) fn load_prelocked(
+        &self,
+        guard: &NativeContinuationFileExclusiveGuard,
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobLoadResult<NativeContinuationFileBlobStoreError>
+    {
+        self.require_exclusive_guard(guard)?;
+        self.load_unlocked(maximum_bytes)
+    }
+
+    fn load_unlocked(
+        &self,
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobLoadResult<NativeContinuationFileBlobStoreError>
+    {
+        let mut file = match File::open(&self.destination) {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Ok(None);
+            },
+            Err(error) => {
+                return Err(NativeContinuationFileBlobStoreError::Open {
+                    kind: error.kind(),
+                });
+            },
+        };
+        let read_limit =
+            u64::try_from(maximum_bytes.get()).map_err(|_error| {
+                NativeContinuationFileBlobStoreError::ByteLimitRepresentation {
+                    maximum_bytes,
+                }
+            })?;
+        let mut bytes = Vec::new();
+        {
+            let mut bounded = (&mut file).take(read_limit);
+            let _read_bytes =
+                bounded.read_to_end(&mut bytes).map_err(|error| {
+                    NativeContinuationFileBlobStoreError::Read {
+                        kind: error.kind(),
+                    }
+                })?;
+        }
+        let mut extra = [0u8; 1];
+        let extra_bytes = file.read(&mut extra).map_err(|error| {
+            NativeContinuationFileBlobStoreError::Read { kind: error.kind() }
+        })?;
+        if extra_bytes == 0 {
+            Ok(Some(bytes))
+        } else {
+            Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
+                maximum_bytes,
+            })
         }
     }
 
@@ -273,6 +373,17 @@ impl NativeContinuationFileBlobStore {
         Ok(())
     }
 
+    fn require_exclusive_guard(
+        &self,
+        guard: &NativeContinuationFileExclusiveGuard,
+    ) -> Result<(), NativeContinuationFileBlobStoreError> {
+        if self.coordination()?.matches_exclusive(guard) {
+            Ok(())
+        } else {
+            Err(NativeContinuationFileBlobStoreError::CoordinationMismatch)
+        }
+    }
+
     fn staging_path(
         &self,
         staging_id: u64,
@@ -307,44 +418,7 @@ impl NativeContinuationBlobStore for NativeContinuationFileBlobStore {
         &mut self,
         maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobLoadResult<Self::Error> {
-        let mut file = match File::open(&self.destination) {
-            Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                return Ok(None);
-            },
-            Err(error) => {
-                return Err(NativeContinuationFileBlobStoreError::Open {
-                    kind: error.kind(),
-                });
-            },
-        };
-        let read_limit =
-            u64::try_from(maximum_bytes.get()).map_err(|_error| {
-                NativeContinuationFileBlobStoreError::ByteLimitRepresentation {
-                    maximum_bytes,
-                }
-            })?;
-        let mut bytes = Vec::new();
-        {
-            let mut bounded = (&mut file).take(read_limit);
-            let _read_bytes =
-                bounded.read_to_end(&mut bytes).map_err(|error| {
-                    NativeContinuationFileBlobStoreError::Read {
-                        kind: error.kind(),
-                    }
-                })?;
-        }
-        let mut extra = [0u8; 1];
-        let extra_bytes = file.read(&mut extra).map_err(|error| {
-            NativeContinuationFileBlobStoreError::Read { kind: error.kind() }
-        })?;
-        if extra_bytes == 0 {
-            Ok(Some(bytes))
-        } else {
-            Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
-                maximum_bytes,
-            })
-        }
+        self.load_unlocked(maximum_bytes)
     }
 
     fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
@@ -362,17 +436,18 @@ impl NativeContinuationConditionalBlobStore
         replacement: &[u8],
         maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error> {
-        let _lock = self.open_publication_lock()?;
-        let current = self.load(maximum_bytes)?;
-        if current.as_deref() != expected {
-            return Ok(
-                NativeContinuationBlobConditionalPublication::Conflict {
-                    current,
-                },
-            );
-        }
-        self.replace_locked(replacement)?;
-        Ok(NativeContinuationBlobConditionalPublication::Published)
+        let coordination = self.coordination()?;
+        let guard = coordination
+            .acquire_exclusive()
+            .map_err(map_coordination_error)?;
+        self.compare_and_swap_prelocked(
+            &guard,
+            NativeContinuationFileBlobPrelockedCasRequest::new(
+                expected,
+                replacement,
+                maximum_bytes,
+            ),
+        )
     }
 }
 

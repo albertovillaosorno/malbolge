@@ -890,10 +890,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   `with_coordination(...)` constructors bind either adapter to one caller-owned
   lock domain. Guards are non-cloneable and retain exact lock-path identity.
 
-  Two
-  host-real cases cover shared-guard identity and unchanged blob/pair storage
-  behavior under one coordinator. Prelocked guarded operations remain pending
-  before journal mutation and generation reclamation can share one acquisition.
+  Two host-real cases cover shared-guard identity and unchanged blob/pair
+  storage behavior under one coordinator.
+
+  Guarded prelocked operations are now implemented for bounded blob load/CAS and
+  pair-generation reclamation. Each requires one matching exclusive guard and
+  rejects foreign guard identity before state access or deletion. One host-real
+  case spans blob CAS/load and pair reclamation under one acquisition; another
+  proves both adapters reject a foreign guard. Journal-driven reclamation can
+  now use this primitive, but the cross-object orchestration itself remains
+  pending.
 
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
