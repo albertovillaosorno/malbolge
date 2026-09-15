@@ -84,7 +84,14 @@ The same composition boundary also exposes one-shot conditional durable journal
 publication. Expected retention is compared as canonical bytes; conflict returns
 the exact current journal decoded back into typed retention, while corrupt
 conflict bytes fail closed. Only successful publication performs durability
-confirmation. This layer does not retry, merge, reorder, or select revisions.
+confirmation.
+
+A host-real cross-instance case advances one journal through one file store,
+then proves a stale second store returns the advanced typed retention as
+conflict while leaving it authoritative. This layer does not retry, merge,
+reorder, or select revisions. Refreshing expected state and blindly replaying
+the same whole-set replacement would overwrite another writer's explicit
+retention choices, so retry requires caller-owned reconciliation.
 
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file

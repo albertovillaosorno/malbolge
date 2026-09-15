@@ -52910,6 +52910,93 @@ fn test_file_blob_pair_revision(
         .map_err(|error| format!("cannot build test revision: {error:?}"))
 }
 
+fn test_file_blob_pair_retention(
+    revisions: &[NativeContinuationFileBlobPairRevision],
+) -> NativeContinuationBlobPairRetention<NativeContinuationFileBlobPairRevision>
+{
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    for revision in revisions.iter().copied() {
+        let _inserted = retention.retain(revision);
+    }
+    retention
+}
+
+fn independent_file_blob_stores(
+    destination: &Path,
+) -> (
+    NativeContinuationFileBlobStore,
+    NativeContinuationFileBlobStore,
+) {
+    (
+        NativeContinuationFileBlobStore::new(destination.to_path_buf()),
+        NativeContinuationFileBlobStore::new(destination.to_path_buf()),
+    )
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_file_cas_retains_conflict()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-retention-journal-cas")?;
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let first = test_file_blob_pair_revision(40, 1)?;
+    let second = test_file_blob_pair_revision(40, 2)?;
+    let third = test_file_blob_pair_revision(40, 3)?;
+    let initial = test_file_blob_pair_retention(&[first]);
+    let advanced = test_file_blob_pair_retention(&[second]);
+    let stale_replacement = test_file_blob_pair_retention(&[third]);
+    let (mut first_store, mut second_store) =
+        independent_file_blob_stores(&fixture.destination);
+    let _initial_publication =
+        persist_file_blob_pair_retention_journal_durably(
+            &mut first_store,
+            &initial,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("cannot seed retention journal: {error:?}"))?;
+    let _advance = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut first_store,
+        Some(&initial),
+        &advanced,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("cannot advance retention journal: {error:?}"))?;
+    let conflict = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut second_store,
+        Some(&initial),
+        &stale_replacement,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("stale retention CAS failed: {error:?}"))?;
+    let NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+        current: Some(current),
+    } = conflict
+    else {
+        return Err(String::from("stale file retention CAS did not conflict"));
+    };
+    let restored_load = restore_file_blob_pair_retention_journal(
+        &mut second_store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("cannot restore retention journal: {error:?}"))?;
+    let NativeContinuationFileBlobPairRetentionJournalLoad::Present {
+        retention: restored,
+    } = restored_load
+    else {
+        return Err(String::from(
+            "retention journal disappeared after conflict",
+        ));
+    };
+    let result = if current.revisions() == [second]
+        && restored.revisions() == [second]
+    {
+        Ok(())
+    } else {
+        Err(String::from("file retention CAS conflict state drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
 #[test]
 fn cached_retry_file_blob_pair_retention_journal_cas_initializes_missing()
 -> Result<(), String> {

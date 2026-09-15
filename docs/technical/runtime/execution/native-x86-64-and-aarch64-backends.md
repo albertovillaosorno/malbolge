@@ -1001,8 +1001,15 @@ returns the exact current bounded bytes decoded into typed retention, malformed
 conflict state fails closed, and only a successful conditional publication
 performs durability confirmation. Four focused cases cover missing-state
 initialization, typed conflict, corrupt conflict rejection, and committed
-durability failure. The operation never retries, merges, reorders, or selects
-retained revisions.
+durability failure.
+
+One host-real cross-instance case advances the journal through one file store,
+then proves a stale second store receives typed conflict evidence for the
+advanced retention and cannot overwrite it. The operation never retries,
+merges, reorders, or selects retained revisions. Automatic conflict retry
+remains out of scope because refreshing the expectation and replaying a
+whole-set replacement would discard concurrent caller-selected retention unless
+an explicit reconciliation policy chooses the new set.
 
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
