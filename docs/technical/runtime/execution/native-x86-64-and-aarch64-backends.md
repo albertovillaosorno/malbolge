@@ -956,8 +956,9 @@ returned member bounds and confirms durability only after a committed CAS.
 The filesystem adapter uses its process/generation manifest token as the opaque
 revision. The persistent sibling lock spans current-manifest comparison through
 new-generation creation and manifest replacement. A stale revision conflicts
-even when a newer generation contains byte-identical payloads, avoiding ABA, and
-returns the complete current bounded pair plus its newer revision without retry.
+even when a newer generation contains byte-identical payloads, provided the
+opaque revision token itself has not been reused, and returns the complete
+current bounded pair plus its newer revision without retry.
 
 Five adapter-neutral cases cover versioned load, missing-state initialization,
 stale conflict, post-load bound rejection, and committed durability failure. Two
@@ -1042,9 +1043,9 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, reclamation scheduling/automatic durable
-retention policy, and
-general N-object transactions remain open.
+invocation, asynchronous timing, non-reusable pair revision identity,
+reclamation scheduling/automatic durable retention policy, and general N-object
+transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

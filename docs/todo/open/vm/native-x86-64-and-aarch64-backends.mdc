@@ -798,9 +798,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   The filesystem adapter uses its process/generation manifest token as the
   opaque revision. Its persistent sibling lock spans comparison through new
-  generation creation and manifest replacement. A stale revision conflicts even
-  when newer payloads are byte-identical, preventing ABA, and retains the
-  complete current bounded pair plus its newer revision without automatic retry.
+  generation creation and manifest replacement. A stale revision conflicts when
+  newer payloads are byte-identical provided the opaque token itself has not
+  been reused, and retains the complete current bounded pair plus its newer
+  revision without automatic retry.
 
   Five adapter-neutral cases cover versioned load, missing initialization, stale
   conflict, post-load bounds, and committed durability failure. Two host-real

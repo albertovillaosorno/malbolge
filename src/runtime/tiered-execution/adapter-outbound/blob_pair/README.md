@@ -20,7 +20,7 @@ publishers. Readers hold a shared lock from manifest observation through both
 immutable member reads. Generation creation, manifest replacement, and
 revision-conditional comparison hold the exclusive lock. Conflict returns the
 complete current bounded pair plus its revision; byte-equal newer generations
-still conflict with stale revisions, preventing ABA.
+still conflict with stale revisions while revision identity is not reused.
 
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
@@ -50,6 +50,14 @@ A separate process-local retention owner records only revisions callers
 explicitly retain or release; equality controls membership and insertion order
 has no temporal meaning. Automatic selection and scheduling remain outside the
 adapter.
+
+The current filesystem revision token is `(process id, process-local
+generation)`.
+Generation files prevent live-token reuse while they exist, but explicit
+reclamation can remove old collision files and a later process may reuse the
+same
+PID. Durable or cross-process retention checkpoints therefore require a
+non-reusable revision identity before they can safely persist opaque revisions.
 
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
