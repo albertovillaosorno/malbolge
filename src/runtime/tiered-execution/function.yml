@@ -414,6 +414,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Publish ready telemetry recommendations across cycles.
+  - id: part-0077
+    path: composition/tier/cached_cycle/telemetry_latency_refinement.rs
+    kind: composition
+    language: rust
+    responsibility: Refine latency schema from exact sample witness.
 projects: []
 tests: []
 graph:

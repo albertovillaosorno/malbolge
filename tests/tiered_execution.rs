@@ -177,6 +177,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyMergeError,
     NativeContinuationCachedRetryLatencyPolicyPublication,
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
+    NativeContinuationCachedRetryLatencyRefinementError,
     NativeContinuationCachedRetryLatencySample,
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
@@ -222,6 +223,7 @@ use cached_cycle::{
     publish_cached_retry_policy_recommendation,
     publish_cached_retry_policy_recommendation_durably,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
+    refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
 };
@@ -779,6 +781,8 @@ struct CoffCompileCase {
 }
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
+type LatencyRefinementError =
+    NativeContinuationCachedRetryLatencyRefinementError;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
 type CrazyCacheFailure<MemoryError> =
@@ -52815,6 +52819,88 @@ fn cached_retry_latency_policy_publication_replaces_request_policy()
         Ok(())
     } else {
         Err(String::from("published latency policy evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_refinement_reconstructs_finer_schema()
+-> Result<(), String> {
+    let mut source =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut source, &[1, 9, 10, 50, 100, 101])?;
+    let witness = [1, 9, 10, 50, 100, 101]
+        .map(NativeContinuationCachedRetryLatencySample::new);
+    let refinement = refine_cached_retry_latency_histogram(
+        &source,
+        vec![5, 10, 50, 100],
+        &witness,
+    )
+    .map_err(|error| format!("latency refinement failed: {error:?}"))?;
+    let histogram = refinement.histogram();
+    if refinement.added_bounds() == 2
+        && refinement.witness_samples() == 6
+        && histogram.upper_bounds() == [5, 10, 50, 100]
+        && histogram.bucket_counts() == [1, 2, 1, 1]
+        && histogram.above_maximum() == 1
+        && histogram.total_nanoseconds() == source.total_nanoseconds()
+    {
+        Ok(())
+    } else {
+        Err(String::from("exact latency refinement evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_refinement_rejects_incomplete_witness()
+-> Result<(), String> {
+    let mut source =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut source, &[1, 9, 10, 50])?;
+    let witness =
+        [1, 10, 50].map(NativeContinuationCachedRetryLatencySample::new);
+    let failure = refine_cached_retry_latency_histogram(
+        &source,
+        vec![5, 10, 50, 100],
+        &witness,
+    )
+    .err()
+    .ok_or_else(|| String::from("incomplete latency witness was admitted"))?;
+    if matches!(failure, LatencyRefinementError::WitnessMismatch { .. }) {
+        Ok(())
+    } else {
+        Err(String::from("incomplete witness rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_refinement_rejects_non_refining_schema()
+-> Result<(), String> {
+    let mut source =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut source, &[1, 9, 10, 50])?;
+    let witness =
+        [1, 9, 10, 50].map(NativeContinuationCachedRetryLatencySample::new);
+    let failure =
+        refine_cached_retry_latency_histogram(&source, vec![5, 100], &witness)
+            .err()
+            .ok_or_else(|| {
+                String::from("non-refining latency schema was admitted")
+            })?;
+    if matches!(
+        failure,
+        LatencyRefinementError::Coarsening(
+            NativeContinuationCachedRetryLatencyCoarseningError::BoundMissing {
+                bound: 10,
+                ..
+            },
+        )
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("non-refining schema rejection drifted"))
     }
 }
 

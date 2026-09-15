@@ -56,6 +56,8 @@ mod telemetry_latency_codec;
 mod telemetry_latency_merge;
 #[path = "cached_cycle/telemetry_latency_recommendation.rs"]
 mod telemetry_latency_recommendation;
+#[path = "cached_cycle/telemetry_latency_refinement.rs"]
+mod telemetry_latency_refinement;
 #[path = "cached_cycle/telemetry_latency_snapshot.rs"]
 mod telemetry_latency_snapshot;
 #[path = "cached_cycle/telemetry_persistence.rs"]
@@ -133,6 +135,11 @@ pub use telemetry_latency_merge::{
 pub use telemetry_latency_recommendation::{
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
     recommend_cached_retry_latency_policy,
+};
+pub use telemetry_latency_refinement::{
+    NativeContinuationCachedRetryLatencyRefinement,
+    NativeContinuationCachedRetryLatencyRefinementError,
+    refine_cached_retry_latency_histogram,
 };
 pub use telemetry_latency_snapshot::{
     NativeContinuationCachedRetryLatencyHistogramSnapshot,

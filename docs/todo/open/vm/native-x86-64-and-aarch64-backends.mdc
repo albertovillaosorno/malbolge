@@ -614,9 +614,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source
-  subsets with the same final bound; refinement and overflow-bound drift fail
-  closed. Five cases cover identity, exact coarsening, both rejection classes,
-  and normalization before same-schema merge.
+  subsets with the same final bound; unsupported target drift fails closed.
+  Five cases cover identity, exact coarsening, missing-bound rejection,
+  overflow-bound rejection, and normalization before same-schema merge.
+
+  Exact refinement requires an additional caller-supplied sample witness. The
+  finer histogram is rebuilt from those samples, then coarsened to the source
+  schema and required to equal every source count, total, extremum, and overflow
+  value. Persisted histogram state alone still cannot invent a finer
+  distribution. Three cases cover valid refinement, incomplete witness, and a
+  target schema that omits a source boundary.
 
   A pure common-schema derivation intersects two ordered schemas when their
   final overflow boundary matches. It
@@ -661,8 +668,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Histogram refinement, distributed/durable merge, async queues/timers,
-  multi-blob transactions, and broader production orchestration remain pending.
+  Distributed/durable merge, async queues/timers, multi-blob transactions,
+  and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

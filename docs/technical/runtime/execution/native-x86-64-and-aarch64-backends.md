@@ -770,6 +770,13 @@ overflow-bound drift fail closed. Five cases cover identity, exact coarsening,
 refinement rejection, overflow-bound rejection, and normalization before the
 existing same-schema merge.
 
+Exact refinement now requires an additional caller-supplied sample witness. The
+finer histogram is rebuilt only from those samples, then coarsened back to the
+source schema and required to equal every source count, total, extremum, and
+overflow value. Persisted histogram state alone therefore still cannot invent a
+finer distribution. Three cases cover valid refinement, incomplete witness, and
+a target schema that does not preserve every source boundary.
+
 A pure common-schema derivation now intersects two ordered source schemas when
 their final overflow boundary matches. It returns
 the greatest exact shared bound set plus per-side removal counts; four cases
@@ -819,8 +826,8 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Histogram refinement, distributed merge, native object fusion, foreign
-invocation, asynchronous timing, and multi-blob transactions remain open.
+Distributed merge, native object fusion, foreign invocation, asynchronous
+timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
