@@ -59,6 +59,8 @@ const MANIFEST_BYTES: usize = 24;
 const MANIFEST_MAGIC: [u8; 8] = *b"MBPPAIR1";
 const REVISION_BYTES: usize = 24;
 const REVISION_MAGIC: [u8; 8] = *b"MBPREV01";
+const RETENTION_HEADER_BYTES: usize = 16;
+const RETENTION_MAGIC: [u8; 8] = *b"MBPRET01";
 const MAX_STAGING_ATTEMPTS: usize = 64;
 static NEXT_PAIR_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -258,6 +260,41 @@ pub type NativeContinuationFileBlobPairReclamationResult = Result<
     NativeContinuationFileBlobPairReclamation,
     NativeContinuationFileBlobPairReclamationError,
 >;
+
+/// Why canonical filesystem pair retention decoding failed closed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationFileBlobPairRetentionCodecError {
+    /// Retained revision count cannot be represented on this host.
+    CountRepresentation,
+    /// One revision appeared more than once in the canonical retention set.
+    Duplicate {
+        /// Zero-based duplicate revision index.
+        index: usize,
+    },
+    /// Framed byte length disagreed with the declared revision count.
+    Length {
+        /// Exact length implied by the frame.
+        expected_bytes: usize,
+        /// Exact observed byte count.
+        observed_bytes: usize,
+    },
+    /// Framed byte-length arithmetic overflowed host representation.
+    LengthOverflow,
+    /// Canonical retention magic did not identify the supported format.
+    Magic,
+    /// One framed revision failed its canonical revision decoder.
+    Revision {
+        /// Exact nested revision codec failure.
+        error: NativeContinuationFileBlobPairRevisionCodecError,
+        /// Zero-based framed revision index.
+        index: usize,
+    },
+    /// Canonical retention frame was shorter than its fixed header.
+    Size {
+        /// Exact observed byte count.
+        observed_bytes: usize,
+    },
+}
 
 /// Why canonical filesystem pair revision decoding failed closed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1132,6 +1169,108 @@ impl NativeContinuationDurableBlobPairStore
             }
         })
     }
+}
+
+/// Decodes one canonical exact-revision retention frame.
+///
+/// # Errors
+///
+/// Rejects malformed framing, malformed nested revisions, duplicate revisions,
+/// or unrepresentable length/count arithmetic.
+pub fn decode_file_blob_pair_retention(
+    bytes: &[u8],
+) -> Result<
+    Vec<NativeContinuationFileBlobPairRevision>,
+    NativeContinuationFileBlobPairRetentionCodecError,
+> {
+    use NativeContinuationFileBlobPairRetentionCodecError as CodecError;
+
+    if bytes.len() < RETENTION_HEADER_BYTES {
+        return Err(CodecError::Size {
+            observed_bytes: bytes.len(),
+        });
+    }
+    if bytes.get(..8) != Some(RETENTION_MAGIC.as_slice()) {
+        return Err(CodecError::Magic);
+    }
+    let count_bytes: [u8; 8] = bytes
+        .get(8..16)
+        .ok_or(CodecError::Size {
+            observed_bytes: bytes.len(),
+        })?
+        .try_into()
+        .map_err(|_error| CodecError::Size {
+            observed_bytes: bytes.len(),
+        })?;
+    let count = usize::try_from(u64::from_le_bytes(count_bytes))
+        .map_err(|_error| CodecError::CountRepresentation)?;
+    let expected_bytes = count
+        .checked_mul(REVISION_BYTES)
+        .and_then(|payload| payload.checked_add(RETENTION_HEADER_BYTES))
+        .ok_or(CodecError::LengthOverflow)?;
+    if bytes.len() != expected_bytes {
+        return Err(CodecError::Length {
+            expected_bytes,
+            observed_bytes: bytes.len(),
+        });
+    }
+    let payload =
+        bytes
+            .get(RETENTION_HEADER_BYTES..)
+            .ok_or(CodecError::Size {
+                observed_bytes: bytes.len(),
+            })?;
+    let (revision_chunks, remainder) = payload.as_chunks::<REVISION_BYTES>();
+    if !remainder.is_empty() {
+        return Err(CodecError::Length {
+            expected_bytes,
+            observed_bytes: bytes.len(),
+        });
+    }
+    let mut revisions = Vec::with_capacity(count);
+    for (index, revision_bytes) in revision_chunks.iter().enumerate() {
+        let revision =
+            NativeContinuationFileBlobPairRevision::decode(revision_bytes)
+                .map_err(|error| CodecError::Revision { error, index })?;
+        if revisions.contains(&revision) {
+            return Err(CodecError::Duplicate { index });
+        }
+        revisions.push(revision);
+    }
+    Ok(revisions)
+}
+
+/// Encodes one exact ordered revision-retention set canonically.
+///
+/// # Errors
+///
+/// Rejects duplicate revisions or unrepresentable count/length arithmetic.
+pub fn encode_file_blob_pair_retention(
+    revisions: &[NativeContinuationFileBlobPairRevision],
+) -> Result<Vec<u8>, NativeContinuationFileBlobPairRetentionCodecError> {
+    use NativeContinuationFileBlobPairRetentionCodecError as CodecError;
+
+    let count = u64::try_from(revisions.len())
+        .map_err(|_error| CodecError::CountRepresentation)?;
+    let length = revisions
+        .len()
+        .checked_mul(REVISION_BYTES)
+        .and_then(|payload| payload.checked_add(RETENTION_HEADER_BYTES))
+        .ok_or(CodecError::LengthOverflow)?;
+    let mut bytes = Vec::with_capacity(length);
+    bytes.extend_from_slice(&RETENTION_MAGIC);
+    bytes.extend_from_slice(&count.to_le_bytes());
+    for (index, revision) in revisions.iter().copied().enumerate() {
+        if revisions
+            .iter()
+            .take(index)
+            .any(|current| *current == revision)
+        {
+            return Err(CodecError::Duplicate { index });
+        }
+        bytes.extend_from_slice(&revision.encode());
+    }
+    Ok(bytes)
 }
 
 fn cleanup_staging(path: &Path) -> Option<ErrorKind> {

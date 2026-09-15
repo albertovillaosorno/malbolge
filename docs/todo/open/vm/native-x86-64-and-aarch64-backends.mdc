@@ -822,6 +822,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   semantics. Three focused cases cover canonical round trip and malformed
   representations; durable retention persistence remains separate.
 
+
+  Exact retained-revision sets now also have canonical `MBPRET01` framing:
+  magic, a little-endian `u64` count, and canonical 24-byte revisions in caller
+  order. Encode and decode reject duplicates; decode also rejects malformed
+  nested revisions and count/length drift. Four focused cases cover exact round
+  trip plus duplicate, framing, and nested-member rejection without assigning
+  chronology or retention priority to the preserved order.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

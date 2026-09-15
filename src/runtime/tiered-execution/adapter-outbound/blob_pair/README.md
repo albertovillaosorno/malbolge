@@ -65,6 +65,13 @@ Opaque filesystem revisions also have a separate canonical 24-byte
 the little-endian epoch and generation. Decode rejects wrong length, magic, and
 zero generation; the representation exposes no ordering or retention policy.
 
+
+Exact retention sets also have a canonical `MBPRET01` frame: eight magic bytes,
+one little-endian `u64` revision count, then that many canonical 24-byte
+revisions in caller order. Encode and decode reject duplicates, malformed nested
+revisions, and count/length drift. Frame order is preserved evidence only and
+still carries no chronology, expiry, or automatic retention policy.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

@@ -978,6 +978,14 @@ wrong size, magic, and zero generation while preserving field opacity. Three
 focused codec cases cover exact canonical round trip and fail-closed malformed
 representations; durable retention persistence remains a separate concern.
 
+
+Exact retained-revision sets now also have canonical `MBPRET01` framing: magic,
+a little-endian `u64` count, and canonical 24-byte revision members in caller
+order. Both directions reject duplicates; decode also rejects malformed nested
+revision bytes and count/length drift. Four focused cases cover canonical round
+trip plus duplicate, framing, and nested-revision rejection. Ordering remains
+caller evidence and is never interpreted as time or retention priority.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

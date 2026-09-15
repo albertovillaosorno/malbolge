@@ -579,10 +579,12 @@ use file_blob_pair_store::{
     NativeContinuationFileBlobPairMember,
     NativeContinuationFileBlobPairReclamation,
     NativeContinuationFileBlobPairReclamationError,
+    NativeContinuationFileBlobPairRetentionCodecError,
     NativeContinuationFileBlobPairRevision,
     NativeContinuationFileBlobPairRevisionCodecError,
     NativeContinuationFileBlobPairStore,
-    NativeContinuationFileBlobPairStoreError,
+    NativeContinuationFileBlobPairStoreError, decode_file_blob_pair_retention,
+    encode_file_blob_pair_retention,
 };
 use file_blob_store::{
     NativeContinuationFileBlobStore, NativeContinuationFileBlobStoreError,
@@ -52883,6 +52885,99 @@ fn cached_retry_file_blob_pair_revision_codec_rejects_zero_generation()
         Ok(())
     } else {
         Err(String::from("zero pair revision generation was accepted"))
+    }
+}
+
+fn test_file_blob_pair_revision(
+    epoch: u64,
+    generation: u64,
+) -> Result<NativeContinuationFileBlobPairRevision, String> {
+    let mut bytes = [0u8; 24];
+    bytes[..8].copy_from_slice(b"MBPREV01");
+    bytes[8..16].copy_from_slice(&epoch.to_le_bytes());
+    bytes[16..24].copy_from_slice(&generation.to_le_bytes());
+    NativeContinuationFileBlobPairRevision::decode(&bytes)
+        .map_err(|error| format!("cannot build test revision: {error:?}"))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_codec_roundtrips_canonical_bytes()
+-> Result<(), String> {
+    let first = test_file_blob_pair_revision(10, 2)?;
+    let second = test_file_blob_pair_revision(10, 7)?;
+    let encoded = encode_file_blob_pair_retention(&[first, second])
+        .map_err(|error| format!("cannot encode retention: {error:?}"))?;
+    let decoded = decode_file_blob_pair_retention(&encoded)
+        .map_err(|error| format!("cannot decode retention: {error:?}"))?;
+    let mut expected = Vec::new();
+    expected.extend_from_slice(b"MBPRET01");
+    expected.extend_from_slice(&2u64.to_le_bytes());
+    expected.extend_from_slice(&first.encode());
+    expected.extend_from_slice(&second.encode());
+    if encoded == expected && decoded == [first, second] {
+        Ok(())
+    } else {
+        Err(String::from("canonical pair retention bytes drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_codec_rejects_duplicates()
+-> Result<(), String> {
+    let revision = test_file_blob_pair_revision(11, 3)?;
+    let error = encode_file_blob_pair_retention(&[revision, revision])
+        .err()
+        .ok_or_else(|| String::from("duplicate retention revision encoded"))?;
+    let expected =
+        NativeContinuationFileBlobPairRetentionCodecError::Duplicate {
+            index: 1,
+        };
+    if error == expected {
+        Ok(())
+    } else {
+        Err(String::from("duplicate retention evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_codec_rejects_length_drift()
+-> Result<(), String> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"MBPRET01");
+    bytes.extend_from_slice(&1u64.to_le_bytes());
+    let error = decode_file_blob_pair_retention(&bytes)
+        .err()
+        .ok_or_else(|| String::from("short retention payload decoded"))?;
+    let expected = NativeContinuationFileBlobPairRetentionCodecError::Length {
+        expected_bytes: 40,
+        observed_bytes: 16,
+    };
+    if error == expected {
+        Ok(())
+    } else {
+        Err(String::from("retention length evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_codec_rejects_nested_revision()
+-> Result<(), String> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"MBPRET01");
+    bytes.extend_from_slice(&1u64.to_le_bytes());
+    bytes.extend_from_slice(&[0u8; 24]);
+    let error = decode_file_blob_pair_retention(&bytes)
+        .err()
+        .ok_or_else(|| String::from("invalid retained revision decoded"))?;
+    let expected =
+        NativeContinuationFileBlobPairRetentionCodecError::Revision {
+            error: NativeContinuationFileBlobPairRevisionCodecError::Magic,
+            index: 0,
+        };
+    if error == expected {
+        Ok(())
+    } else {
+        Err(String::from("nested retention revision evidence drifted"))
     }
 }
 
