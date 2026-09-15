@@ -640,6 +640,13 @@ revision-one little-endian snapshot bytes. Explicit inclusive thresholds
 classify insufficient, meeting, or multi-signal miss evidence without selecting
 policy.
 
+The count window also accepts caller-authoritative ordered summary batches. Each
+summary receives a fresh destination-local sequence, and the complete batch is
+committed only after every append transition succeeds. Source-local sequence IDs
+and cumulative eviction history are intentionally not merged because independent
+windows have no canonical relative ordering. Three cases cover ordered append,
+FIFO eviction, and rollback after sequence exhaustion.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

@@ -500,6 +500,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   multi-signal assessment without selecting policy.
 
+  The count window now also accepts caller-authoritative ordered summary
+  batches.
+  Every summary receives a fresh destination-local sequence, and all append
+  transitions succeed before the destination changes. Independent source
+  sequence IDs and cumulative eviction histories are not merged because no
+  canonical cross-window ordering exists. Three cases cover ordered append, FIFO
+  eviction, and rollback after sequence exhaustion.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

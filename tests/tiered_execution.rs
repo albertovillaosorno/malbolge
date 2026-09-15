@@ -52013,6 +52013,119 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
 }
 
 #[test]
+fn cached_retry_telemetry_window_batch_appends_in_destination_order()
+-> Result<(), String> {
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(3, "telemetry batch capacity")?,
+    );
+    let first = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let second = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let record = window
+        .append_batch(&[first, second])
+        .map_err(|error| error.to_string())?;
+    let sequences = window
+        .observations()
+        .map(|observation| observation.sequence())
+        .collect::<Vec<_>>();
+    if record.appended() == 2
+        && record.last_sequence() == Some(2)
+        && record.evictions() == 0
+        && sequences == [1, 2]
+        && record.totals() == window.totals()
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered telemetry batch evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_batch_applies_fifo_evictions_atomically()
+-> Result<(), String> {
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "telemetry batch eviction capacity")?,
+    );
+    let initial = cached_retry_window_telemetry(
+        1,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(initial).map_err(|error| error.to_string())?;
+    let summaries = [
+        cached_retry_window_telemetry(
+            1,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        )?,
+        cached_retry_window_telemetry(
+            1,
+            3,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        )?,
+    ];
+    let record = window
+        .append_batch(&summaries)
+        .map_err(|error| error.to_string())?;
+    let sequences = window
+        .observations()
+        .map(|observation| observation.sequence())
+        .collect::<Vec<_>>();
+    if record.appended() == 2
+        && record.evictions() == 1
+        && record.last_sequence() == Some(3)
+        && sequences == [2, 3]
+        && window.len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry batch FIFO evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_batch_failure_keeps_destination_unchanged()
+-> Result<(), String> {
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "telemetry batch failure capacity")?,
+    );
+    let initial = cached_retry_window_telemetry(
+        1,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(initial).map_err(|error| error.to_string())?;
+    window.force_counters_for_test(window.evictions(), u64::MAX);
+    let before = window.snapshot();
+    let candidate = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let error = window.append_batch(&[candidate]).err().ok_or_else(|| {
+        String::from("exhausted batch unexpectedly published")
+    })?;
+    if error
+        == NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted
+        && window.snapshot() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed telemetry batch mutated destination"))
+    }
+}
+
+#[test]
 fn cached_retry_telemetry_window_starts_empty() -> Result<(), String> {
     let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
     let window = NativeContinuationCachedRetryTelemetryWindow::new(capacity);

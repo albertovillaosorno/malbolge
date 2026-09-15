@@ -19,7 +19,7 @@
 //     totals.
 //   - Side effects: bounded process-local allocation only.
 // - Split-When:
-//   - Persistence, cross-process merge, or adaptive decisions gain ownership.
+//   - Persistent distributed ordering or adaptive decisions gain ownership.
 // - Merge-When:
 //   - One caller-owned telemetry lifecycle subsumes retention and policy.
 // - Summary:
@@ -68,6 +68,15 @@ pub struct NativeContinuationCachedRetryTelemetryWindowAppend {
     evicted: Option<NativeContinuationCachedRetryTelemetryObservation>,
     evictions: u64,
     observation: NativeContinuationCachedRetryTelemetryObservation,
+    totals: NativeContinuationCachedRetryTelemetry,
+}
+
+/// Exact publication evidence for one transactional ordered batch append.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryTelemetryWindowBatchAppend {
+    appended: usize,
+    evictions: u64,
+    last_sequence: Option<u64>,
     totals: NativeContinuationCachedRetryTelemetry,
 }
 
@@ -120,7 +129,7 @@ pub enum NativeContinuationCachedRetryTelemetryWindowError {
 }
 
 /// Caller-owned bounded FIFO for exact cached-retry telemetry summaries.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NativeContinuationCachedRetryTelemetryWindow {
     capacity: NonZeroUsize,
     evictions: u64,
@@ -198,6 +207,32 @@ impl NativeContinuationCachedRetryTelemetryObservation {
     #[must_use]
     pub const fn telemetry(self) -> NativeContinuationCachedRetryTelemetry {
         self.telemetry
+    }
+}
+
+impl NativeContinuationCachedRetryTelemetryWindowBatchAppend {
+    /// Returns the exact number of summaries published by this batch.
+    #[must_use]
+    pub const fn appended(self) -> usize {
+        self.appended
+    }
+
+    /// Returns cumulative FIFO evictions after batch publication.
+    #[must_use]
+    pub const fn evictions(self) -> u64 {
+        self.evictions
+    }
+
+    /// Returns the newest local sequence after publication, when nonempty.
+    #[must_use]
+    pub const fn last_sequence(self) -> Option<u64> {
+        self.last_sequence
+    }
+
+    /// Returns exact retained aggregate telemetry after publication.
+    #[must_use]
+    pub const fn totals(self) -> NativeContinuationCachedRetryTelemetry {
+        self.totals
     }
 }
 
@@ -291,6 +326,35 @@ impl NativeContinuationCachedRetryTelemetryWindow {
             observation,
             totals,
         })
+    }
+
+    /// Appends an explicitly ordered summary batch transactionally.
+    ///
+    /// Every summary receives a fresh destination-local sequence. An empty
+    /// batch is an exact no-op publication.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first append failure without changing any destination state.
+    pub fn append_batch(
+        &mut self,
+        telemetry: &[NativeContinuationCachedRetryTelemetry],
+    ) -> Result<
+        NativeContinuationCachedRetryTelemetryWindowBatchAppend,
+        NativeContinuationCachedRetryTelemetryWindowError,
+    > {
+        let mut candidate = self.clone();
+        for &summary in telemetry {
+            let _append = candidate.append(summary)?;
+        }
+        let record = NativeContinuationCachedRetryTelemetryWindowBatchAppend {
+            appended: telemetry.len(),
+            evictions: candidate.evictions(),
+            last_sequence: candidate.last_sequence(),
+            totals: candidate.totals(),
+        };
+        *self = candidate;
+        Ok(record)
     }
 
     /// Returns the positive retained observation capacity.

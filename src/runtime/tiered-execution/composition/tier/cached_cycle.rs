@@ -216,6 +216,7 @@ pub use telemetry_window::{
     NativeContinuationCachedRetryTelemetryObservation,
     NativeContinuationCachedRetryTelemetryWindow,
     NativeContinuationCachedRetryTelemetryWindowAppend,
+    NativeContinuationCachedRetryTelemetryWindowBatchAppend,
     NativeContinuationCachedRetryTelemetryWindowCounter,
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowReconfiguration,
