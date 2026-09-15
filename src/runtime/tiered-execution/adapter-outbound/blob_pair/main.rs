@@ -54,6 +54,11 @@ use crate::blob_pair_store::{
     NativeContinuationReclaimableBlobPairStore,
     NativeContinuationVersionedBlobPair,
 };
+use crate::file_coordination::{
+    NativeContinuationFileCoordination,
+    NativeContinuationFileCoordinationError,
+    NativeContinuationFileExclusiveGuard, NativeContinuationFileSharedGuard,
+};
 
 const MANIFEST_BYTES: usize = 24;
 const MANIFEST_MAGIC: [u8; 8] = *b"MBPPAIR1";
@@ -380,6 +385,7 @@ impl NativeContinuationFileBlobPairRevision {
 /// Filesystem-backed pair store rooted at one explicit manifest path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobPairStore {
+    coordination: Option<NativeContinuationFileCoordination>,
     manifest: PathBuf,
 }
 
@@ -454,6 +460,21 @@ impl NativeContinuationFileBlobPairReclamationFailure {
 }
 
 impl NativeContinuationFileBlobPairStore {
+    fn coordination(
+        &self,
+    ) -> Result<
+        NativeContinuationFileCoordination,
+        NativeContinuationFileBlobPairStoreError,
+    > {
+        self.coordination.clone().map_or_else(
+            || {
+                self.lock_path()
+                    .map(NativeContinuationFileCoordination::new)
+            },
+            Ok,
+        )
+    }
+
     fn generation_path(
         &self,
         generation: NativeContinuationFileBlobPairRevision,
@@ -528,7 +549,10 @@ impl NativeContinuationFileBlobPairStore {
     /// Binds one filesystem pair adapter to an explicit manifest path.
     #[must_use]
     pub const fn new(manifest: PathBuf) -> Self {
-        Self { manifest }
+        Self {
+            coordination: None,
+            manifest,
+        }
     }
 
     fn open_generation(
@@ -631,52 +655,33 @@ impl NativeContinuationFileBlobPairStore {
 
     fn open_publication_lock(
         &self,
-    ) -> Result<File, NativeContinuationFileBlobPairStoreError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(self.lock_path()?)
-            .map_err(|error| {
-                NativeContinuationFileBlobPairStoreError::LockOpen {
-                    kind: error.kind(),
-                }
-            })?;
-        file.lock().map_err(|error| {
-            NativeContinuationFileBlobPairStoreError::Lock {
-                kind: error.kind(),
-            }
-        })?;
-        Ok(file)
+    ) -> Result<
+        NativeContinuationFileExclusiveGuard,
+        NativeContinuationFileBlobPairStoreError,
+    > {
+        self.coordination()?
+            .acquire_exclusive()
+            .map_err(map_coordination_error)
     }
 
     fn open_read_lock(
         &self,
-    ) -> Result<File, NativeContinuationFileBlobPairStoreError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(self.lock_path()?)
-            .map_err(|error| {
-                NativeContinuationFileBlobPairStoreError::LockOpen {
-                    kind: error.kind(),
-                }
-            })?;
-        file.lock_shared().map_err(|error| {
-            NativeContinuationFileBlobPairStoreError::Lock {
-                kind: error.kind(),
-            }
-        })?;
-        Ok(file)
+    ) -> Result<
+        NativeContinuationFileSharedGuard,
+        NativeContinuationFileBlobPairStoreError,
+    > {
+        self.coordination()?
+            .acquire_shared()
+            .map_err(map_coordination_error)
     }
 
     #[cfg(test)]
     pub(crate) fn open_read_lock_for_test(
         &self,
-    ) -> Result<File, NativeContinuationFileBlobPairStoreError> {
+    ) -> Result<
+        NativeContinuationFileSharedGuard,
+        NativeContinuationFileBlobPairStoreError,
+    > {
         self.open_read_lock()
     }
 
@@ -1038,6 +1043,18 @@ impl NativeContinuationFileBlobPairStore {
             revision,
         })
     }
+
+    /// Binds one pair adapter to an explicit shared coordination domain.
+    #[must_use]
+    pub const fn with_coordination(
+        manifest: PathBuf,
+        coordination: NativeContinuationFileCoordination,
+    ) -> Self {
+        Self {
+            coordination: Some(coordination),
+            manifest,
+        }
+    }
 }
 
 impl NativeContinuationBlobPairStore for NativeContinuationFileBlobPairStore {
@@ -1271,6 +1288,19 @@ pub fn encode_file_blob_pair_retention(
         bytes.extend_from_slice(&revision.encode());
     }
     Ok(bytes)
+}
+
+const fn map_coordination_error(
+    error: NativeContinuationFileCoordinationError,
+) -> NativeContinuationFileBlobPairStoreError {
+    match error {
+        NativeContinuationFileCoordinationError::Lock { kind } => {
+            NativeContinuationFileBlobPairStoreError::Lock { kind }
+        },
+        NativeContinuationFileCoordinationError::Open { kind } => {
+            NativeContinuationFileBlobPairStoreError::LockOpen { kind }
+        },
+    }
 }
 
 fn cleanup_staging(path: &Path) -> Option<ErrorKind> {

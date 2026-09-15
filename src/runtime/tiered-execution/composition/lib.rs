@@ -61,6 +61,8 @@ pub mod execution_native;
 pub mod file_blob_pair_store;
 #[path = "../adapter-outbound/blob/main.rs"]
 pub mod file_blob_store;
+#[path = "../adapter-outbound/fs_coord/main.rs"]
+pub mod file_coordination;
 #[path = "tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
 #[path = "tier/geometry_native.rs"]

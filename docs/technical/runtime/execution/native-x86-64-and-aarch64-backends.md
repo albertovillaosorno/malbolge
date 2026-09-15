@@ -1045,6 +1045,18 @@ locking public methods is not sufficient because nested acquisition can
 deadlock and does not prove that every participating mutation joined the same
 transaction.
 
+
+The first coordination slice is now implemented. One reusable filesystem
+coordinator owns an explicit advisory-lock path and yields non-cloneable
+shared/exclusive guards carrying that identity. Existing blob and pair
+constructors retain their historical sibling-lock behavior; new
+`with_coordination(...)` constructors let either adapter join one caller-owned
+lock domain without changing publication or read semantics.
+
+Two host-real cases
+cover shared-guard identity and unchanged blob/pair round trips under one
+explicit coordinator. Prelocked adapter operations remain the next prerequisite.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

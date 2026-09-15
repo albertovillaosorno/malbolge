@@ -61,6 +61,8 @@ pub mod execution_native;
 pub mod file_blob_pair_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/blob/main.rs"]
 pub mod file_blob_store;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/fs_coord/main.rs"]
+pub mod file_coordination;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
@@ -593,6 +595,7 @@ use file_blob_pair_store::{
 use file_blob_store::{
     NativeContinuationFileBlobStore, NativeContinuationFileBlobStoreError,
 };
+use file_coordination::NativeContinuationFileCoordination;
 use geometry_interpreter_handoff::{
     ExecutionGeometryContinuationAdmissionError,
     ExecutionGeometryContinuationBudgetOutcome,
@@ -53859,6 +53862,92 @@ fn cached_retry_file_blob_pair_store_rejects_oversized_member()
         Ok(())
     } else {
         Err(String::from("file pair byte-limit evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_coordination_matches_shared_guards() -> Result<(), String>
+{
+    let fixture = file_blob_store_fixture("shared-coordination-guards")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let other = NativeContinuationFileCoordination::new(
+        fixture.directory.join("other.coordination.lock"),
+    );
+    let first = coordination.acquire_shared().map_err(|error| {
+        format!("first shared coordination failed: {error:?}")
+    })?;
+    let second = coordination.acquire_shared().map_err(|error| {
+        format!("second shared coordination failed: {error:?}")
+    })?;
+    let foreign = other.acquire_shared().map_err(|error| {
+        format!("foreign shared coordination failed: {error:?}")
+    })?;
+    let valid = coordination.matches_shared(&first)
+        && coordination.matches_shared(&second)
+        && !coordination.matches_shared(&foreign)
+        && coordination.path()
+            == fixture.directory.join("runtime.coordination.lock");
+    drop(foreign);
+    drop(second);
+    drop(first);
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from(
+            "filesystem coordination guard identity drifted",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_coordination_binds_blob_and_pair_adapters()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("shared-coordination-adapters")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let maximum_bytes = nonzero_test_limit(64, "shared coordination bytes")?;
+    let mut blob = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("journal.bin"),
+        coordination.clone(),
+    );
+    telemetry_store_port::NativeContinuationBlobStore::replace(
+        &mut blob, b"journal",
+    )
+    .map_err(|error| format!("coordinated blob replace failed: {error:?}"))?;
+    let blob_load = telemetry_store_port::NativeContinuationBlobStore::load(
+        &mut blob,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("coordinated blob load failed: {error:?}"))?;
+    let mut pair = NativeContinuationFileBlobPairStore::with_coordination(
+        fixture.directory.join("pair.bin"),
+        coordination,
+    );
+    PairStorePort::replace_pair(&mut pair, b"first", b"second").map_err(
+        |error| format!("coordinated pair replace failed: {error:?}"),
+    )?;
+    let pair_load =
+        PairStorePort::load_pair(&mut pair, maximum_bytes, maximum_bytes)
+            .map_err(|error| {
+                format!("coordinated pair load failed: {error:?}")
+            })?;
+    let valid = blob_load.as_deref() == Some(b"journal")
+        && pair_load.as_ref().is_some_and(|stored| {
+            stored.first == b"first" && stored.second == b"second"
+        });
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from(
+            "shared filesystem coordination changed storage",
+        ))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

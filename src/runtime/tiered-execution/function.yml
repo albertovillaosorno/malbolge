@@ -520,6 +520,12 @@ parts:
     language: rust
     responsibility: >-
       Reconcile exact pair retention before bounded journal CAS retry.
+  - id: part-0098
+    path: adapter-outbound/fs_coord/main.rs
+    kind: adapter
+    language: rust
+    responsibility: >-
+      Coordinate filesystem adapters through one explicit advisory lock path.
 projects: []
 tests: []
 graph:

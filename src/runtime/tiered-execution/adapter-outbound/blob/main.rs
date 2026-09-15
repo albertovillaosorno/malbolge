@@ -48,6 +48,11 @@ use crate::blob_store::{
     NativeContinuationBlobLoadResult, NativeContinuationBlobStore,
     NativeContinuationConditionalBlobStore, NativeContinuationDurableBlobStore,
 };
+use crate::file_coordination::{
+    NativeContinuationFileCoordination,
+    NativeContinuationFileCoordinationError,
+    NativeContinuationFileExclusiveGuard,
+};
 
 const MAX_STAGING_ATTEMPTS: usize = 64;
 static NEXT_STAGING_ID: AtomicU64 = AtomicU64::new(1);
@@ -142,10 +147,26 @@ type NativeContinuationFileStagingOpenResult =
 /// Filesystem-backed store for one explicit tiered-execution blob path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobStore {
+    coordination: Option<NativeContinuationFileCoordination>,
     destination: PathBuf,
 }
 
 impl NativeContinuationFileBlobStore {
+    fn coordination(
+        &self,
+    ) -> Result<
+        NativeContinuationFileCoordination,
+        NativeContinuationFileBlobStoreError,
+    > {
+        self.coordination.clone().map_or_else(
+            || {
+                self.lock_path()
+                    .map(NativeContinuationFileCoordination::new)
+            },
+            Ok,
+        )
+    }
+
     /// Returns the exact adapter-owned destination path.
     #[must_use]
     pub fn destination(&self) -> &Path {
@@ -183,28 +204,21 @@ impl NativeContinuationFileBlobStore {
     /// Binds one filesystem adapter to an explicit destination path.
     #[must_use]
     pub const fn new(destination: PathBuf) -> Self {
-        Self { destination }
+        Self {
+            coordination: None,
+            destination,
+        }
     }
 
     fn open_publication_lock(
         &self,
-    ) -> Result<File, NativeContinuationFileBlobStoreError> {
-        let lock_path = self.lock_path()?;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(lock_path)
-            .map_err(|error| {
-                NativeContinuationFileBlobStoreError::LockOpen {
-                    kind: error.kind(),
-                }
-            })?;
-        file.lock().map_err(|error| {
-            NativeContinuationFileBlobStoreError::Lock { kind: error.kind() }
-        })?;
-        Ok(file)
+    ) -> Result<
+        NativeContinuationFileExclusiveGuard,
+        NativeContinuationFileBlobStoreError,
+    > {
+        self.coordination()?
+            .acquire_exclusive()
+            .map_err(map_coordination_error)
     }
 
     fn open_staging(&self) -> NativeContinuationFileStagingOpenResult {
@@ -271,6 +285,18 @@ impl NativeContinuationFileBlobStore {
         let mut staging_name = file_name.to_os_string();
         staging_name.push(format!(".stage.{}.{staging_id}", process::id()));
         Ok(self.destination.with_file_name(staging_name))
+    }
+
+    /// Binds one filesystem adapter to an explicit shared coordination domain.
+    #[must_use]
+    pub const fn with_coordination(
+        destination: PathBuf,
+        coordination: NativeContinuationFileCoordination,
+    ) -> Self {
+        Self {
+            coordination: Some(coordination),
+            destination,
+        }
     }
 }
 
@@ -365,6 +391,19 @@ impl NativeContinuationDurableBlobStore for NativeContinuationFileBlobStore {
                 kind: error.kind(),
             }
         })
+    }
+}
+
+const fn map_coordination_error(
+    error: NativeContinuationFileCoordinationError,
+) -> NativeContinuationFileBlobStoreError {
+    match error {
+        NativeContinuationFileCoordinationError::Lock { kind } => {
+            NativeContinuationFileBlobStoreError::Lock { kind }
+        },
+        NativeContinuationFileCoordinationError::Open { kind } => {
+            NativeContinuationFileBlobStoreError::LockOpen { kind }
+        },
     }
 }
 

@@ -22,6 +22,14 @@ revision-conditional comparison hold the exclusive lock. Conflict returns the
 complete current bounded pair plus its revision; byte-equal newer generations
 still conflict with stale revisions.
 
+
+Filesystem locking is now provided by one reusable coordination adapter. The
+legacy constructors still derive their existing sibling lock paths, while
+`with_coordination(...)` lets both the single-blob and pair adapters join one
+explicit caller-selected lock domain. Coordination guards are non-cloneable and
+carry exact lock-path identity. This layer changes no storage semantics and does
+not yet expose prelocked mutation operations.
+
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
 manifest generation. A crash before manifest replacement can still leave
