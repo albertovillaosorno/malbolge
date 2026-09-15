@@ -117,6 +117,29 @@ impl NativeContinuationRetryPolicyState {
         Self { policy, revision }
     }
 
+    /// Derives one exactly revision-advanced candidate state.
+    ///
+    /// # Errors
+    ///
+    /// Returns revision-exhaustion evidence without changing this state.
+    pub(crate) const fn next(
+        self,
+        candidate: NativeContinuationRetryPolicy,
+    ) -> Result<Self, NativeContinuationRetryPolicyOwnerError> {
+        let Some(next_revision) = self.revision.0.checked_add(1) else {
+            return Err(
+                NativeContinuationRetryPolicyOwnerError::RevisionExhausted {
+                    candidate,
+                    current: self,
+                },
+            );
+        };
+        Ok(Self {
+            policy: candidate,
+            revision: NativeContinuationRetryPolicyRevision(next_revision),
+        })
+    }
+
     /// Returns the exact active retry policy.
     #[must_use]
     pub const fn policy(self) -> NativeContinuationRetryPolicy {
@@ -152,18 +175,7 @@ impl NativeContinuationRetryPolicyOwner {
                 expected,
             });
         }
-        let Some(next_revision) = previous.revision.0.checked_add(1) else {
-            return Err(
-                NativeContinuationRetryPolicyOwnerError::RevisionExhausted {
-                    candidate,
-                    current: previous,
-                },
-            );
-        };
-        self.state = NativeContinuationRetryPolicyState {
-            policy: candidate,
-            revision: NativeContinuationRetryPolicyRevision(next_revision),
-        };
+        self.state = previous.next(candidate)?;
         Ok(NativeContinuationRetryPolicyOwnerUpdate::Published {
             current: self.state,
             previous,

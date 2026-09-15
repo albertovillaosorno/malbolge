@@ -404,6 +404,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Encode revisioned active retry-policy state.
+  - id: part-0075
+    path: composition/tier/policy_cas.rs
+    kind: composition
+    language: rust
+    responsibility: Publish revisioned active policy through durable CAS.
 projects: []
 tests: []
 graph:

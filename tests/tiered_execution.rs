@@ -121,6 +121,8 @@ pub mod retry_cycle;
 pub mod retry_planner;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_policy.rs"]
 pub mod retry_policy;
+#[path = "../src/runtime/tiered-execution/composition/tier/policy_cas.rs"]
+pub mod retry_policy_cas;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_codec.rs"]
 pub mod retry_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/policy_owner.rs"]
@@ -723,6 +725,11 @@ use retry_policy::{
     NativeContinuationRetryFallback, NativeContinuationRetryFallbackSnapshot,
     NativeContinuationRetryPolicy, NativeContinuationRetryPolicyError,
     NativeContinuationRetryPolicyOutcome,
+};
+use retry_policy_cas::{
+    NativeContinuationRetryPolicyStateCas as PolicyStateCas,
+    NativeContinuationRetryPolicyStateCasError as PolicyStateCasError,
+    compare_and_swap_native_continuation_retry_policy_state_durably,
 };
 use retry_policy_codec::{
     NativeContinuationRetryPolicyCodecError,
@@ -47821,6 +47828,231 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
     } else {
         Err(String::from("non-retry planning lost suspension"))
     }
+}
+
+#[test]
+fn native_retry_policy_state_cas_initializes_revision_zero()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "policy CAS init bytes")?;
+    let candidate = complete_retry_policy(4);
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome =
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            None,
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| {
+            format!("policy CAS initialization failed: {error:?}")
+        })?;
+    let PolicyStateCas::Durable { bytes, current, previous } = outcome else {
+        return Err(String::from("policy CAS initialization did not commit"));
+    };
+    let stored = store.blob.as_deref().ok_or_else(|| {
+        String::from("policy CAS initialization stored nothing")
+    })?;
+    let decoded = decode_native_continuation_retry_policy_state(stored)
+        .map_err(|error| error.to_string())?;
+    if bytes == 52
+        && previous.is_none()
+        && current.policy() == candidate
+        && current.revision()
+            == NativeContinuationRetryPolicyRevision::initial()
+        && decoded == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("policy CAS initialization evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_cas_advances_matching_revision()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "policy CAS update bytes")?;
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(7),
+    );
+    let candidate = complete_retry_policy(6);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_retry_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("policy CAS update failed: {error:?}"))?;
+    let PolicyStateCas::Durable { current, previous, .. } = outcome else {
+        return Err(String::from("matching policy CAS did not commit"));
+    };
+    if previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 8
+    {
+        Ok(())
+    } else {
+        Err(String::from("policy CAS revision advance drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_cas_retains_exact_conflict() -> Result<(), String>
+{
+    let maximum_bytes = nonzero_test_limit(52, "policy CAS conflict bytes")?;
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(3),
+    );
+    let actual = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(5),
+        NativeContinuationRetryPolicyRevision::from_value(4),
+    );
+    let candidate = complete_retry_policy(9);
+    let actual_bytes = encode_native_continuation_retry_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("policy CAS conflict failed: {error:?}"))?;
+    let PolicyStateCas::Conflict {
+        candidate: rejected,
+        current,
+        expected: seen,
+    } = outcome
+    else {
+        return Err(String::from("stale policy CAS committed"));
+    };
+    if rejected == candidate
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("policy CAS conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_cas_rejects_revision_exhaustion()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "policy CAS exhausted bytes")?;
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(u64::MAX),
+    );
+    let candidate = complete_retry_policy(8);
+    let original = encode_native_continuation_retry_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted policy CAS advanced"))?;
+    let expected_error = PolicyStateCasError::Owner(
+        NativeContinuationRetryPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if error == expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("exhausted policy CAS evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_state_file_cas_serializes_initializers()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("policy-cas-race")?;
+    let maximum_bytes = nonzero_test_limit(52, "file policy CAS bytes")?;
+    let first_policy = complete_retry_policy(3);
+    let second_policy = complete_retry_policy(7);
+    let barrier = Arc::new(Barrier::new(3));
+    let first_barrier = Arc::clone(&barrier);
+    let first_path = fixture.destination.clone();
+    let first = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(first_path);
+        let _wait = first_barrier.wait();
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            None,
+            first_policy,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("first policy initializer: {error:?}"))
+    });
+    let second_barrier = Arc::clone(&barrier);
+    let second_path = fixture.destination.clone();
+    let second = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(second_path);
+        let _wait = second_barrier.wait();
+        compare_and_swap_native_continuation_retry_policy_state_durably(
+            &mut store,
+            None,
+            second_policy,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("second policy initializer: {error:?}"))
+    });
+    let _wait = barrier.wait();
+    let first_outcome = first
+        .join()
+        .map_err(|_panic| String::from("first policy CAS panic"))??;
+    let second_outcome = second
+        .join()
+        .map_err(|_panic| String::from("second policy CAS panic"))??;
+    let valid = match (first_outcome, second_outcome) {
+        (
+            PolicyStateCas::Durable { current, .. }
+            | PolicyStateCas::Published { current, .. },
+            PolicyStateCas::Conflict {
+                current: Some(observed), ..
+            },
+        ) => current == observed && current.policy() == first_policy,
+        (
+            PolicyStateCas::Conflict {
+                current: Some(observed), ..
+            },
+            PolicyStateCas::Durable { current, .. }
+            | PolicyStateCas::Published { current, .. },
+        ) => current == observed && current.policy() == second_policy,
+        _ => false,
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    if valid {
+        return Ok(());
+    }
+    Err(String::from("policy initializers were not serialized"))
 }
 
 #[test]

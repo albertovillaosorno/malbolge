@@ -745,6 +745,14 @@ publisher commits while the loser observes the committed bytes as conflict
 evidence. Non-cooperating filesystem writers remain outside this advisory-lock
 contract.
 
+Typed active-policy CAS now composes that conditional blob service with the
+revisioned state codec and the existing owner transition. Missing state can
+initialize revision zero; a present expected state advances exactly one
+revision, while stale state returns the decoded current owner without mutation.
+Four adapter-neutral cases cover initialization, update, conflict, and
+exhaustion; a host-real two-store race proves that exactly one initializer
+commits.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered
@@ -803,8 +811,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Histogram refinement, distributed merge, durable/cross-cycle policy
-publication, native object fusion, foreign invocation, typed active-policy CAS,
-asynchronous timing, and multi-blob transactions remain open.
+publication, native object fusion, foreign invocation, asynchronous timing,
+and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

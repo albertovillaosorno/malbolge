@@ -554,18 +554,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   adapter-neutral cases cover those paths and one host-real filesystem case
   round-trips a sliced policy durably.
 
-  This remains one caller-selected policy document only. Shared active-policy
-  ownership, automatic future-request mutation, and cross-process CAS/locking
-  remain pending.
+  This remains one caller-selected policy document only. Active ownership and
+  typed conditional publication are separate boundaries described below; future
+  requests are still never mutated automatically.
 
   A process-local active-policy owner now carries one exact retry policy and a
   monotonic `u64` revision across cached cycles. Revision zero is initial; a
   matching expected revision publishes once, stale revisions conflict without
   mutation, and revision exhaustion fails closed. Four cases cover initial,
   published, conflict, and exhausted states. Validated state can be
-  reconstructed explicitly, but durable revision publication and cross-process
-  CAS/locking
-  remain pending.
+  reconstructed explicitly; durable conditional revision publication is
+  described below.
 
   An explicit request-binding boundary now consumes one immutable active state
   plus one future cached-cycle request. It replaces only that request policy
@@ -594,6 +593,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   durability failure, and one host-real race proves exactly one cooperating
   missing-state publisher commits. Arbitrary writers that bypass the adapter
   remain outside this lock contract.
+
+  Typed active-policy CAS composes that conditional blob path with the
+  revisioned state codec and existing owner transition. Missing state
+  initializes zero; present expected state advances exactly one revision, while
+  stale state
+  returns the decoded current owner without mutation. Four adapter-neutral cases
+  cover initialization, update, conflict, and exhaustion; one host-real race
+  proves exactly one initializer commits.
 
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
@@ -646,8 +653,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure; one host-real case records a measured sample separately.
 
   Histogram refinement, distributed/durable merge, durable/cross-cycle policy
-  publication, typed active-policy CAS, async queues/timers, multi-blob
-  transactions, and broader production orchestration remain pending.
+  publication, async queues/timers, multi-blob transactions, and broader
+  production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
