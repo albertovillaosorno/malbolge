@@ -717,6 +717,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   adapter-neutral cases retain both telemetry round trips, missing state, byte
   guards, and store failures across that generalized boundary.
 
+  A separate outbound capability now requires one preconfigured opaque blob pair
+  to load and replace atomically. Partial pair state is unrepresentable; failed
+  replacement preserves the complete prior pair, and sequential single-blob
+  writes do not satisfy the contract. The application service enforces separate
+  positive bounds before publication and after load, while post-commit pair
+  durability remains distinct from rollback.
+
+  Six deterministic cases cover atomic replacement, preserved prior state, both
+  write bounds, oversized adapter output, missing state, and committed
+  durability
+  failure. A concrete filesystem pair adapter and pair CAS remain open.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real

@@ -33,6 +33,10 @@
 
 //! Product tiered-execution identity and cache-key conformance.
 
+#[path = "../src/runtime/tiered-execution/application/blob_pair_persistence.rs"]
+pub mod blob_pair_persistence;
+#[path = "../src/runtime/tiered-execution/port-outbound/blob_pair_store.rs"]
+pub mod blob_pair_store;
 #[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
 pub mod blob_persistence;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_store.rs"]
@@ -148,6 +152,15 @@ use std::sync::{Arc, Barrier, mpsc};
 use std::time::Duration;
 use std::{fs, thread};
 
+use blob_pair_persistence::{
+    NativeContinuationBlobPairDurablePersistence as BlobPairDurablePersistence,
+    NativeContinuationBlobPairMember as BlobPairMember,
+    NativeContinuationBlobPairPersistenceError as BlobPairPersistenceError,
+    NativeContinuationBlobPairPersistenceLoad as BlobPairPersistenceLoad,
+    NativeContinuationBlobPairPersistenceRequest as BlobPairPersistenceRequest,
+    persist_blob_pair, persist_blob_pair_durably, restore_blob_pair,
+};
+use blob_pair_store as telemetry_pair_store_port;
 use blob_persistence::{
     NativeContinuationBlobConditionalDurablePersistence as BlobCasDurable,
     NativeContinuationBlobConditionalPersistence as BlobConditionalPersistence,
@@ -2169,6 +2182,28 @@ enum TestCachedRetryTelemetryBlobStoreError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestBlobPairDurabilityError {
+    Confirm,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestBlobPairStoreError {
+    Load,
+    Replace,
+}
+
+#[derive(Debug, Default)]
+struct TestBlobPairStore {
+    durability_calls: usize,
+    fail_durability: bool,
+    fail_load: bool,
+    fail_replace: bool,
+    last_load_limits: Option<(NonZeroUsize, NonZeroUsize)>,
+    pair: Option<telemetry_pair_store_port::NativeContinuationBlobPair>,
+    replace_calls: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TestMonotonicClockError {
     Finish,
 }
@@ -2197,6 +2232,61 @@ struct TestMonotonicClock {
 struct TestTelemetryFileStoreFixture {
     destination: PathBuf,
     directory: PathBuf,
+}
+
+impl telemetry_pair_store_port::NativeContinuationBlobPairStore
+    for TestBlobPairStore
+{
+    type Error = TestBlobPairStoreError;
+
+    fn load_pair(
+        &mut self,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> Result<
+        Option<telemetry_pair_store_port::NativeContinuationBlobPair>,
+        Self::Error,
+    > {
+        self.last_load_limits =
+            Some((first_maximum_bytes, second_maximum_bytes));
+        if self.fail_load {
+            Err(TestBlobPairStoreError::Load)
+        } else {
+            Ok(self.pair.clone())
+        }
+    }
+
+    fn replace_pair(
+        &mut self,
+        first: &[u8],
+        second: &[u8],
+    ) -> Result<(), Self::Error> {
+        self.replace_calls = self.replace_calls.saturating_add(1);
+        if self.fail_replace {
+            return Err(TestBlobPairStoreError::Replace);
+        }
+        self.pair =
+            Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+                first: first.to_vec(),
+                second: second.to_vec(),
+            });
+        Ok(())
+    }
+}
+
+impl telemetry_pair_store_port::NativeContinuationDurableBlobPairStore
+    for TestBlobPairStore
+{
+    type DurabilityError = TestBlobPairDurabilityError;
+
+    fn confirm_pair_durability(&mut self) -> Result<(), Self::DurabilityError> {
+        self.durability_calls = self.durability_calls.saturating_add(1);
+        if self.fail_durability {
+            Err(TestBlobPairDurabilityError::Confirm)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl NativeContinuationMonotonicClock for TestMonotonicClock {
@@ -51076,6 +51166,198 @@ fn cached_retry_file_blob_store_durably_roundtrips_count_window()
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
+}
+
+#[test]
+fn cached_retry_blob_pair_persistence_is_atomic() -> Result<(), String> {
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: b"old-count".to_vec(),
+            second: b"old-latency".to_vec(),
+        }),
+        ..TestBlobPairStore::default()
+    };
+    let write = persist_blob_pair(
+        &mut store,
+        BlobPairPersistenceRequest::new(
+            b"new-count",
+            b"new-latency",
+            nonzero_test_limit(32, "pair first bytes")?,
+            nonzero_test_limit(32, "pair second bytes")?,
+        ),
+    )
+    .map_err(|error| format!("pair publication failed: {error:?}"))?;
+    let pair = store
+        .pair
+        .as_ref()
+        .ok_or_else(|| String::from("pair publication disappeared"))?;
+    if write.first_bytes() == 9
+        && write.second_bytes() == 11
+        && pair.first == b"new-count"
+        && pair.second == b"new-latency"
+        && store.replace_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("atomic pair publication drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_persistence_failure_preserves_previous_pair()
+-> Result<(), String> {
+    let previous = telemetry_pair_store_port::NativeContinuationBlobPair {
+        first: b"old-count".to_vec(),
+        second: b"old-latency".to_vec(),
+    };
+    let mut store = TestBlobPairStore {
+        fail_replace: true,
+        pair: Some(previous.clone()),
+        ..TestBlobPairStore::default()
+    };
+    let error = persist_blob_pair(
+        &mut store,
+        BlobPairPersistenceRequest::new(
+            b"new-count",
+            b"new-latency",
+            nonzero_test_limit(32, "failed pair first bytes")?,
+            nonzero_test_limit(32, "failed pair second bytes")?,
+        ),
+    )
+    .err()
+    .ok_or_else(|| String::from("failed pair publication committed"))?;
+    if error == BlobPairPersistenceError::Store(TestBlobPairStoreError::Replace)
+        && store.pair == Some(previous)
+        && store.replace_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed pair publication drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_persistence_checks_both_write_bounds()
+-> Result<(), String> {
+    let mut first_store = TestBlobPairStore::default();
+    let first_error = persist_blob_pair(
+        &mut first_store,
+        BlobPairPersistenceRequest::new(
+            b"1234",
+            b"2",
+            nonzero_test_limit(3, "pair short first bound")?,
+            nonzero_test_limit(3, "pair second bound")?,
+        ),
+    )
+    .err()
+    .ok_or_else(|| String::from("oversized first pair member committed"))?;
+    let mut second_store = TestBlobPairStore::default();
+    let second_error = persist_blob_pair(
+        &mut second_store,
+        BlobPairPersistenceRequest::new(
+            b"1",
+            b"2345",
+            nonzero_test_limit(3, "pair first bound")?,
+            nonzero_test_limit(3, "pair short second bound")?,
+        ),
+    )
+    .err()
+    .ok_or_else(|| String::from("oversized second pair member committed"))?;
+    if matches!(first_error, BlobPairPersistenceError::ByteLimit {
+        member: BlobPairMember::First,
+        observed_bytes: 4,
+        ..
+    }) && matches!(second_error, BlobPairPersistenceError::ByteLimit {
+        member: BlobPairMember::Second,
+        observed_bytes: 4,
+        ..
+    }) && first_store.replace_calls == 0
+        && second_store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("pair write bounds drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_persistence_rechecks_loaded_bounds()
+-> Result<(), String> {
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: b"1".to_vec(),
+            second: b"oversized".to_vec(),
+        }),
+        ..TestBlobPairStore::default()
+    };
+    let first_limit = nonzero_test_limit(3, "pair load first bound")?;
+    let second_limit = nonzero_test_limit(4, "pair load second bound")?;
+    let error = restore_blob_pair(&mut store, first_limit, second_limit)
+        .err()
+        .ok_or_else(|| String::from("oversized loaded pair accepted"))?;
+    if matches!(error, BlobPairPersistenceError::ByteLimit {
+        member: BlobPairMember::Second,
+        maximum_bytes,
+        observed_bytes: 9,
+    } if maximum_bytes == second_limit)
+        && store.last_load_limits == Some((first_limit, second_limit))
+    {
+        Ok(())
+    } else {
+        Err(String::from("pair load bound evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_persistence_reports_missing_pair()
+-> Result<(), String> {
+    let mut store = TestBlobPairStore::default();
+    let load = restore_blob_pair(
+        &mut store,
+        nonzero_test_limit(8, "missing pair first bound")?,
+        nonzero_test_limit(8, "missing pair second bound")?,
+    )
+    .map_err(|error| format!("missing pair load failed: {error:?}"))?;
+    if load == BlobPairPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("missing pair state was invented"))
+    }
+}
+
+#[test]
+fn cached_retry_blob_pair_durability_retains_committed_failure()
+-> Result<(), String> {
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let outcome = persist_blob_pair_durably(
+        &mut store,
+        BlobPairPersistenceRequest::new(
+            b"count",
+            b"latency",
+            nonzero_test_limit(16, "durable pair first bound")?,
+            nonzero_test_limit(16, "durable pair second bound")?,
+        ),
+    )
+    .map_err(|error| format!("durable pair publication failed: {error:?}"))?;
+    let pair = store
+        .pair
+        .as_ref()
+        .ok_or_else(|| String::from("durable pair publication missing"))?;
+    if matches!(outcome, BlobPairDurablePersistence::Published {
+        durability_error: TestBlobPairDurabilityError::Confirm,
+        ..
+    }) && pair.first == b"count"
+        && pair.second == b"latency"
+        && store.replace_calls == 1
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed pair durability drifted"))
+    }
 }
 
 #[test]

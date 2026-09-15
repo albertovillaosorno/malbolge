@@ -873,6 +873,18 @@ state; typed telemetry codecs remain composition clients. Six adapter-neutral
 cases retain both telemetry round trips, missing state, byte guards, and store
 failures across that generalized boundary.
 
+A separate outbound capability now requires one preconfigured opaque blob pair
+to load and replace atomically. Partial pair state is unrepresentable: failed
+replacement must preserve the complete prior pair, and sequential single-blob
+writes do not satisfy the contract. Its application service enforces independent
+positive bounds before publication and after load, with post-commit pair
+durability reported separately from rollback.
+
+Six deterministic cases cover atomic replacement, preserved prior state on
+failure, both write bounds, malicious oversized load output, missing state, and
+committed durability failure. No concrete filesystem pair adapter is claimed
+yet.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and
@@ -904,7 +916,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, and multi-blob transactions remain open.
+asynchronous timing, concrete atomic-pair adapters, pair CAS, and general
+N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

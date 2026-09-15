@@ -33,6 +33,10 @@
 
 //! Canonical module topology for the complete tiered-execution function.
 
+#[path = "../application/blob_pair_persistence.rs"]
+pub mod blob_pair_persistence;
+#[path = "../port-outbound/blob_pair_store.rs"]
+pub mod blob_pair_store;
 #[path = "../application/blob_persistence.rs"]
 pub mod blob_persistence;
 #[path = "../port-outbound/blob_store.rs"]

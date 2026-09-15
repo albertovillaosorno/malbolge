@@ -454,6 +454,16 @@ parts:
     kind: composition
     language: rust
     responsibility: Retry ordered count CAS conflicts within caller budget.
+  - id: part-0085
+    path: port-outbound/blob_pair_store.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define atomic opaque blob-pair storage contracts.
+  - id: part-0086
+    path: application/blob_pair_persistence.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate bounded atomic blob-pair persistence.
 projects: []
 tests: []
 graph:
