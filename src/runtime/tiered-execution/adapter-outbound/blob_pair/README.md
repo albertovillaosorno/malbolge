@@ -103,6 +103,16 @@ final conflict unchanged; callback failure, successful durability, and committed
 post-publication durability failure stop immediately. The runtime still chooses
 no union, intersection, ordering, backoff, or retention policy.
 
+
+The durable retention journal is not by itself a safe concurrent reclamation
+fence. The generic file-blob journal and the pair-generation reclaimer use
+different sibling lock files, so loading a preserve set and later deleting under
+the pair lock can race a journal writer that retains another revision in
+between. Composition must not expose a load-journal-then-reclaim helper until
+journal mutation and generation deletion share one serialization or transaction
+boundary. Process-local callers may still restore the journal and coordinate
+reclamation themselves when they own all relevant mutation authority.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

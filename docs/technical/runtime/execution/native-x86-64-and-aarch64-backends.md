@@ -1021,6 +1021,17 @@ callback rejection before CAS, and committed durability failure stopping after
 one attempt. No union, intersection, revision ordering, backoff, or automatic
 retention policy is inferred.
 
+
+Durable retention state and generation reclamation still do not form one
+transaction. The generic file-blob journal and filesystem pair adapter use
+different stable sibling locks; therefore loading journal state and later
+reclaiming with that preserve set can race a concurrent journal update and
+remove a newly retained generation. No composition helper may treat the journal
+as concurrent reclamation authority until both operations share one
+serialization or transaction boundary. A process that exclusively owns all
+retention mutation may still restore the journal and invoke explicit
+reclamation under that stronger external authority.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

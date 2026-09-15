@@ -864,6 +864,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   after one attempt. Union/intersection, revision ordering, backoff, and
   automatic retention policy remain caller-owned or pending.
 
+
+  Durable retention state and generation reclamation still lack one shared
+  serialization boundary. The generic file-blob journal and pair-generation
+  adapter use different sibling locks, so load-journal-then-reclaim can race a
+  concurrent journal writer and delete a revision that became retained after
+  the load. Do not add that orchestration until journal mutation and generation
+  deletion share a lock or transaction boundary. Process-local callers that own
+  all retention mutation may coordinate the two operations externally.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected
