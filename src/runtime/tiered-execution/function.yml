@@ -526,6 +526,12 @@ parts:
     language: rust
     responsibility: >-
       Coordinate filesystem adapters through one explicit advisory lock path.
+  - id: part-0099
+    path: composition/pair_reclaim.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Reclaim filesystem pair generations from durable retention under one lock.
 projects: []
 tests: []
 graph:

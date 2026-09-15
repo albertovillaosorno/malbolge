@@ -35,6 +35,14 @@ a different coordinator before state access or deletion. One host-real case
 holds one guard once across blob CAS/load and pair reclamation, proving that the
 shared lock boundary no longer requires recursive acquisition.
 
+
+Composition now uses that seam for journal-driven reclamation. One exclusive
+guard spans bounded journal load/validation and exact generation reclamation;
+missing journal state is a non-mutating outcome, while an explicitly present
+empty journal authorizes removal of every superseded generation except current.
+Two host-real cases cover the missing-journal no-op and exact preserved revision
+behavior from a present durable journal.
+
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
 manifest generation. A crash before manifest replacement can still leave

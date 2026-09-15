@@ -129,6 +129,8 @@ pub mod monotonic_clock;
 pub mod native_retry;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention.rs"]
 pub mod pair_retention_journal;
+#[path = "../src/runtime/tiered-execution/composition/pair_reclaim.rs"]
+pub mod pair_retention_reclamation;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
@@ -819,6 +821,10 @@ use pair_retention_journal::{
     persist_file_blob_pair_retention_journal_durably,
     restore_file_blob_pair_retention_journal,
 };
+use pair_retention_reclamation::{
+    NativeContinuationFileBlobPairJournalReclamation,
+    reclaim_file_blob_pair_from_retention_journal,
+};
 use pair_retention_reconciliation::{
     NativeContinuationFileBlobPairRetentionReconcileError,
     reconcile_file_blob_pair_retention_journal_durably_with_retries,
@@ -887,6 +893,11 @@ struct CoffCompileCase {
 }
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
+type FileBlobPairRetentionReclamationSetup = (
+    NativeContinuationFileBlobPairStore,
+    NativeContinuationFileBlobPairRevision,
+);
+
 type LatencyRefinementError =
     NativeContinuationCachedRetryLatencyRefinementError;
 type LatencyCommonCoarseningError =
@@ -53148,6 +53159,143 @@ fn cached_retry_file_blob_pair_retention_reconciliation_stops_on_commit()
         Ok(())
     } else {
         Err(String::from("committed retention publication was retried"))
+    }
+}
+
+fn setup_retention_reclamation_pair(
+    fixture: &TestTelemetryFileStoreFixture,
+    coordination: &NativeContinuationFileCoordination,
+    maximum_bytes: NonZeroUsize,
+) -> Result<FileBlobPairRetentionReclamationSetup, String> {
+    let mut pair = NativeContinuationFileBlobPairStore::with_coordination(
+        fixture.destination.clone(),
+        coordination.clone(),
+    );
+    let preserved = publish_file_blob_pair_revision(
+        &mut pair,
+        None,
+        (b"preserved-first", b"preserved-second"),
+        maximum_bytes,
+    )?;
+    let _current = publish_file_blob_pair_revision(
+        &mut pair,
+        Some(&preserved),
+        (b"current-first", b"current-second"),
+        maximum_bytes,
+    )?;
+    Ok((pair, preserved))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reclamation_missing_is_noop()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("retention-reclaim-missing")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "missing retention bytes")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let mut pair = NativeContinuationFileBlobPairStore::with_coordination(
+        fixture.destination.clone(),
+        coordination.clone(),
+    );
+    let first = publish_file_blob_pair_revision(
+        &mut pair,
+        None,
+        (b"old-first", b"old-second"),
+        maximum_bytes,
+    )?;
+    let _current = publish_file_blob_pair_revision(
+        &mut pair,
+        Some(&first),
+        (b"current-first", b"current-second"),
+        maximum_bytes,
+    )?;
+    let journal = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("retention.bin"),
+        coordination.clone(),
+    );
+    let outcome = reclaim_file_blob_pair_from_retention_journal(
+        &coordination,
+        &journal,
+        &mut pair,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("missing journal reclamation failed: {error:?}")
+    })?;
+    let members = file_blob_pair_generation_members(&fixture.directory)?;
+    let result = if outcome
+        == NativeContinuationFileBlobPairJournalReclamation::MissingJournal
+        && members.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "missing retention journal authorized deletion",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_reclamation_preserves_journal()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("retention-reclaim-present")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "present retention bytes")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let (mut pair, preserved) = setup_retention_reclamation_pair(
+        &fixture,
+        &coordination,
+        maximum_bytes,
+    )?;
+    write_file_blob_pair_generation(
+        &fixture,
+        99,
+        99,
+        (b"orphan-first", b"orphan-second"),
+    )?;
+    let retention = test_file_blob_pair_retention(&[preserved]);
+    let mut journal = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("retention.bin"),
+        coordination.clone(),
+    );
+    let _write = persist_file_blob_pair_retention_journal_durably(
+        &mut journal,
+        &retention,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("cannot persist reclamation journal: {error:?}")
+    })?;
+    let outcome = reclaim_file_blob_pair_from_retention_journal(
+        &coordination,
+        &journal,
+        &mut pair,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("present journal reclamation failed: {error:?}")
+    })?;
+    let NativeContinuationFileBlobPairJournalReclamation::Reclaimed {
+        reclamation,
+        retained_revisions,
+    } = outcome
+    else {
+        return Err(String::from("present retention journal was ignored"));
+    };
+    let member_count =
+        file_blob_pair_generation_members(&fixture.directory)?.len();
+    let valid = retained_revisions == 1
+        && reclamation.removed().len() == 2
+        && member_count == 4;
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from("journal-driven exact preservation drifted"))
     }
 }
 

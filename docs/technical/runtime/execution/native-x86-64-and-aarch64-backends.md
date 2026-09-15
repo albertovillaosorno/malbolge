@@ -1060,9 +1060,16 @@ The guarded prelocked seam is now implemented as well. Crate-internal bounded
 blob load/CAS and pair-generation reclamation require one matching exclusive
 guard and reject foreign guards before state access. One host-real case holds a
 single exclusive guard across blob CAS/load and pair reclamation without nested
-lock acquisition; another proves a foreign guard is rejected by both adapters.
-Journal-driven reclamation can now be built on this primitive, but no such
-cross-object orchestration is implied by the adapters themselves.
+lock acquisition. Another proves a foreign guard is rejected by both adapters.
+
+Journal-driven reclamation is now implemented in composition over that
+primitive. One exclusive guard spans bounded journal load, canonical retention
+decode, and pair-generation reclamation. Missing journal state performs no
+deletion; a present empty journal is distinct and authorizes reclamation of
+every
+superseded generation except current. Two host-real cases cover missing-journal
+no-op and exact durable preservation from a present journal; the adapters still
+expose no retention-selection policy.
 
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
