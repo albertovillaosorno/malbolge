@@ -955,17 +955,26 @@ The persistence layer itself still infers no order from storage contention.
 
 One-shot ordered-pair reconciliation now performs a fresh versioned load, then
 transactionally appends one caller-ordered count batch and exactly normalizes
-and
-merges its latency delta before one durable revision CAS. Missing state uses the
+and merges its latency delta before one durable revision CAS. Missing state uses
+the
 caller capacity and submitted latency as its initial state. Existing persisted
 capacity and external-order watermark remain authoritative.
 
 Four focused cases cover missing-state initialization, exact existing-state
 reconciliation, stale-order rejection before CAS, and committed durability
-failure. Concurrent CAS conflict remains a typed non-mutating outcome and is not
-retried by this layer. A future bounded retry must repeat the complete fresh
-load/reconciliation so a newer watermark can reject stale work rather than
-rebasing it.
+failure. Concurrent CAS conflict remains a typed non-mutating one-shot outcome.
+
+Caller-bounded synchronous retry now repeats the complete fresh-load
+reconciliation only after typed CAS conflict. Every attempt re-reads the durable
+watermark and latency state before rebuilding the candidate; a newer watermark
+can therefore reject the submitted order instead of being silently rebased.
+Durable publication, committed durability failure, and every non-conflict error
+stop immediately. No backoff, sleep, fairness, or cancellation policy is
+inferred.
+
+Four focused retry cases cover final conflict at the attempt limit,
+conflict-to-fresh-load success, conflict followed by exact stale-order
+rejection, and committed durability failure stopping after the first attempt.
 
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
@@ -997,9 +1006,9 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, ordered-pair conflict retry, pair-generation reclamation,
-and general N-object transactions remain open.
+Merge backoff/cancellation/fairness policy, native object fusion, foreign
+invocation, asynchronous timing, pair-generation reclamation, and general
+N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

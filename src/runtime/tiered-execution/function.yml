@@ -493,6 +493,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Reconcile ordered count and latency deltas before pair CAS.
+  - id: part-0093
+    path: composition/tier/cached_cycle/telemetry_ordered_pair_reconciliation_retry.rs
+    kind: composition
+    language: rust
+    responsibility: Retry ordered pair reconciliation conflicts within budget.
 projects: []
 tests: []
 graph:

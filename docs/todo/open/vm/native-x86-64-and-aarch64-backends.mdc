@@ -802,9 +802,19 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Four focused cases cover initialization, exact existing-state reconciliation,
   stale-order rejection before CAS, and committed durability failure. Conflict
-  remains typed non-mutating evidence with no automatic retry. A future bounded
-  retry must repeat the complete fresh-load reconciliation so a newer watermark
-  can reject stale work rather than rebasing it.
+  remains typed non-mutating one-shot evidence.
+
+  Caller-bounded synchronous retry now repeats the complete fresh-load
+  reconciliation only after typed CAS conflict. Every attempt re-reads the
+  durable watermark and latency state; a newer watermark can reject the
+  submitted order rather than being silently rebased. Durable publication,
+  committed sync
+  failure, and every non-conflict error stop immediately. No timing, fairness,
+  cancellation, or backoff policy is inferred.
+
+  Four retry cases cover attempt-limit conflict, conflict-to-fresh-load success,
+  conflict followed by exact stale-order rejection, and committed durability
+  failure stopping after the first attempt.
 
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
@@ -831,9 +841,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Merge backoff/cancellation policy, async queues/timers, ordered-pair conflict
-  retry, generation reclamation, general N-object transactions,
-  and broader production orchestration remain pending.
+  Merge backoff/cancellation/fairness policy, async queues/timers, generation
+  reclamation, general N-object transactions, and broader production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

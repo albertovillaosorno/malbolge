@@ -282,6 +282,7 @@ use cached_cycle::{
     publish_cached_retry_telemetry_ordered_batch_durably_with_retries,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     reconcile_cached_retry_telemetry_ordered_pair_durably,
+    reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_ordered_pair,
@@ -2265,6 +2266,8 @@ struct TestBlobPairStore {
     fail_replace: bool,
     last_load_limits: Option<(NonZeroUsize, NonZeroUsize)>,
     pair: Option<telemetry_pair_store_port::NativeContinuationBlobPair>,
+    pair_before_compare:
+        Option<(telemetry_pair_store_port::NativeContinuationBlobPair, u64)>,
     replace_calls: usize,
     revision: u64,
 }
@@ -2358,6 +2361,10 @@ impl telemetry_pair_store_port::NativeContinuationConditionalBlobPairStore
             NativeContinuationBlobPairConditionalPublication<Self::Revision>,
         Self::Error,
     >{
+        if let Some((pair, revision)) = self.pair_before_compare.take() {
+            self.pair = Some(pair);
+            self.revision = revision;
+        }
         let current_revision = self.pair.as_ref().map(|_pair| self.revision);
         if current_revision.as_ref() != request.expected {
             let current = self.pair.clone().map(|pair| {
@@ -52934,6 +52941,249 @@ fn cached_retry_telemetry_pair_state(
     let mut histogram = cached_retry_latency_histogram()?;
     record_cached_retry_latencies(&mut histogram, &[latency])?;
     Ok((window, histogram))
+}
+
+fn cached_retry_ordered_pair_store_at_order(
+    ordering: (NonZeroUsize, OrderedTelemetryBatchOrder),
+    summary: NativeContinuationCachedRetryTelemetry,
+    latency: &NativeContinuationCachedRetryLatencyHistogram,
+    limit: NonZeroUsize,
+) -> Result<TestBlobPairStore, String> {
+    let (capacity, order) = ordering;
+    let mut store = TestBlobPairStore::default();
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, order),
+        &batch,
+        latency,
+        (limit, limit),
+    );
+    let outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, request,
+    )
+    .map_err(|error| format!("ordered pair store setup failed: {error:?}"))?;
+    if matches!(outcome, OrderedPairReconciliation::Durable { .. }) {
+        Ok(store)
+    } else {
+        Err(String::from("ordered pair store setup did not commit"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_retry_refreshes_after_conflict()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered retry refresh capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered retry refresh bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut latency, &[10])?;
+    let mut store = TestBlobPairStore::default();
+    let first_batch = [summary];
+    let first = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        &first_batch,
+        &latency,
+        (limit, limit),
+    );
+    let _first = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, first,
+    )
+    .map_err(|error| {
+        format!("ordered retry refresh setup failed: {error:?}")
+    })?;
+    let raced_pair = store
+        .pair
+        .clone()
+        .ok_or_else(|| String::from("ordered retry refresh pair missing"))?;
+    store.pair_before_compare = Some((raced_pair, store.revision + 1));
+    let retry_batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(20)),
+        &retry_batch,
+        &latency,
+        (limit, limit),
+    );
+    let result =
+        reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries(
+            &mut store,
+            request,
+            nonzero_test_limit(2, "ordered retry refresh attempts")?,
+        )
+        .map_err(|error| format!("ordered retry refresh failed: {error:?}"))?;
+    let OrderedPairReconciliation::Durable { current, .. } = result.outcome()
+    else {
+        return Err(String::from("ordered retry refresh did not commit"));
+    };
+    if result.attempts() == 2
+        && current.ordered().last_order()
+            == Some(OrderedTelemetryBatchOrder::from_value(20))
+        && current.histogram().samples() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry refresh evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_retry_stops_on_fresh_stale_order()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered retry stale capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered retry stale bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let latency = cached_retry_latency_histogram()?;
+    let mut store = cached_retry_ordered_pair_store_at_order(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        summary,
+        &latency,
+        limit,
+    )?;
+    let raced_store = cached_retry_ordered_pair_store_at_order(
+        (capacity, OrderedTelemetryBatchOrder::from_value(25)),
+        summary,
+        &latency,
+        limit,
+    )?;
+    let raced_pair = raced_store
+        .pair
+        .ok_or_else(|| String::from("ordered retry raced pair missing"))?;
+    store.pair_before_compare = Some((raced_pair, store.revision + 1));
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let retry_batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, submitted),
+        &retry_batch,
+        &latency,
+        (limit, limit),
+    );
+    let Err(error) =
+        reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries(
+            &mut store,
+            request,
+            nonzero_test_limit(3, "ordered retry stale attempts")?,
+        )
+    else {
+        return Err(String::from("fresh stale order unexpectedly committed"));
+    };
+    if error
+        == OrderedPairReconciliationError::Ordered(
+            NativeContinuationCachedRetryTelemetryOrderedWindowError::
+                OrderNotAdvanced {
+                    current: OrderedTelemetryBatchOrder::from_value(25),
+                    submitted,
+                },
+        )
+    {
+        Ok(())
+    } else {
+        Err(format!("fresh stale-order evidence drifted: {error:?}"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_retry_retains_conflict() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered retry pair capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered retry pair bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut latency = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut latency, &[10])?;
+    let mut store = TestBlobPairStore::default();
+    let first_batch = [summary];
+    let first = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        &first_batch,
+        &latency,
+        (limit, limit),
+    );
+    let _published = reconcile_cached_retry_telemetry_ordered_pair_durably(
+        &mut store, first,
+    )
+    .map_err(|error| format!("ordered retry setup failed: {error:?}"))?;
+    let raced_pair = store
+        .pair
+        .clone()
+        .ok_or_else(|| String::from("ordered retry setup pair missing"))?;
+    store.pair_before_compare = Some((raced_pair, store.revision + 1));
+    let retry_batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(20)),
+        &retry_batch,
+        &latency,
+        (limit, limit),
+    );
+    let result =
+        reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries(
+            &mut store,
+            request,
+            nonzero_test_limit(1, "ordered retry pair attempts")?,
+        )
+        .map_err(|error| format!("ordered retry conflict failed: {error:?}"))?;
+    if result.attempts() == 1
+        && matches!(
+            result.outcome(),
+            OrderedPairReconciliation::Conflict { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry conflict budget drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_retry_stops_on_committed_failure()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "ordered retry committed capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered retry committed bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let latency = cached_retry_latency_histogram()?;
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(1)),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let result =
+        reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries(
+            &mut store,
+            request,
+            nonzero_test_limit(3, "ordered retry committed attempts")?,
+        )
+        .map_err(|error| {
+            format!("ordered retry committed failed: {error:?}")
+        })?;
+    if result.attempts() == 1
+        && matches!(
+            result.outcome(),
+            OrderedPairReconciliation::Published { .. }
+        )
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry committed behavior drifted"))
+    }
 }
 
 #[test]
