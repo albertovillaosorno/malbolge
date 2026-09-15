@@ -523,6 +523,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   nested count semantics are revalidated. Five cases cover both round trips,
   absent-order canonicality, reserved flags, and nested corruption.
 
+  The combined ordered state now persists durably as one bounded blob. Restart
+  restores watermark and FIFO together, missing state stays explicit, and
+  post-publication sync failure remains committed evidence. Three deterministic
+  cases cover round trip, committed failure, and missing state; one host-real
+  filesystem case crosses the full persistence path.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

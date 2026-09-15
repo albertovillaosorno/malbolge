@@ -664,6 +664,13 @@ a zero value, and nested count semantics are revalidated during decode. Five
 cases cover ordered/unordered round trips, absent-order canonicality, reserved
 flags, and nested corruption.
 
+That combined ordered state now binds directly to the bounded durable blob
+service as one document. Restart therefore restores the external watermark and
+count FIFO together; missing state remains explicit, and post-publication sync
+failure remains committed `Published` evidence. Three deterministic cases cover
+round trip, committed durability failure, and missing state, plus one host-real
+filesystem round trip.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

@@ -439,6 +439,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Encode ordered count telemetry state canonically.
+  - id: part-0082
+    path: composition/tier/cached_cycle/telemetry_ordered_persistence.rs
+    kind: composition
+    language: rust
+    responsibility: Persist ordered count telemetry state durably.
 projects: []
 tests: []
 graph:

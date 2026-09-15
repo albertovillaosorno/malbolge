@@ -201,6 +201,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryCodecError,
     NativeContinuationCachedRetryTelemetryDurablePersistence,
     NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad,
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
     NativeContinuationCachedRetryTelemetryOrderedWindowError,
@@ -229,6 +231,7 @@ use cached_cycle::{
     merge_cached_retry_latency_histograms_exact,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
+    persist_cached_retry_telemetry_ordered_state_durably,
     persist_cached_retry_telemetry_window,
     persist_cached_retry_telemetry_window_durably,
     publish_cached_retry_active_policy,
@@ -239,6 +242,7 @@ use cached_cycle::{
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
+    restore_cached_retry_telemetry_ordered_state,
     restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
 };
 use cached_retry::{
@@ -816,6 +820,10 @@ type OrderedTelemetryWindowError =
     NativeContinuationCachedRetryTelemetryOrderedWindowError;
 type OrderedTelemetryStateCodecError =
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError;
+type OrderedTelemetryDurablePersistence =
+    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
 type CrazyCacheFailure<MemoryError> =
@@ -52020,6 +52028,154 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
     } else {
         Err(String::from("outbound store failure evidence drifted"))
     }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_persistence_roundtrips_combined_state()
+-> Result<(), String> {
+    let mut ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        NativeContinuationCachedRetryTelemetryWindow::new(nonzero_test_limit(
+            3,
+            "ordered persistence capacity",
+        )?),
+    );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(91);
+    let _published = ordered
+        .append_ordered_batch(order, &[summary])
+        .map_err(|error| format!("ordered persistence setup: {error:?}"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let persisted = persist_cached_retry_telemetry_ordered_state_durably(
+        &mut store,
+        &ordered,
+        nonzero_test_limit(4_096, "ordered persistence bytes")?,
+    )
+    .map_err(|error| format!("ordered persistence failed: {error:?}"))?;
+    let restored = restore_cached_retry_telemetry_ordered_state(
+        &mut store,
+        nonzero_test_limit(4_096, "ordered restore bytes")?,
+    )
+    .map_err(|error| format!("ordered restoration failed: {error:?}"))?;
+    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
+        bytes,
+        value,
+    } = restored
+    else {
+        return Err(String::from("ordered state disappeared"));
+    };
+    if persisted == (OrderedTelemetryDurablePersistence::Durable { bytes })
+        && value.last_order() == Some(order)
+        && value.window().snapshot() == ordered.window().snapshot()
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered durable round trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_persistence_retains_committed_sync_failure()
+-> Result<(), String> {
+    let ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        NativeContinuationCachedRetryTelemetryWindow::new(nonzero_test_limit(
+            2,
+            "ordered sync capacity",
+        )?),
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = persist_cached_retry_telemetry_ordered_state_durably(
+        &mut store,
+        &ordered,
+        nonzero_test_limit(4_096, "ordered sync bytes")?,
+    )
+    .map_err(|error| format!("ordered sync publication failed: {error:?}"))?;
+    if matches!(outcome, OrderedTelemetryDurablePersistence::Published {
+        durability_error: TestCachedRetryTelemetryBlobDurabilityError::Confirm,
+        ..
+    }) && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered committed failure drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_persistence_reports_missing_state()
+-> Result<(), String> {
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let restored = restore_cached_retry_telemetry_ordered_state(
+        &mut store,
+        nonzero_test_limit(4_096, "ordered missing bytes")?,
+    )
+    .map_err(|error| format!("ordered missing load failed: {error:?}"))?;
+    if matches!(
+        restored,
+        NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Missing
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("ordered missing state was invented"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_file_persistence_roundtrips()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("ordered-state")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "ordered file bytes")?;
+    let mut ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        NativeContinuationCachedRetryTelemetryWindow::new(nonzero_test_limit(
+            2,
+            "ordered file capacity",
+        )?),
+    );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(300);
+    let _published = ordered
+        .append_ordered_batch(order, &[summary])
+        .map_err(|error| format!("ordered file setup: {error:?}"))?;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let _persisted = persist_cached_retry_telemetry_ordered_state_durably(
+        &mut store,
+        &ordered,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("ordered file persist failed: {error:?}"))?;
+    let restored =
+        restore_cached_retry_telemetry_ordered_state(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("ordered file restore failed: {error:?}")
+            })?;
+    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
+        value, ..
+    } = restored
+    else {
+        return Err(String::from("ordered file state missing"));
+    };
+    let result = if value.last_order() == Some(order)
+        && value.window().snapshot() == ordered.window().snapshot()
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered file round trip drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]
