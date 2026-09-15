@@ -109,6 +109,24 @@ parts:
     kind: contract
     language: c
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0017
+    path: contract/self_host/apollo-agc/README.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0018
+    path: contract/self_host/apollo-agc/apollo_agc_runner.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0019
+    path: contract/self_host/rv32i/README.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0020
+    path: contract/self_host/rv32i/rv32i_runner.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
 projects: []
 tests: []
 graph:

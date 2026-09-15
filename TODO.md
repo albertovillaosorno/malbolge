@@ -278,6 +278,15 @@ Publish intentionally selected project-owned examples under
 
 ## P4 — Applications, evidence, and self-hosting
 
+### TODO - Apollo 11 Luminary AGC in Malbolge
+
+Execute the pinned Apollo 11 Luminary 099 software inside a project-authored
+Block II AGC interpreter that is itself compiled to and executed as
+`malbolge-2026`.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc](docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc)
+
 ### TODO - Compilation latency performance budget
 
 Establish measured compile-time budgets for cold compilation, warm resident
@@ -365,6 +374,14 @@ supported AMD hardware and an explicit maintainer are available.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/accelerator/rocm-accelerator-adapter.mdc](docs/todo/open/accelerator/rocm-accelerator-adapter.mdc)
+
+### TODO - RV32I runner in Malbolge
+
+Execute standard RV32I machine code inside a project-authored deterministic
+RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/rv32i-malbolge-runner.mdc](docs/todo/open/applications/rv32i-malbolge-runner.mdc)
 
 ### TODO - Self-hosting equivalence proof
 

@@ -1,0 +1,65 @@
+---
+id: "rv32i-malbolge-runner"
+status: "pending"
+lane: "16"
+priority: "p4"
+area: "applications"
+task: "TODO - RV32I runner in Malbolge"
+contract: "docs/technical/examples/rv32i-malbolge-runner.md"
+depends_on:
+  - "apollo-11-luminary-agc-malbolge-demonstration"
+  - "malbolge-layout-and-encoding-backend"
+  - "deterministic-binary-byte-stream-runtime"
+  - "translation-validation"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "src/examples/programs/contract/self_host/rv32i/"
+  - "tests/applications/rv32i/"
+  - "benchmarks/applications/rv32i/"
+  - "compiler/"
+  - "runtime/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - RV32I runner in Malbolge
+
+## Objective
+
+Execute standard RV32I machine code inside a project-authored deterministic
+RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
+
+## Acceptance
+
+- The runner implements the complete selected base RV32I contract with explicit
+  deterministic memory, misalignment, trap, binary-loading, output, and exit
+  semantics.
+- Conformance vectors cover every admitted base instruction family and compare
+  against an independent reference implementation.
+- At least one RV32I binary is produced by an ordinary compiler/toolchain rather
+  than being hand-encoded solely for the fixture.
+- The runner consumes the declared binary representation and performs all RISC-V
+  instruction execution inside guest semantics without a host emulator service.
+- The runner is compiled into a verifier-accepted `malbolge-2026` artifact and
+  records generated size, peak guest storage, executed Malbolge work, runtime,
+  and deterministic state/output oracles.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Current bootstrap source:
+  `src/examples/programs/contract/self_host/rv32i/rv32i_runner.c`.
+- Expected durable artifact surface: the declared example, application tests,
+  application benchmarks, compiler, and runtime scopes.
+- Required evidence: ISA conformance vectors, independent differential traces,
+  compiler-produced binary identity, exact output/state oracle, generated
+  artifact identity, resource budgets, and verifier acceptance.
+- Prerequisite completion evidence:
+  `apollo-11-luminary-agc-malbolge-demonstration`,
+  `malbolge-layout-and-encoding-backend`,
+  `deterministic-binary-byte-stream-runtime`, and `translation-validation`.

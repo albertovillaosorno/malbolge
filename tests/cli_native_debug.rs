@@ -58,6 +58,8 @@ const STRESS_FIXTURES: [&str; 5] = [
     "state_machine_stress.c",
 ];
 const STRESS_OUTPUT: &[u8] = b"OK\n";
+const MACHINE_RUNNERS: [&str; 2] =
+    ["apollo-agc/apollo_agc_runner.c", "rv32i/rv32i_runner.c"];
 
 #[cfg(windows)]
 struct InvalidTemporaryCSource {
@@ -141,6 +143,37 @@ fn compact_stress_fixtures_reach_exact_oracles() -> Result<(), String> {
             return Err(format!(
                 concat!(
                     "stress fixture failed: fixture={} status={} ",
+                    "stdout={:?} stderr={}"
+                ),
+                fixture,
+                output.status,
+                output.stdout,
+                String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn machine_runner_bootstraps_reach_exact_oracles() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root.join("src/examples/programs/contract/self_host");
+
+    for fixture in MACHINE_RUNNERS {
+        let source = directory.join(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .current_dir(root)
+            .arg(&source)
+            .output()
+            .map_err(|error| format!("failed to run {fixture}: {error}"))?;
+        if !output.status.success()
+            || output.stdout != STRESS_OUTPUT
+            || !output.stderr.is_empty()
+        {
+            return Err(format!(
+                concat!(
+                    "machine runner failed: fixture={} status={} ",
                     "stdout={:?} stderr={}"
                 ),
                 fixture,

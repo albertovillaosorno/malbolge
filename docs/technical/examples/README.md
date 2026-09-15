@@ -14,4 +14,6 @@ External source authority, research conclusions, legal analysis, or TODO state.
 
 ## Contents
 
+- `apollo-11-luminary-agc-malbolge.md`
+- `rv32i-malbolge-runner.md`
 - `versioned-c-malbolge-corpus.md`

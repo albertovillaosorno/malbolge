@@ -1,0 +1,65 @@
+---
+id: "apollo-11-luminary-agc-malbolge-demonstration"
+status: "pending"
+lane: "15"
+priority: "p4"
+area: "applications"
+task: "TODO - Apollo 11 Luminary AGC in Malbolge"
+contract: "docs/technical/examples/apollo-11-luminary-agc-malbolge.md"
+depends_on:
+  - "doom-playable-generated-code-performance"
+  - "malbolge-layout-and-encoding-backend"
+  - "translation-validation"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
+scope:
+  - "src/examples/programs/contract/self_host/apollo-agc/"
+  - "tests/applications/apollo-agc/"
+  - "benchmarks/applications/apollo-agc/"
+  - "compiler/"
+  - "runtime/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Apollo 11 Luminary AGC in Malbolge
+
+## Objective
+
+Execute the pinned Apollo 11 Luminary 099 software inside a project-authored
+Block II AGC interpreter that is itself compiled to and executed as
+`malbolge-2026`.
+
+## Acceptance
+
+- A pinned Luminary 099 / LMY99 revision 1 source and assembled rope image have
+  explicit public-domain provenance, attribution, reproducible assembly, and an
+  exact artifact identity.
+- The project-authored guest C runner implements every Block II instruction,
+  memory-bank rule, arithmetic behavior, interrupt/unprogrammed sequence, and
+  mission I/O behavior required by the declared deterministic scenario.
+- A native runner and an independent AGC reference implementation produce the
+  same selected instruction/state/I/O trace for the scenario.
+- The runner plus historical image is compiled into a verifier-accepted
+  `malbolge-2026` artifact and the AGC workload executes without host-side
+  instruction or guidance substitution.
+- The demonstration records generated size, peak guest storage, executed
+  Malbolge work, runtime, and deterministic final state/output oracle.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Current bootstrap source:
+  `src/examples/programs/contract/self_host/apollo-agc/apollo_agc_runner.c`.
+- Expected durable artifact surface: the declared example, application tests,
+  application benchmarks, compiler, and runtime scopes.
+- Required evidence: source/image provenance, reproducible assembly,
+  differential traces, exact output/state oracle, generated-artifact identity,
+  resource budgets, and verifier acceptance.
+- Prerequisite completion evidence: `doom-playable-generated-code-performance`,
+  `malbolge-layout-and-encoding-backend`, and `translation-validation`.
