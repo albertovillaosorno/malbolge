@@ -60,6 +60,13 @@ const STRESS_FIXTURES: [&str; 5] = [
 const STRESS_OUTPUT: &[u8] = b"OK\n";
 const MACHINE_RUNNERS: [&str; 2] =
     ["apollo-agc/apollo_agc_runner.c", "rv32i/rv32i_runner.c"];
+const PARITY_FIXTURES: [ParityFixture; 3] = [
+    ("snake/snake_parity.c", b"SNAKE-PARITY-v1\nOK\n"),
+    ("apollo-agc/apollo_agc_parity.c", b"AGC-PARITY-v1\nOK\n"),
+    ("rv32i/rv32i_parity.c", b"RV32I-PARITY-v1\nOK\n"),
+];
+
+type ParityFixture = (&'static str, &'static [u8]);
 
 #[cfg(windows)]
 struct InvalidTemporaryCSource {
@@ -179,6 +186,38 @@ fn machine_runner_bootstraps_reach_exact_oracles() -> Result<(), String> {
                 fixture,
                 output.status,
                 output.stdout,
+                String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn self_host_parity_harnesses_emit_exact_transcripts() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root.join("src/examples/programs/contract/self_host");
+
+    for (fixture, expected) in PARITY_FIXTURES {
+        let source = directory.join(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .current_dir(root)
+            .arg(&source)
+            .output()
+            .map_err(|error| format!("failed to run {fixture}: {error}"))?;
+        if !output.status.success()
+            || output.stdout != expected
+            || !output.stderr.is_empty()
+        {
+            return Err(format!(
+                concat!(
+                    "parity fixture failed: fixture={} status={} ",
+                    "stdout={:?} expected={:?} stderr={}"
+                ),
+                fixture,
+                output.status,
+                output.stdout,
+                expected,
                 String::from_utf8_lossy(&output.stderr),
             ));
         }

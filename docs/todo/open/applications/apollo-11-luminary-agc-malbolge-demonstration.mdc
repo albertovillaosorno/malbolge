@@ -56,6 +56,8 @@ Block II AGC interpreter that is itself compiled to and executed as
 
 - Current bootstrap source:
   `src/examples/programs/contract/self_host/apollo-agc/apollo_agc_runner.c`.
+- Current bounded parity source:
+  `src/examples/programs/contract/self_host/apollo-agc/apollo_agc_parity.c`.
 - Expected durable artifact surface: the declared example, application tests,
   application benchmarks, compiler, and runtime scopes.
 - Required evidence: source/image provenance, reproducible assembly,

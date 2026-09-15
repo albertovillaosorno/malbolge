@@ -54,6 +54,8 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
 
 - Current bootstrap source:
   `src/examples/programs/contract/self_host/rv32i/rv32i_runner.c`.
+- Current bounded parity source:
+  `src/examples/programs/contract/self_host/rv32i/rv32i_parity.c`.
 - Expected durable artifact surface: the declared example, application tests,
   application benchmarks, compiler, and runtime scopes.
 - Required evidence: ISA conformance vectors, independent differential traces,

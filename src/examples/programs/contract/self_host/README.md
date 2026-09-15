@@ -29,3 +29,18 @@ The intended demonstration order is DOOM, Apollo 11 Luminary on the AGC runner,
 RV32I machine code on the RV32I runner, then compiler self-hosting. This order
 is a demonstration milestone sequence; the compiler's existing technical TODO
 dependency graph remains authoritative for implementation prerequisites.
+
+## Cross-backend parity harnesses
+
+Snake, Apollo AGC, and RV32I each carry a freestanding `*_parity.c` harness.
+The harness includes the checked-in guest implementation, exercises internal
+state transitions against fixed constants, and emits one canonical transcript.
+Today that same source runs through the native `.c` debug path. Once C-to-
+Malbolge lowering exists, the harness itself is compiled to `.malbolge` and the
+final artifact must emit byte-identical output under the selected Malbolge
+profile.
+
+The oracle therefore does not need a host-only rewrite when the backend arrives.
+A parity-harness success is bounded evidence for the covered vectors. It does
+not close the owning application TODO until the declared generated artifact and
+full workload also exist.

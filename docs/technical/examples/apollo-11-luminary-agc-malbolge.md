@@ -34,6 +34,13 @@ This is not yet a Luminary execution claim. Extracodes, full overflow behavior,
 editing registers, interrupts and unprogrammed sequences, mission-specific I/O,
 rope ingestion, and differential evidence remain incomplete.
 
+`apollo_agc_parity.c` now supplies bounded cross-backend vectors over the
+current machine subset. The harness is itself freestanding guest C: native
+debug and a
+future generated `.malbolge` execute identical checks and must emit the same
+canonical transcript. This strengthens translation parity without upgrading the
+bounded vectors into a full AGC conformance claim.
+
 ### Historical and legal boundary
 
 The intended historical payload is Luminary 099 / LMY99 revision 1 for the

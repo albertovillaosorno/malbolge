@@ -35,3 +35,22 @@ malbolge src/examples/programs/contract/self_host/apollo-agc/apollo_agc_runner.c
 Expected output is exactly `OK\n`. Native execution is only debug scaffolding;
 completion requires a verifier-accepted `malbolge-2026` artifact executing the
 historical Luminary workload inside Malbolge semantics.
+
+## Deterministic parity harness
+
+`apollo_agc_parity.c` includes the runner as guest C and exercises bounded
+machine vectors for one's-complement arithmetic, erasable/fixed bank selection,
+superbank behavior, switched and fixed-fixed memory, prohibited fixed-memory
+writes, basic opcode families, quarter-code operations, INDEX state, and indexed
+fetch. It also reruns the embedded rope smoke program.
+
+```text
+malbolge src/examples/programs/contract/self_host/apollo-agc/apollo_agc_parity.c
+```
+
+The exact transcript is `AGC-PARITY-v1
+OK
+`. This harness is deliberately
+freestanding so the same source can later be lowered to `.malbolge` and compared
+byte-for-byte with native C. Passing these bounded vectors does not claim full
+Block II or Luminary conformance.

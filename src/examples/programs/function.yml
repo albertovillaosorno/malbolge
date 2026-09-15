@@ -127,6 +127,21 @@ parts:
     kind: contract
     language: c
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0021
+    path: contract/self_host/snake/snake_parity.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0022
+    path: contract/self_host/apollo-agc/apollo_agc_parity.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0023
+    path: contract/self_host/rv32i/rv32i_parity.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
 projects: []
 tests: []
 graph:

@@ -47,3 +47,26 @@ malbolge src/examples/programs/contract/self_host/snake/snake_classic.c
 A future classic compiler artifact should be runnable through the same byte I/O
 semantics as a normal `.malbolge` program. No generated artifact or 59,049-word
 fit claim is made yet; that must be measured after classic lowering exists.
+
+## Deterministic parity harness
+
+`snake_parity.c` is a second freestanding guest program that includes the game
+implementation and checks its internal semantics without requiring an
+interactive terminal. It covers exact initialization and render bytes, opposite
+turn rejection, deterministic growth and food placement, all four wall
+collisions, self-collision, and the legal move into a vacating tail cell.
+
+```text
+malbolge src/examples/programs/contract/self_host/snake/snake_parity.c
+```
+
+The exact transcript is:
+
+```text
+SNAKE-PARITY-v1
+OK
+```
+
+The same parity source is intended to be compiled to a future `.malbolge`
+artifact. Native C and generated Malbolge must then produce byte-identical
+transcripts; no host-side Snake model is needed for that comparison.

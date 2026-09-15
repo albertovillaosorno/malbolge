@@ -35,6 +35,11 @@ Malbolge artifact. The external binary format, deterministic platform, broader
 conformance corpus, reference differential execution, and generated execution
 remain open.
 
+`rv32i_parity.c` now drives bounded instruction vectors through the same guest
+interpreter and emits a canonical transcript. Because the parity program is
+freestanding guest C, the future generated `.malbolge` can execute the same
+checks; native and Malbolge outputs then become direct byte-parity evidence.
+
 ### Standards and licensing boundary
 
 The runner is new project-authored MIT code. It is implemented from the public

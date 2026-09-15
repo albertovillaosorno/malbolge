@@ -37,3 +37,23 @@ malbolge src/examples/programs/contract/self_host/rv32i/rv32i_runner.c
 
 Expected output is exactly `OK\n`. Native execution is debug scaffolding only;
 it is not evidence that a RISC-V binary has executed inside Malbolge yet.
+
+## Deterministic parity harness
+
+`rv32i_parity.c` includes the interpreter as guest C and drives real encoded
+instructions through the normal fetch/decode/execute path. The vectors cover
+upper immediates, immediate ALU, logical/arithmetic shifts, all base register
+ALU operations, taken and non-taken branches, JAL/JALR, signed and unsigned
+loads, stores, misalignment and bounds traps, illegal instructions, FENCE,
+EBREAK, and the architectural `x0` invariant. It also reruns the embedded loop
+program.
+
+```text
+malbolge src/examples/programs/contract/self_host/rv32i/rv32i_parity.c
+```
+
+The exact transcript is `RV32I-PARITY-v1
+OK
+`. The same harness will be
+compiled to `.malbolge` later, making the native-C and Malbolge comparison an
+exact byte-parity check over identical test logic.
