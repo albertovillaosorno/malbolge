@@ -647,6 +647,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure, and incompatible schema; one host-real filesystem case crosses the
   complete durable merge path.
 
+  A synchronous retry layer accepts a positive caller-selected maximum attempt
+  count. Only typed CAS conflicts retry, and each retry starts a fresh bounded
+  load/merge/CAS attempt. Durable commits, committed sync failures, and
+  prepublication errors stop immediately.
+
+  Four cases cover first-attempt success, conflict refresh, final conflict
+  retention, and committed failure. No sleep or backoff policy is inferred.
+
   Cached-cycle composition binds the canonical count/latency codecs to an
   explicit persistence application service and reconstructs exact validated
   owners after load. The application treats payloads as opaque bytes and checks
@@ -684,7 +692,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Automatic merge-conflict retry, async queues/timers, multi-blob
+  Merge backoff/cancellation policy, async queues/timers, multi-blob
   transactions, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry

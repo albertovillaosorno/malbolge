@@ -799,6 +799,14 @@ cases cover
 initialization, normalization, conflict, sync failure, and incompatible schema,
 plus one host-real filesystem round trip.
 
+A separate synchronous retry layer accepts a positive caller-selected maximum
+attempt count. Only typed CAS conflicts retry, and every retry starts a fresh
+bounded load/merge/CAS attempt; durable commits, committed sync failures, and
+prepublication errors stop immediately. Four deterministic cases cover
+first-attempt success, refreshed conflict success, final conflict retention, and
+no retry after committed durability failure. No sleep or backoff policy is
+inferred.
+
 Cached-cycle composition now binds the existing canonical count/latency codecs
 to an explicit persistence application service and reconstructs exact validated
 owners after load. The application service itself treats payloads as opaque
@@ -842,7 +850,7 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Automatic merge-conflict retry, native object fusion, foreign invocation,
+Merge backoff/cancellation policy, native object fusion, foreign invocation,
 asynchronous timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before

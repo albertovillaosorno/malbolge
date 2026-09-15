@@ -424,6 +424,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Merge latency telemetry with one-shot durable CAS.
+  - id: part-0079
+    path: composition/tier/cached_cycle/telemetry_latency_durable_merge_retry.rs
+    kind: composition
+    language: rust
+    responsibility: Retry durable latency merge conflicts within caller budget.
 projects: []
 tests: []
 graph:

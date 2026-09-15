@@ -136,6 +136,7 @@ pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
 pub mod retry_turn;
 
+use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -173,6 +174,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyCommonCoarseningError,
     NativeContinuationCachedRetryLatencyDurableMerge,
     NativeContinuationCachedRetryLatencyDurableMergeError,
+    NativeContinuationCachedRetryLatencyDurableMergeRetry,
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
@@ -217,6 +219,7 @@ use cached_cycle::{
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     finish_cached_retry_latency_measurement,
     merge_cached_retry_latency_histogram_durably,
+    merge_cached_retry_latency_histogram_durably_with_retries,
     merge_cached_retry_latency_histograms_exact,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
@@ -798,6 +801,10 @@ type LatencyDurableMerge = NativeContinuationCachedRetryLatencyDurableMerge<
 type LatencyDurableMergeError =
     NativeContinuationCachedRetryLatencyDurableMergeError<
         TestCachedRetryTelemetryBlobStoreError,
+    >;
+type LatencyDurableMergeRetry =
+    NativeContinuationCachedRetryLatencyDurableMergeRetry<
+        TestCachedRetryTelemetryBlobDurabilityError,
     >;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
@@ -2132,7 +2139,7 @@ enum TestMonotonicClockError {
 #[derive(Debug, Default)]
 struct TestCachedRetryTelemetryBlobStore {
     blob: Option<Vec<u8>>,
-    blob_before_compare: Option<Vec<u8>>,
+    blobs_before_compare: VecDeque<Vec<u8>>,
     compare_and_swap_calls: usize,
     fail_durability: bool,
     fail_load: bool,
@@ -2218,7 +2225,7 @@ impl telemetry_store_port::NativeContinuationConditionalBlobStore
     > {
         self.compare_and_swap_calls =
             self.compare_and_swap_calls.saturating_add(1);
-        if let Some(blob) = self.blob_before_compare.take() {
+        if let Some(blob) = self.blobs_before_compare.pop_front() {
             self.blob = Some(blob);
         }
         if self.blob.as_deref() != expected {
@@ -51210,7 +51217,7 @@ fn cached_retry_latency_durable_merge_returns_race_conflict_once()
         .map_err(|error| error.to_string())?;
     let mut store = TestCachedRetryTelemetryBlobStore {
         blob: Some(expected_bytes),
-        blob_before_compare: Some(raced_bytes.clone()),
+        blobs_before_compare: VecDeque::from([raced_bytes.clone()]),
         ..TestCachedRetryTelemetryBlobStore::default()
     };
     let outcome = merge_cached_retry_latency_histogram_durably(
@@ -51371,6 +51378,151 @@ fn cached_retry_latency_file_durable_merge_roundtrips() -> Result<(), String> {
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
+}
+
+#[test]
+fn cached_retry_latency_durable_merge_retry_stops_after_first_commit()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[10])?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let retry = merge_cached_retry_latency_histogram_durably_with_retries(
+        &mut store,
+        &source,
+        nonzero_test_limit(4_096, "merge retry commit bytes")?,
+        nonzero_test_limit(3, "merge retry commit attempts")?,
+    )
+    .map_err(|error| {
+        format!("first-attempt durable merge failed: {error:?}")
+    })?;
+    if retry.attempts() == 1
+        && matches!(retry.outcome(), LatencyDurableMerge::Durable { .. })
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable merge retried after successful commit",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_latency_durable_merge_retry_refreshes_after_conflict()
+-> Result<(), String> {
+    let mut first = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut first, &[10])?;
+    let mut raced = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut raced, &[20])?;
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[30])?;
+    let first_bytes = encode_cached_retry_latency_snapshot(&first.snapshot())
+        .map_err(|error| error.to_string())?;
+    let raced_bytes = encode_cached_retry_latency_snapshot(&raced.snapshot())
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let retry = merge_cached_retry_latency_histogram_durably_with_retries(
+        &mut store,
+        &source,
+        nonzero_test_limit(4_096, "merge retry refresh bytes")?,
+        nonzero_test_limit(3, "merge retry refresh attempts")?,
+    )
+    .map_err(|error| format!("refreshed durable merge failed: {error:?}"))?;
+    let LatencyDurableMerge::Durable { current, previous, .. } =
+        retry.outcome()
+    else {
+        return Err(String::from("refreshed merge did not commit"));
+    };
+    if retry.attempts() == 2
+        && previous.as_deref() == Some(&raced)
+        && current.samples() == 2
+        && current.total_nanoseconds() == 50
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable merge retry did not refresh conflict state",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_latency_durable_merge_retry_retains_final_conflict()
+-> Result<(), String> {
+    let mut first = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut first, &[10])?;
+    let mut second = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut second, &[20])?;
+    let mut third = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut third, &[40])?;
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[30])?;
+    let first_bytes = encode_cached_retry_latency_snapshot(&first.snapshot())
+        .map_err(|error| error.to_string())?;
+    let second_bytes = encode_cached_retry_latency_snapshot(&second.snapshot())
+        .map_err(|error| error.to_string())?;
+    let third_bytes = encode_cached_retry_latency_snapshot(&third.snapshot())
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([second_bytes, third_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let retry = merge_cached_retry_latency_histogram_durably_with_retries(
+        &mut store,
+        &source,
+        nonzero_test_limit(4_096, "merge retry conflict bytes")?,
+        nonzero_test_limit(2, "merge retry conflict attempts")?,
+    )
+    .map_err(|error| format!("bounded durable merge failed: {error:?}"))?;
+    let LatencyDurableMerge::Conflict { current, expected } = retry.outcome()
+    else {
+        return Err(String::from("exhausted merge conflict disappeared"));
+    };
+    if retry.attempts() == 2
+        && expected.as_deref() == Some(&second)
+        && current.as_deref() == Some(&third)
+        && store.compare_and_swap_calls == 2
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "final durable merge conflict evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_latency_durable_merge_retry_does_not_retry_committed_failure()
+-> Result<(), String> {
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[10])?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let retry: LatencyDurableMergeRetry =
+        merge_cached_retry_latency_histogram_durably_with_retries(
+            &mut store,
+            &source,
+            nonzero_test_limit(4_096, "merge retry sync bytes")?,
+            nonzero_test_limit(3, "merge retry sync attempts")?,
+        )
+        .map_err(|error| format!("committed merge retry failed: {error:?}"))?;
+    if retry.attempts() == 1
+        && matches!(retry.outcome(), LatencyDurableMerge::Published { .. })
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed durability failure was retried"))
+    }
 }
 
 #[test]
