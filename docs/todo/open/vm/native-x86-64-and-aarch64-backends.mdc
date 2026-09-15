@@ -815,6 +815,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   unchanged; its first `u64` is now the persisted store epoch rather than the
   identity of every publishing process.
 
+
+  The opaque filesystem revision now also has a separate canonical 24-byte
+  `MBPREV01` codec carrying magic plus little-endian epoch and generation.
+  Decode rejects wrong size, magic, and zero generation while retaining opaque
+  semantics. Three focused cases cover canonical round trip and malformed
+  representations; durable retention persistence remains separate.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

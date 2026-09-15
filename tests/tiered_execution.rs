@@ -580,6 +580,7 @@ use file_blob_pair_store::{
     NativeContinuationFileBlobPairReclamation,
     NativeContinuationFileBlobPairReclamationError,
     NativeContinuationFileBlobPairRevision,
+    NativeContinuationFileBlobPairRevisionCodecError,
     NativeContinuationFileBlobPairStore,
     NativeContinuationFileBlobPairStoreError,
 };
@@ -52827,6 +52828,62 @@ fn cached_retry_file_blob_pair_store_rejects_missing_member()
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_revision_codec_roundtrips_canonical_bytes()
+-> Result<(), String> {
+    let epoch = 8_181u64;
+    let generation = 27u64;
+    let mut expected = [0u8; 24];
+    expected[..8].copy_from_slice(b"MBPREV01");
+    expected[8..16].copy_from_slice(&epoch.to_le_bytes());
+    expected[16..24].copy_from_slice(&generation.to_le_bytes());
+    let revision = NativeContinuationFileBlobPairRevision::decode(&expected)
+        .map_err(|error| format!("revision decode failed: {error:?}"))?;
+    if revision.encode() == expected {
+        Ok(())
+    } else {
+        Err(String::from("canonical pair revision bytes drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_revision_codec_rejects_magic_and_size()
+-> Result<(), String> {
+    let short = NativeContinuationFileBlobPairRevision::decode(&[0u8; 23]);
+    let mut wrong_magic = [0u8; 24];
+    wrong_magic[16..24].copy_from_slice(&1u64.to_le_bytes());
+    let magic = NativeContinuationFileBlobPairRevision::decode(&wrong_magic);
+    let expected_size =
+        NativeContinuationFileBlobPairRevisionCodecError::Size {
+            observed_bytes: 23,
+        };
+    if short == Err(expected_size)
+        && magic == Err(NativeContinuationFileBlobPairRevisionCodecError::Magic)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pair revision representation rejection drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_revision_codec_rejects_zero_generation()
+-> Result<(), String> {
+    let mut bytes = [0u8; 24];
+    bytes[..8].copy_from_slice(b"MBPREV01");
+    bytes[8..16].copy_from_slice(&9u64.to_le_bytes());
+    let decoded = NativeContinuationFileBlobPairRevision::decode(&bytes);
+    if decoded
+        == Err(NativeContinuationFileBlobPairRevisionCodecError::GenerationZero)
+    {
+        Ok(())
+    } else {
+        Err(String::from("zero pair revision generation was accepted"))
+    }
 }
 
 #[test]

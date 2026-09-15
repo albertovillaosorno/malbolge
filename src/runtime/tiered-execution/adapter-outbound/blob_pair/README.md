@@ -59,6 +59,12 @@ collisions are skipped monotonically within the same epoch, and `u64` exhaustion
 fails closed. Reclamation never resets the manifest generation, so published
 revision identity is not reused across ordinary process restarts or cleanup.
 
+
+Opaque filesystem revisions also have a separate canonical 24-byte
+`MBPREV01` representation for durable callers: eight magic bytes followed by
+the little-endian epoch and generation. Decode rejects wrong length, magic, and
+zero generation; the representation exposes no ordering or retention policy.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

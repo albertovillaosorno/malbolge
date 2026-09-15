@@ -57,6 +57,8 @@ use crate::blob_pair_store::{
 
 const MANIFEST_BYTES: usize = 24;
 const MANIFEST_MAGIC: [u8; 8] = *b"MBPPAIR1";
+const REVISION_BYTES: usize = 24;
+const REVISION_MAGIC: [u8; 8] = *b"MBPREV01";
 const MAX_STAGING_ATTEMPTS: usize = 64;
 static NEXT_PAIR_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -257,11 +259,85 @@ pub type NativeContinuationFileBlobPairReclamationResult = Result<
     NativeContinuationFileBlobPairReclamationError,
 >;
 
+/// Why canonical filesystem pair revision decoding failed closed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationFileBlobPairRevisionCodecError {
+    /// Canonical revision encoded an impossible zero generation.
+    GenerationZero,
+    /// Canonical revision magic did not identify the supported revision format.
+    Magic,
+    /// Canonical revision byte length differed from the fixed representation.
+    Size {
+        /// Exact observed byte count.
+        observed_bytes: usize,
+    },
+}
+
 /// Opaque filesystem publication revision for one committed blob pair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobPairRevision {
     epoch: u64,
     generation: u64,
+}
+
+impl NativeContinuationFileBlobPairRevision {
+    /// Decodes one exact canonical revision representation.
+    ///
+    /// # Errors
+    ///
+    /// Rejects wrong length, magic, or zero generation before constructing an
+    /// opaque revision.
+    pub fn decode(
+        bytes: &[u8],
+    ) -> Result<Self, NativeContinuationFileBlobPairRevisionCodecError> {
+        use NativeContinuationFileBlobPairRevisionCodecError as CodecError;
+
+        if bytes.len() != REVISION_BYTES {
+            return Err(CodecError::Size {
+                observed_bytes: bytes.len(),
+            });
+        }
+        if bytes.get(..8) != Some(REVISION_MAGIC.as_slice()) {
+            return Err(CodecError::Magic);
+        }
+        let epoch_bytes: [u8; 8] = bytes
+            .get(8..16)
+            .ok_or(CodecError::Size {
+                observed_bytes: bytes.len(),
+            })?
+            .try_into()
+            .map_err(|_error| CodecError::Size {
+                observed_bytes: bytes.len(),
+            })?;
+        let generation_bytes: [u8; 8] = bytes
+            .get(16..24)
+            .ok_or(CodecError::Size {
+                observed_bytes: bytes.len(),
+            })?
+            .try_into()
+            .map_err(|_error| CodecError::Size {
+                observed_bytes: bytes.len(),
+            })?;
+        let generation = u64::from_le_bytes(generation_bytes);
+        if generation == 0 {
+            let error = CodecError::GenerationZero;
+            return Err(error);
+        }
+        Ok(Self {
+            epoch: u64::from_le_bytes(epoch_bytes),
+            generation,
+        })
+    }
+
+    /// Encodes this opaque revision into the canonical fixed-width format.
+    #[must_use]
+    pub fn encode(self) -> [u8; REVISION_BYTES] {
+        let mut bytes = [0u8; REVISION_BYTES];
+        bytes[..8].copy_from_slice(&REVISION_MAGIC);
+        bytes[8..16].copy_from_slice(&self.epoch.to_le_bytes());
+        bytes[16..24].copy_from_slice(&self.generation.to_le_bytes());
+        bytes
+    }
 }
 
 /// Filesystem-backed pair store rooted at one explicit manifest path.

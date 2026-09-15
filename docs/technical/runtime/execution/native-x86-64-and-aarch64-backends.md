@@ -971,6 +971,13 @@ fresh adapter instance, and fail-closed `u64` generation exhaustion. The 24-byte
 manifest layout remains unchanged; only the private meaning of its first `u64`
 changes from per-writer process identity to the persisted store epoch.
 
+
+The opaque filesystem revision now also has a separate canonical 24-byte
+`MBPREV01` codec: magic plus little-endian epoch and generation. Decode rejects
+wrong size, magic, and zero generation while preserving field opacity. Three
+focused codec cases cover exact canonical round trip and fail-closed malformed
+representations; durable retention persistence remains a separate concern.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS
