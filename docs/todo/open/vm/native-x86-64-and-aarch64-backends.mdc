@@ -873,6 +873,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   deletion share a lock or transaction boundary. Process-local callers that own
   all retention mutation may coordinate the two operations externally.
 
+
+  The reviewed next prerequisite is a reusable filesystem coordination object
+  that owns one explicit lock path and yields non-cloneable shared/exclusive
+  guard tokens. Journal and pair adapters may bind to the same coordinator, and
+  internal prelocked operations must require the matching guard so one
+  cross-object transaction acquires the lock only once. This mirrors the
+  compiler progress-sidecar writer transaction. Reusing one lock filename with
+  today's independently locking public methods is insufficient because nested
+  acquisition can deadlock and cannot prove that every mutation joined the same
+  serialization boundary.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

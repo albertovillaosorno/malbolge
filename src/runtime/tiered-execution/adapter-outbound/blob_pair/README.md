@@ -113,6 +113,17 @@ journal mutation and generation deletion share one serialization or transaction
 boundary. Process-local callers may still restore the journal and coordinate
 reclamation themselves when they own all relevant mutation authority.
 
+
+The reviewed next filesystem design is one explicit coordination object that
+owns a caller-selected lock path and yields non-cloneable shared/exclusive guard
+tokens. Pair reclamation and retention-journal mutation can then bind to the
+same coordinator, while internal prelocked operations require the matching
+guard instead of reacquiring the lock. This mirrors the compiler progress
+sidecar transaction shape: acquire once, read/validate all participating state,
+mutate, then release after the commit boundary. Merely pointing today's two
+adapters at the same lock filename is insufficient because their public methods
+would recursively acquire that lock and can deadlock.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

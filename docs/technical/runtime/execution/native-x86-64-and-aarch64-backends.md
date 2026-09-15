@@ -1032,6 +1032,19 @@ serialization or transaction boundary. A process that exclusively owns all
 retention mutation may still restore the journal and invoke explicit
 reclamation under that stronger external authority.
 
+
+The reviewed filesystem prerequisite is a reusable coordination object owning
+one explicit lock path and returning non-cloneable shared/exclusive guard
+tokens. Both the durable retention journal and pair adapter can bind to that
+coordinator; internal prelocked read/CAS/reclamation primitives must require the
+matching guard so a cross-object operation acquires the lock once rather than
+recursively. This follows the compiler progress-sidecar pattern where one writer
+lock spans predecessor read, validation, immutable-state checks, and pointer
+replacement. Reusing only the same lock filename with today's independently
+locking public methods is not sufficient because nested acquisition can
+deadlock and does not prove that every participating mutation joined the same
+transaction.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS
