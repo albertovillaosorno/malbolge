@@ -805,7 +805,10 @@ use native_retry::{
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
 };
 use pair_retention_journal::{
+    NativeContinuationFileBlobPairRetentionJournalCas,
+    NativeContinuationFileBlobPairRetentionJournalError,
     NativeContinuationFileBlobPairRetentionJournalLoad,
+    compare_and_swap_file_blob_pair_retention_journal_durably,
     persist_file_blob_pair_retention_journal_durably,
     restore_file_blob_pair_retention_journal,
 };
@@ -52905,6 +52908,133 @@ fn test_file_blob_pair_revision(
     bytes[16..24].copy_from_slice(&generation.to_le_bytes());
     NativeContinuationFileBlobPairRevision::decode(&bytes)
         .map_err(|error| format!("cannot build test revision: {error:?}"))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_cas_initializes_missing()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let revision = test_file_blob_pair_revision(30, 1)?;
+    let mut replacement = NativeContinuationBlobPairRetention::new();
+    let _inserted = replacement.retain(revision);
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut store,
+        None,
+        &replacement,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("journal CAS initialization failed: {error:?}"))?;
+    if matches!(
+        outcome,
+        NativeContinuationFileBlobPairRetentionJournalCas::Durable {
+            bytes: 40
+        }
+    ) && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("journal CAS initialization evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_cas_decodes_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let current_revision = test_file_blob_pair_revision(31, 2)?;
+    let replacement_revision = test_file_blob_pair_revision(31, 3)?;
+    let current_bytes = encode_file_blob_pair_retention(&[current_revision])
+        .map_err(|error| format!("cannot encode current journal: {error:?}"))?;
+    let mut replacement = NativeContinuationBlobPairRetention::new();
+    let _inserted = replacement.retain(replacement_revision);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(current_bytes),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut store,
+        None,
+        &replacement,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("journal CAS conflict failed: {error:?}"))?;
+    let NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+        current: Some(current),
+    } = outcome
+    else {
+        return Err(String::from("journal CAS conflict evidence disappeared"));
+    };
+    if current.revisions() == [current_revision]
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("journal CAS conflict state drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_cas_rejects_corrupt_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let revision = test_file_blob_pair_revision(32, 2)?;
+    let mut replacement = NativeContinuationBlobPairRetention::new();
+    let _inserted = replacement.retain(revision);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(b"not-a-retention-frame".to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut store,
+        None,
+        &replacement,
+        maximum_bytes,
+    )
+    .err()
+    .ok_or_else(|| String::from("corrupt journal conflict decoded"))?;
+    if matches!(
+        error,
+        NativeContinuationFileBlobPairRetentionJournalError::Codec(_)
+    ) && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("corrupt journal conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_journal_cas_retains_committed_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(128, "retention journal bytes")?;
+    let revision = test_file_blob_pair_revision(33, 2)?;
+    let mut replacement = NativeContinuationBlobPairRetention::new();
+    let _inserted = replacement.retain(revision);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = compare_and_swap_file_blob_pair_retention_journal_durably(
+        &mut store,
+        None,
+        &replacement,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("committed journal CAS failed: {error:?}"))?;
+    if matches!(
+        outcome,
+        NativeContinuationFileBlobPairRetentionJournalCas::Published {
+            bytes: 40,
+            durability_error:
+                TestCachedRetryTelemetryBlobDurabilityError::Confirm,
+        }
+    ) && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed journal CAS evidence drifted"))
+    }
 }
 
 #[test]

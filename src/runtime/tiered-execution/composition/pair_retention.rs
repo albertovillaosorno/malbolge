@@ -38,18 +38,48 @@ use std::num::NonZeroUsize;
 
 use crate::blob_pair_retention::NativeContinuationBlobPairRetention;
 use crate::blob_persistence::{
+    NativeContinuationBlobConditionalDurablePersistence,
     NativeContinuationBlobDurablePersistence,
     NativeContinuationBlobPersistenceError,
-    NativeContinuationBlobPersistenceLoad, persist_blob_durably, restore_blob,
+    NativeContinuationBlobPersistenceLoad, compare_and_swap_blob_durably,
+    persist_blob_durably, restore_blob,
 };
 use crate::blob_store::{
-    NativeContinuationBlobStore, NativeContinuationDurableBlobStore,
+    NativeContinuationBlobStore, NativeContinuationConditionalBlobStore,
+    NativeContinuationDurableBlobStore,
 };
 use crate::file_blob_pair_store::{
     NativeContinuationFileBlobPairRetentionCodecError,
     NativeContinuationFileBlobPairRevision, decode_file_blob_pair_retention,
     encode_file_blob_pair_retention,
 };
+
+/// Typed outcome of one conditional durable retention-journal publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError> {
+    /// Expected canonical retention differed; no publication occurred.
+    Conflict {
+        /// Exact typed current journal state, or absence, observed by the
+        /// store.
+        current: Option<
+            NativeContinuationBlobPairRetention<
+                NativeContinuationFileBlobPairRevision,
+            >,
+        >,
+    },
+    /// Conditional publication and durability confirmation both completed.
+    Durable {
+        /// Exact committed canonical byte count.
+        bytes: usize,
+    },
+    /// Publication committed, then durability confirmation failed.
+    Published {
+        /// Exact committed canonical byte count.
+        bytes: usize,
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+    },
+}
 
 /// Typed durable filesystem pair-retention journal load.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,6 +115,15 @@ pub type NativeContinuationFileBlobPairRetentionJournalStoreResult<
     >,
 >;
 
+/// Conditional durable journal result specialized to one blob store.
+pub type NativeContinuationFileBlobPairRetentionJournalCasStoreResult<Store> =
+    NativeContinuationFileBlobPairRetentionJournalStoreResult<
+        Store,
+        NativeContinuationFileBlobPairRetentionJournalCas<
+            <Store as NativeContinuationDurableBlobStore>::DurabilityError,
+        >,
+    >;
+
 /// Durable typed retention-journal result specialized to one blob store.
 pub type NativeContinuationFileBlobPairRetentionJournalDurableStoreResult<
     Store,
@@ -94,6 +133,73 @@ pub type NativeContinuationFileBlobPairRetentionJournalDurableStoreResult<
         <Store as NativeContinuationDurableBlobStore>::DurabilityError,
     >,
 >;
+
+/// Conditionally persists one exact retention journal and confirms durability.
+///
+/// # Errors
+///
+/// Returns canonical encoding/decoding or bounded/store failure. Conflict is
+/// typed non-mutating evidence; durability failure after publication remains
+/// committed.
+pub fn compare_and_swap_file_blob_pair_retention_journal_durably<Store>(
+    store: &mut Store,
+    expected: Option<
+        &NativeContinuationBlobPairRetention<
+            NativeContinuationFileBlobPairRevision,
+        >,
+    >,
+    replacement: &NativeContinuationBlobPairRetention<
+        NativeContinuationFileBlobPairRevision,
+    >,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationFileBlobPairRetentionJournalCasStoreResult<Store>
+where
+    Store: NativeContinuationConditionalBlobStore
+        + NativeContinuationDurableBlobStore,
+{
+    let expected_bytes = expected
+        .map(|retention| encode_file_blob_pair_retention(retention.revisions()))
+        .transpose()
+        .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
+    let replacement_bytes = encode_file_blob_pair_retention(
+        replacement.revisions(),
+    )
+    .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
+    let outcome = compare_and_swap_blob_durably(
+        store,
+        expected_bytes.as_deref(),
+        &replacement_bytes,
+        maximum_bytes,
+    )
+    .map_err(NativeContinuationFileBlobPairRetentionJournalError::Blob)?;
+    match outcome {
+        NativeContinuationBlobConditionalDurablePersistence::Conflict {
+            current,
+        } => Ok(NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+            current: current
+                .as_deref()
+                .map(decode_retention_owner)
+                .transpose()
+                .map_err(
+                    NativeContinuationFileBlobPairRetentionJournalError::Codec,
+                )?,
+        }),
+        NativeContinuationBlobConditionalDurablePersistence::Durable {
+            write,
+        } => Ok(NativeContinuationFileBlobPairRetentionJournalCas::Durable {
+            bytes: write.bytes(),
+        }),
+        NativeContinuationBlobConditionalDurablePersistence::Published {
+            durability_error,
+            write,
+        } => Ok(
+            NativeContinuationFileBlobPairRetentionJournalCas::Published {
+                bytes: write.bytes(),
+                durability_error,
+            },
+        ),
+    }
+}
 
 /// Durably persists one exact retention owner through a configured blob store.
 ///
@@ -137,15 +243,25 @@ where
     let NativeContinuationBlobPersistenceLoad::Present { bytes } = load else {
         return Ok(NativeContinuationFileBlobPairRetentionJournalLoad::Missing);
     };
-    let revisions = decode_file_blob_pair_retention(&bytes)
+    let retention = decode_retention_owner(&bytes)
         .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
-    let mut retention = NativeContinuationBlobPairRetention::new();
-    for revision in revisions {
-        let _inserted = retention.retain(revision);
-    }
     Ok(
         NativeContinuationFileBlobPairRetentionJournalLoad::Present {
             retention,
         },
     )
+}
+
+fn decode_retention_owner(
+    bytes: &[u8],
+) -> Result<
+    NativeContinuationBlobPairRetention<NativeContinuationFileBlobPairRevision>,
+    NativeContinuationFileBlobPairRetentionCodecError,
+> {
+    let revisions = decode_file_blob_pair_retention(bytes)?;
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    for revision in revisions {
+        let _inserted = retention.retain(revision);
+    }
+    Ok(retention)
 }

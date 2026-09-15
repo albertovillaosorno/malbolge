@@ -79,6 +79,13 @@ service as an explicit durable retention journal. Missing storage remains
 post-publication durability failure remains committed evidence. Journal storage
 still does not select revisions or schedule reclamation.
 
+
+The same composition boundary also exposes one-shot conditional durable journal
+publication. Expected retention is compared as canonical bytes; conflict returns
+the exact current journal decoded back into typed retention, while corrupt
+conflict bytes fail closed. Only successful publication performs durability
+confirmation. This layer does not retry, merge, reorder, or select revisions.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

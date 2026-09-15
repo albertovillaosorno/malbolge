@@ -838,6 +838,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cases cover missing state, durable round trip, and committed durability
   failure without adding retention selection or cleanup scheduling.
 
+
+  The typed journal also supports one-shot conditional durable publication over
+  the generic blob CAS. Expected retention is encoded canonically; conflict
+  returns exact current bounded bytes decoded into typed retention, malformed
+  conflict state fails closed, and only successful publication confirms
+  durability. Four focused cases cover missing-state initialization, typed
+  conflict, corrupt conflict rejection, and committed durability failure. This
+  operation never retries, merges, reorders, or selects retained revisions.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

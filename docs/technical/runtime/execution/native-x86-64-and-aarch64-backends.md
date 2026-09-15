@@ -994,6 +994,16 @@ and post-publication durability failure remains committed evidence. Three
 focused cases cover missing state, durable round trip, and committed durability
 failure without adding selection or scheduling policy.
 
+
+That typed journal also supports one-shot conditional durable publication over
+the generic blob CAS. Expected retention is encoded canonically; conflict
+returns the exact current bounded bytes decoded into typed retention, malformed
+conflict state fails closed, and only a successful conditional publication
+performs durability confirmation. Four focused cases cover missing-state
+initialization, typed conflict, corrupt conflict rejection, and committed
+durability failure. The operation never retries, merges, reorders, or selects
+retained revisions.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS
