@@ -796,17 +796,24 @@ synchronization, and hardening remain adapters rather than VM semantics.
   orchestration rechecks both member bounds and confirms durability only after a
   committed CAS.
 
-  The filesystem adapter uses its process/generation manifest token as the
-  opaque revision. Its persistent sibling lock spans comparison through new
-  generation creation and manifest replacement. A stale revision conflicts when
-  newer payloads are byte-identical provided the opaque token itself has not
-  been reused, and retains the complete current bounded pair plus its newer
-  revision without automatic retry.
+  The filesystem adapter uses an epoch/generation manifest token as the opaque
+  revision. Initial publication seeds the epoch once; later cooperating writers
+  preserve it and derive the next non-wrapping generation from the current
+  manifest under the persistent sibling lock. Crash-orphan collisions are
+  skipped inside the same epoch, and stale revisions conflict even when newer
+  payloads are byte-identical.
 
   Five adapter-neutral cases cover versioned load, missing initialization, stale
   conflict, post-load bounds, and committed durability failure. Two host-real
   CAS
   cases cover revision advance and byte-identical ABA rejection.
+
+
+  Three host-real generation-identity cases cover orphan collision skipping in
+  one epoch, generation continuation through reclamation with a fresh adapter,
+  and fail-closed `u64` generation exhaustion. The 24-byte manifest encoding is
+  unchanged; its first `u64` is now the persisted store epoch rather than the
+  identity of every publishing process.
 
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and

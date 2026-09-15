@@ -260,8 +260,8 @@ pub type NativeContinuationFileBlobPairReclamationResult = Result<
 /// Opaque filesystem publication revision for one committed blob pair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobPairRevision {
+    epoch: u64,
     generation: u64,
-    process: u64,
 }
 
 /// Filesystem-backed pair store rooted at one explicit manifest path.
@@ -285,6 +285,11 @@ type NativeContinuationFileBlobPairRevisionOpenResult = Result<
 
 type PairManifestStagingOpenResult =
     Result<(File, PathBuf), NativeContinuationFileBlobPairStoreError>;
+
+type PairGenerationMemberOpenResult = Result<
+    Option<(File, PathBuf, File, PathBuf)>,
+    NativeContinuationFileBlobPairStoreError,
+>;
 
 impl NativeContinuationFileBlobPairReclamation {
     /// Borrows post-removal durability failure, when confirmation failed.
@@ -353,7 +358,7 @@ impl NativeContinuationFileBlobPairStore {
         let mut generation_name = file_name.to_os_string();
         generation_name.push(format!(
             ".generation.{}.{generation_id}.{suffix}",
-            generation.process,
+            generation.epoch,
             generation_id = generation.generation,
         ));
         Ok(self.manifest.with_file_name(generation_name))
@@ -415,63 +420,80 @@ impl NativeContinuationFileBlobPairStore {
 
     fn open_generation(
         &self,
+        current: Option<NativeContinuationFileBlobPairRevision>,
     ) -> NativeContinuationFileBlobPairRevisionOpenResult {
+        let epoch = current.map_or_else(
+            || u64::from(process::id()),
+            |revision| revision.epoch,
+        );
+        let mut generation_id = match current {
+            Some(revision) => revision
+                .generation
+                .checked_add(1)
+                .ok_or(PairStoreError::GenerationExhausted)?,
+            None => 1,
+        };
         for _attempt in 0..MAX_STAGING_ATTEMPTS {
-            let generation = NativeContinuationFileBlobPairRevision {
-                generation: next_pair_id()?,
-                process: u64::from(process::id()),
+            let revision = NativeContinuationFileBlobPairRevision {
+                epoch,
+                generation: generation_id,
             };
-            let first_path = self.generation_path(
-                generation,
-                NativeContinuationFileBlobPairMember::First,
-            )?;
-            let first = match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&first_path)
+            if let Some((first, first_path, second, second_path)) =
+                self.open_generation_members(revision)?
             {
-                Ok(file) => file,
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                    continue;
-                },
-                Err(error) => {
-                    return Err(PairStoreError::GenerationOpen {
-                        kind: error.kind(),
-                        member: NativeContinuationFileBlobPairMember::First,
-                    });
-                },
-            };
-            let second_path = self.generation_path(
-                generation,
-                NativeContinuationFileBlobPairMember::Second,
-            )?;
-            match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&second_path)
-            {
-                Ok(second) => {
-                    return Ok((
-                        generation,
-                        first,
-                        first_path,
-                        second,
-                        second_path,
-                    ));
-                },
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                    drop(first);
-                    let _cleanup = fs::remove_file(&first_path);
-                },
-                Err(error) => {
-                    return Err(PairStoreError::GenerationOpen {
-                        kind: error.kind(),
-                        member: NativeContinuationFileBlobPairMember::Second,
-                    });
-                },
+                return Ok((revision, first, first_path, second, second_path));
             }
+            generation_id = generation_id
+                .checked_add(1)
+                .ok_or(PairStoreError::GenerationExhausted)?;
         }
         Err(NativeContinuationFileBlobPairStoreError::GenerationExhausted)
+    }
+
+    fn open_generation_members(
+        &self,
+        revision: NativeContinuationFileBlobPairRevision,
+    ) -> PairGenerationMemberOpenResult {
+        let first_path = self.generation_path(
+            revision,
+            NativeContinuationFileBlobPairMember::First,
+        )?;
+        let first = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&first_path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                return Ok(None);
+            },
+            Err(error) => {
+                return Err(PairStoreError::GenerationOpen {
+                    kind: error.kind(),
+                    member: NativeContinuationFileBlobPairMember::First,
+                });
+            },
+        };
+        let second_path = self.generation_path(
+            revision,
+            NativeContinuationFileBlobPairMember::Second,
+        )?;
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&second_path)
+        {
+            Ok(second) => Ok(Some((first, first_path, second, second_path))),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                drop(first);
+                let _cleanup = fs::remove_file(&first_path);
+                Ok(None)
+            },
+            Err(error) => Err(PairStoreError::GenerationOpen {
+                kind: error.kind(),
+                member: NativeContinuationFileBlobPairMember::Second,
+            }),
+        }
     }
 
     fn open_manifest_staging(&self) -> PairManifestStagingOpenResult {
@@ -753,16 +775,12 @@ impl NativeContinuationFileBlobPairStore {
             return Ok(None);
         };
         let mut parts = remainder.split('.');
-        let (
-            Some(process_text),
-            Some(generation_text),
-            Some(member_text),
-            None,
-        ) = (parts.next(), parts.next(), parts.next(), parts.next())
+        let (Some(epoch_text), Some(generation_text), Some(member_text), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
         else {
             return Ok(None);
         };
-        let Ok(process_id) = process_text.parse::<u64>() else {
+        let Ok(epoch) = epoch_text.parse::<u64>() else {
             return Ok(None);
         };
         let Ok(generation_id) = generation_text.parse::<u64>() else {
@@ -777,8 +795,8 @@ impl NativeContinuationFileBlobPairStore {
             _ => return Ok(None),
         };
         let revision = NativeContinuationFileBlobPairRevision {
+            epoch,
             generation: generation_id,
-            process: process_id,
         };
         if self.generation_path(revision, member)? == path {
             Ok(Some(revision))
@@ -832,6 +850,7 @@ impl NativeContinuationFileBlobPairStore {
 
     fn replace_pair_locked(
         &self,
+        current: Option<NativeContinuationFileBlobPairRevision>,
         first: &[u8],
         second: &[u8],
     ) -> Result<
@@ -844,7 +863,7 @@ impl NativeContinuationFileBlobPairStore {
             _first_path,
             mut second_file,
             _second_path,
-        ) = self.open_generation()?;
+        ) = self.open_generation(current)?;
         write_generation_member(
             &mut first_file,
             first,
@@ -936,7 +955,9 @@ impl NativeContinuationBlobPairStore for NativeContinuationFileBlobPairStore {
         second: &[u8],
     ) -> Result<(), Self::Error> {
         let _lock = self.open_publication_lock()?;
-        let _revision = self.replace_pair_locked(first, second)?;
+        let current_revision = self.read_manifest()?;
+        let _revision =
+            self.replace_pair_locked(current_revision, first, second)?;
         Ok(())
     }
 }
@@ -974,8 +995,11 @@ impl NativeContinuationConditionalBlobPairStore
                 },
             );
         }
-        let revision =
-            self.replace_pair_locked(request.first, request.second)?;
+        let revision = self.replace_pair_locked(
+            current_revision,
+            request.first,
+            request.second,
+        )?;
         Ok(
             NativeContinuationBlobPairConditionalPublication::Published {
                 revision,
@@ -1056,17 +1080,16 @@ fn decode_manifest(
     if bytes.get(..8) != Some(MANIFEST_MAGIC.as_slice()) {
         return Err(NativeContinuationFileBlobPairStoreError::ManifestMagic);
     }
-    let process_slice = bytes.get(8..16).ok_or(
+    let epoch_slice = bytes.get(8..16).ok_or(
         NativeContinuationFileBlobPairStoreError::ManifestSize {
             observed_bytes: bytes.len(),
         },
     )?;
-    let process_bytes: [u8; 8] =
-        process_slice.try_into().map_err(|_error| {
-            NativeContinuationFileBlobPairStoreError::ManifestSize {
-                observed_bytes: bytes.len(),
-            }
-        })?;
+    let epoch_bytes: [u8; 8] = epoch_slice.try_into().map_err(|_error| {
+        NativeContinuationFileBlobPairStoreError::ManifestSize {
+            observed_bytes: bytes.len(),
+        }
+    })?;
     let generation_slice = bytes.get(16..24).ok_or(
         NativeContinuationFileBlobPairStoreError::ManifestSize {
             observed_bytes: bytes.len(),
@@ -1078,14 +1101,14 @@ fn decode_manifest(
                 observed_bytes: bytes.len(),
             }
         })?;
-    let process = u64::from_le_bytes(process_bytes);
+    let epoch = u64::from_le_bytes(epoch_bytes);
     let generation = u64::from_le_bytes(generation_bytes);
     if generation == 0 {
         return Err(
             NativeContinuationFileBlobPairStoreError::ManifestGenerationZero,
         );
     }
-    Ok(NativeContinuationFileBlobPairRevision { generation, process })
+    Ok(NativeContinuationFileBlobPairRevision { epoch, generation })
 }
 
 fn encode_manifest(
@@ -1093,7 +1116,7 @@ fn encode_manifest(
 ) -> [u8; MANIFEST_BYTES] {
     let mut bytes = [0u8; MANIFEST_BYTES];
     bytes[..8].copy_from_slice(&MANIFEST_MAGIC);
-    bytes[8..16].copy_from_slice(&generation.process.to_le_bytes());
+    bytes[8..16].copy_from_slice(&generation.epoch.to_le_bytes());
     bytes[16..24].copy_from_slice(&generation.generation.to_le_bytes());
     bytes
 }

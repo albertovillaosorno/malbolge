@@ -2606,6 +2606,46 @@ fn file_blob_pair_generation_members(
     Ok(members)
 }
 
+fn file_blob_pair_manifest_bytes(epoch: u64, generation: u64) -> [u8; 24] {
+    let mut bytes = [0u8; 24];
+    bytes[..8].copy_from_slice(b"MBPPAIR1");
+    bytes[8..16].copy_from_slice(&epoch.to_le_bytes());
+    bytes[16..24].copy_from_slice(&generation.to_le_bytes());
+    bytes
+}
+
+fn write_file_blob_pair_generation(
+    fixture: &TestTelemetryFileStoreFixture,
+    epoch: u64,
+    generation: u64,
+    pair: TestFileBlobPair<'_>,
+) -> Result<(), String> {
+    let prefix = format!("telemetry.bin.generation.{epoch}.{generation}");
+    fs::write(fixture.directory.join(format!("{prefix}.first")), pair.0)
+        .map_err(|error| {
+            format!("cannot seed first pair generation: {error}")
+        })?;
+    fs::write(fixture.directory.join(format!("{prefix}.second")), pair.1)
+        .map_err(|error| {
+            format!("cannot seed second pair generation: {error}")
+        })?;
+    Ok(())
+}
+
+fn seed_file_blob_pair_current(
+    fixture: &TestTelemetryFileStoreFixture,
+    revision: (u64, u64),
+    pair: TestFileBlobPair<'_>,
+) -> Result<(), String> {
+    let (epoch, generation) = revision;
+    write_file_blob_pair_generation(fixture, epoch, generation, pair)?;
+    fs::write(
+        &fixture.destination,
+        file_blob_pair_manifest_bytes(epoch, generation),
+    )
+    .map_err(|error| format!("cannot seed pair manifest: {error}"))
+}
+
 fn publish_file_blob_pair_revision(
     store: &mut NativeContinuationFileBlobPairStore,
     expected: Option<&NativeContinuationFileBlobPairRevision>,
@@ -52784,6 +52824,132 @@ fn cached_retry_file_blob_pair_store_rejects_missing_member()
         Ok(())
     } else {
         Err(String::from("missing pair member evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_generation_skips_orphan_in_store_epoch()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-generation-orphan")?;
+    let maximum_bytes = nonzero_test_limit(64, "orphan advance bytes")?;
+    let epoch = 4_242_424u64;
+    seed_file_blob_pair_current(
+        &fixture,
+        (epoch, 41),
+        (b"initial-first", b"initial-second"),
+    )?;
+    write_file_blob_pair_generation(
+        &fixture,
+        epoch,
+        42,
+        (b"orphan-first", b"orphan-second"),
+    )?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"current-first",
+        b"current-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _publication = persist_blob_pair(&mut store, request)
+        .map_err(|error| format!("cannot skip pair orphan: {error:?}"))?;
+    let expected = fixture
+        .directory
+        .join(format!("telemetry.bin.generation.{epoch}.43.first"));
+    let result = if expected.exists() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pair orphan changed store epoch or generation",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_generation_continues_after_reclamation()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-generation-restart")?;
+    let maximum_bytes = nonzero_test_limit(64, "restart pair bytes")?;
+    let epoch = 5_252_525u64;
+    seed_file_blob_pair_current(
+        &fixture,
+        (epoch, 51),
+        (b"initial-first", b"initial-second"),
+    )?;
+    let mut first_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"current-first",
+        b"current-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _first_publication = persist_blob_pair(&mut first_store, request)
+        .map_err(|error| format!("cannot advance seeded pair: {error:?}"))?;
+    let reclaimed = first_store
+        .reclaim_generations()
+        .map_err(|error| format!("cannot reclaim old pair: {error:?}"))?;
+    if reclaimed.removed().len() != 2 {
+        return Err(String::from("old pair generation was not reclaimed"));
+    }
+    let mut restarted_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let _second_publication = persist_blob_pair(&mut restarted_store, request)
+        .map_err(|error| format!("cannot advance restarted pair: {error:?}"))?;
+    let expected = fixture
+        .directory
+        .join(format!("telemetry.bin.generation.{epoch}.53.first"));
+    let result = if expected.exists() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "restarted pair reused reclaimed revision identity",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_generation_exhaustion_does_not_wrap()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-generation-exhaustion")?;
+    let maximum_bytes = nonzero_test_limit(64, "exhausted pair bytes")?;
+    let epoch = 7_777u64;
+    write_file_blob_pair_generation(
+        &fixture,
+        epoch,
+        u64::MAX,
+        (b"last-first", b"last-second"),
+    )?;
+    fs::write(
+        &fixture.destination,
+        file_blob_pair_manifest_bytes(epoch, u64::MAX),
+    )
+    .map_err(|error| format!("cannot seed exhausted manifest: {error}"))?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"wrapped-first",
+        b"wrapped-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let error = persist_blob_pair(&mut store, request)
+        .err()
+        .ok_or_else(|| String::from("exhausted pair generation wrapped"))?;
+    let expected = BlobPairPersistenceError::Store(
+        NativeContinuationFileBlobPairStoreError::GenerationExhausted,
+    );
+    let result = if error == expected {
+        Ok(())
+    } else {
+        Err(String::from("pair generation exhaustion evidence drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

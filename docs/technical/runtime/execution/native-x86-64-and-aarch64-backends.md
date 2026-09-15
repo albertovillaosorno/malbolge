@@ -953,16 +953,23 @@ manifest commit point. Conditional replacement matches only that revision, while
 `None` matches only missing state; application orchestration rechecks both
 returned member bounds and confirms durability only after a committed CAS.
 
-The filesystem adapter uses its process/generation manifest token as the opaque
-revision. The persistent sibling lock spans current-manifest comparison through
-new-generation creation and manifest replacement. A stale revision conflicts
-even when a newer generation contains byte-identical payloads, provided the
-opaque revision token itself has not been reused, and returns the complete
-current bounded pair plus its newer revision without retry.
+The filesystem adapter uses an epoch/generation manifest token as the opaque
+revision. Initial publication seeds the epoch once; later cooperating writers
+preserve that epoch and derive the next non-wrapping generation from the current
+manifest under the persistent sibling lock. Crash-orphan collisions are skipped
+within that epoch. A stale revision therefore conflicts even when a newer
+generation contains byte-identical payloads and returns the complete current
+bounded pair plus its newer revision without retry.
 
 Five adapter-neutral cases cover versioned load, missing-state initialization,
 stale conflict, post-load bound rejection, and committed durability failure. Two
 host-real CAS cases cover revision advance and byte-identical ABA rejection.
+
+Three host-real generation-identity cases additionally cover orphan collision
+skipping inside one epoch, generation continuation through reclamation with a
+fresh adapter instance, and fail-closed `u64` generation exhaustion. The 24-byte
+manifest layout remains unchanged; only the private meaning of its first `u64`
+changes from per-writer process identity to the persisted store epoch.
 
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
@@ -1043,9 +1050,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, non-reusable pair revision identity,
-reclamation scheduling/automatic durable retention policy, and general N-object
-transactions remain open.
+invocation, asynchronous timing, reclamation scheduling/automatic durable
+retention policy, and general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

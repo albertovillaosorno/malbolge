@@ -13,14 +13,14 @@ replacement creates two immutable same-directory generation files, writes and
 synchronizes both completely, then writes and synchronizes a staging manifest.
 Atomic `rename` of that staging manifest is the single commit point. Readers
 first read one complete manifest and then load only the two immutable members it
-names indirectly through its process/generation token.
+names indirectly through its epoch/generation token.
 
 A persistent sibling `.lock` file coordinates cooperating readers and
 publishers. Readers hold a shared lock from manifest observation through both
 immutable member reads. Generation creation, manifest replacement, and
 revision-conditional comparison hold the exclusive lock. Conflict returns the
 complete current bounded pair plus its revision; byte-equal newer generations
-still conflict with stale revisions while revision identity is not reused.
+still conflict with stale revisions.
 
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
@@ -51,13 +51,13 @@ explicitly retain or release; equality controls membership and insertion order
 has no temporal meaning. Automatic selection and scheduling remain outside the
 adapter.
 
-The current filesystem revision token is `(process id, process-local
-generation)`.
-Generation files prevent live-token reuse while they exist, but explicit
-reclamation can remove old collision files and a later process may reuse the
-same
-PID. Durable or cross-process retention checkpoints therefore require a
-non-reusable revision identity before they can safely persist opaque revisions.
+The fixed 24-byte manifest now interprets its first `u64` as a store epoch and
+its second `u64` as the committed generation. Initial publication seeds the
+epoch once; every later cooperating writer keeps that epoch and derives the next
+generation from the current manifest under the exclusive lock. Crash-orphan
+collisions are skipped monotonically within the same epoch, and `u64` exhaustion
+fails closed. Reclamation never resets the manifest generation, so published
+revision identity is not reused across ordinary process restarts or cleanup.
 
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
