@@ -191,6 +191,13 @@ Never discard unrelated uncommitted work. Do not change
 concurrently edited configuration merely to make a global gate green unless the
 current task explicitly owns that configuration.
 
+When the operator explicitly asks agents to share the active checkout, do not
+create a separate worktree. Treat concurrent operator edits and commits as
+off-limits: never stage, commit, rewrite, revert, delete, or otherwise publish
+them on the operator's behalf. Stage only exact paths owned by the current task,
+recheck `git status` before every commit or push, and leave unrelated concurrent
+work untouched even when it changes during validation.
+
 Use the repository-pinned Rust toolchain and the standalone Jig resolved from
 `PATH`.
 For Rust VM work, the minimum useful checks are formatting, tests, compiler/lint
