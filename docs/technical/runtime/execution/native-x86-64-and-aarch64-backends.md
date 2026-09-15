@@ -783,6 +783,12 @@ the greatest exact shared bound set plus per-side removal counts; four cases
 cover identity, partial overlap with exact merge, final-bound-only reduction,
 and incompatible final bounds.
 
+A normalized exact merge now composes that common-schema derivation with both
+coarsenings and the existing transactional same-schema merge. It retains how
+many bounds each side removed and never mutates either source. Two cases cover
+different compatible schemas and incompatible final overflow bounds. Durable or
+distributed merge publication remains a separate coordination problem.
+
 Cached-cycle composition now binds the existing canonical count/latency codecs
 to an explicit persistence application service and reconstructs exact validated
 owners after load. The application service itself treats payloads as opaque

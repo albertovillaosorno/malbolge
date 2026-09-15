@@ -37,6 +37,7 @@ use super::{
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
+    NativeContinuationCachedRetryLatencyMergeError,
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
@@ -76,6 +77,27 @@ pub struct NativeContinuationCachedRetryLatencyCoarsening {
     histogram: NativeContinuationCachedRetryLatencyHistogram,
     source_bound_count: usize,
     target_bound_count: usize,
+}
+
+/// Why exact normalized latency merge failed without mutating either source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationCachedRetryLatencyNormalizedMergeError {
+    /// Greatest exact shared schema could not be derived.
+    Common(NativeContinuationCachedRetryLatencyCommonCoarseningError),
+    /// Left histogram could not be coarsened to the shared schema.
+    Left(NativeContinuationCachedRetryLatencyCoarseningError),
+    /// Coarsened histograms could not be merged transactionally.
+    Merge(NativeContinuationCachedRetryLatencyMergeError),
+    /// Right histogram could not be coarsened to the shared schema.
+    Right(NativeContinuationCachedRetryLatencyCoarseningError),
+}
+
+/// Exact merged histogram plus normalization evidence for both sources.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryLatencyNormalizedMerge {
+    histogram: NativeContinuationCachedRetryLatencyHistogram,
+    left_removed_bounds: usize,
+    right_removed_bounds: usize,
 }
 
 /// Why two histograms cannot share one exact coarsened schema.
@@ -136,6 +158,36 @@ impl NativeContinuationCachedRetryLatencyCoarsening {
     #[must_use]
     pub const fn target_bound_count(&self) -> usize {
         self.target_bound_count
+    }
+}
+
+impl NativeContinuationCachedRetryLatencyNormalizedMerge {
+    /// Borrows the exact merged histogram on the shared schema.
+    #[must_use]
+    pub const fn histogram(
+        &self,
+    ) -> &NativeContinuationCachedRetryLatencyHistogram {
+        &self.histogram
+    }
+
+    /// Consumes merge evidence into the exact merged histogram.
+    #[must_use]
+    pub fn into_histogram(
+        self,
+    ) -> NativeContinuationCachedRetryLatencyHistogram {
+        self.histogram
+    }
+
+    /// Returns how many left-side bounds normalization removed.
+    #[must_use]
+    pub const fn left_removed_bounds(&self) -> usize {
+        self.left_removed_bounds
+    }
+
+    /// Returns how many right-side bounds normalization removed.
+    #[must_use]
+    pub const fn right_removed_bounds(&self) -> usize {
+        self.right_removed_bounds
     }
 }
 
@@ -223,6 +275,46 @@ pub fn coarsen_cached_retry_latency_histogram(
         histogram,
         source_bound_count: source.upper_bounds().len(),
         target_bound_count: target_upper_bounds_len,
+    })
+}
+
+/// Normalizes two compatible schemas and merges their evidence exactly.
+///
+/// # Errors
+///
+/// Returns exact shared-schema, coarsening, or transactional merge failure.
+pub fn merge_cached_retry_latency_histograms_exact(
+    left: &NativeContinuationCachedRetryLatencyHistogram,
+    right: &NativeContinuationCachedRetryLatencyHistogram,
+) -> Result<
+    NativeContinuationCachedRetryLatencyNormalizedMerge,
+    NativeContinuationCachedRetryLatencyNormalizedMergeError,
+> {
+    let common = derive_common_cached_retry_latency_coarsening(left, right)
+        .map_err(
+            NativeContinuationCachedRetryLatencyNormalizedMergeError::Common,
+        )?;
+    let left_removed_bounds = common.left_removed_bounds();
+    let right_removed_bounds = common.right_removed_bounds();
+    let mut merged = coarsen_cached_retry_latency_histogram(
+        left,
+        common.upper_bounds().to_vec(),
+    )
+    .map_err(NativeContinuationCachedRetryLatencyNormalizedMergeError::Left)?
+    .into_histogram();
+    let normalized_right = coarsen_cached_retry_latency_histogram(
+        right,
+        common.upper_bounds().to_vec(),
+    )
+    .map_err(NativeContinuationCachedRetryLatencyNormalizedMergeError::Right)?
+    .into_histogram();
+    let _record = merged.merge(&normalized_right).map_err(
+        NativeContinuationCachedRetryLatencyNormalizedMergeError::Merge,
+    )?;
+    Ok(NativeContinuationCachedRetryLatencyNormalizedMerge {
+        histogram: merged,
+        left_removed_bounds,
+        right_removed_bounds,
     })
 }
 

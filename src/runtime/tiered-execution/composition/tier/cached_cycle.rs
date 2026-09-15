@@ -120,8 +120,11 @@ pub use telemetry_latency_coarsening::{
     NativeContinuationCachedRetryLatencyCoarseningError,
     NativeContinuationCachedRetryLatencyCommonCoarsening,
     NativeContinuationCachedRetryLatencyCommonCoarseningError,
+    NativeContinuationCachedRetryLatencyNormalizedMerge,
+    NativeContinuationCachedRetryLatencyNormalizedMergeError,
     coarsen_cached_retry_latency_histogram,
     derive_common_cached_retry_latency_coarsening,
+    merge_cached_retry_latency_histograms_exact,
 };
 pub use telemetry_latency_codec::{
     NativeContinuationCachedRetryLatencyCodecError,

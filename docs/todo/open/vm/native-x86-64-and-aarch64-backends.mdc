@@ -631,6 +631,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cases cover identity, partial-overlap merge, final-bound-only reduction, and
   incompatible final bounds.
 
+  One normalized exact merge now derives that common schema, coarsens both
+  inputs independently, and invokes the existing transactional same-schema
+  merge. It retains per-side removed-bound counts and leaves both sources
+  unchanged. Two cases cover compatible different schemas and incompatible
+  final bounds. Durable/distributed merge publication remains pending.
+
   Cached-cycle composition binds the canonical count/latency codecs to an
   explicit persistence application service and reconstructs exact validated
   owners after load. The application treats payloads as opaque bytes and checks

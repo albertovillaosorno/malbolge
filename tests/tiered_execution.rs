@@ -175,6 +175,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
     NativeContinuationCachedRetryLatencyMergeError,
+    NativeContinuationCachedRetryLatencyNormalizedMergeError,
     NativeContinuationCachedRetryLatencyPolicyPublication,
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
     NativeContinuationCachedRetryLatencyRefinementError,
@@ -213,6 +214,7 @@ use cached_cycle::{
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     finish_cached_retry_latency_measurement,
+    merge_cached_retry_latency_histograms_exact,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_window,
@@ -783,6 +785,10 @@ struct CoffCompileCase {
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 type LatencyRefinementError =
     NativeContinuationCachedRetryLatencyRefinementError;
+type LatencyCommonCoarseningError =
+    NativeContinuationCachedRetryLatencyCommonCoarseningError;
+type LatencyNormalizedMergeError =
+    NativeContinuationCachedRetryLatencyNormalizedMergeError;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
 type CrazyCacheFailure<MemoryError> =
@@ -53033,6 +53039,66 @@ fn cached_retry_latency_coarsening_normalizes_for_exact_merge()
         Ok(())
     } else {
         Err(String::from("coarsened latency merge evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_normalized_merge_combines_different_schemas()
+-> Result<(), String> {
+    let mut left =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    let mut right =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![20, 100])
+            .map_err(|error| error.to_string())?;
+    record_cached_retry_latencies(&mut left, &[1, 10, 50])?;
+    record_cached_retry_latencies(&mut right, &[2, 20, 80, 101])?;
+    let merged = merge_cached_retry_latency_histograms_exact(&left, &right)
+        .map_err(|error| {
+            format!("normalized latency merge failed: {error:?}")
+        })?;
+    let histogram = merged.histogram();
+    if merged.left_removed_bounds() == 1
+        && merged.right_removed_bounds() == 1
+        && histogram.upper_bounds() == [100]
+        && histogram.bucket_counts() == [6]
+        && histogram.above_maximum() == 1
+        && histogram.samples() == 7
+        && histogram.total_nanoseconds() == 264
+        && histogram.minimum_nanoseconds() == Some(1)
+        && histogram.maximum_nanoseconds() == Some(101)
+    {
+        Ok(())
+    } else {
+        Err(String::from("normalized latency merge evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_normalized_merge_rejects_final_bound_mismatch()
+-> Result<(), String> {
+    let left =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 100])
+            .map_err(|error| error.to_string())?;
+    let right =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![10, 200])
+            .map_err(|error| error.to_string())?;
+    let failure = merge_cached_retry_latency_histograms_exact(&left, &right)
+        .err()
+        .ok_or_else(|| {
+            String::from("incompatible normalized merge succeeded")
+        })?;
+    if failure
+        == LatencyNormalizedMergeError::Common(
+            LatencyCommonCoarseningError::FinalBoundMismatch {
+                left: 100,
+                right: 200,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("normalized merge mismatch evidence drifted"))
     }
 }
 
