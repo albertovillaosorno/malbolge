@@ -67,7 +67,7 @@ parts:
     kind: contract
     responsibility: Define serialized and cross-boundary representations.
   - id: part-0008
-    path: contract/self_host/hello-world/main.c
+    path: contract/self_host/hello-world/hello_world_stress.c
     kind: contract
     language: c
     responsibility: Define serialized and cross-boundary representations.

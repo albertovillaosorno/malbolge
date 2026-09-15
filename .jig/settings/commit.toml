@@ -1,7 +1,7 @@
 domain = "commit"
 schema_version = 1
 allowed_scopes = ["adr", "ci", "compiler", "config", "docs", "foundation", "legal", "repo", "research", "runtime", "tests", "tooling"]
-allowed_trailers = ["BREAKING CHANGE"]
+allowed_trailers = ["BREAKING CHANGE", "Signed-off-by"]
 allowed_types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "release", "revert", "style", "test"]
 allow_merge_commits = false
 allow_revert_type = true

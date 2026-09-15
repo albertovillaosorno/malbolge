@@ -75,11 +75,11 @@ impl Drop for InvalidTemporaryCSource {
 }
 
 #[test]
-fn freestanding_hello_world_debug_run_preserves_exact_bytes()
--> Result<(), String> {
+fn hello_world_stress_debug_run_preserves_exact_bytes() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source = root
-        .join("src/examples/programs/contract/self_host/hello-world/main.c");
+        .join("src/examples/programs/contract/self_host")
+        .join("hello-world/hello_world_stress.c");
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .current_dir(root)
         .arg(source)
