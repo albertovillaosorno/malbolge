@@ -483,6 +483,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Conditionally publish typed count and latency telemetry.
+  - id: part-0091
+    path: composition/tier/cached_cycle/telemetry_ordered_pair_persistence.rs
+    kind: composition
+    language: rust
+    responsibility: Persist ordered count and latency telemetry atomically.
 projects: []
 tests: []
 graph:

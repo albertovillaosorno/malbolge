@@ -943,6 +943,17 @@ not provided: replaying the same whole-pair snapshot against a fresher revision
 could overwrite concurrent telemetry. Any retry must first define an explicit
 count/latency reconciliation or merge operation over freshly loaded typed state.
 
+A separate ordered telemetry-pair contract now persists the existing canonical
+`(external order + count FIFO)` document as member one and the canonical latency
+histogram as member two. This does not reinterpret or migrate the earlier plain
+count-window pair format. It provides the restart-safe ordering watermark needed
+for future conflict reconciliation while keeping both telemetry channels atomic.
+
+Four focused cases cover atomic ordered-pair round trip, explicit missing state,
+committed durability failure, and a host-real cross-instance filesystem restore.
+Ordered-pair CAS/reconciliation remains separate; no storage-contention order is
+inferred from this persistence layer.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and
@@ -974,7 +985,7 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, typed pair-conflict reconciliation/retry, pair-generation
+asynchronous timing, ordered-pair CAS/reconciliation/retry, pair-generation
 reclamation, and general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before

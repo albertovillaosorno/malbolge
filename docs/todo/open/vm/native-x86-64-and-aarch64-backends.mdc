@@ -782,6 +782,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   overwrite concurrent telemetry; retry requires explicit fresh-state
   reconciliation or merge semantics first.
 
+  A separate ordered telemetry-pair contract now persists the existing canonical
+  `(external order + count FIFO)` document as member one and canonical latency
+  as
+  member two. It does not reinterpret or migrate the earlier plain count-window
+  pair format. The durable watermark now exists beside latency evidence in one
+  atomic publication, enabling safe future reconciliation design.
+
+  Four focused cases cover atomic ordered-pair round trip, missing state,
+  committed durability failure, and host-real cross-instance restore.
+  Ordered-pair CAS/reconciliation remains separate; persistence does not infer
+  ordering from storage contention.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real
@@ -807,8 +819,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Merge backoff/cancellation policy, async queues/timers, typed pair-conflict
-  reconciliation/retry, generation reclamation, general N-object transactions,
+  Merge backoff/cancellation policy, async queues/timers, ordered-pair
+  CAS/reconciliation/retry, generation reclamation, general N-object
+  transactions,
   and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry

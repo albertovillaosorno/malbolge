@@ -226,6 +226,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryOrderedCasRequest,
     NativeContinuationCachedRetryTelemetryOrderedCasRetry,
     NativeContinuationCachedRetryTelemetryOrderedDurablePersistence,
+    NativeContinuationCachedRetryTelemetryOrderedPairDurablePersistence,
+    NativeContinuationCachedRetryTelemetryOrderedPairPersistenceLoad,
+    NativeContinuationCachedRetryTelemetryOrderedPairPersistenceRequest,
     NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad,
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
@@ -262,6 +265,7 @@ use cached_cycle::{
     merge_cached_retry_latency_histograms_exact,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
+    persist_cached_retry_telemetry_ordered_pair_durably,
     persist_cached_retry_telemetry_ordered_state_durably,
     persist_cached_retry_telemetry_pair_durably,
     persist_cached_retry_telemetry_window,
@@ -276,6 +280,7 @@ use cached_cycle::{
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
+    restore_cached_retry_telemetry_ordered_pair,
     restore_cached_retry_telemetry_ordered_state,
     restore_cached_retry_telemetry_pair,
     restore_cached_retry_telemetry_pair_versioned,
@@ -872,6 +877,14 @@ type TelemetryPairState = (
     NativeContinuationCachedRetryTelemetryWindow,
     NativeContinuationCachedRetryLatencyHistogram,
 );
+type OrderedTelemetryPairDurablePersistence =
+    NativeContinuationCachedRetryTelemetryOrderedPairDurablePersistence<
+        TestBlobPairDurabilityError,
+    >;
+type OrderedTelemetryPairLoad =
+    NativeContinuationCachedRetryTelemetryOrderedPairPersistenceLoad;
+type OrderedTelemetryPairRequest<'state> =
+    NativeContinuationCachedRetryTelemetryOrderedPairPersistenceRequest<'state>;
 type OrderedTelemetryBatchOrder =
     NativeContinuationCachedRetryTelemetryBatchOrder;
 type OrderedTelemetryWindowError =
@@ -52906,6 +52919,150 @@ fn cached_retry_telemetry_pair_state(
     let mut histogram = cached_retry_latency_histogram()?;
     record_cached_retry_latencies(&mut histogram, &[latency])?;
     Ok((window, histogram))
+}
+
+#[test]
+fn cached_retry_ordered_pair_roundtrips() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered pair capacity")?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(17);
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let ordered =
+        cached_retry_ordered_window_with_batch(capacity, order, telemetry)?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[1, 10, 101])?;
+    let expected_histogram = histogram.clone();
+    let mut store = TestBlobPairStore::default();
+    let limit = nonzero_test_limit(4_096, "ordered pair bytes")?;
+    let outcome = persist_cached_retry_telemetry_ordered_pair_durably(
+        &mut store,
+        OrderedTelemetryPairRequest::new(&ordered, &histogram, (limit, limit)),
+    )
+    .map_err(|error| format!("ordered pair persist failed: {error:?}"))?;
+    let restored = restore_cached_retry_telemetry_ordered_pair(
+        &mut store, limit, limit,
+    )
+    .map_err(|error| format!("ordered pair restore failed: {error:?}"))?;
+    let OrderedTelemetryPairLoad::Restored {
+        histogram: restored_histogram,
+        ordered: restored_ordered,
+        ..
+    } = restored
+    else {
+        return Err(String::from("ordered pair disappeared"));
+    };
+    if outcome.is_durable()
+        && restored_ordered.last_order() == Some(order)
+        && restored_ordered.window().snapshot() == ordered.window().snapshot()
+        && *restored_histogram == expected_histogram
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered pair round trip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_reports_missing() -> Result<(), String> {
+    let mut store = TestBlobPairStore::default();
+    let limit = nonzero_test_limit(128, "ordered pair missing bytes")?;
+    let restored =
+        restore_cached_retry_telemetry_ordered_pair(&mut store, limit, limit)
+            .map_err(|error| {
+            format!("ordered pair missing load failed: {error:?}")
+        })?;
+    if matches!(restored, OrderedTelemetryPairLoad::Missing) {
+        Ok(())
+    } else {
+        Err(String::from("ordered pair missing state was invented"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_retains_committed_failure() -> Result<(), String> {
+    let ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        NativeContinuationCachedRetryTelemetryWindow::new(nonzero_test_limit(
+            2,
+            "ordered committed capacity",
+        )?),
+    );
+    let histogram = cached_retry_latency_histogram()?;
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let limit = nonzero_test_limit(4_096, "ordered committed bytes")?;
+    let outcome = persist_cached_retry_telemetry_ordered_pair_durably(
+        &mut store,
+        OrderedTelemetryPairRequest::new(&ordered, &histogram, (limit, limit)),
+    )
+    .map_err(|error| format!("ordered pair failed before commit: {error:?}"))?;
+    if matches!(outcome, OrderedTelemetryPairDurablePersistence::Published {
+        durability_error: TestBlobPairDurabilityError::Confirm,
+        ..
+    }) && store.pair.is_some()
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered pair committed failure drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_file_roundtrips() -> Result<(), String> {
+    let fixture = file_blob_store_fixture("ordered-telemetry-pair")?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(23);
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        4,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let ordered = cached_retry_ordered_window_with_batch(
+        nonzero_test_limit(2, "ordered file pair capacity")?,
+        order,
+        telemetry,
+    )?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 100])?;
+    let limit = nonzero_test_limit(4_096, "ordered file pair bytes")?;
+    let mut publisher =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let outcome = persist_cached_retry_telemetry_ordered_pair_durably(
+        &mut publisher,
+        OrderedTelemetryPairRequest::new(&ordered, &histogram, (limit, limit)),
+    )
+    .map_err(|error| format!("ordered file pair persist failed: {error:?}"))?;
+    let mut reader =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let restored =
+        restore_cached_retry_telemetry_ordered_pair(&mut reader, limit, limit)
+            .map_err(|error| {
+                format!("ordered file pair restore failed: {error:?}")
+            })?;
+    let OrderedTelemetryPairLoad::Restored {
+        histogram: restored_histogram,
+        ordered: restored_ordered,
+        ..
+    } = restored
+    else {
+        return Err(String::from("ordered file pair disappeared"));
+    };
+    let result = if outcome.is_durable()
+        && restored_ordered.last_order() == Some(order)
+        && *restored_histogram == histogram
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered file pair round trip drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]
