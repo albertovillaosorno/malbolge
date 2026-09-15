@@ -602,6 +602,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cover initialization, update, conflict, and exhaustion; one host-real race
   proves exactly one initializer commits.
 
+  Count and latency recommendations now publish ready policy through that
+  durable active-state CAS boundary. One shared typed result keeps the exact
+  recommendation beside durable, committed-sync-failure, or conflict evidence.
+  Deferred recommendations perform zero storage work.
+
+  Three count cases cover deferral, revision-zero initialization, and stale
+  conflict; one latency case advances an existing active revision. Request
+  binding stays explicit.
+
   Exact histogram coarsening removes only caller-selected interior source
   bounds while preserving bucket totals, extrema, overall samples, exact
   nanosecond totals, and overflow-bin evidence. Targets must be ordered source
@@ -652,9 +661,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Histogram refinement, distributed/durable merge, durable/cross-cycle policy
-  publication, async queues/timers, multi-blob transactions, and broader
-  production orchestration remain pending.
+  Histogram refinement, distributed/durable merge, async queues/timers,
+  multi-blob transactions, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

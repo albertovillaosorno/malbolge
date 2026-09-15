@@ -18,7 +18,7 @@
 //     published.
 //   - Side effects: none outside the consumed and returned request owner.
 // - Split-When:
-//   - Durable/cross-cycle publication or concurrent policy ownership is added.
+//   - Automatic active-state request binding gains authority.
 // - Merge-When:
 //   - Recommendation and request construction become one atomic use case.
 // - Summary:

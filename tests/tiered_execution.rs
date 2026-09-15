@@ -163,6 +163,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryCycleFailure,
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
+    NativeContinuationCachedRetryDurablePolicyPublication,
     NativeContinuationCachedRetryInterpreterOutcome,
     NativeContinuationCachedRetryLatencyAssessment,
     NativeContinuationCachedRetryLatencyAssessmentSignal,
@@ -217,7 +218,9 @@ use cached_cycle::{
     persist_cached_retry_telemetry_window_durably,
     publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
+    publish_cached_retry_latency_policy_recommendation_durably,
     publish_cached_retry_policy_recommendation,
+    publish_cached_retry_policy_recommendation_durably,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
@@ -2109,6 +2112,7 @@ enum TestMonotonicClockError {
 #[derive(Debug, Default)]
 struct TestCachedRetryTelemetryBlobStore {
     blob: Option<Vec<u8>>,
+    compare_and_swap_calls: usize,
     fail_durability: bool,
     fail_load: bool,
     fail_replace: bool,
@@ -2191,6 +2195,8 @@ impl telemetry_store_port::NativeContinuationConditionalBlobStore
         telemetry_store_port::NativeContinuationBlobConditionalPublication,
         Self::Error,
     > {
+        self.compare_and_swap_calls =
+            self.compare_and_swap_calls.saturating_add(1);
         if self.blob.as_deref() != expected {
             return Ok(
                 telemetry_store_port::
@@ -52108,6 +52114,200 @@ fn cached_retry_policy_recommendation_retains_miss_evidence()
         Ok(())
     } else {
         Err(String::from("missed telemetry recommendation lost evidence"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_durable_publication_defers_without_storage()
+-> Result<(), String> {
+    let required = nonzero_test_limit(2, "durable policy attempts")?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+            observed_attempts: 1,
+            required_attempts: required,
+        };
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let publication = publish_cached_retry_policy_recommendation_durably(
+        &mut store,
+        None,
+        recommendation,
+        nonzero_test_limit(52, "durable policy bytes")?,
+    )
+    .map_err(|error| format!("deferred durable policy failed: {error:?}"))?;
+    if publication.is_deferred()
+        && publication.recommendation() == &recommendation
+        && publication.publication().is_none()
+        && store.compare_and_swap_calls == 0
+        && store.blob.is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("deferred durable policy touched storage"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_durable_publication_initializes_active_state()
+-> Result<(), String> {
+    let policy = complete_retry_policy(4);
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy,
+            telemetry,
+        };
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let publication = publish_cached_retry_policy_recommendation_durably(
+        &mut store,
+        None,
+        recommendation,
+        nonzero_test_limit(52, "durable policy init bytes")?,
+    )
+    .map_err(|error| {
+        format!("durable policy initialization failed: {error:?}")
+    })?;
+    let NativeContinuationCachedRetryDurablePolicyPublication::Ready {
+        publication: PolicyStateCas::Durable { current, previous, .. },
+        recommendation: retained,
+    } = publication
+    else {
+        return Err(String::from(
+            "ready policy did not initialize active state",
+        ));
+    };
+    if retained == recommendation
+        && previous.is_none()
+        && current.policy() == policy
+        && current.revision()
+            == NativeContinuationRetryPolicyRevision::initial()
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable policy initialization evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_policy_durable_publication_retains_conflict()
+-> Result<(), String> {
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(2),
+    );
+    let actual = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(5),
+        NativeContinuationRetryPolicyRevision::from_value(3),
+    );
+    let candidate = complete_retry_policy(9);
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy: candidate,
+            telemetry,
+        };
+    let actual_bytes = encode_native_continuation_retry_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let publication = publish_cached_retry_policy_recommendation_durably(
+        &mut store,
+        Some(expected),
+        recommendation,
+        nonzero_test_limit(52, "durable policy conflict bytes")?,
+    )
+    .map_err(|error| format!("durable policy conflict failed: {error:?}"))?;
+    let NativeContinuationCachedRetryDurablePolicyPublication::Ready {
+        publication:
+            PolicyStateCas::Conflict {
+                candidate: rejected,
+                current,
+                expected: seen,
+            },
+        recommendation: retained,
+    } = publication
+    else {
+        return Err(String::from(
+            "stale durable policy recommendation committed",
+        ));
+    };
+    if retained == recommendation
+        && rejected == candidate
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.compare_and_swap_calls == 1
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable policy conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_policy_durable_publication_advances_active_state()
+-> Result<(), String> {
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(6),
+    );
+    let expected_bytes =
+        encode_native_continuation_retry_policy_state(expected)
+            .map_err(|error| error.to_string())?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "durable latency policy samples")?,
+            15,
+            20,
+            0,
+        );
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        policies,
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let publication =
+        publish_cached_retry_latency_policy_recommendation_durably(
+            &mut store,
+            Some(expected),
+            recommendation,
+            nonzero_test_limit(52, "durable latency policy bytes")?,
+        )
+        .map_err(|error| format!("durable latency policy failed: {error:?}"))?;
+    let NativeContinuationCachedRetryDurablePolicyPublication::Ready {
+        publication: PolicyStateCas::Durable { current, previous, .. },
+        recommendation: retained,
+    } = publication
+    else {
+        return Err(String::from("ready latency policy did not publish"));
+    };
+    if retained == recommendation
+        && previous == Some(expected)
+        && current.policy() == policies.meets()
+        && current.revision().value() == 7
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable latency policy evidence drifted"))
     }
 }
 

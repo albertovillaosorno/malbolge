@@ -409,6 +409,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Publish revisioned active policy through durable CAS.
+  - id: part-0076
+    path: composition/tier/cached_cycle/telemetry_policy_durable_publication.rs
+    kind: composition
+    language: rust
+    responsibility: Publish ready telemetry recommendations across cycles.
 projects: []
 tests: []
 graph:

@@ -753,6 +753,15 @@ Four adapter-neutral cases cover initialization, update, conflict, and
 exhaustion; a host-real two-store race proves that exactly one initializer
 commits.
 
+Count and latency recommendations can now publish ready policy into that
+durable active-state CAS boundary. A shared typed result retains the exact
+recommendation alongside durable, committed-with-sync-failure, or conflict
+evidence. Deferred recommendations perform zero storage work.
+
+Three count cases cover deferral, revision-zero initialization, and stale
+conflict; one latency case advances an existing active revision. Request binding
+remains a separate explicit operation.
+
 Exact histogram coarsening now removes only caller-selected interior source
 bounds while preserving exact bucket totals, extrema, overall samples, exact
 nanosecond totals, and overflow-bin evidence. The target must be an ordered
@@ -810,9 +819,8 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Histogram refinement, distributed merge, durable/cross-cycle policy
-publication, native object fusion, foreign invocation, asynchronous timing,
-and multi-blob transactions remain open.
+Histogram refinement, distributed merge, native object fusion, foreign
+invocation, asynchronous timing, and multi-blob transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

@@ -20,8 +20,7 @@
 //     ownership.
 //   - Side effects: bounded cache acquisitions and loaded native attempts.
 // - Split-When:
-//   - Durable/cross-cycle policy publication, latency-driven recommendation, or
-//     async ownership gains a lifecycle.
+//   - Multi-signal policy arbitration or async ownership gains a lifecycle.
 // - Merge-When:
 //   - Product orchestration owns the complete cached tiered lifecycle.
 // - Summary:
@@ -61,6 +60,8 @@ mod telemetry_latency_recommendation;
 mod telemetry_latency_snapshot;
 #[path = "cached_cycle/telemetry_persistence.rs"]
 mod telemetry_persistence;
+#[path = "cached_cycle/telemetry_policy_durable_publication.rs"]
+mod telemetry_policy_durable_publication;
 #[path = "cached_cycle/telemetry_policy_publication.rs"]
 mod telemetry_policy_publication;
 #[path = "cached_cycle/telemetry_recommendation.rs"]
@@ -157,6 +158,13 @@ pub use telemetry_persistence::{
     persist_cached_retry_telemetry_window_durably,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_window,
+};
+pub use telemetry_policy_durable_publication::{
+    NativeContinuationCachedRetryDurablePolicyPublication,
+    NativeContinuationCachedRetryDurablePolicyPublicationResult,
+    NativeContinuationCachedRetryDurablePolicyStoreResult,
+    publish_cached_retry_latency_policy_recommendation_durably,
+    publish_cached_retry_policy_recommendation_durably,
 };
 pub use telemetry_policy_publication::{
     NativeContinuationCachedRetryActivePolicyPublication,

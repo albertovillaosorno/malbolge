@@ -17,7 +17,7 @@
 //   - Outputs: deferred evidence or one exact recommended retry policy.
 //   - Side effects: none.
 // - Split-When:
-//   - Durable/cross-cycle publication gains authority.
+//   - Multi-signal recommendation arbitration gains authority.
 // - Merge-When:
 //   - Caller orchestration owns assessment and publication atomically.
 // - Summary:
