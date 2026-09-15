@@ -19,7 +19,7 @@
 //   - Side effects: delegated through atomic pair-persistence application use
 //     cases.
 // - Split-When:
-//   - Pair CAS, migration, or another telemetry-pair revision gains authority.
+//   - Migration or another telemetry-pair revision gains authority.
 // - Merge-When:
 //   - One cached-cycle transaction owner owns pair persistence and merging.
 // - Summary:
@@ -85,6 +85,14 @@ impl<'state>
             window,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct DecodedCachedRetryTelemetryPair {
+    pub count_bytes: usize,
+    pub histogram: NativeContinuationCachedRetryLatencyHistogram,
+    pub latency_bytes: usize,
+    pub window: NativeContinuationCachedRetryTelemetryWindow,
 }
 
 /// Typed atomic telemetry-pair publication plus explicit durability state.
@@ -299,27 +307,43 @@ where
             NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Missing,
         );
     };
+    let decoded = decode_cached_retry_telemetry_pair(&first, &second)?;
+    Ok(
+        NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Restored {
+            count_bytes: decoded.count_bytes,
+            histogram: Box::new(decoded.histogram),
+            latency_bytes: decoded.latency_bytes,
+            window: Box::new(decoded.window),
+        },
+    )
+}
+
+pub(super) fn decode_cached_retry_telemetry_pair<StoreError>(
+    first: &[u8],
+    second: &[u8],
+) -> Result<
+    DecodedCachedRetryTelemetryPair,
+    NativeContinuationCachedRetryTelemetryPairPersistenceError<StoreError>,
+> {
     let count_bytes = first.len();
-    let count_snapshot = decode_count(&first)
+    let count_snapshot = decode_count(first)
         .map_err(|error| PairError::CountCodec(Box::new(error)))?;
     let window = NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
         count_snapshot,
     )
     .map_err(|error| PairError::CountSnapshot(Box::new(error)))?;
     let latency_bytes = second.len();
-    let latency_snapshot = decode_latency(&second)
+    let latency_snapshot = decode_latency(second)
         .map_err(|error| PairError::LatencyCodec(Box::new(error)))?;
     let histogram =
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
             latency_snapshot,
         )
         .map_err(|error| PairError::LatencySnapshot(Box::new(error)))?;
-    Ok(
-        NativeContinuationCachedRetryTelemetryPairPersistenceLoad::Restored {
-            count_bytes,
-            histogram: Box::new(histogram),
-            latency_bytes,
-            window: Box::new(window),
-        },
-    )
+    Ok(DecodedCachedRetryTelemetryPair {
+        count_bytes,
+        histogram,
+        latency_bytes,
+        window,
+    })
 }

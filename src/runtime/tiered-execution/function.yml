@@ -478,6 +478,11 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: Bind atomic blob-pair storage to filesystem generations.
+  - id: part-0090
+    path: composition/tier/cached_cycle/telemetry_pair_cas.rs
+    kind: composition
+    language: rust
+    responsibility: Conditionally publish typed count and latency telemetry.
 projects: []
 tests: []
 graph:

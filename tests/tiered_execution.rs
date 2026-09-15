@@ -230,6 +230,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
     NativeContinuationCachedRetryTelemetryOrderedWindowError,
+    NativeContinuationCachedRetryTelemetryPairCas,
+    NativeContinuationCachedRetryTelemetryPairCasRequest,
     NativeContinuationCachedRetryTelemetryPairDurablePersistence,
     NativeContinuationCachedRetryTelemetryPairPersistenceError,
     NativeContinuationCachedRetryTelemetryPairPersistenceLoad,
@@ -246,6 +248,7 @@ use cached_cycle::{
     assess_cached_retry_latency, assess_cached_retry_telemetry,
     begin_cached_retry_latency_measurement,
     coarsen_cached_retry_latency_histogram,
+    compare_and_swap_cached_retry_telemetry_pair_durably,
     decode_cached_retry_latency_snapshot,
     decode_cached_retry_telemetry_ordered_state,
     decode_cached_retry_telemetry_snapshot,
@@ -274,8 +277,9 @@ use cached_cycle::{
     refine_cached_retry_latency_histogram,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_ordered_state,
-    restore_cached_retry_telemetry_pair, restore_cached_retry_telemetry_window,
-    summarize_cached_retry_attempts,
+    restore_cached_retry_telemetry_pair,
+    restore_cached_retry_telemetry_pair_versioned,
+    restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -856,10 +860,18 @@ type TelemetryPairDurablePersistence =
     NativeContinuationCachedRetryTelemetryPairDurablePersistence<
         TestBlobPairDurabilityError,
     >;
+type TelemetryPairCas = NativeContinuationCachedRetryTelemetryPairCas<
+    u64,
+    TestBlobPairDurabilityError,
+>;
 type TelemetryPairPersistenceError =
     NativeContinuationCachedRetryTelemetryPairPersistenceError<
         TestBlobPairStoreError,
     >;
+type TelemetryPairState = (
+    NativeContinuationCachedRetryTelemetryWindow,
+    NativeContinuationCachedRetryLatencyHistogram,
+);
 type OrderedTelemetryBatchOrder =
     NativeContinuationCachedRetryTelemetryBatchOrder;
 type OrderedTelemetryWindowError =
@@ -52872,6 +52884,302 @@ fn cached_retry_file_blob_store_roundtrips_latency_histogram()
         Ok(())
     } else {
         Err(String::from("file latency persistence round-trip drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+fn cached_retry_telemetry_pair_state(
+    attempt: usize,
+    completed_steps: usize,
+    latency: u64,
+) -> Result<TelemetryPairState, String> {
+    let capacity = nonzero_test_limit(2, "typed pair state capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let summary = cached_retry_window_telemetry(
+        attempt,
+        completed_steps,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(summary).map_err(|error| error.to_string())?;
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[latency])?;
+    Ok((window, histogram))
+}
+
+#[test]
+fn cached_retry_telemetry_pair_versioned_restore_keeps_typed_state()
+-> Result<(), String> {
+    let count_limit = nonzero_test_limit(4_096, "typed CAS count bytes")?;
+    let latency_limit = nonzero_test_limit(4_096, "typed CAS latency bytes")?;
+    let (window, histogram) = cached_retry_telemetry_pair_state(1, 3, 10)?;
+    let expected_window = window.snapshot();
+    let expected_histogram = histogram.clone();
+    let mut store = TestBlobPairStore::default();
+    let _published = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &window,
+            &histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| format!("typed pair setup failed: {error:?}"))?;
+    let restored = restore_cached_retry_telemetry_pair_versioned(
+        &mut store,
+        count_limit,
+        latency_limit,
+    )
+    .map_err(|error| format!("typed versioned restore failed: {error:?}"))?
+    .ok_or_else(|| String::from("typed versioned pair disappeared"))?;
+    if *restored.revision() == 1
+        && restored.window().snapshot() == expected_window
+        && restored.histogram() == &expected_histogram
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed versioned pair evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_cas_initializes_missing_state()
+-> Result<(), String> {
+    let count_limit = nonzero_test_limit(4_096, "typed CAS init count bytes")?;
+    let latency_limit =
+        nonzero_test_limit(4_096, "typed CAS init latency bytes")?;
+    let (window, histogram) = cached_retry_telemetry_pair_state(1, 2, 10)?;
+    let expected_window = window.snapshot();
+    let expected_histogram = histogram.clone();
+    let mut store = TestBlobPairStore::default();
+    let request = NativeContinuationCachedRetryTelemetryPairCasRequest::new(
+        None,
+        &window,
+        &histogram,
+        (count_limit, latency_limit),
+    );
+    let outcome = compare_and_swap_cached_retry_telemetry_pair_durably(
+        &mut store, &request,
+    )
+    .map_err(|error| format!("typed pair CAS initialize failed: {error:?}"))?;
+    let TelemetryPairCas::Durable { current } = outcome else {
+        return Err(String::from("typed pair CAS did not initialize"));
+    };
+    if *current.revision() == 1
+        && current.window().snapshot() == expected_window
+        && current.histogram() == &expected_histogram
+        && store.replace_calls == 1
+        && store.durability_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed pair CAS initialize evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_cas_decodes_conflict() -> Result<(), String> {
+    let count_limit = nonzero_test_limit(4_096, "typed CAS conflict count")?;
+    let latency_limit =
+        nonzero_test_limit(4_096, "typed CAS conflict latency")?;
+    let (first_window, first_histogram) =
+        cached_retry_telemetry_pair_state(1, 2, 10)?;
+    let (current_window, current_histogram) =
+        cached_retry_telemetry_pair_state(2, 4, 100)?;
+    let current_snapshot = current_window.snapshot();
+    let mut store = TestBlobPairStore::default();
+    let _first = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &first_window,
+            &first_histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| format!("typed stale first setup failed: {error:?}"))?;
+    let stale_revision = store.revision;
+    let _current = persist_cached_retry_telemetry_pair_durably(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &current_window,
+            &current_histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| format!("typed stale current setup failed: {error:?}"))?;
+    let (candidate_window, candidate_histogram) =
+        cached_retry_telemetry_pair_state(3, 6, 101)?;
+    let request = NativeContinuationCachedRetryTelemetryPairCasRequest::new(
+        Some(&stale_revision),
+        &candidate_window,
+        &candidate_histogram,
+        (count_limit, latency_limit),
+    );
+    let outcome = compare_and_swap_cached_retry_telemetry_pair_durably(
+        &mut store, &request,
+    )
+    .map_err(|error| format!("typed stale CAS failed: {error:?}"))?;
+    let TelemetryPairCas::Conflict {
+        current: Some(current),
+        expected,
+    } = outcome
+    else {
+        return Err(String::from("typed stale revision did not conflict"));
+    };
+    if expected == Some(stale_revision)
+        && *current.revision() == 2
+        && current.window().snapshot() == current_snapshot
+        && current.histogram() == &current_histogram
+        && store.replace_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed stale conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_cas_rejects_corrupt_conflict()
+-> Result<(), String> {
+    let count_limit = nonzero_test_limit(4_096, "typed bad conflict count")?;
+    let latency_limit =
+        nonzero_test_limit(4_096, "typed bad conflict latency")?;
+    let histogram = cached_retry_latency_histogram()?;
+    let latency = encode_cached_retry_latency_snapshot(&histogram.snapshot())
+        .map_err(|error| {
+        format!("typed conflict latency encode failed: {error:?}")
+    })?;
+    let mut store = TestBlobPairStore {
+        pair: Some(telemetry_pair_store_port::NativeContinuationBlobPair {
+            first: b"bad-count".to_vec(),
+            second: latency,
+        }),
+        revision: 7,
+        ..TestBlobPairStore::default()
+    };
+    let (window, candidate_histogram) =
+        cached_retry_telemetry_pair_state(1, 2, 10)?;
+    let stale_revision = 6;
+    let request = NativeContinuationCachedRetryTelemetryPairCasRequest::new(
+        Some(&stale_revision),
+        &window,
+        &candidate_histogram,
+        (count_limit, latency_limit),
+    );
+    let error = compare_and_swap_cached_retry_telemetry_pair_durably(
+        &mut store, &request,
+    )
+    .err()
+    .ok_or_else(|| String::from("corrupt typed conflict was accepted"))?;
+    if matches!(error, TelemetryPairPersistenceError::CountCodec(_))
+        && store.replace_calls == 0
+        && store.durability_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("corrupt typed conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_cas_retains_committed_failure()
+-> Result<(), String> {
+    let count_limit = nonzero_test_limit(4_096, "typed fail count bytes")?;
+    let latency_limit = nonzero_test_limit(4_096, "typed fail latency bytes")?;
+    let (window, histogram) = cached_retry_telemetry_pair_state(1, 2, 10)?;
+    let expected_window = window.snapshot();
+    let mut store = TestBlobPairStore {
+        fail_durability: true,
+        ..TestBlobPairStore::default()
+    };
+    let request = NativeContinuationCachedRetryTelemetryPairCasRequest::new(
+        None,
+        &window,
+        &histogram,
+        (count_limit, latency_limit),
+    );
+    let outcome = compare_and_swap_cached_retry_telemetry_pair_durably(
+        &mut store, &request,
+    )
+    .map_err(|error| format!("typed committed CAS failed early: {error:?}"))?;
+    let TelemetryPairCas::Published {
+        current,
+        durability_error,
+    } = outcome
+    else {
+        return Err(String::from("typed durability failure was not committed"));
+    };
+    if durability_error == TestBlobPairDurabilityError::Confirm
+        && *current.revision() == 1
+        && current.window().snapshot() == expected_window
+        && store.pair.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed committed CAS evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_pair_file_cas_progresses_typed_state()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("typed-pair-cas")?;
+    let count_limit = nonzero_test_limit(4_096, "typed file CAS count bytes")?;
+    let latency_limit =
+        nonzero_test_limit(4_096, "typed file CAS latency bytes")?;
+    let (first_window, first_histogram) =
+        cached_retry_telemetry_pair_state(1, 2, 10)?;
+    let mut first_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let _seed = persist_cached_retry_telemetry_pair_durably(
+        &mut first_store,
+        NativeContinuationCachedRetryTelemetryPairPersistenceRequest::new(
+            &first_window,
+            &first_histogram,
+            count_limit,
+            latency_limit,
+        ),
+    )
+    .map_err(|error| format!("typed file seed failed: {error:?}"))?;
+    let mut second_store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let first = restore_cached_retry_telemetry_pair_versioned(
+        &mut second_store,
+        count_limit,
+        latency_limit,
+    )
+    .map_err(|error| format!("typed file versioned load failed: {error:?}"))?
+    .ok_or_else(|| String::from("typed file seed disappeared"))?;
+    let first_revision = *first.revision();
+    let (second_window, second_histogram) =
+        cached_retry_telemetry_pair_state(2, 4, 100)?;
+    let expected_snapshot = second_window.snapshot();
+    let second = compare_and_swap_cached_retry_telemetry_pair_durably(
+        &mut second_store,
+        &NativeContinuationCachedRetryTelemetryPairCasRequest::new(
+            Some(&first_revision),
+            &second_window,
+            &second_histogram,
+            (count_limit, latency_limit),
+        ),
+    )
+    .map_err(|error| format!("typed file CAS advance failed: {error:?}"))?;
+    let NativeContinuationCachedRetryTelemetryPairCas::Durable { current } =
+        second
+    else {
+        return Err(String::from("typed file CAS did not advance"));
+    };
+    let result = if current.revision() != &first_revision
+        && current.window().snapshot() == expected_snapshot
+        && current.histogram() == &second_histogram
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed file CAS progression drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

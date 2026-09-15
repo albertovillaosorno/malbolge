@@ -770,6 +770,18 @@ synchronization, and hardening remain adapters rather than VM semantics.
   CAS
   cases cover revision advance and byte-identical ABA rejection.
 
+  Cached-cycle composition now binds the opaque pair revision to typed count and
+  latency owners. Versioned restore decodes both canonical members together and
+  retains their exact revision. One-shot durable typed CAS preserves expected
+  revision evidence and decodes bounded conflicts back into exact live owners.
+
+  Six focused cases cover typed versioned restore, missing initialization, stale
+  conflict decoding, malformed conflict rejection, committed durability failure,
+  and host-real cross-instance revision advance. Blind conflict retry remains
+  intentionally absent because replaying one stale whole-pair snapshot could
+  overwrite concurrent telemetry; retry requires explicit fresh-state
+  reconciliation or merge semantics first.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real
@@ -795,9 +807,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Merge backoff/cancellation policy, async queues/timers, typed cached-cycle
-  pair CAS binding, pair-CAS retry, generation reclamation, general N-object
-  transactions, and broader production orchestration remain pending.
+  Merge backoff/cancellation policy, async queues/timers, typed pair-conflict
+  reconciliation/retry, generation reclamation, general N-object transactions,
+  and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

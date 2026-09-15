@@ -20,8 +20,9 @@ It must not bypass another function or architectural kind boundary.
 - `application/`: explicit bounded opaque-blob and atomic pair persistence plus
   conditional publication use cases.
 - `composition/`: handoff plus cached/leased retry routing, semantic rebase,
-  exact telemetry summaries, caller-ordered count retention, latency
-  normalization/refinement/durable merge, assessment, policy codec/persistence,
-  ownership, recommendation/request publication, turns, and cycles.
+  exact telemetry summaries, caller-ordered count retention, typed atomic-pair
+  CAS, latency normalization/refinement/durable merge, assessment, policy
+  codec/persistence, ownership, recommendation/request publication, turns, and
+  cycles.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
   and monotonic clock contracts.

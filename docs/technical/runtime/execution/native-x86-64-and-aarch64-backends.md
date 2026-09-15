@@ -928,6 +928,21 @@ Five adapter-neutral cases cover versioned load, missing-state initialization,
 stale conflict, post-load bound rejection, and committed durability failure. Two
 host-real CAS cases cover revision advance and byte-identical ABA rejection.
 
+Cached-cycle composition now binds that opaque pair revision to typed count and
+latency owners. Versioned restore decodes both canonical members together and
+retains the exact revision observed with them. One-shot durable typed CAS
+encodes
+the caller candidate, preserves the expected revision as conflict evidence, and
+decodes any bounded conflict pair back into exact live owners before returning.
+
+Six focused cases cover typed versioned restore, missing-state initialization,
+stale conflict decoding, malformed conflict rejection, committed durability
+failure, and a host-real cross-instance revision advance. Blind conflict retry
+is
+not provided: replaying the same whole-pair snapshot against a fresher revision
+could overwrite concurrent telemetry. Any retry must first define an explicit
+count/latency reconciliation or merge operation over freshly loaded typed state.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and
@@ -959,8 +974,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation policy, native object fusion, foreign invocation,
-asynchronous timing, typed cached-cycle pair CAS binding, pair-CAS retry,
-pair-generation reclamation, and general N-object transactions remain open.
+asynchronous timing, typed pair-conflict reconciliation/retry, pair-generation
+reclamation, and general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
