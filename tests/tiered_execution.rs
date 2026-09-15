@@ -197,9 +197,12 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryAssessmentMinimums,
     NativeContinuationCachedRetryTelemetryAssessmentSignal,
     NativeContinuationCachedRetryTelemetryAssessmentThresholds,
+    NativeContinuationCachedRetryTelemetryBatchOrder,
     NativeContinuationCachedRetryTelemetryCodecError,
     NativeContinuationCachedRetryTelemetryDurablePersistence,
     NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryOrderedWindow,
+    NativeContinuationCachedRetryTelemetryOrderedWindowError,
     NativeContinuationCachedRetryTelemetryPersistenceError,
     NativeContinuationCachedRetryTelemetryPersistenceLoad,
     NativeContinuationCachedRetryTelemetrySnapshotError,
@@ -806,6 +809,8 @@ type LatencyDurableMergeRetry =
     NativeContinuationCachedRetryLatencyDurableMergeRetry<
         TestCachedRetryTelemetryBlobDurabilityError,
     >;
+type OrderedTelemetryWindowError =
+    NativeContinuationCachedRetryTelemetryOrderedWindowError;
 type CrazyCacheDisposition =
     gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
 type CrazyCacheFailure<MemoryError> =
@@ -52009,6 +52014,153 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
         Ok(())
     } else {
         Err(String::from("outbound store failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_window_accepts_arbitrary_first_order()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(3, "ordered telemetry capacity")?,
+    );
+    let mut ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let order =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(40);
+    let record = ordered
+        .append_ordered_batch(order, &[summary])
+        .map_err(|error| format!("first ordered batch failed: {error:?}"))?;
+    if record.previous_order().is_none()
+        && record.current_order() == order
+        && record.batch().appended() == 1
+        && ordered.last_order() == Some(order)
+        && ordered.window().last_sequence() == Some(1)
+    {
+        Ok(())
+    } else {
+        Err(String::from("first external telemetry order drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_window_accepts_gaps() -> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(3, "ordered telemetry gap capacity")?,
+    );
+    let mut ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let first =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(10);
+    let second =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(1_000);
+    let _first = ordered
+        .append_ordered_batch(first, &[summary])
+        .map_err(|error| format!("initial ordered batch failed: {error:?}"))?;
+    let record = ordered
+        .append_ordered_batch(second, &[summary])
+        .map_err(|error| format!("gapped ordered batch failed: {error:?}"))?;
+    if record.previous_order() == Some(first)
+        && record.current_order() == second
+        && ordered.window().last_sequence() == Some(2)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "external telemetry order gap was not preserved",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_window_rejects_stale_order()
+-> Result<(), String> {
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(3, "ordered telemetry stale capacity")?,
+    );
+    let mut ordered =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::new(window);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let current =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(50);
+    let _published = ordered
+        .append_ordered_batch(current, &[summary])
+        .map_err(|error| format!("ordered setup failed: {error:?}"))?;
+    let before = ordered.window().snapshot();
+    let submitted =
+        NativeContinuationCachedRetryTelemetryBatchOrder::from_value(49);
+    let error = ordered
+        .append_ordered_batch(submitted, &[summary])
+        .err()
+        .ok_or_else(|| String::from("stale external order was accepted"))?;
+    if error
+        == (NativeContinuationCachedRetryTelemetryOrderedWindowError::
+            OrderNotAdvanced {
+                current,
+                submitted,
+            })
+        && ordered.last_order() == Some(current)
+        && ordered.window().snapshot() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale external order mutated telemetry"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_ordered_window_keeps_order_on_batch_failure()
+-> Result<(), String> {
+    let initial_window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "ordered telemetry failure capacity")?,
+    );
+    let mut ordered = NativeContinuationCachedRetryTelemetryOrderedWindow::new(
+        initial_window,
+    );
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let first = NativeContinuationCachedRetryTelemetryBatchOrder::from_value(7);
+    let _published = ordered
+        .append_ordered_batch(first, &[summary])
+        .map_err(|error| format!("ordered setup failed: {error:?}"))?;
+    let (mut exhausted_window, last_order) = ordered.into_parts();
+    exhausted_window
+        .force_counters_for_test(exhausted_window.evictions(), u64::MAX);
+    let before = exhausted_window.snapshot();
+    let mut failed_owner =
+        NativeContinuationCachedRetryTelemetryOrderedWindow::from_parts(
+            exhausted_window,
+            last_order,
+        );
+    let next = NativeContinuationCachedRetryTelemetryBatchOrder::from_value(8);
+    let error = failed_owner
+        .append_ordered_batch(next, &[summary])
+        .err()
+        .ok_or_else(|| String::from("failing ordered batch published"))?;
+    if error == OrderedTelemetryWindowError::Window(
+        NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted,
+    ) && failed_owner.last_order() == Some(first)
+        && failed_owner.window().snapshot() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered batch failure mutated owner state"))
     }
 }
 

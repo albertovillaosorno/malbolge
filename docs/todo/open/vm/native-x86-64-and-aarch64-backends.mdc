@@ -508,6 +508,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   canonical cross-window ordering exists. Three cases cover ordered append, FIFO
   eviction, and rollback after sequence exhaustion.
 
+  A process-local ordered-window owner couples each batch to an opaque
+  caller-authoritative `u64` order stamp. The first stamp may be arbitrary.
+  Later
+  stamps must strictly increase and gaps remain caller-owned. Duplicate/stale
+  order and FIFO failure leave prior order and retained telemetry unchanged.
+
+  Four cases cover first order, gaps, stale rejection, and transactional
+  failure. No ordering source or clock is inferred.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

@@ -647,6 +647,15 @@ and cumulative eviction history are intentionally not merged because independent
 windows have no canonical relative ordering. Three cases cover ordered append,
 FIFO eviction, and rollback after sequence exhaustion.
 
+A process-local ordered-window owner now couples those batches to an opaque
+caller-authoritative `u64` order stamp. The first stamp may be arbitrary; later
+stamps must strictly increase and gaps remain caller-owned. Duplicate or stale
+stamps fail without touching retained telemetry.
+
+FIFO failure likewise leaves the previous order unchanged. Four cases cover
+arbitrary first order, gaps, stale rejection, and transactional failure. The
+owner neither sources order nor reads a clock.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

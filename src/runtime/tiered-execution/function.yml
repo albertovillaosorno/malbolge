@@ -429,6 +429,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Retry durable latency merge conflicts within caller budget.
+  - id: part-0080
+    path: composition/tier/cached_cycle/telemetry_ordered_window.rs
+    kind: composition
+    language: rust
+    responsibility: Couple external batch order to count telemetry retention.
 projects: []
 tests: []
 graph:
