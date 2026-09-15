@@ -51,6 +51,7 @@ use crate::blob_pair_store::{
     NativeContinuationBlobPairLoadResult, NativeContinuationBlobPairStore,
     NativeContinuationConditionalBlobPairStore,
     NativeContinuationDurableBlobPairStore,
+    NativeContinuationReclaimableBlobPairStore,
     NativeContinuationVersionedBlobPair,
 };
 
@@ -996,6 +997,20 @@ impl NativeContinuationConditionalBlobPairStore
         };
         self.versioned_pair(revision, first_maximum_bytes, second_maximum_bytes)
             .map(Some)
+    }
+}
+
+impl NativeContinuationReclaimableBlobPairStore
+    for NativeContinuationFileBlobPairStore
+{
+    type Reclamation = NativeContinuationFileBlobPairReclamation;
+    type ReclamationError = NativeContinuationFileBlobPairReclamationError;
+
+    fn reclaim_pair_generations(
+        &mut self,
+        preserved: &[Self::Revision],
+    ) -> Result<Self::Reclamation, Self::ReclamationError> {
+        self.reclaim_generations_preserving(preserved)
     }
 }
 

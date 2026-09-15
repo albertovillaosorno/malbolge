@@ -43,6 +43,12 @@ the caller already owns and preserves every exact matching generation. The
 adapter compares revisions for equality only; it never orders revisions,
 chooses a retention window, or infers which historical generations matter.
 
+The optional storage-neutral reclaimable-pair port exposes this operation
+without
+filesystem types. Its application use case forwards one caller-selected exact
+preserve slice unchanged and runs one reclamation pass; selection and scheduling
+remain outside the adapter and application service.
+
 Staging manifests, the lock, the current manifest, and foreign or prefix-near
 files are never reclamation candidates. Reclamation attempts every eligible file
 and retains exact completed removals plus failed paths and host error kinds.

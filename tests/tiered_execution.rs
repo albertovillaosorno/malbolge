@@ -35,6 +35,8 @@
 
 #[path = "../src/runtime/tiered-execution/application/blob_pair_persistence.rs"]
 pub mod blob_pair_persistence;
+#[path = "../src/runtime/tiered-execution/application/blob_pair_reclamation.rs"]
+pub mod blob_pair_reclamation;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_pair_store.rs"]
 pub mod blob_pair_store;
 #[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
@@ -143,6 +145,7 @@ pub mod retry_router;
 pub mod retry_turn;
 
 use std::collections::VecDeque;
+use std::convert::Infallible;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -165,6 +168,10 @@ use blob_pair_persistence::{
     compare_and_swap_blob_pair, compare_and_swap_blob_pair_durably,
     persist_blob_pair, persist_blob_pair_durably, restore_blob_pair,
     restore_blob_pair_versioned,
+};
+use blob_pair_reclamation::{
+    NativeContinuationBlobPairReclamationRequest as BlobPairReclamationRequest,
+    reclaim_blob_pair_generations,
 };
 use blob_pair_store as telemetry_pair_store_port;
 use blob_pair_store::NativeContinuationBlobPairStore as PairStorePort;
@@ -2269,9 +2276,11 @@ struct TestBlobPairStore {
     fail_load: bool,
     fail_replace: bool,
     last_load_limits: Option<(NonZeroUsize, NonZeroUsize)>,
+    last_preserved_revisions: Vec<u64>,
     pair: Option<telemetry_pair_store_port::NativeContinuationBlobPair>,
     pair_before_compare:
         Option<(telemetry_pair_store_port::NativeContinuationBlobPair, u64)>,
+    reclamation_calls: usize,
     replace_calls: usize,
     revision: u64,
 }
@@ -2416,6 +2425,22 @@ impl telemetry_pair_store_port::NativeContinuationConditionalBlobPairStore
                 revision: self.revision,
             }
         }))
+    }
+}
+
+impl telemetry_pair_store_port::NativeContinuationReclaimableBlobPairStore
+    for TestBlobPairStore
+{
+    type Reclamation = Vec<u64>;
+    type ReclamationError = Infallible;
+
+    fn reclaim_pair_generations(
+        &mut self,
+        preserved: &[Self::Revision],
+    ) -> Result<Self::Reclamation, Self::ReclamationError> {
+        self.reclamation_calls = self.reclamation_calls.saturating_add(1);
+        self.last_preserved_revisions = preserved.to_vec();
+        Ok(preserved.to_vec())
     }
 }
 
@@ -52369,6 +52394,28 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
 }
 
 #[test]
+fn cached_retry_blob_pair_reclamation_forwards_exact_revisions()
+-> Result<(), String> {
+    let preserved = [9u64, 2, 9];
+    let mut store = TestBlobPairStore::default();
+    let request = BlobPairReclamationRequest::new(&preserved);
+    let evidence = reclaim_blob_pair_generations(&mut store, &request)
+        .map_err(|error| {
+            format!("pair reclamation forwarding failed: {error:?}")
+        })?;
+    if evidence == preserved
+        && store.reclamation_calls == 1
+        && store.last_preserved_revisions == preserved
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pair reclamation request was not forwarded exactly",
+        ))
+    }
+}
+
+#[test]
 fn cached_retry_file_blob_pair_reclamation_preserves_exact_revision()
 -> Result<(), String> {
     let fixture = file_blob_store_fixture("pair-reclaim-preserved")?;
@@ -52399,8 +52446,10 @@ fn cached_retry_file_blob_pair_reclamation_preserves_exact_revision()
     fs::write(&orphan_second, b"orphan-second").map_err(|error| {
         format!("cannot write preserved-test orphan: {error}")
     })?;
-    let first = store
-        .reclaim_generations_preserving(&[preserved_revision])
+    let preserved_revisions = [preserved_revision];
+    let reclamation_request =
+        BlobPairReclamationRequest::new(&preserved_revisions);
+    let first = reclaim_blob_pair_generations(&mut store, &reclamation_request)
         .map_err(|error| format!("preserving reclamation failed: {error:?}"))?;
     let preserved_count =
         file_blob_pair_generation_members(&fixture.directory)?.len();

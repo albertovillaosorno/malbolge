@@ -498,6 +498,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Retry ordered pair reconciliation conflicts within budget.
+  - id: part-0094
+    path: application/blob_pair_reclamation.rs
+    kind: application
+    language: rust
+    responsibility: Orchestrate explicit atomic pair generation reclamation.
 projects: []
 tests: []
 graph:

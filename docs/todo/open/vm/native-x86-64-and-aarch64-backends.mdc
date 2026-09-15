@@ -769,6 +769,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   The adapter compares revisions for equality only and does not infer chronology
   or choose a retention window.
 
+
+  An optional storage-neutral pair-reclamation port now carries opaque revision,
+  reclamation-evidence, and pre-cleanup-error ownership without filesystem
+  types. A dedicated application use case forwards one caller-selected exact
+  preserve slice unchanged and delegates one pass. One adapter-neutral case
+  proves exact forwarding; the host-real preservation case crosses application,
+  port, and filesystem adapter together.
+
   Six focused cases cover current-generation preservation and foreign-name
   filtering, caller-preserved revisions, current-member prevalidation,
   missing-manifest idempotency, partial deletion evidence, and

@@ -928,6 +928,13 @@ A caller may additionally preserve exact opaque revisions already in its
 possession. The adapter compares those revisions for equality only; it does not
 infer chronological order or choose a retention window.
 
+An optional storage-neutral pair-reclamation port now carries opaque revision,
+reclamation-evidence, and pre-cleanup-error ownership without naming the
+filesystem. A dedicated application use case forwards one caller-selected exact
+preserve slice unchanged and delegates exactly one pass. One adapter-neutral
+case proves exact forwarding, while the host-real preservation case crosses the
+application, port, and filesystem adapter together.
+
 Six focused reclamation cases cover current-generation preservation plus exact
 foreign-name filtering, caller-preserved revisions, current-member
 prevalidation,

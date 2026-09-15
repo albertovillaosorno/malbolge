@@ -35,6 +35,8 @@
 
 #[path = "../application/blob_pair_persistence.rs"]
 pub mod blob_pair_persistence;
+#[path = "../application/blob_pair_reclamation.rs"]
+pub mod blob_pair_reclamation;
 #[path = "../port-outbound/blob_pair_store.rs"]
 pub mod blob_pair_store;
 #[path = "../application/blob_persistence.rs"]

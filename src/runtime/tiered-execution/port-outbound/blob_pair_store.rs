@@ -206,3 +206,35 @@ pub trait NativeContinuationDurableBlobPairStore:
         &mut self,
     ) -> NativeContinuationBlobPairDurabilityResult<Self::DurabilityError>;
 }
+
+/// Reclamation result specialized to one reclaimable pair store.
+pub type NativeContinuationReclaimableBlobPairStoreResult<Store> = Result<
+    <Store as NativeContinuationReclaimableBlobPairStore>::Reclamation,
+    <Store as NativeContinuationReclaimableBlobPairStore>::ReclamationError,
+>;
+
+/// Optional explicit reclamation for superseded atomic-pair publications.
+pub trait NativeContinuationReclaimableBlobPairStore:
+    NativeContinuationConditionalBlobPairStore
+{
+    /// Adapter-owned successful or partial reclamation evidence.
+    type Reclamation;
+    /// Adapter-owned pre-reclamation failure evidence.
+    type ReclamationError;
+
+    /// Reclaims superseded pair publications while preserving exact revisions.
+    ///
+    /// The current publication must remain authoritative independently of the
+    /// caller-provided preserve set. Implementations must compare opaque
+    /// revisions only according to their own equality semantics; this contract
+    /// defines no chronology, retention window, or scheduling policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local failure evidence from before cleanup could
+    /// proceed.
+    fn reclaim_pair_generations(
+        &mut self,
+        preserved: &[Self::Revision],
+    ) -> NativeContinuationReclaimableBlobPairStoreResult<Self>;
+}
