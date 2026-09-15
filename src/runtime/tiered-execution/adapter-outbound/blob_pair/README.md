@@ -22,29 +22,28 @@ revision-conditional comparison hold the exclusive lock. Conflict returns the
 complete current bounded pair plus its revision; byte-equal newer generations
 still conflict with stale revisions, preventing ABA.
 
-Shared reader locking is a prerequisite for safe generation reclamation: a
-future exclusive reclaimer can know that no cooperating reader still depends on
-an older manifest generation. This adapter does not delete generations yet. A
-crash before manifest replacement can therefore leave unreferenced generation
-files, but those files are never visible as current pair state.
+Shared reader locking makes explicit generation reclamation safe: the exclusive
+reclaimer cannot proceed while a cooperating reader still depends on an older
+manifest generation. A crash before manifest replacement can still leave
+unreferenced generation files, but those files are never visible as current pair
+state and can be removed by a later explicit reclamation pass.
 
 ## Reclamation boundary
 
-Generation deletion remains explicit and is not part of replacement. A future
-reclamation pass must acquire the exclusive sibling lock, validate the current
-manifest before deleting anything, preserve both members named by that manifest,
-and consider only exact generation-member names owned by this manifest basename.
-Missing manifest state may treat every exact owned generation member as
-unreferenced. Staging manifests, the lock, the current manifest, and foreign or
-prefix-near files are never reclamation candidates.
+Generation deletion is explicit and is not part of replacement.
+`reclaim_generations()` acquires the exclusive sibling lock, validates the
+current manifest before deleting anything, preserves both members named by that
+manifest, and considers only exact generation-member names owned by this
+manifest basename. Missing manifest state treats every exact owned generation
+member as unreferenced. Non-UTF-8 manifest basenames fail before deletion
+because the adapter cannot prove exact cross-platform ownership safely.
 
-Reclamation must attempt every eligible file and retain exact cleanup evidence.
-If some removals succeed before another fails, the result must report completed
-removals beside the failed paths and host error kinds rather than claiming
-rollback. Directory synchronization after removals is a separate committed
-durability boundary: sync failure must preserve evidence that deletion already
-changed process-visible filesystem state. Repeating reclamation must be
-idempotent by rescanning under the exclusive lock.
+Staging manifests, the lock, the current manifest, and foreign or prefix-near
+files are never reclamation candidates. Reclamation attempts every eligible file
+and retains exact completed removals plus failed paths and host error kinds.
+Directory synchronization after removals is committed durability evidence, so a
+sync failure never claims rollback. Repeating reclamation rescans under the
+exclusive lock and is idempotent.
 
 ## Failure semantics
 
@@ -64,6 +63,6 @@ is post-publication durability evidence and must not be interpreted as rollback.
 - telemetry framing, validation, assessment, or policy selection;
 - pair byte-limit selection;
 - directory creation or manifest discovery;
-- generation reclamation or garbage collection;
+- reclamation scheduling, retention policy, or background garbage collection;
 - protection from writers that ignore the sibling lock;
 - general N-object transactions or distributed consensus.

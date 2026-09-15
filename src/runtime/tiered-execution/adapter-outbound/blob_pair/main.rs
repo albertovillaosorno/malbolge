@@ -16,17 +16,17 @@
 // - Allows:
 //   - Inputs: explicit manifest path plus admitted bounded pair operations.
 //   - Outputs: missing/present pair bytes or exact filesystem failure evidence.
-//   - Side effects: immutable generation writes and atomic manifest
-//     replacement.
+//   - Side effects: immutable generation writes, atomic manifest replacement,
+//     and explicit superseded-generation reclamation.
 // - Split-When:
-//   - Generation reclamation or N-object transactions gain semantics.
+//   - Reclamation scheduling or N-object transactions gain semantics.
 // - Merge-When:
 //   - One filesystem adapter owns this exact generation-pointer lifecycle.
 // - Summary:
 //   - Binds atomic opaque blob-pair storage to filesystem generation
 //     indirection.
 // - Description:
-//   - One stable lock coordinates reads, generation creation, and publication.
+//   - One stable lock coordinates reads, publication, and explicit reclamation.
 // - Usage:
 //   - Construct with one explicit manifest path and pass through pair-store
 //     port.
@@ -197,6 +197,65 @@ pub enum NativeContinuationFileBlobPairStoreError {
     SequenceExhausted,
 }
 
+/// One exact generation-member deletion that failed during reclamation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationFileBlobPairReclamationFailure {
+    kind: ErrorKind,
+    path: PathBuf,
+}
+
+/// Completed explicit generation-reclamation evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationFileBlobPairReclamation {
+    /// Every eligible deletion and directory durability confirmation succeeded.
+    Durable {
+        /// Exact generation-member paths removed by this pass.
+        removed: Vec<PathBuf>,
+    },
+    /// At least one eligible generation member could not be removed.
+    Partial {
+        /// Post-removal directory durability failure, when confirmation
+        /// failed.
+        durability_error: Option<NativeContinuationFileBlobPairDurabilityError>,
+        /// Exact generation-member removal failures retained for retry.
+        failures: Vec<NativeContinuationFileBlobPairReclamationFailure>,
+        /// Exact generation-member paths removed before or beside failures.
+        removed: Vec<PathBuf>,
+    },
+    /// All eligible removals succeeded but directory durability failed.
+    Published {
+        /// Exact post-removal directory durability failure.
+        durability_error: NativeContinuationFileBlobPairDurabilityError,
+        /// Exact generation-member paths already removed by this pass.
+        removed: Vec<PathBuf>,
+    },
+}
+
+/// Why explicit generation reclamation failed before deletion could proceed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationFileBlobPairReclamationError {
+    /// Reading one directory entry failed before cleanup began.
+    DirectoryEntry {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+    /// Opening the manifest directory for enumeration failed.
+    DirectoryOpen {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+    /// Manifest filename cannot be matched safely as UTF-8 generation prefix.
+    ManifestName,
+    /// Locking or reading the current manifest failed before deletion began.
+    Store(NativeContinuationFileBlobPairStoreError),
+}
+
+/// Result of one explicit generation-reclamation pass.
+pub type NativeContinuationFileBlobPairReclamationResult = Result<
+    NativeContinuationFileBlobPairReclamation,
+    NativeContinuationFileBlobPairReclamationError,
+>;
+
 /// Opaque filesystem publication revision for one committed blob pair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationFileBlobPairRevision {
@@ -225,6 +284,55 @@ type NativeContinuationFileBlobPairRevisionOpenResult = Result<
 
 type PairManifestStagingOpenResult =
     Result<(File, PathBuf), NativeContinuationFileBlobPairStoreError>;
+
+impl NativeContinuationFileBlobPairReclamation {
+    /// Borrows post-removal durability failure, when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(
+        &self,
+    ) -> Option<&NativeContinuationFileBlobPairDurabilityError> {
+        match self {
+            Self::Durable { .. } => None,
+            Self::Partial { durability_error, .. } => durability_error.as_ref(),
+            Self::Published { durability_error, .. } => Some(durability_error),
+        }
+    }
+
+    /// Borrows exact generation-member removal failures retained for retry.
+    #[must_use]
+    pub fn failures(
+        &self,
+    ) -> &[NativeContinuationFileBlobPairReclamationFailure] {
+        match self {
+            Self::Partial { failures, .. } => failures,
+            Self::Durable { .. } | Self::Published { .. } => &[],
+        }
+    }
+
+    /// Borrows exact generation-member paths removed by this pass.
+    #[must_use]
+    pub fn removed(&self) -> &[PathBuf] {
+        match self {
+            Self::Durable { removed }
+            | Self::Partial { removed, .. }
+            | Self::Published { removed, .. } => removed,
+        }
+    }
+}
+
+impl NativeContinuationFileBlobPairReclamationFailure {
+    /// Returns the host filesystem error category for this failed removal.
+    #[must_use]
+    pub const fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
+    /// Borrows the exact generation-member path whose removal failed.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
 
 impl NativeContinuationFileBlobPairStore {
     fn generation_path(
@@ -543,6 +651,160 @@ impl NativeContinuationFileBlobPairStore {
         decode_manifest(&bytes).map(Some)
     }
 
+    /// Reclaims every superseded generation member owned by this manifest.
+    ///
+    /// # Errors
+    ///
+    /// Returns only pre-deletion lock, manifest, directory-open,
+    /// directory-entry, or manifest-name failures. Removal and post-removal
+    /// durability failures are committed cleanup evidence in the successful
+    /// result.
+    pub fn reclaim_generations(
+        &mut self,
+    ) -> NativeContinuationFileBlobPairReclamationResult {
+        let _lock = self
+            .open_publication_lock()
+            .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
+        let current = self
+            .read_manifest()
+            .map_err(NativeContinuationFileBlobPairReclamationError::Store)?;
+        if let Some(current_revision) = current {
+            self.validate_generation_members(current_revision).map_err(
+                NativeContinuationFileBlobPairReclamationError::Store,
+            )?;
+        }
+        let candidates = self.reclamation_candidates(current)?;
+        let mut failures = Vec::new();
+        let mut removed = Vec::new();
+        for path in candidates {
+            match fs::remove_file(&path) {
+                Ok(()) => removed.push(path),
+                Err(error) if error.kind() == ErrorKind::NotFound => {},
+                Err(error) => {
+                    failures.push(
+                        NativeContinuationFileBlobPairReclamationFailure {
+                            kind: error.kind(),
+                            path,
+                        },
+                    );
+                },
+            }
+        }
+        let durability_error = if removed.is_empty() {
+            None
+        } else {
+            self.confirm_pair_durability().err()
+        };
+        if failures.is_empty() {
+            if let Some(durability_failure) = durability_error {
+                Ok(NativeContinuationFileBlobPairReclamation::Published {
+                    durability_error: durability_failure,
+                    removed,
+                })
+            } else {
+                Ok(NativeContinuationFileBlobPairReclamation::Durable {
+                    removed,
+                })
+            }
+        } else {
+            Ok(NativeContinuationFileBlobPairReclamation::Partial {
+                durability_error,
+                failures,
+                removed,
+            })
+        }
+    }
+
+    fn reclamation_candidate(
+        &self,
+        path: &Path,
+        manifest_name: &str,
+    ) -> Result<
+        Option<NativeContinuationFileBlobPairRevision>,
+        NativeContinuationFileBlobPairStoreError,
+    > {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str())
+        else {
+            return Ok(None);
+        };
+        let prefix = format!("{manifest_name}.generation.");
+        let Some(remainder) = file_name.strip_prefix(&prefix) else {
+            return Ok(None);
+        };
+        let mut parts = remainder.split('.');
+        let (
+            Some(process_text),
+            Some(generation_text),
+            Some(member_text),
+            None,
+        ) = (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            return Ok(None);
+        };
+        let Ok(process_id) = process_text.parse::<u64>() else {
+            return Ok(None);
+        };
+        let Ok(generation_id) = generation_text.parse::<u64>() else {
+            return Ok(None);
+        };
+        if generation_id == 0 {
+            return Ok(None);
+        }
+        let member = match member_text {
+            "first" => NativeContinuationFileBlobPairMember::First,
+            "second" => NativeContinuationFileBlobPairMember::Second,
+            _ => return Ok(None),
+        };
+        let revision = NativeContinuationFileBlobPairRevision {
+            generation: generation_id,
+            process: process_id,
+        };
+        if self.generation_path(revision, member)? == path {
+            Ok(Some(revision))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn reclamation_candidates(
+        &self,
+        current: Option<NativeContinuationFileBlobPairRevision>,
+    ) -> Result<Vec<PathBuf>, NativeContinuationFileBlobPairReclamationError>
+    {
+        let Some(manifest_name) =
+            self.manifest.file_name().and_then(|name| name.to_str())
+        else {
+            return Err(
+                NativeContinuationFileBlobPairReclamationError::ManifestName,
+            );
+        };
+        let directory =
+            self.manifest.parent().unwrap_or_else(|| Path::new("."));
+        let entries = fs::read_dir(directory).map_err(|error| {
+            NativeContinuationFileBlobPairReclamationError::DirectoryOpen {
+                kind: error.kind(),
+            }
+        })?;
+        let mut candidates = Vec::new();
+        for entry_result in entries {
+            let entry = entry_result.map_err(|error| {
+                NativeContinuationFileBlobPairReclamationError::DirectoryEntry {
+                    kind: error.kind(),
+                }
+            })?;
+            let path = entry.path();
+            let revision =
+                self.reclamation_candidate(&path, manifest_name).map_err(
+                    NativeContinuationFileBlobPairReclamationError::Store,
+                )?;
+            if revision.is_some() && revision != current {
+                candidates.push(path);
+            }
+        }
+        candidates.sort();
+        Ok(candidates)
+    }
+
     fn replace_pair_locked(
         &self,
         first: &[u8],
@@ -572,6 +834,25 @@ impl NativeContinuationFileBlobPairStore {
         drop(second_file);
         self.publish_manifest(generation)?;
         Ok(generation)
+    }
+
+    fn validate_generation_members(
+        &self,
+        revision: NativeContinuationFileBlobPairRevision,
+    ) -> Result<(), NativeContinuationFileBlobPairStoreError> {
+        for member in [
+            NativeContinuationFileBlobPairMember::First,
+            NativeContinuationFileBlobPairMember::Second,
+        ] {
+            let path = self.generation_path(revision, member)?;
+            let _file = File::open(path).map_err(|error| {
+                NativeContinuationFileBlobPairStoreError::GenerationOpen {
+                    kind: error.kind(),
+                    member,
+                }
+            })?;
+        }
+        Ok(())
     }
 
     fn versioned_pair(

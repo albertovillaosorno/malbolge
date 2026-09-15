@@ -566,7 +566,10 @@ use execution_native::{
     verify_fused_direct_sequence,
 };
 use file_blob_pair_store::{
-    NativeContinuationFileBlobPairMember, NativeContinuationFileBlobPairStore,
+    NativeContinuationFileBlobPairMember,
+    NativeContinuationFileBlobPairReclamation,
+    NativeContinuationFileBlobPairReclamationError,
+    NativeContinuationFileBlobPairStore,
     NativeContinuationFileBlobPairStoreError,
 };
 use file_blob_store::{
@@ -52310,6 +52313,207 @@ fn cached_retry_file_blob_store_confirms_directory_durability()
         Ok(())
     } else {
         Err(String::from("file durability publication evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclamation_validates_current_members()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-reclaim-current-member")?;
+    let maximum_bytes = nonzero_test_limit(64, "reclaim current member bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let request = BlobPairPersistenceRequest::new(
+        b"current-first",
+        b"current-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _write = persist_blob_pair(&mut store, request)
+        .map_err(|error| format!("current member setup failed: {error:?}"))?;
+    let stale = fixture.directory.join("telemetry.bin.generation.5.5.first");
+    fs::write(&stale, b"stale").map_err(|error| {
+        format!("cannot write stale reclaim member: {error}")
+    })?;
+    let current_second =
+        file_blob_pair_generation_member(&fixture.directory, ".second")?;
+    fs::remove_file(current_second).map_err(|error| {
+        format!("cannot remove current second member: {error}")
+    })?;
+    let error = store.reclaim_generations().err().ok_or_else(|| {
+        String::from("missing current member allowed reclamation")
+    })?;
+    let expected = NativeContinuationFileBlobPairReclamationError::Store(
+        NativeContinuationFileBlobPairStoreError::GenerationOpen {
+            kind: ErrorKind::NotFound,
+            member: NativeContinuationFileBlobPairMember::Second,
+        },
+    );
+    let result = if error == expected && stale.exists() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "current-member reclamation validation drifted",
+        ))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclamation_validates_manifest_first()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-reclaim-bad-manifest")?;
+    let orphan = fixture.directory.join("telemetry.bin.generation.6.6.first");
+    fs::write(&orphan, b"orphan")
+        .map_err(|error| format!("cannot write reclaim orphan: {error}"))?;
+    fs::write(&fixture.destination, [0u8; 24])
+        .map_err(|error| format!("cannot write reclaim manifest: {error}"))?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let error = store.reclaim_generations().err().ok_or_else(|| {
+        String::from("malformed manifest allowed reclamation")
+    })?;
+    let expected = NativeContinuationFileBlobPairReclamationError::Store(
+        NativeContinuationFileBlobPairStoreError::ManifestMagic,
+    );
+    let result = if error == expected && orphan.exists() {
+        Ok(())
+    } else {
+        Err(String::from("reclamation prevalidation evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclaims_superseded_generations()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-reclaim-superseded")?;
+    let maximum_bytes = nonzero_test_limit(64, "pair reclaim bytes")?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let current = BlobPairPersistenceRequest::new(
+        b"current-first",
+        b"current-second",
+        maximum_bytes,
+        maximum_bytes,
+    );
+    let _write = persist_blob_pair(&mut store, current)
+        .map_err(|error| format!("pair reclaim setup failed: {error:?}"))?;
+    let stale_first =
+        fixture.directory.join("telemetry.bin.generation.9.9.first");
+    let stale_second = fixture
+        .directory
+        .join("telemetry.bin.generation.9.9.second");
+    fs::write(&stale_first, b"stale-first")
+        .map_err(|error| format!("cannot write stale first: {error}"))?;
+    fs::write(&stale_second, b"stale-second")
+        .map_err(|error| format!("cannot write stale second: {error}"))?;
+    let foreign = fixture
+        .directory
+        .join("telemetry.bin.generation.9.9.first.extra");
+    fs::write(&foreign, b"foreign")
+        .map_err(|error| format!("cannot write foreign pair file: {error}"))?;
+    let outcome = store
+        .reclaim_generations()
+        .map_err(|error| format!("pair reclamation failed: {error:?}"))?;
+    let restored = restore_blob_pair(&mut store, maximum_bytes, maximum_bytes)
+        .map_err(|error| format!("current pair reload failed: {error:?}"))?;
+    let BlobPairPersistenceLoad::Present { first, second } = restored else {
+        return Err(String::from("current pair vanished after reclamation"));
+    };
+    let valid = matches!(
+        outcome,
+        NativeContinuationFileBlobPairReclamation::Durable { .. }
+    ) && outcome.removed().len() == 2
+        && !stale_first.exists()
+        && !stale_second.exists()
+        && foreign.exists()
+        && first == b"current-first"
+        && second == b"current-second";
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("superseded pair reclamation drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclamation_is_idempotent() -> Result<(), String>
+{
+    let fixture = file_blob_store_fixture("pair-reclaim-idempotent")?;
+    let stale_first =
+        fixture.directory.join("telemetry.bin.generation.8.8.first");
+    let stale_second = fixture
+        .directory
+        .join("telemetry.bin.generation.8.8.second");
+    fs::write(&stale_first, b"stale-first")
+        .map_err(|error| format!("cannot write orphan first: {error}"))?;
+    fs::write(&stale_second, b"stale-second")
+        .map_err(|error| format!("cannot write orphan second: {error}"))?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let first = store
+        .reclaim_generations()
+        .map_err(|error| format!("first orphan reclaim failed: {error:?}"))?;
+    let second = store
+        .reclaim_generations()
+        .map_err(|error| format!("second orphan reclaim failed: {error:?}"))?;
+    let valid = first.removed().len() == 2
+        && second.removed().is_empty()
+        && first.failures().is_empty()
+        && second.failures().is_empty()
+        && first.durability_error().is_none()
+        && second.durability_error().is_none();
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("idempotent pair reclamation drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_reclamation_retains_partial_failure()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("pair-reclaim-partial")?;
+    let blocked = fixture.directory.join("telemetry.bin.generation.7.7.first");
+    let removable = fixture
+        .directory
+        .join("telemetry.bin.generation.7.7.second");
+    fs::create_dir_all(&blocked).map_err(|error| {
+        format!("cannot create blocked generation: {error}")
+    })?;
+    fs::write(&removable, b"removable").map_err(|error| {
+        format!("cannot write removable generation: {error}")
+    })?;
+    let mut store =
+        NativeContinuationFileBlobPairStore::new(fixture.destination.clone());
+    let outcome = store.reclaim_generations().map_err(|error| {
+        format!("partial pair reclaim failed early: {error:?}")
+    })?;
+    let failure = outcome.failures().first().ok_or_else(|| {
+        String::from("partial pair reclamation did not retain failure")
+    })?;
+    let valid = matches!(
+        outcome,
+        NativeContinuationFileBlobPairReclamation::Partial { .. }
+    ) && outcome.removed() == [removable.as_path()]
+        && failure.path() == blocked
+        && failure.kind() != ErrorKind::NotFound
+        && outcome.durability_error().is_none()
+        && blocked.is_dir()
+        && !removable.exists();
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("partial pair reclamation evidence drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

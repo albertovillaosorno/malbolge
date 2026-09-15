@@ -911,23 +911,23 @@ that would otherwise make later generation reclamation unsafe.
 Crashes before the manifest commit may still leave unreferenced generations,
 but those are ignored and never become current pair state. Directory
 synchronization remains a separate post-commit durability confirmation.
-Generation deletion itself remains a separate cleanup capability.
 
-Nine host-real cases cover missing state, replacement, bounded reads,
-shared-read
-lock coordination, concurrent complete-pair publication, orphan invisibility,
-malformed manifests, missing referenced members, and the typed durable telemetry
-round trip. Generation reclamation remains open.
+Explicit generation reclamation now runs under the same exclusive sibling lock.
+It validates the current manifest and verifies both current members exist
+before deletion, and considers only exact generation filenames reconstructed
+through the adapter's own naming rule. Missing manifest state treats every
+exact owned
+member as unreferenced; non-UTF-8 manifest basenames fail before deletion.
 
-The remaining reclamation contract is now explicit. Reclamation is a separate
-exclusive-lock operation and validates the current manifest before deletion. It
-keeps the two current members and touches only exact generation names owned by
-the configured manifest basename.
+The pass attempts every eligible deletion and retains completed removals beside
+exact failed paths/error kinds. Directory sync after deletion is committed
+durability evidence rather than rollback, and repeated passes rescan
+idempotently. Publication itself still performs no automatic cleanup.
 
-It must attempt every eligible deletion and return completed removals together
-with exact failed paths/error kinds. Directory sync after deletion is committed
-durability evidence rather than rollback. A repeated pass rescans and is
-idempotent. No automatic cleanup is folded into publication.
+Five focused reclamation cases cover current-generation preservation plus exact
+foreign-name filtering, current-member prevalidation, missing-manifest
+idempotency, partial deletion evidence, and malformed-manifest rejection before
+any eligible orphan is removed.
 
 Pair CAS now compares an opaque publication revision rather than payload bytes.
 Versioned load returns one bounded pair plus the revision observed from the same
@@ -1024,8 +1024,8 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, pair-generation reclamation, and general
-N-object transactions remain open.
+invocation, asynchronous timing, reclamation scheduling/retention policy, and
+general N-object transactions remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

@@ -753,20 +753,23 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Crashes before manifest commit may still leave ignored orphan generations,
   while directory sync remains explicit post-commit durability confirmation.
-  Nine host-real cases cover missing state, replacement, bounded reads,
-  shared-read lock coordination, concurrent complete-pair publication, orphan
-  invisibility, malformed manifests, missing referenced members, and the typed
-  durable telemetry round trip. Pair-generation deletion remains open.
 
-  The pending reclamation contract is explicit: run it separately under the
-  exclusive sibling lock and validate the current manifest before deleting
-  anything. Preserve its two current members and consider only exact generation
-  names owned by this manifest basename.
+  Explicit generation reclamation now runs under the same exclusive sibling
+  lock. It validates the current manifest and verifies both current members
+  exist before deletion, and accepts only exact generation names reconstructed
+  through
+  the adapter naming rule. Missing manifest state treats all exact owned members
+  as unreferenced; non-UTF-8 manifest basenames fail before deletion.
 
-  Attempt every eligible deletion and retain completed removals beside exact
-  failed paths and host error kinds. Directory sync after deletion is committed
-  durability evidence, not rollback. Repeated passes rescan and remain
-  idempotent. Publication itself performs no automatic cleanup.
+  Reclamation attempts every eligible deletion and retains completed removals
+  beside exact failed paths and host error kinds. Directory sync after deletion
+  is committed durability evidence, not rollback. Repeated passes rescan
+  idempotently, and publication itself still performs no automatic cleanup.
+
+  Five focused cases cover current-generation preservation and foreign-name
+  filtering, current-member prevalidation, missing-manifest idempotency,
+  partial deletion evidence, and malformed-manifest rejection before any
+  eligible orphan is removed.
 
   Pair CAS now compares an opaque publication revision rather than pair payload
   bytes. Versioned load returns the bounded pair plus revision observed from the
@@ -856,9 +859,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   it automatically. Two deterministic cases cover exact sampling and finish
   failure; one host-real case records a measured sample separately.
 
-  Merge backoff/cancellation/fairness policy, async queues/timers, generation
-  reclamation, general N-object transactions, and broader production
-  orchestration remain pending.
+  Merge backoff/cancellation/fairness policy, async queues/timers, reclamation
+  scheduling/retention policy, general N-object transactions, and broader
+  production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
