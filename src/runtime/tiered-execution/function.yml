@@ -544,6 +544,12 @@ parts:
     language: rust
     responsibility: >-
       Reconcile and retry guarded retention/reclamation journal conflicts.
+  - id: part-0102
+    path: composition/retry_control.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Let callers gate synchronous conflict retries without timing policy.
 projects: []
 tests: []
 graph:

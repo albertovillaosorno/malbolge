@@ -1089,6 +1089,14 @@ typed conflict retention becomes the next callback input; exhausted conflict is
 terminal evidence. Callback failure and every committed journal or reclamation
 outcome stop immediately, so retry adds no implicit merge or backoff policy.
 
+
+That retry layer now also exposes a policy-neutral synchronous control hook.
+After a retryable conflict releases its filesystem guard, the hook receives the
+exact completed-attempt count and returns `Continue` or `Stop`; stopping returns
+the same typed conflict unchanged. Callers may wait, yield, or inspect their own
+cancellation state there, but tiered execution still owns no clock read, sleep,
+backoff interval, or fairness policy.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

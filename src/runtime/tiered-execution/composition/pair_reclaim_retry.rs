@@ -58,6 +58,9 @@ use crate::pair_retention_reclamation_transition::{
     NativeContinuationFileBlobPairJournalTransitionRequest,
     transition_file_blob_pair_retention_and_reclaim,
 };
+use crate::retry_control::{
+    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+};
 
 type Retention =
     NativeContinuationBlobPairRetention<NativeContinuationFileBlobPairRevision>;
@@ -157,6 +160,13 @@ impl NativeContinuationFileBlobPairJournalTransitionRetry {
     }
 }
 
+const fn transition_retry_evidence(
+    attempts: usize,
+    outcome: NativeContinuationFileBlobPairJournalTransition,
+) -> NativeContinuationFileBlobPairJournalTransitionRetry {
+    NativeContinuationFileBlobPairJournalTransitionRetry { attempts, outcome }
+}
+
 /// Reconciles exact retention and retries guarded transitions only on conflict.
 ///
 /// The callback owns all retention-selection semantics and receives the exact
@@ -174,7 +184,7 @@ pub fn reconcile_file_blob_pair_retention_and_reclaim_with_retries<
 >(
     context: NativeContinuationFileBlobPairJournalTransitionRetryContext<'_>,
     request: NativeContinuationFileBlobPairJournalTransitionRetryRequest,
-    mut reconcile: Reconcile,
+    reconcile: Reconcile,
 ) -> Result<
     NativeContinuationFileBlobPairJournalTransitionRetry,
     NativeContinuationFileBlobPairJournalTransitionRetryError<
@@ -184,6 +194,48 @@ pub fn reconcile_file_blob_pair_retention_and_reclaim_with_retries<
 where
     Reconcile:
         FnMut(Option<&Retention>) -> Result<Retention, ReconciliationError>,
+{
+    reconcile_file_blob_pair_retention_reclaim_with_control(
+        context,
+        request,
+        reconcile,
+        |_conflict| NativeContinuationRetryDirective::Continue,
+    )
+}
+
+/// Reconciles retention and lets the caller gate every retryable conflict.
+///
+/// The control callback runs only when another attempt remains in the positive
+/// attempt budget. It runs after the conflict attempt has released its
+/// filesystem guard and before the next reconciliation callback. The runtime
+/// performs no wait, clock read, fairness action, or cancellation inference.
+///
+/// # Errors
+///
+/// Returns the same initial journal, reconciliation, and prepublication
+/// transition failures as the default retry wrapper. A caller `Stop` directive
+/// returns the current conflict as successful terminal evidence.
+pub fn reconcile_file_blob_pair_retention_reclaim_with_control<
+    Reconcile,
+    Control,
+    ReconciliationError,
+>(
+    context: NativeContinuationFileBlobPairJournalTransitionRetryContext<'_>,
+    request: NativeContinuationFileBlobPairJournalTransitionRetryRequest,
+    mut reconcile: Reconcile,
+    mut control: Control,
+) -> Result<
+    NativeContinuationFileBlobPairJournalTransitionRetry,
+    NativeContinuationFileBlobPairJournalTransitionRetryError<
+        ReconciliationError,
+    >,
+>
+where
+    Reconcile:
+        FnMut(Option<&Retention>) -> Result<Retention, ReconciliationError>,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
 {
     use NativeContinuationFileBlobPairJournalTransition as Transition;
     use NativeContinuationFileBlobPairJournalTransitionRetryError as RetryError;
@@ -225,18 +277,21 @@ where
             Transition::Conflict { current: next_current }
                 if attempts < maximum_attempt_count =>
             {
+                let directive =
+                    control(NativeContinuationRetryConflict::new(attempts));
+                if directive == NativeContinuationRetryDirective::Stop {
+                    return Ok(transition_retry_evidence(
+                        attempts,
+                        Transition::Conflict { current: next_current },
+                    ));
+                }
                 current = next_current;
             },
             terminal @ (Transition::Conflict { .. }
             | Transition::JournalPublished { .. }
             | Transition::Reclaimed { .. }
             | Transition::ReclamationRejected { .. }) => {
-                return Ok(
-                    NativeContinuationFileBlobPairJournalTransitionRetry {
-                        attempts,
-                        outcome: terminal,
-                    },
-                );
+                return Ok(transition_retry_evidence(attempts, terminal));
             },
         }
     }

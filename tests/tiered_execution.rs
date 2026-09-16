@@ -137,6 +137,8 @@ pub mod pair_retention_reclamation_retry;
 pub mod pair_retention_reclamation_transition;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
+#[path = "../src/runtime/tiered-execution/composition/retry_control.rs"]
+pub mod retry_control;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_planner.rs"]
@@ -834,6 +836,7 @@ use pair_retention_reclamation_retry::{
     NativeContinuationFileBlobPairJournalTransitionRetryError,
     NativeContinuationFileBlobPairJournalTransitionRetryRequest,
     reconcile_file_blob_pair_retention_and_reclaim_with_retries,
+    reconcile_file_blob_pair_retention_reclaim_with_control,
 };
 use pair_retention_reclamation_transition::{
     NativeContinuationFileBlobPairJournalTransition,
@@ -844,6 +847,7 @@ use pair_retention_reconciliation::{
     NativeContinuationFileBlobPairRetentionReconcileError,
     reconcile_file_blob_pair_retention_journal_durably_with_retries,
 };
+use retry_control::NativeContinuationRetryDirective as RetryDirective;
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
     execute_native_continuation_retry_cycle,
@@ -53337,6 +53341,133 @@ fn setup_retention_reclamation_pair(
         maximum_bytes,
     )?;
     Ok((pair, preserved))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retry_control_continues_after_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(4_096, "retry control bytes")?;
+    let maximum_attempts = nonzero_test_limit(3, "retry control attempts")?;
+    let (
+        fixture,
+        coordination,
+        mut pair,
+        _preserved,
+        mut journal,
+        mut competing_journal,
+    ) = setup_file_blob_pair_transition_retry(
+        "retention-retry-control-continue",
+        maximum_bytes,
+    )?;
+    let raced = test_file_blob_pair_revision(82, 2)?;
+    let requested = test_file_blob_pair_revision(82, 3)?;
+    let raced_retention = test_file_blob_pair_retention(&[raced]);
+    persist_test_file_blob_pair_retention(
+        &mut journal,
+        &test_file_blob_pair_retention(&[test_file_blob_pair_revision(82, 1)?]),
+        maximum_bytes,
+        "retry control setup failed",
+    )?;
+    let mut reconcile_calls = 0usize;
+    let mut controlled_attempts = Vec::new();
+    let (context, request) = file_blob_pair_transition_retry_inputs(
+        &coordination,
+        &mut journal,
+        &mut pair,
+        (maximum_bytes, maximum_attempts),
+    );
+    let result = reconcile_file_blob_pair_retention_reclaim_with_control(
+        context,
+        request,
+        |current| {
+            reconcile_calls = reconcile_calls.saturating_add(1);
+            if reconcile_calls == 1 {
+                persist_test_file_blob_pair_retention(
+                    &mut competing_journal,
+                    &raced_retention,
+                    maximum_bytes,
+                    "retry control race failed",
+                )?;
+            }
+            let mut replacement = current.cloned().unwrap_or_default();
+            let _inserted = replacement.retain(requested);
+            Ok::<_, String>(replacement)
+        },
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Continue
+        },
+    )
+    .map_err(|error| format!("controlled retry failed: {error:?}"))?;
+    let valid = result.attempts() == 2
+        && controlled_attempts == [1]
+        && matches!(result.outcome(), PairJournalTransition::Reclaimed { .. });
+    finish_file_blob_fixture_assertion(&fixture, valid, "control continue")
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retry_control_stops_after_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(4_096, "retry stop bytes")?;
+    let maximum_attempts = nonzero_test_limit(3, "retry stop attempts")?;
+    let (
+        fixture,
+        coordination,
+        mut pair,
+        _preserved,
+        mut journal,
+        mut competing_journal,
+    ) = setup_file_blob_pair_transition_retry(
+        "retention-retry-control-stop",
+        maximum_bytes,
+    )?;
+    let raced = test_file_blob_pair_revision(83, 2)?;
+    let initial =
+        test_file_blob_pair_retention(&[test_file_blob_pair_revision(83, 1)?]);
+    let raced_retention = test_file_blob_pair_retention(&[raced]);
+    persist_test_file_blob_pair_retention(
+        &mut journal,
+        &initial,
+        maximum_bytes,
+        "retry stop setup failed",
+    )?;
+    let before = file_blob_pair_generation_members(&fixture.directory)?.len();
+    let (context, request) = file_blob_pair_transition_retry_inputs(
+        &coordination,
+        &mut journal,
+        &mut pair,
+        (maximum_bytes, maximum_attempts),
+    );
+    let result = reconcile_file_blob_pair_retention_reclaim_with_control(
+        context,
+        request,
+        |_current| {
+            persist_test_file_blob_pair_retention(
+                &mut competing_journal,
+                &raced_retention,
+                maximum_bytes,
+                "retry stop race failed",
+            )?;
+            Ok::<_, String>(initial.clone())
+        },
+        |conflict| {
+            if conflict.completed_attempts() == 1 {
+                RetryDirective::Stop
+            } else {
+                RetryDirective::Continue
+            }
+        },
+    )
+    .map_err(|error| format!("controlled retry stop failed: {error:?}"))?;
+    let after = file_blob_pair_generation_members(&fixture.directory)?.len();
+    let valid = result.attempts() == 1
+        && matches!(
+            result.outcome(),
+            PairJournalTransition::Conflict { current: Some(current) }
+                if current == &raced_retention
+        )
+        && before == after;
+    finish_file_blob_fixture_assertion(&fixture, valid, "retry control stop")
 }
 
 #[test]

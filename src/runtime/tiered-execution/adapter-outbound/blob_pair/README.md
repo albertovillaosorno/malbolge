@@ -60,6 +60,14 @@ attempt; exhausted conflict remains terminal evidence. Callback failure and
 every committed journal or cleanup outcome stop immediately, so the runtime
 still chooses no merge, backoff, ordering, or retention policy.
 
+
+A policy-neutral retry-control hook now runs only between a retryable conflict
+and the next attempt. It receives the exact number of completed attempts and
+returns `Continue` or `Stop`; `Stop` preserves that conflict as terminal
+evidence. The hook runs after the filesystem guard is released, so a caller may
+perform synchronous waiting, yielding, or cancellation checks without the
+runtime reading a clock, sleeping, or selecting fairness/backoff policy.
+
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
 manifest generation. A crash before manifest replacement can still leave

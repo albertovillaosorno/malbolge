@@ -137,6 +137,8 @@ pub mod pair_retention_reclamation_retry;
 pub mod pair_retention_reclamation_transition;
 #[path = "pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
+#[path = "retry_control.rs"]
+pub mod retry_control;
 #[path = "tier/retry_cycle.rs"]
 pub mod retry_cycle;
 #[path = "tier/retry_planner.rs"]
