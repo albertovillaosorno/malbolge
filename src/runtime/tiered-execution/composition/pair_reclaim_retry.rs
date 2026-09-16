@@ -60,7 +60,7 @@ use crate::pair_retention_reclamation_transition::{
 };
 use crate::retry_control::{
     NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
-    NativeContinuationRetryDirective,
+    NativeContinuationRetryDirective, NativeContinuationRetryEvidence,
 };
 
 type Retention =
@@ -121,11 +121,10 @@ impl NativeContinuationFileBlobPairJournalTransitionRetryRequest {
 }
 
 /// Terminal evidence from caller-directed guarded transition retry.
-#[derive(Debug, Eq, PartialEq)]
-pub struct NativeContinuationFileBlobPairJournalTransitionRetry {
-    attempts: usize,
-    outcome: NativeContinuationFileBlobPairJournalTransition,
-}
+pub type NativeContinuationFileBlobPairJournalTransitionRetry =
+    NativeContinuationRetryEvidence<
+        NativeContinuationFileBlobPairJournalTransition,
+    >;
 
 /// Why caller-directed guarded transition retry stopped before an outcome.
 #[derive(Debug, Eq, PartialEq)]
@@ -142,37 +141,6 @@ pub enum NativeContinuationFileBlobPairJournalTransitionRetryError<
     Reconciliation(ReconciliationError),
     /// One guarded transition failed before journal publication.
     Transition(NativeContinuationFileBlobPairJournalTransitionError),
-}
-
-impl NativeContinuationFileBlobPairJournalTransitionRetry {
-    /// Returns the exact number of guarded transition attempts performed.
-    #[must_use]
-    pub const fn attempts(&self) -> usize {
-        self.attempts
-    }
-
-    /// Consumes retry evidence and returns the terminal transition outcome.
-    #[must_use]
-    pub fn into_outcome(
-        self,
-    ) -> NativeContinuationFileBlobPairJournalTransition {
-        self.outcome
-    }
-
-    /// Borrows the terminal transition outcome.
-    #[must_use]
-    pub const fn outcome(
-        &self,
-    ) -> &NativeContinuationFileBlobPairJournalTransition {
-        &self.outcome
-    }
-}
-
-const fn transition_retry_evidence(
-    attempts: usize,
-    outcome: NativeContinuationFileBlobPairJournalTransition,
-) -> NativeContinuationFileBlobPairJournalTransitionRetry {
-    NativeContinuationFileBlobPairJournalTransitionRetry { attempts, outcome }
 }
 
 fn restore_transition_retry_retention(
@@ -295,7 +263,7 @@ where
                 if directive == NativeContinuationRetryDirective::Stop
                     || !attempts.advance()
                 {
-                    return Ok(transition_retry_evidence(
+                    return Ok(NativeContinuationRetryEvidence::new(
                         attempts.completed_attempts(),
                         Transition::Conflict { current: next_current },
                     ));
@@ -306,7 +274,7 @@ where
             | Transition::JournalPublished { .. }
             | Transition::Reclaimed { .. }
             | Transition::ReclamationRejected { .. }) => {
-                return Ok(transition_retry_evidence(
+                return Ok(NativeContinuationRetryEvidence::new(
                     attempts.completed_attempts(),
                     terminal,
                 ));

@@ -55,7 +55,7 @@ use crate::pair_retention_journal::{
 };
 use crate::retry_control::{
     NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
-    NativeContinuationRetryDirective,
+    NativeContinuationRetryDirective, NativeContinuationRetryEvidence,
 };
 
 /// Positive bounds for one retention-journal reconciliation retry loop.
@@ -80,11 +80,10 @@ impl NativeContinuationFileBlobPairRetentionReconcileRequest {
 }
 
 /// Terminal evidence from caller-directed retention reconciliation retry.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativeContinuationFileBlobPairRetentionReconcile<DurabilityError> {
-    attempts: usize,
-    outcome: NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>,
-}
+pub type NativeContinuationFileBlobPairRetentionReconcile<DurabilityError> =
+    NativeContinuationRetryEvidence<
+        NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>,
+    >;
 
 /// Why caller-directed retention reconciliation stopped before a CAS outcome.
 #[derive(Debug, Eq, PartialEq)]
@@ -117,34 +116,6 @@ type Retention =
 
 type JournalCas<DurabilityError> =
     NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>;
-
-impl<DurabilityError>
-    NativeContinuationFileBlobPairRetentionReconcile<DurabilityError>
-{
-    /// Returns the exact number of conditional publication attempts performed.
-    #[must_use]
-    pub const fn attempts(&self) -> usize {
-        self.attempts
-    }
-
-    /// Consumes the retry evidence and returns the terminal typed CAS outcome.
-    #[must_use]
-    pub fn into_outcome(
-        self,
-    ) -> NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>
-    {
-        self.outcome
-    }
-
-    /// Returns the terminal typed CAS outcome.
-    #[must_use]
-    pub const fn outcome(
-        &self,
-    ) -> &NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>
-    {
-        &self.outcome
-    }
-}
 
 /// Reconciles exact retention against current typed state and retries
 /// conflicts.
@@ -260,24 +231,20 @@ where
                     == NativeContinuationRetryDirective::Stop
                     || !attempts.advance()
                 {
-                    return Ok(
-                        NativeContinuationFileBlobPairRetentionReconcile {
-                            attempts: attempts.completed_attempts(),
-                            outcome: JournalCas::Conflict {
-                                current: next_current,
-                            },
-                        },
-                    );
+                    return Ok(NativeContinuationRetryEvidence::new(
+                        attempts.completed_attempts(),
+                        JournalCas::Conflict { current: next_current },
+                    ));
                 }
                 current = next_current;
             },
             terminal @ (JournalCas::Conflict { .. }
             | JournalCas::Durable { .. }
             | JournalCas::Published { .. }) => {
-                return Ok(NativeContinuationFileBlobPairRetentionReconcile {
-                    attempts: attempts.completed_attempts(),
-                    outcome: terminal,
-                });
+                return Ok(NativeContinuationRetryEvidence::new(
+                    attempts.completed_attempts(),
+                    terminal,
+                ));
             },
         }
     }

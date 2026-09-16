@@ -964,6 +964,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cover exact advancement and attempt-limit exhaustion; no timing policy is
   added.
 
+
+  Terminal retry evidence is centralized at the same boundary. One generic
+  container owns exact attempts plus the subsystem terminal outcome, while the
+  ordered-count, ordered-pair, latency, retention-journal, and guarded
+  reclamation APIs keep their existing public names as aliases. One focused case
+  covers borrowed and consuming access with no outcome-policy change.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

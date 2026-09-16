@@ -50,21 +50,19 @@ use crate::blob_pair_store::{
 };
 use crate::retry_control::{
     NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
-    NativeContinuationRetryDirective,
+    NativeContinuationRetryDirective, NativeContinuationRetryEvidence,
 };
 
 /// Final reconciliation outcome plus exact attempts consumed.
-#[derive(Debug)]
-pub struct NativeContinuationCachedRetryOrderedPairReconciliationRetry<
+pub type NativeContinuationCachedRetryOrderedPairReconciliationRetry<
     Revision,
     DurabilityError,
-> {
-    attempts: usize,
-    outcome: NativeContinuationCachedRetryOrderedPairReconciliation<
+> = NativeContinuationRetryEvidence<
+    NativeContinuationCachedRetryOrderedPairReconciliation<
         Revision,
         DurabilityError,
     >,
-}
+>;
 
 /// Bounded reconciliation retry result specialized to one durable pair store.
 pub type NativeContinuationCachedRetryOrderedPairReconciliationRetryStoreResult<
@@ -83,30 +81,6 @@ type RetryStoreResult<Store> =
     NativeContinuationCachedRetryOrderedPairReconciliationRetryStoreResult<
         Store,
     >;
-
-impl<Revision, DurabilityError>
-    NativeContinuationCachedRetryOrderedPairReconciliationRetry<
-        Revision,
-        DurabilityError,
-    >
-{
-    /// Returns the exact number of reconciliation attempts consumed.
-    #[must_use]
-    pub const fn attempts(&self) -> usize {
-        self.attempts
-    }
-
-    /// Borrows the exact final one-shot reconciliation outcome.
-    #[must_use]
-    pub const fn outcome(
-        &self,
-    ) -> &NativeContinuationCachedRetryOrderedPairReconciliation<
-        Revision,
-        DurabilityError,
-    > {
-        &self.outcome
-    }
-}
 
 /// Retries only one-shot reconciliation conflicts up to a positive limit.
 ///
@@ -176,10 +150,8 @@ where
             store, request,
         )?;
     }
-    Ok(
-        NativeContinuationCachedRetryOrderedPairReconciliationRetry {
-            attempts: attempts.completed_attempts(),
-            outcome,
-        },
-    )
+    Ok(NativeContinuationRetryEvidence::new(
+        attempts.completed_attempts(),
+        outcome,
+    ))
 }

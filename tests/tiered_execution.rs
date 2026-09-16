@@ -856,6 +856,7 @@ use pair_retention_reconciliation::{
 use retry_control::{
     NativeContinuationRetryAttemptCursor as RetryAttemptCursor,
     NativeContinuationRetryDirective as RetryDirective,
+    NativeContinuationRetryEvidence as RetryEvidence,
 };
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
@@ -25208,6 +25209,14 @@ fn cached_retry_attempt_cursor_advances_exactly() -> Result<(), String> {
     } else {
         Err(String::from("retry attempt cursor progression drifted"))
     }
+}
+
+#[test]
+fn cached_retry_generic_evidence_preserves_attempts_and_outcome() {
+    let evidence = RetryEvidence::new(2, "conflict");
+    assert_eq!(evidence.attempts(), 2);
+    assert_eq!(evidence.outcome(), &"conflict");
+    assert_eq!(evidence.into_outcome(), "conflict");
 }
 
 #[test]

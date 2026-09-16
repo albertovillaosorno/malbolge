@@ -1133,6 +1133,14 @@ only while the caller-selected positive maximum permits it, and never supplies
 policy beyond that accounting. Two focused cases cover exact advancement and
 attempt-limit exhaustion; the existing retry suites retain their prior counts.
 
+
+Terminal retry evidence is centralized at the same boundary. One generic
+container owns the exact attempt count plus the subsystem-specific terminal
+outcome, while ordered-count, ordered-pair, latency-merge, retention-journal,
+and retention/reclamation APIs retain their existing public names as type
+aliases. A focused case covers borrow/consume access without changing any
+terminal outcome semantics.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

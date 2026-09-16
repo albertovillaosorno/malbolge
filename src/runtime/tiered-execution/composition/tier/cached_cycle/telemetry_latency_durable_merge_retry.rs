@@ -51,7 +51,7 @@ use crate::blob_store::{
 };
 use crate::retry_control::{
     NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
-    NativeContinuationRetryDirective,
+    NativeContinuationRetryDirective, NativeContinuationRetryEvidence,
 };
 
 /// Immutable inputs for one bounded latency-merge retry loop.
@@ -82,13 +82,11 @@ impl<'source>
 }
 
 /// Final one-shot durable merge outcome plus exact attempts consumed.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativeContinuationCachedRetryLatencyDurableMergeRetry<
+pub type NativeContinuationCachedRetryLatencyDurableMergeRetry<
     DurabilityError,
-> {
-    attempts: usize,
-    outcome: NativeContinuationCachedRetryLatencyDurableMerge<DurabilityError>,
-}
+> = NativeContinuationRetryEvidence<
+    NativeContinuationCachedRetryLatencyDurableMerge<DurabilityError>,
+>;
 
 /// Result of caller-bounded durable latency merge retry orchestration.
 pub type NativeContinuationCachedRetryLatencyDurableMergeRetryResult<
@@ -106,33 +104,6 @@ pub type NativeContinuationCachedRetryLatencyDurableMergeRetryStoreResult<
     <Store as BlobStore>::Error,
     <Store as DurableBlobStore>::DurabilityError,
 >;
-
-impl<DurabilityError>
-    NativeContinuationCachedRetryLatencyDurableMergeRetry<DurabilityError>
-{
-    /// Returns the exact number of one-shot attempts consumed.
-    #[must_use]
-    pub const fn attempts(&self) -> usize {
-        self.attempts
-    }
-
-    /// Consumes retry evidence into the exact final one-shot outcome.
-    #[must_use]
-    pub fn into_outcome(
-        self,
-    ) -> NativeContinuationCachedRetryLatencyDurableMerge<DurabilityError> {
-        self.outcome
-    }
-
-    /// Borrows the exact final one-shot outcome.
-    #[must_use]
-    pub const fn outcome(
-        &self,
-    ) -> &NativeContinuationCachedRetryLatencyDurableMerge<DurabilityError>
-    {
-        &self.outcome
-    }
-}
 
 /// Retries only durable latency merge conflicts up to a positive attempt limit.
 ///
@@ -210,8 +181,8 @@ where
             request.maximum_bytes,
         )?;
     }
-    Ok(NativeContinuationCachedRetryLatencyDurableMergeRetry {
-        attempts: attempts.completed_attempts(),
+    Ok(NativeContinuationRetryEvidence::new(
+        attempts.completed_attempts(),
         outcome,
-    })
+    ))
 }

@@ -10,7 +10,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Policy-neutral caller direction between synchronous retry conflicts.
-//   - Shared exact attempt accounting for bounded synchronous retry loops.
+//   - Shared exact attempt accounting and terminal retry evidence.
 // - Must-Not:
 //   - Sleep, measure time, select attempt budgets, or infer cancellation
 //     policy.
@@ -37,6 +37,39 @@
 //! Policy-neutral caller direction between synchronous retry conflicts.
 
 use std::num::NonZeroUsize;
+
+/// Generic terminal outcome plus exact attempts consumed by a retry loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryEvidence<Outcome> {
+    attempts: usize,
+    outcome: Outcome,
+}
+
+impl<Outcome> NativeContinuationRetryEvidence<Outcome> {
+    /// Returns the exact number of attempts consumed.
+    #[must_use]
+    pub const fn attempts(&self) -> usize {
+        self.attempts
+    }
+
+    /// Consumes retry evidence and returns the terminal outcome.
+    #[must_use]
+    pub fn into_outcome(self) -> Outcome {
+        self.outcome
+    }
+
+    /// Creates terminal evidence after exact completed attempts.
+    #[must_use]
+    pub(crate) const fn new(attempts: usize, outcome: Outcome) -> Self {
+        Self { attempts, outcome }
+    }
+
+    /// Borrows the terminal outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> &Outcome {
+        &self.outcome
+    }
+}
 
 /// Caller direction after one retryable conflict.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
