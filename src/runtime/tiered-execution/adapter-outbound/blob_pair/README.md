@@ -150,6 +150,15 @@ post-publication durability failure stop immediately. The runtime still chooses
 no union, intersection, ordering, backoff, or retention policy.
 
 
+That reconciliation retry now also accepts the shared synchronous retry
+directive. After a retryable journal conflict, the caller receives the exact
+completed-attempt count and may return `Continue` or `Stop`; stopping preserves
+that typed conflict unchanged. Continued retries feed the exact current
+retention back into caller reconciliation, while the runtime performs no clock
+read, wait, backoff, or fairness action. Two focused cases cover continue and
+stop directives.
+
+
 The durable retention journal is not by itself a safe concurrent reclamation
 fence. The generic file-blob journal and the pair-generation reclaimer use
 different sibling lock files, so loading a preserve set and later deleting under

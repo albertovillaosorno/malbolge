@@ -13,15 +13,15 @@
 //     retention journals.
 // - Must-Not:
 //   - Choose union/intersection, infer chronology, reorder revisions, or sleep.
+//   - Infer caller cancellation, pacing, backoff, or fairness policy.
 // - Allows:
 //   - Inputs: configured conditional durable blob store, positive byte/attempt
-//     bounds, caller reconciliation callback.
+//     bounds, caller reconciliation callback, and optional retry direction.
 //   - Outputs: exact attempt count plus terminal typed CAS outcome.
 //   - Side effects: one initial bounded load and at most the caller-selected
 //     number of conditional durable publications.
 // - Split-When:
-//   - Backoff, cancellation, fairness, or automatic retention policy gains
-//     authority.
+//   - Asynchronous retry control or automatic retention policy gains authority.
 // - Merge-When:
 //   - Another composition service owns the same reconciliation retry loop.
 // - Summary:
@@ -53,6 +53,30 @@ use crate::pair_retention_journal::{
     compare_and_swap_file_blob_pair_retention_journal_durably,
     restore_file_blob_pair_retention_journal,
 };
+use crate::retry_control::{
+    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+};
+
+/// Positive bounds for one retention-journal reconciliation retry loop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationFileBlobPairRetentionReconcileRequest {
+    maximum_attempts: NonZeroUsize,
+    maximum_bytes: NonZeroUsize,
+}
+
+impl NativeContinuationFileBlobPairRetentionReconcileRequest {
+    /// Binds the positive journal byte limit and retry attempt budget.
+    #[must_use]
+    pub const fn new(
+        maximum_bytes: NonZeroUsize,
+        maximum_attempts: NonZeroUsize,
+    ) -> Self {
+        Self {
+            maximum_attempts,
+            maximum_bytes,
+        }
+    }
+}
 
 /// Terminal evidence from caller-directed retention reconciliation retry.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,7 +166,7 @@ pub fn reconcile_file_blob_pair_retention_journal_durably_with_retries<
     store: &mut Store,
     maximum_bytes: NonZeroUsize,
     maximum_attempts: NonZeroUsize,
-    mut reconcile: Reconcile,
+    reconcile: Reconcile,
 ) -> NativeContinuationFileBlobPairRetentionReconcileStoreResult<
     Store,
     ReconciliationError,
@@ -153,17 +177,63 @@ where
     Reconcile:
         FnMut(Option<&Retention>) -> Result<Retention, ReconciliationError>,
 {
-    let load = restore_file_blob_pair_retention_journal(store, maximum_bytes)
-        .map_err(
-        NativeContinuationFileBlobPairRetentionReconcileError::Journal,
-    )?;
+    reconcile_file_blob_pair_retention_with_retry_control(
+        store,
+        NativeContinuationFileBlobPairRetentionReconcileRequest::new(
+            maximum_bytes,
+            maximum_attempts,
+        ),
+        reconcile,
+        |_conflict| NativeContinuationRetryDirective::Continue,
+    )
+}
+
+/// Reconciles retention and lets the caller gate every retryable conflict.
+///
+/// The control callback runs only after a retryable conflict and while another
+/// attempt remains in the positive budget. `Stop` preserves the typed conflict;
+/// `Continue` invokes caller reconciliation again with that exact current
+/// state. This layer performs no clock read, wait, backoff, or fairness action.
+///
+/// # Errors
+///
+/// Returns typed journal load/CAS failure or caller reconciliation failure.
+/// Durable publication and committed durability failure stop immediately.
+pub fn reconcile_file_blob_pair_retention_with_retry_control<
+    Store,
+    Reconcile,
+    Control,
+    ReconciliationError,
+>(
+    store: &mut Store,
+    request: NativeContinuationFileBlobPairRetentionReconcileRequest,
+    mut reconcile: Reconcile,
+    mut control: Control,
+) -> NativeContinuationFileBlobPairRetentionReconcileStoreResult<
+    Store,
+    ReconciliationError,
+>
+where
+    Store: NativeContinuationConditionalBlobStore
+        + NativeContinuationDurableBlobStore,
+    Reconcile:
+        FnMut(Option<&Retention>) -> Result<Retention, ReconciliationError>,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
+    let load =
+        restore_file_blob_pair_retention_journal(store, request.maximum_bytes)
+            .map_err(
+                NativeContinuationFileBlobPairRetentionReconcileError::Journal,
+            )?;
     let mut current = match load {
         NativeContinuationFileBlobPairRetentionJournalLoad::Missing => None,
         NativeContinuationFileBlobPairRetentionJournalLoad::Present {
             retention,
         } => Some(retention),
     };
-    let maximum_attempt_count = maximum_attempts.get();
+    let maximum_attempt_count = request.maximum_attempts.get();
     let mut attempts = 0usize;
     loop {
         attempts = attempts.saturating_add(1);
@@ -176,7 +246,7 @@ where
                 store,
                 current.as_ref(),
                 &replacement,
-                maximum_bytes,
+                request.maximum_bytes,
             )
             .map_err(
                 NativeContinuationFileBlobPairRetentionReconcileError::Journal,
@@ -185,6 +255,18 @@ where
             JournalCas::Conflict { current: next_current }
                 if attempts < maximum_attempt_count =>
             {
+                if control(NativeContinuationRetryConflict::new(attempts))
+                    == NativeContinuationRetryDirective::Stop
+                {
+                    return Ok(
+                        NativeContinuationFileBlobPairRetentionReconcile {
+                            attempts,
+                            outcome: JournalCas::Conflict {
+                                current: next_current,
+                            },
+                        },
+                    );
+                }
                 current = next_current;
             },
             terminal @ (JournalCas::Conflict { .. }

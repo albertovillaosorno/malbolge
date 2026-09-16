@@ -519,7 +519,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Reconcile exact pair retention before bounded journal CAS retry.
+      Reconcile exact pair retention with caller-directed journal retry.
   - id: part-0098
     path: adapter-outbound/fs_coord/main.rs
     kind: adapter

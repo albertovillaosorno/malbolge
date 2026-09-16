@@ -1039,6 +1039,17 @@ one attempt. No union, intersection, revision ordering, backoff, or automatic
 retention policy is inferred.
 
 
+The retention-journal retry now also accepts the shared synchronous retry
+directive. A small request carries the positive byte and attempt bounds. After
+a retryable conflict, the caller receives the exact completed-attempt count and
+may return `Continue` or `Stop`; stopping preserves that typed conflict
+unchanged. Continued retries feed the exact current journal into caller
+reconciliation again, with no runtime clock read, wait, backoff, or fairness
+action.
+
+Two focused cases cover continue and stop directives.
+
+
 Durable retention state and generation reclamation still do not form one
 transaction. The generic file-blob journal and filesystem pair adapter use
 different stable sibling locks; therefore loading journal state and later

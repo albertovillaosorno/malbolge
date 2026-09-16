@@ -883,6 +883,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   automatic retention policy remain caller-owned or pending.
 
 
+  Retention-journal retry now also accepts the shared synchronous retry
+  directive. A small request carries the positive byte and attempt bounds.
+  After a retryable conflict, the caller sees the exact completed-attempt count
+  and may return `Continue` or `Stop`; stopping preserves that typed conflict.
+  Continued retries feed the exact current journal into caller reconciliation
+  again, while the runtime performs no clock read, wait, backoff, or fairness
+  action.
+
+  Two focused cases cover continue and stop directives.
+
+
   Durable retention state and generation reclamation still lack one shared
   serialization boundary. The generic file-blob journal and pair-generation
   adapter use different sibling locks, so load-journal-then-reclaim can race a

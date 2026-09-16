@@ -849,7 +849,9 @@ use pair_retention_reclamation_transition::{
 };
 use pair_retention_reconciliation::{
     NativeContinuationFileBlobPairRetentionReconcileError,
+    NativeContinuationFileBlobPairRetentionReconcileRequest,
     reconcile_file_blob_pair_retention_journal_durably_with_retries,
+    reconcile_file_blob_pair_retention_with_retry_control,
 };
 use retry_control::NativeContinuationRetryDirective as RetryDirective;
 use retry_cycle::{
@@ -53086,6 +53088,91 @@ fn independent_file_blob_stores(
         NativeContinuationFileBlobStore::new(destination.to_path_buf()),
         NativeContinuationFileBlobStore::new(destination.to_path_buf()),
     )
+}
+
+#[test]
+fn cached_retry_pair_retention_control_continues() -> Result<(), String> {
+    let first = test_file_blob_pair_revision(54, 1)?;
+    let raced = test_file_blob_pair_revision(54, 2)?;
+    let first_bytes = encode_file_blob_pair_retention(&[first])
+        .map_err(|error| format!("retention control initial: {error:?}"))?;
+    let raced_bytes = encode_file_blob_pair_retention(&[raced])
+        .map_err(|error| format!("retention control raced: {error:?}"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut controlled_attempts = Vec::new();
+    let result = reconcile_file_blob_pair_retention_with_retry_control(
+        &mut store,
+        NativeContinuationFileBlobPairRetentionReconcileRequest::new(
+            nonzero_test_limit(128, "retention control bytes")?,
+            nonzero_test_limit(2, "retention control attempts")?,
+        ),
+        |current| Ok::<_, &'static str>(current.cloned().unwrap_or_default()),
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Continue
+        },
+    )
+    .map_err(|error| format!("retention control failed: {error:?}"))?;
+    if result.attempts() == 2
+        && controlled_attempts == [1]
+        && store.compare_and_swap_calls == 2
+        && matches!(
+            result.outcome(),
+            NativeContinuationFileBlobPairRetentionJournalCas::Durable { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("retention continue directive drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_pair_retention_control_stops_conflict() -> Result<(), String> {
+    let first = test_file_blob_pair_revision(55, 1)?;
+    let raced = test_file_blob_pair_revision(55, 2)?;
+    let first_bytes = encode_file_blob_pair_retention(&[first])
+        .map_err(|error| format!("retention stop initial: {error:?}"))?;
+    let raced_bytes = encode_file_blob_pair_retention(&[raced])
+        .map_err(|error| format!("retention stop raced: {error:?}"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut controlled_attempts = Vec::new();
+    let result = reconcile_file_blob_pair_retention_with_retry_control(
+        &mut store,
+        NativeContinuationFileBlobPairRetentionReconcileRequest::new(
+            nonzero_test_limit(128, "retention stop bytes")?,
+            nonzero_test_limit(3, "retention stop attempts")?,
+        ),
+        |current| Ok::<_, &'static str>(current.cloned().unwrap_or_default()),
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Stop
+        },
+    )
+    .map_err(|error| format!("retention stop failed: {error:?}"))?;
+    let NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+        current: Some(current),
+    } = result.outcome()
+    else {
+        return Err(String::from("retention stopped conflict disappeared"));
+    };
+    if result.attempts() == 1
+        && controlled_attempts == [1]
+        && current.revisions() == [raced]
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("retention stop directive drifted"))
+    }
 }
 
 #[test]
