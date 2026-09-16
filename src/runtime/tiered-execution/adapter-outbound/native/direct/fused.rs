@@ -37,6 +37,8 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+use malbolge::RegionEffectProgram;
+
 use super::super::fused_sequence::{
     DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
     DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError,
@@ -46,13 +48,13 @@ use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
     CoffAdmissionError, DirectCodeWriteCommit, DirectEntryObservation,
     DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedRotateOutputTemplate,
-    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
-    DirectRotateProgram, HostIsa, HostOperatingSystem,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
-    StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
-    aarch64, structurally_admit_coff, target_triple,
-    validate_no_operation_program, validate_output_program,
+    DirectFusedNoOperationRotateTemplate, DirectFusedRotateNoOperationTemplate,
+    DirectFusedRotateOutputTemplate, DirectNativeKind,
+    DirectNoOperationProgram, DirectOutputProgram, DirectRotateProgram,
+    HostIsa, HostOperatingSystem, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactKey, StructurallyAdmittedNativeObjectArtifact,
+    UntrustedNativeObjectArtifact, aarch64, structurally_admit_coff,
+    target_triple, validate_no_operation_program, validate_output_program,
     validate_rotate_program, x86_64,
 };
 
@@ -60,6 +62,7 @@ enum FusedSelection {
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
+    RotateNoOperation(DirectRotateProgram, DirectNoOperationProgram),
     RotateOutput(DirectRotateProgram, DirectOutputProgram),
 }
 
@@ -236,6 +239,14 @@ fn canonical_fused_coff(
                 rotate,
             )
         },
+        FusedSelection::RotateNoOperation(rotate, no_operation) => {
+            fused_rotate_no_operation_text(
+                admission,
+                observation,
+                rotate,
+                no_operation,
+            )
+        },
         FusedSelection::RotateOutput(rotate, output) => {
             fused_rotate_output_text(admission, observation, rotate, output)
         },
@@ -302,6 +313,25 @@ fn fused_no_operation_rotate_text(
     }
 }
 
+fn fused_rotate_no_operation_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    rotate: DirectRotateProgram,
+    no_operation: DirectNoOperationProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedRotateNoOperationTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: no_operation_commit(no_operation),
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_rotate_no_operation_code(template),
+        HostIsa::X86_64 => x86_64::fused_rotate_no_operation_code(template),
+    }
+}
+
 fn fused_rotate_output_text(
     admission: &DirectFusedSequenceAdmission,
     observation: DirectEntryObservation,
@@ -332,23 +362,13 @@ fn select_fused_shape(
     else {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     };
-    if first_artifact.kind() == DirectNativeKind::NoOperation
-        && second_artifact.kind() == DirectNativeKind::NoOperation
-    {
-        let first = validate_no_operation_program(first_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let second = validate_no_operation_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(FusedSelection::NoOperationPair(first, second));
-    }
-    if first_artifact.kind() == DirectNativeKind::NoOperation
-        && second_artifact.kind() == DirectNativeKind::Rotate
-    {
-        let no_operation = validate_no_operation_program(first_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let rotate = validate_rotate_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(FusedSelection::NoOperationRotate(no_operation, rotate));
+    if let Some(selection) = select_non_output_shape(
+        first_artifact.kind(),
+        second_artifact.kind(),
+        first_program,
+        second_program,
+    )? {
+        return Ok(selection);
     }
     if second_artifact.kind() != DirectNativeKind::Output {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
@@ -383,6 +403,48 @@ fn select_fused_shape(
             Err(DirectFusedSequenceObjectError::ProgramShape)
         },
     }
+}
+
+fn select_non_output_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind == DirectNativeKind::NoOperation
+        && second_kind == DirectNativeKind::NoOperation
+    {
+        let first = validate_no_operation_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let second = validate_no_operation_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::NoOperationPair(first, second)));
+    }
+    if first_kind == DirectNativeKind::NoOperation
+        && second_kind == DirectNativeKind::Rotate
+    {
+        let no_operation = validate_no_operation_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let rotate = validate_rotate_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::NoOperationRotate(
+            no_operation,
+            rotate,
+        )));
+    }
+    if first_kind == DirectNativeKind::Rotate
+        && second_kind == DirectNativeKind::NoOperation
+    {
+        let rotate = validate_rotate_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let no_operation = validate_no_operation_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::RotateNoOperation(
+            rotate,
+            no_operation,
+        )));
+    }
+    Ok(None)
 }
 
 const fn no_operation_commit(
