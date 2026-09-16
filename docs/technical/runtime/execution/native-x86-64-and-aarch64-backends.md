@@ -1141,6 +1141,15 @@ and retention/reclamation APIs retain their existing public names as type
 aliases. A focused case covers borrow/consume access without changing any
 terminal outcome semantics.
 
+
+Callers that need explicit stop provenance can now retain an opaque typed reason
+without changing the retry loops. A generic decision carries `Continue` or
+`Stop(reason)`, and a small stop-state adapter translates that into the existing
+runtime directive while preserving the exact triggering conflict and caller
+reason. The runtime defines no cancellation/yield taxonomy and never interprets
+the reason. Two focused cases cover reasonless continuation and typed stop
+retention.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

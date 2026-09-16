@@ -971,6 +971,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   reclamation APIs keep their existing public names as aliases. One focused case
   covers borrowed and consuming access with no outcome-policy change.
 
+
+  Callers may also retain an opaque typed stop reason without changing retry
+  loops. A generic decision carries `Continue` or `Stop(reason)`, and a small
+  stop-state adapter maps that decision to the existing runtime directive while
+  preserving the exact triggering conflict and caller reason. The runtime owns
+  no cancellation/yield taxonomy and never interprets that reason. Two focused
+  cases cover reasonless continuation and typed stop retention.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

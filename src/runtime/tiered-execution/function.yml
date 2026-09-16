@@ -549,7 +549,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Gate retries and centralize exact attempt/outcome evidence without
+      Gate retries and preserve exact attempt/outcome/stop evidence without
       timing policy.
 projects: []
 tests: []

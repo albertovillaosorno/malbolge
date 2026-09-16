@@ -26,6 +26,8 @@
 //   - Lets callers gate conflict retries without runtime timing policy.
 // - Description:
 //   - A stop directive preserves the current conflict as terminal evidence.
+//   - Optional typed stop state retains the caller reason without interpreting
+//     its taxonomy or converting it into runtime policy.
 //   - Attempt accounting begins after the first one-shot attempt and never
 //     exceeds the caller-selected positive maximum.
 // - Usage:
@@ -71,6 +73,15 @@ impl<Outcome> NativeContinuationRetryEvidence<Outcome> {
     }
 }
 
+/// Caller decision that may retain an opaque typed stop reason.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationRetryDecision<StopReason> {
+    /// Perform another attempt when the caller-selected budget permits it.
+    Continue,
+    /// Stop and preserve the caller-owned reason with exact conflict evidence.
+    Stop(StopReason),
+}
+
 /// Caller direction after one retryable conflict.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationRetryDirective {
@@ -78,6 +89,85 @@ pub enum NativeContinuationRetryDirective {
     Continue,
     /// Stop immediately and preserve the current conflict as terminal evidence.
     Stop,
+}
+
+/// Exact caller-owned stop reason bound to the conflict that triggered it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryStop<StopReason> {
+    conflict: NativeContinuationRetryConflict,
+    reason: StopReason,
+}
+
+impl<StopReason> NativeContinuationRetryStop<StopReason> {
+    /// Returns the exact conflict evidence observed before caller stop.
+    #[must_use]
+    pub const fn conflict(&self) -> NativeContinuationRetryConflict {
+        self.conflict
+    }
+
+    /// Consumes stop evidence and returns the caller-owned reason.
+    #[must_use]
+    pub fn into_reason(self) -> StopReason {
+        self.reason
+    }
+
+    /// Borrows the caller-owned stop reason.
+    #[must_use]
+    pub const fn reason(&self) -> &StopReason {
+        &self.reason
+    }
+}
+
+/// Adapter state for preserving a typed caller stop reason.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryStopState<StopReason> {
+    stop: Option<NativeContinuationRetryStop<StopReason>>,
+}
+
+impl<StopReason> NativeContinuationRetryStopState<StopReason> {
+    /// Consumes state and returns retained caller stop evidence, when present.
+    #[must_use]
+    pub fn into_stop(self) -> Option<NativeContinuationRetryStop<StopReason>> {
+        self.stop
+    }
+
+    /// Creates empty caller stop state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { stop: None }
+    }
+
+    /// Converts one typed decision into the reasonless runtime directive.
+    pub fn resolve(
+        &mut self,
+        conflict: NativeContinuationRetryConflict,
+        decision: NativeContinuationRetryDecision<StopReason>,
+    ) -> NativeContinuationRetryDirective {
+        match decision {
+            NativeContinuationRetryDecision::Continue => {
+                NativeContinuationRetryDirective::Continue
+            },
+            NativeContinuationRetryDecision::Stop(reason) => {
+                self.stop =
+                    Some(NativeContinuationRetryStop { conflict, reason });
+                NativeContinuationRetryDirective::Stop
+            },
+        }
+    }
+
+    /// Borrows retained caller stop evidence, when present.
+    #[must_use]
+    pub const fn stop(
+        &self,
+    ) -> Option<&NativeContinuationRetryStop<StopReason>> {
+        self.stop.as_ref()
+    }
+}
+
+impl<StopReason> Default for NativeContinuationRetryStopState<StopReason> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Exact evidence supplied before another conflict retry may begin.

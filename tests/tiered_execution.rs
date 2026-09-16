@@ -855,8 +855,10 @@ use pair_retention_reconciliation::{
 };
 use retry_control::{
     NativeContinuationRetryAttemptCursor as RetryAttemptCursor,
+    NativeContinuationRetryDecision as RetryDecision,
     NativeContinuationRetryDirective as RetryDirective,
     NativeContinuationRetryEvidence as RetryEvidence,
+    NativeContinuationRetryStopState as RetryStopState,
 };
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
@@ -25208,6 +25210,42 @@ fn cached_retry_attempt_cursor_advances_exactly() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("retry attempt cursor progression drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_stop_state_continues_without_reason() {
+    let mut state = RetryStopState::<&'static str>::new();
+    let conflict =
+        RetryAttemptCursor::after_first(NonZeroUsize::MIN).conflict();
+    let directive = state.resolve(conflict, RetryDecision::Continue);
+    assert_eq!(directive, RetryDirective::Continue);
+    assert!(state.stop().is_none());
+}
+
+#[test]
+fn cached_retry_stop_state_preserves_caller_reason() -> Result<(), String> {
+    let mut state = RetryStopState::new();
+    let maximum = nonzero_test_limit(2, "retry stop maximum")?;
+    let conflict = RetryAttemptCursor::after_first(maximum).conflict();
+    let directive = state.resolve(conflict, RetryDecision::Stop("cancelled"));
+    let stop = state
+        .stop()
+        .ok_or_else(|| String::from("stop evidence missing"))?;
+    let conflict_attempts = stop.conflict().completed_attempts();
+    let borrowed_reason = *stop.reason();
+    let retained = state
+        .into_stop()
+        .ok_or_else(|| String::from("owned stop evidence missing"))?;
+    let owned_reason = retained.into_reason();
+    if directive == RetryDirective::Stop
+        && conflict_attempts == 1
+        && borrowed_reason == "cancelled"
+        && owned_reason == "cancelled"
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed retry stop evidence drifted"))
     }
 }
 
