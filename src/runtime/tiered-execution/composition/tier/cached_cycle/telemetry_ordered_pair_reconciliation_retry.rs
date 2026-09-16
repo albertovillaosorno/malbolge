@@ -12,18 +12,21 @@
 //   - Caller-bounded retries of ordered pair reconciliation conflicts.
 // - Must-Not:
 //   - Retry non-conflicts, rewrite order, sleep, or infer attempt budgets.
+//   - Infer caller cancellation, pacing, backoff, or fairness policy.
 // - Allows:
-//   - Inputs: one reconciliation request, positive attempt limit, and store.
+//   - Inputs: one reconciliation request, positive attempt limit, store, and
+//     optional caller retry direction.
 //   - Outputs: exact final one-shot outcome plus attempts consumed.
 //   - Side effects: at most the caller-configured number of reconciliations.
 // - Split-When:
-//   - Backoff, cancellation, fairness, or ordering service gains authority.
+//   - Asynchronous retry control or ordering service gains authority.
 // - Merge-When:
 //   - One distributed telemetry owner owns retry timing and reconciliation.
 // - Summary:
 //   - Repeats complete ordered-pair reconciliation only after CAS conflict.
 // - Description:
-//   - Every retry reloads and remerges; stale external order fails normally.
+//   - Every continued retry reloads/remerges; stale external order fails
+//     normally.
 // - Usage:
 //   - Select a positive maximum attempt count for synchronous contention.
 // - Defaults:
@@ -44,6 +47,9 @@ use crate::blob_pair_store::{
     NativeContinuationBlobPairStore as PairStore,
     NativeContinuationConditionalBlobPairStore as ConditionalPairStore,
     NativeContinuationDurableBlobPairStore as DurablePairStore,
+};
+use crate::retry_control::{
+    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
 };
 
 /// Final reconciliation outcome plus exact attempts consumed.
@@ -118,6 +124,38 @@ pub fn reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries<
 where
     Store: ConditionalPairStore + DurablePairStore,
 {
+    reconcile_cached_retry_ordered_pair_with_retry_control(
+        store,
+        request,
+        maximum_attempts,
+        |_conflict| NativeContinuationRetryDirective::Continue,
+    )
+}
+
+/// Retries reconciliation conflicts while the caller permits another attempt.
+///
+/// The control callback runs only after a retryable conflict and only when the
+/// positive attempt budget still permits another attempt. It receives the exact
+/// number of completed attempts. `Stop` preserves the current typed conflict;
+/// `Continue` performs the same complete fresh reconciliation as the legacy
+/// retry wrapper. This layer performs no clock read, wait, or fairness action.
+///
+/// # Errors
+///
+/// Returns the first stale-order, count, latency, codec, bound, or store
+/// failure. Durable and committed publication stop immediately.
+pub fn reconcile_cached_retry_ordered_pair_with_retry_control<Store, Control>(
+    store: &mut Store,
+    request: NativeContinuationCachedRetryOrderedPairReconciliationRequest<'_>,
+    maximum_attempts: NonZeroUsize,
+    mut control: Control,
+) -> RetryStoreResult<Store>
+where
+    Store: ConditionalPairStore + DurablePairStore,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
     let mut attempts = 1usize;
     let mut outcome =
         reconcile_cached_retry_telemetry_ordered_pair_durably(store, request)?;
@@ -126,6 +164,11 @@ where
         NativeContinuationCachedRetryOrderedPairReconciliation::Conflict { .. }
     ) && attempts < maximum_attempts.get()
     {
+        if control(NativeContinuationRetryConflict::new(attempts))
+            == NativeContinuationRetryDirective::Stop
+        {
+            break;
+        }
         attempts = attempts.saturating_add(1);
         outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
             store, request,

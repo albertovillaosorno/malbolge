@@ -497,7 +497,7 @@ parts:
     path: composition/tier/cached_cycle/telemetry_ordered_pair_reconciliation_retry.rs
     kind: composition
     language: rust
-    responsibility: Retry ordered pair reconciliation conflicts within budget.
+    responsibility: Retry ordered pair conflicts with caller direction.
   - id: part-0094
     path: application/blob_pair_reclamation.rs
     kind: application

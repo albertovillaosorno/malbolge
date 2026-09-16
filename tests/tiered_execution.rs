@@ -306,6 +306,7 @@ use cached_cycle::{
     publish_cached_retry_telemetry_ordered_batch_durably,
     publish_cached_retry_telemetry_ordered_batch_durably_with_retries,
     recommend_cached_retry_latency_policy, recommend_cached_retry_policy,
+    reconcile_cached_retry_ordered_pair_with_retry_control,
     reconcile_cached_retry_telemetry_ordered_pair_durably,
     reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries,
     refine_cached_retry_latency_histogram,
@@ -55255,6 +55256,108 @@ fn cached_retry_ordered_pair_store_at_order(
         Ok(store)
     } else {
         Err(String::from("ordered pair store setup did not commit"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_control_continues_conflict() -> Result<(), String>
+{
+    let capacity = nonzero_test_limit(3, "ordered control capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered control bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let latency = cached_retry_latency_histogram()?;
+    let mut store = cached_retry_ordered_pair_store_at_order(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        summary,
+        &latency,
+        limit,
+    )?;
+    let raced_pair = store
+        .pair
+        .clone()
+        .ok_or_else(|| String::from("ordered control pair missing"))?;
+    store.pair_before_compare = Some((raced_pair, store.revision + 1));
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(20)),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let mut controlled_attempts = Vec::new();
+    let result = reconcile_cached_retry_ordered_pair_with_retry_control(
+        &mut store,
+        request,
+        nonzero_test_limit(2, "ordered control attempts")?,
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Continue
+        },
+    )
+    .map_err(|error| format!("ordered control retry failed: {error:?}"))?;
+    if result.attempts() == 2
+        && controlled_attempts == [1]
+        && matches!(result.outcome(), OrderedPairReconciliation::Durable { .. })
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry continue directive drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_pair_control_stops_conflict() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered stop capacity")?;
+    let limit = nonzero_test_limit(4_096, "ordered stop bytes")?;
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let latency = cached_retry_latency_histogram()?;
+    let mut store = cached_retry_ordered_pair_store_at_order(
+        (capacity, OrderedTelemetryBatchOrder::from_value(10)),
+        summary,
+        &latency,
+        limit,
+    )?;
+    let raced_pair = store
+        .pair
+        .clone()
+        .ok_or_else(|| String::from("ordered stop pair missing"))?;
+    store.pair_before_compare = Some((raced_pair, store.revision + 1));
+    let batch = [summary];
+    let request = OrderedPairReconciliationRequest::new(
+        (capacity, OrderedTelemetryBatchOrder::from_value(20)),
+        &batch,
+        &latency,
+        (limit, limit),
+    );
+    let mut controlled_attempts = Vec::new();
+    let result = reconcile_cached_retry_ordered_pair_with_retry_control(
+        &mut store,
+        request,
+        nonzero_test_limit(3, "ordered stop attempts")?,
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Stop
+        },
+    )
+    .map_err(|error| format!("ordered controlled stop failed: {error:?}"))?;
+    if result.attempts() == 1
+        && controlled_attempts == [1]
+        && matches!(
+            result.outcome(),
+            OrderedPairReconciliation::Conflict { .. }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered retry stop directive drifted"))
     }
 }
 

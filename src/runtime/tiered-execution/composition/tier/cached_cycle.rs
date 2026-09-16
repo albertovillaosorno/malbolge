@@ -223,6 +223,7 @@ pub use telemetry_ordered_pair_reconciliation::{
 pub use telemetry_ordered_pair_reconciliation_retry::{
     NativeContinuationCachedRetryOrderedPairReconciliationRetry,
     NativeContinuationCachedRetryOrderedPairReconciliationRetryStoreResult,
+    reconcile_cached_retry_ordered_pair_with_retry_control,
     reconcile_cached_retry_telemetry_ordered_pair_durably_with_retries,
 };
 pub use telemetry_ordered_persistence::{

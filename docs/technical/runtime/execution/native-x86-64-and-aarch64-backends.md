@@ -1145,6 +1145,13 @@ Four focused retry cases cover final conflict at the attempt limit,
 conflict-to-fresh-load success, conflict followed by exact stale-order
 rejection, and committed durability failure stopping after the first attempt.
 
+The ordered-pair retry also accepts the shared synchronous retry directive.
+After a retryable conflict, the caller receives the exact completed-attempt
+count and may return `Continue` or `Stop`; stopping preserves that conflict
+unchanged. Continued attempts still perform the complete fresh reconciliation,
+and the runtime still performs no clock read, wait, backoff, or fairness action.
+Two focused cases cover one continued conflict and one caller-stopped conflict.
+
 The concrete filesystem adapter is also payload-neutral and binds that port to
 one explicit destination. It probes one byte beyond bounded reads, stages in
 the destination directory, synchronizes complete staging contents, and

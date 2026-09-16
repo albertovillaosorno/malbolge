@@ -973,6 +973,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   conflict followed by exact stale-order rejection, and committed durability
   failure stopping after the first attempt.
 
+
+  Ordered-pair retry now also accepts the shared synchronous retry directive.
+  After a retryable conflict, the caller sees the exact completed-attempt count
+  and may return `Continue` or `Stop`; stopping preserves that typed conflict.
+  Continued attempts still reload and reconcile the complete pair, while the
+  runtime performs no clock read, wait, backoff, or fairness action. Two focused
+  cases cover one continued conflict and one caller-stopped conflict.
+
   The concrete filesystem adapter is likewise payload-neutral. It probes beyond
   bounded reads, stages beside one explicit destination, synchronizes staged
   bytes, and publishes by `rename` without deleting prior state first. Host-real
