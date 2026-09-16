@@ -311,11 +311,12 @@ live-ins; a distinct revision-1 fused target binds the region-wide
 `NativeArtifactKey`, while the complete source plan and ordered sequence key
 remain provenance. Single-step plans are rejected.
 
-The fused emitter now covers thirteen reviewed two-step regions on x86-64 and
+The fused emitter now covers fourteen reviewed two-step regions on x86-64 and
 AArch64: rotate/output, crazy/output, no-operation/output,
-no-operation/no-operation, no-operation/jump-data, no-operation/rotate,
-no-operation/crazy, crazy/no-operation, crazy/rotate, crazy/crazy,
-rotate/no-operation, rotate/crazy, and rotate/rotate. Every fused guard
+no-operation/no-operation, no-operation/jump-code, no-operation/jump-data,
+no-operation/rotate, no-operation/crazy, crazy/no-operation, crazy/rotate,
+crazy/crazy, rotate/no-operation, rotate/crazy, and rotate/rotate. Every fused
+guard
 completes before
 the first store,
 including region-entry live-ins and output capacity where output is present.
@@ -1310,8 +1311,9 @@ Clang-produced structurally admitted COFF remains semantically untrusted.
 Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; atomic fused rotate/output,
-no-operation/output, no-operation/no-operation, no-operation/jump-data,
-no-operation/rotate, no-operation/crazy, crazy/no-operation, crazy/output,
+no-operation/output, no-operation/no-operation, no-operation/jump-code,
+no-operation/jump-data, no-operation/rotate, no-operation/crazy,
+crazy/no-operation, crazy/output,
 crazy/rotate,
 crazy/crazy, rotate/no-operation, rotate/crazy, and rotate/rotate objects are
 also emitted, independently
