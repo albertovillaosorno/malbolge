@@ -190,13 +190,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   dependency-aware entry live-ins, a distinct region-wide artifact key, and
   retained source-plan/sequence-key provenance. It rejects single-step aliasing.
 
-  Reviewed fused emission now covers rotate/output and no-operation/output on
-  x86-64 and AArch64. Each candidate completes its region-entry live-in,
-  termination, memory-capacity, and output-capacity guards before every store.
-  Semantic promotion reconstructs admission, structurally admits COFF,
-  regenerates the canonical object, and rejects text-byte drift. VM-derived
-  no-operation/output traces exercise both ISAs through emission, promotion, and
-  relocation-free load-image extraction.
+  Reviewed fused emission now covers rotate/output, no-operation/output, and
+  no-operation/no-operation on x86-64 and AArch64. Each candidate completes its
+  applicable region-entry live-in, termination, memory-capacity, and
+  output-capacity guards before every store. Semantic promotion reconstructs
+  admission, structurally admits COFF, regenerates the canonical object, and
+  rejects text-byte drift. VM-derived no-operation traces exercise both ISAs
+  through emission, promotion, relocation-free load-image extraction, and
+  whole-region state comparison with the profile VM.
 
   A distinct fused load-image type now extracts relocation-free code, rejects
   machine drift or relocations, validates ISA alignment, and retains the strict

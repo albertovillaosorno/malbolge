@@ -38,10 +38,10 @@
 use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard,
-    DirectFusedNoOperationOutputTemplate, DirectFusedRotateOutputTemplate,
-    DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedTerminalGuard,
-    DirectRotateCommit, DirectRotateGuard,
+    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
+    DirectFusedRotateOutputTemplate, DirectInputCommit, DirectInputGuard,
+    DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
+    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -460,6 +460,63 @@ pub(super) fn output_code(
     code.push(0xc3);
     patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
+}
+
+/// Encodes one atomic two-step no-operation/no-operation fused region.
+#[must_use]
+pub(super) fn fused_no_operation_pair_code(
+    template: DirectFusedNoOperationPairTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut code = Vec::with_capacity(256);
+    let mut guard_jumps =
+        Vec::with_capacity(template.live_ins.len().saturating_add(10));
+    push_observation_guards_near(
+        &mut code,
+        &mut guard_jumps,
+        template.observation,
+    );
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&template.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    for live_in in template.live_ins {
+        push_direct_memory_guard_near(
+            &mut code,
+            &mut guard_jumps,
+            memory_byte_offset(live_in.address)?,
+            live_in.value,
+        );
+    }
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    push_fused_no_operation_pair_commit(&mut code, template)?;
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_fused_no_operation_pair_commit(
+    code: &mut Vec<u8>,
+    template: DirectFusedNoOperationPairTemplate<'_>,
+) -> Option<()> {
+    let first_offset = memory_byte_offset(template.first.encrypted_address)?;
+    let second_offset = memory_byte_offset(template.second.encrypted_address)?;
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&first_offset.to_le_bytes());
+    code.extend_from_slice(&template.first.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&second_offset.to_le_bytes());
+    code.extend_from_slice(&template.second.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&template.second.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&template.second.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    Some(())
 }
 
 /// Encodes one atomic two-step no-operation/output fused region.

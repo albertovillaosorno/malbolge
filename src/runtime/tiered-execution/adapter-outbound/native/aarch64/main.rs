@@ -38,10 +38,10 @@
 use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard,
-    DirectFusedNoOperationOutputTemplate, DirectFusedRotateOutputTemplate,
-    DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedTerminalGuard,
-    DirectRotateCommit, DirectRotateGuard,
+    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
+    DirectFusedRotateOutputTemplate, DirectInputCommit, DirectInputGuard,
+    DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
+    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -413,6 +413,70 @@ pub(super) fn output_code(
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
     Some(encode_words(&words))
+}
+
+/// Encodes one atomic two-step no-operation/no-operation fused region.
+#[must_use]
+pub(super) fn fused_no_operation_pair_code(
+    template: DirectFusedNoOperationPairTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(96);
+    let mut guard_branches =
+        Vec::with_capacity(template.live_ins.len().saturating_add(10));
+    push_observation_guards(
+        &mut words,
+        &mut guard_branches,
+        template.observation,
+    )?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    for live_in in template.live_ins {
+        push_indexed_memory_guard(
+            &mut words,
+            &mut guard_branches,
+            live_in.address,
+            live_in.value,
+        );
+    }
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_fused_no_operation_pair_commit(&mut words, template);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_fused_no_operation_pair_commit(
+    words: &mut Vec<u32>,
+    template: DirectFusedNoOperationPairTemplate<'_>,
+) {
+    words.extend_from_slice(&[
+        movz_w10(template.first.encrypted_address),
+        movk_w10_high(template.first.encrypted_address),
+        0x8b0a_090a,
+        movz_w9(template.first.encrypted_value),
+        movk_w9_high(template.first.encrypted_value),
+        0xb900_0149,
+        movz_w10(template.second.encrypted_address),
+        movk_w10_high(template.second.encrypted_address),
+        0x8b0a_090a,
+        movz_w9(template.second.encrypted_value),
+        movk_w9_high(template.second.encrypted_value),
+        0xb900_0149,
+        movz_w9(template.second.next_code_pointer),
+        movk_w9_high(template.second.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.second.next_data_pointer),
+        movk_w9_high(template.second.next_data_pointer),
+        0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
 }
 
 /// Encodes one atomic two-step no-operation/output fused region.
