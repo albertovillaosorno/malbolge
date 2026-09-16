@@ -12,12 +12,14 @@
 //   - Caller-bounded retries of one-shot durable ordered-count CAS conflicts.
 // - Must-Not:
 //   - Retry non-conflicts, rebase caller order, sleep, or infer retry budgets.
+//   - Infer caller cancellation, pacing, backoff, or fairness policy.
 // - Allows:
-//   - Inputs: one ordered CAS request, positive attempt limit, and store.
+//   - Inputs: one ordered CAS request, positive attempt limit, store, and
+//     optional caller retry direction.
 //   - Outputs: exact final one-shot outcome plus attempts consumed.
 //   - Side effects: at most the caller-configured number of one-shot attempts.
 // - Split-When:
-//   - Backoff, cancellation, fairness, or ordering service gains authority.
+//   - Asynchronous retry control or ordering service gains authority.
 // - Merge-When:
 //   - One distributed count owner owns retry timing and external order policy.
 // - Summary:
@@ -44,6 +46,9 @@ use crate::blob_store::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationConditionalBlobStore as ConditionalBlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+};
+use crate::retry_control::{
+    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
 };
 
 /// Final one-shot ordered CAS outcome plus exact attempts consumed.
@@ -116,6 +121,37 @@ pub fn publish_cached_retry_telemetry_ordered_batch_durably_with_retries<
 where
     Store: ConditionalBlobStore + DurableBlobStore,
 {
+    publish_cached_retry_ordered_batch_with_retry_control(
+        store,
+        request,
+        maximum_attempts,
+        |_conflict| NativeContinuationRetryDirective::Continue,
+    )
+}
+
+/// Retries ordered CAS conflicts while the caller permits another attempt.
+///
+/// The control callback runs only after a retryable conflict and while another
+/// attempt remains in the positive budget. `Stop` preserves the typed conflict;
+/// `Continue` performs the same fresh load and one-shot CAS as the legacy retry
+/// wrapper. No clock read, wait, backoff, or fairness action is inferred.
+///
+/// # Errors
+///
+/// Returns the first non-conflict load, codec, stale-order, FIFO, or store
+/// failure. Durable and committed publication stop immediately.
+pub fn publish_cached_retry_ordered_batch_with_retry_control<Store, Control>(
+    store: &mut Store,
+    request: NativeContinuationCachedRetryTelemetryOrderedCasRequest<'_>,
+    maximum_attempts: NonZeroUsize,
+    mut control: Control,
+) -> NativeContinuationCachedRetryTelemetryOrderedCasRetryStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
     let mut attempts = 1usize;
     let mut outcome =
         publish_cached_retry_telemetry_ordered_batch_durably(store, request)?;
@@ -124,6 +160,11 @@ where
         NativeContinuationCachedRetryTelemetryOrderedCas::Conflict { .. }
     ) && attempts < maximum_attempts.get()
     {
+        if control(NativeContinuationRetryConflict::new(attempts))
+            == NativeContinuationRetryDirective::Stop
+        {
+            break;
+        }
         attempts = attempts.saturating_add(1);
         outcome = publish_cached_retry_telemetry_ordered_batch_durably(
             store, request,

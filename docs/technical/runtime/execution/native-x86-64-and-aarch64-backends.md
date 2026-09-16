@@ -693,6 +693,13 @@ Four deterministic cases cover refreshed success, conflict-to-stale transition,
 final conflict retention, and no retry after committed durability failure. No
 sleep, backoff, or order rewrite is inferred.
 
+The ordered-count retry now also accepts the shared synchronous retry directive.
+After a retryable conflict, the caller receives the exact completed-attempt
+count and may return `Continue` or `Stop`; stopping preserves that conflict
+unchanged. Continued attempts still begin with a fresh bounded load, and the
+runtime still performs no clock read, wait, backoff, or fairness action. Two
+focused cases cover one continued conflict and one caller-stopped conflict.
+
 A pure count-based recommendation boundary now maps ready assessments to
 one of two caller-supplied retry policies while insufficient evidence defers; it
 retains exact telemetry and miss violations and does not publish policy. A

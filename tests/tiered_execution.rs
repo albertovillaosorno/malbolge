@@ -301,6 +301,7 @@ use cached_cycle::{
     publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_latency_policy_recommendation_durably,
+    publish_cached_retry_ordered_batch_with_retry_control,
     publish_cached_retry_policy_recommendation,
     publish_cached_retry_policy_recommendation_durably,
     publish_cached_retry_telemetry_ordered_batch_durably,
@@ -56601,6 +56602,94 @@ fn cached_retry_telemetry_persistence_retains_store_failures()
         Ok(())
     } else {
         Err(String::from("outbound store failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_cas_control_continues_conflict() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered CAS control capacity")?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let raced_order = OrderedTelemetryBatchOrder::from_value(15);
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = cached_retry_ordered_race_store(
+        capacity,
+        expected_order,
+        raced_order,
+        summary,
+    )?;
+    let mut controlled_attempts = Vec::new();
+    let retry = publish_cached_retry_ordered_batch_with_retry_control(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            submitted,
+            &[summary],
+            nonzero_test_limit(4_096, "ordered CAS control bytes")?,
+        ),
+        nonzero_test_limit(2, "ordered CAS control attempts")?,
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Continue
+        },
+    )
+    .map_err(|error| format!("ordered CAS control failed: {error:?}"))?;
+    if retry.attempts() == 2
+        && controlled_attempts == [1]
+        && matches!(retry.outcome(), OrderedTelemetryCas::Durable { .. })
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered CAS continue directive drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_ordered_cas_control_stops_conflict() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "ordered CAS stop capacity")?;
+    let expected_order = OrderedTelemetryBatchOrder::from_value(10);
+    let raced_order = OrderedTelemetryBatchOrder::from_value(15);
+    let submitted = OrderedTelemetryBatchOrder::from_value(20);
+    let summary = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let mut store = cached_retry_ordered_race_store(
+        capacity,
+        expected_order,
+        raced_order,
+        summary,
+    )?;
+    let mut controlled_attempts = Vec::new();
+    let retry = publish_cached_retry_ordered_batch_with_retry_control(
+        &mut store,
+        NativeContinuationCachedRetryTelemetryOrderedCasRequest::new(
+            capacity,
+            submitted,
+            &[summary],
+            nonzero_test_limit(4_096, "ordered CAS stop bytes")?,
+        ),
+        nonzero_test_limit(3, "ordered CAS stop attempts")?,
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Stop
+        },
+    )
+    .map_err(|error| format!("ordered CAS stop failed: {error:?}"))?;
+    if retry.attempts() == 1
+        && controlled_attempts == [1]
+        && matches!(retry.outcome(), OrderedTelemetryCas::Conflict { .. })
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered CAS stop directive drifted"))
     }
 }
 

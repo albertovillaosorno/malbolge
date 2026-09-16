@@ -550,6 +550,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retention, and no retry after committed durability failure. No sleep, backoff,
   or order rewrite is inferred.
 
+
+  Ordered-count retry now also accepts the shared synchronous retry directive.
+  After a retryable conflict, the caller sees the exact completed-attempt count
+  and may return `Continue` or `Stop`; stopping preserves that typed conflict.
+  Continued attempts still reload the complete ordered document, while the
+  runtime performs no clock read, wait, backoff, or fairness action. Two focused
+  cases cover one continued conflict and one caller-stopped conflict.
+
   A pure count-based
   recommendation boundary maps ready assessments to one of two caller-supplied
   retry policies while insufficient evidence defers; exact telemetry and miss

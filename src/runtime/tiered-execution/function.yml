@@ -453,7 +453,7 @@ parts:
     path: composition/tier/cached_cycle/telemetry_ordered_cas_retry.rs
     kind: composition
     language: rust
-    responsibility: Retry ordered count CAS conflicts within caller budget.
+    responsibility: Retry ordered count conflicts with caller direction.
   - id: part-0085
     path: port-outbound/blob_pair_store.rs
     kind: port-outbound

@@ -199,6 +199,7 @@ pub use telemetry_ordered_cas_retry::{
     NativeContinuationCachedRetryTelemetryOrderedCasRetry,
     NativeContinuationCachedRetryTelemetryOrderedCasRetryResult,
     NativeContinuationCachedRetryTelemetryOrderedCasRetryStoreResult,
+    publish_cached_retry_ordered_batch_with_retry_control,
     publish_cached_retry_telemetry_ordered_batch_durably_with_retries,
 };
 pub use telemetry_ordered_pair_persistence::{
