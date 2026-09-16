@@ -191,8 +191,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retained source-plan/sequence-key provenance. It rejects single-step aliasing.
 
   Reviewed fused emission now covers rotate/output, no-operation/output,
-  no-operation/no-operation, no-operation/rotate, rotate/no-operation, and
-  rotate/rotate on x86-64 and AArch64.
+  no-operation/no-operation, no-operation/rotate, no-operation/crazy,
+  rotate/no-operation, and rotate/rotate on x86-64 and AArch64.
   Each candidate completes its applicable region-entry live-in, termination,
   memory-capacity, and output-capacity guards before every store. Semantic
   promotion reconstructs admission, structurally admits COFF, regenerates the

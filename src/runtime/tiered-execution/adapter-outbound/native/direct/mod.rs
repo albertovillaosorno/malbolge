@@ -396,6 +396,15 @@ pub(super) struct DirectRotateCommit {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedNoOperationCrazyTemplate<'live_ins> {
+    pub(super) crazy: DirectCrazyCommit,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) no_operation: DirectCodeWriteCommit,
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedNoOperationPairTemplate<'live_ins> {
     pub(super) first: DirectCodeWriteCommit,
     pub(super) live_ins: &'live_ins [MemoryLiveIn],

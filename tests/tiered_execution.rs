@@ -14455,6 +14455,65 @@ fn direct_normative_sequence_state() -> Result<ProfileMachineState, String> {
     .map_err(|error| format!("direct sequence state: {error}"))
 }
 
+fn direct_no_operation_crazy_sequence_state()
+-> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("no-op/crazy base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let no_operation_cell = (33u32..=126u32)
+        .find(|cell| profile_cell_decodes_to_no_operation(*cell, 5))
+        .ok_or_else(|| String::from("phase-five no-operation cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("no-op/crazy code cell 5 missing"))? =
+        no_operation_cell;
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-six crazy cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("no-op/crazy code cell 6 missing"))? =
+        crazy_cell;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("no-op/crazy data cell 8 missing"))? = 10;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("no-op/crazy IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("no-op/crazy state: {error}"))
+}
+
+fn direct_no_operation_crazy_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_no_operation_crazy_sequence_state()?,
+    );
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("no-op/crazy trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("no-op/crazy outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("no-op/crazy projection: {error:?}"))
+        })
+        .collect()
+}
+
 fn direct_no_operation_pair_sequence_state()
 -> Result<ProfileMachineState, String> {
     let base =
@@ -15148,6 +15207,106 @@ fn fused_direct_sequence_emits_and_verifies_both_isas() -> Result<(), String> {
 }
 
 #[test]
+fn fused_noop_crazy_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_no_operation_crazy_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("no-op/crazy select: {error}"))?;
+        let [no_operation, crazy] = plan.artifacts() else {
+            return Err(format!("no-op/crazy plan length drifted: {plan:?}"));
+        };
+        if no_operation.kind() != DirectNativeKind::NoOperation
+            || crazy.kind() != DirectNativeKind::Crazy
+        {
+            return Err(format!("no-op/crazy plan kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("no-op/crazy admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("no-op/crazy emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("no-op/crazy verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("no-op/crazy image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || verified.object() != candidate.object()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!(
+                "no-op/crazy fused evidence drifted on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_noop_crazy_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_no_operation_crazy_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let initial_output = vec![0x5au8];
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("no-op/crazy normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!(
+            "no-op/crazy normative outcome mismatch: {outcome:?}"
+        ));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("no-op/crazy projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("no-op/crazy invoke select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("no-op/crazy invoke admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("no-op/crazy invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("no-op/crazy invoke verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = initial_output.clone();
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("no-op/crazy invoke prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("no-op/crazy invoke complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != initial_output
+        {
+            return Err(format!(
+                "no-op/crazy invocation diverged from VM on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn fused_noop_pair_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_no_operation_pair_sequence_programs()?;
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
@@ -15716,6 +15875,10 @@ fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
         (
             "no-op/output",
             direct_no_operation_output_sequence_programs()?,
+        ),
+        (
+            "no-op/crazy",
+            direct_no_operation_crazy_sequence_programs()?,
         ),
         ("no-op/no-op", direct_no_operation_pair_sequence_programs()?),
         (
