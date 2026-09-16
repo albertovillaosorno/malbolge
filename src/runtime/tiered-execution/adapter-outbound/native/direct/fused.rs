@@ -67,6 +67,7 @@ enum FusedSelection {
     CrazyOutput(DirectCrazyProgram, DirectOutputProgram),
     CrazyPair(DirectCrazyProgram, DirectCrazyProgram),
     CrazyRotate(DirectCrazyProgram, DirectRotateProgram),
+    JumpCodeNoOperation(super::DirectJumpCodeProgram, DirectNoOperationProgram),
     JumpDataNoOperation(super::DirectJumpDataProgram, DirectNoOperationProgram),
     NoOperationCrazy(DirectNoOperationProgram, DirectCrazyProgram),
     NoOperationJumpCode(DirectNoOperationProgram, super::DirectJumpCodeProgram),
@@ -251,6 +252,14 @@ fn canonical_fused_text(
         | FusedSelection::CrazyRotate(..) => {
             fused_crazy_selection_text(admission, observation, selection)
         },
+        FusedSelection::JumpCodeNoOperation(jump_code, no_operation) => {
+            fused_jump_code_no_operation_text(
+                admission,
+                observation,
+                jump_code,
+                no_operation,
+            )
+        },
         FusedSelection::JumpDataNoOperation(jump_data, no_operation) => {
             fused_jump_data_no_operation_text(
                 admission,
@@ -310,7 +319,8 @@ fn fused_crazy_selection_text(
         FusedSelection::CrazyRotate(crazy, rotate) => {
             fused_crazy_rotate_text(admission, observation, crazy, rotate)
         },
-        FusedSelection::JumpDataNoOperation(..)
+        FusedSelection::JumpCodeNoOperation(..)
+        | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::NoOperationCrazy(..)
         | FusedSelection::NoOperationJumpCode(..)
         | FusedSelection::NoOperationJumpData(..)
@@ -377,6 +387,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
         | FusedSelection::CrazyRotate(..)
+        | FusedSelection::JumpCodeNoOperation(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateNoOperation(..)
@@ -458,6 +469,25 @@ fn fused_crazy_no_operation_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_crazy_no_operation_code(template),
         HostIsa::X86_64 => x86_64::fused_crazy_no_operation_code(template),
+    }
+}
+
+fn fused_jump_code_no_operation_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    jump_code: super::DirectJumpCodeProgram,
+    no_operation: DirectNoOperationProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationPairTemplate {
+        first: jump_code.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second: no_operation_commit(no_operation),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_no_operation_pair_code(template),
+        HostIsa::X86_64 => x86_64::fused_no_operation_pair_code(template),
     }
 }
 
@@ -804,6 +834,14 @@ fn select_non_output_shape(
     )? {
         return Ok(Some(selection));
     }
+    if let Some(selection) = select_jump_code_shape(
+        first_kind,
+        second_kind,
+        first_program,
+        second_program,
+    )? {
+        return Ok(Some(selection));
+    }
     if let Some(selection) = select_jump_data_shape(
         first_kind,
         second_kind,
@@ -813,6 +851,27 @@ fn select_non_output_shape(
         return Ok(Some(selection));
     }
     select_rotate_shape(first_kind, second_kind, first_program, second_program)
+}
+
+fn select_jump_code_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind != DirectNativeKind::JumpCode
+        || second_kind != DirectNativeKind::NoOperation
+    {
+        return Ok(None);
+    }
+    let jump_code = super::validate_jump_code_program(first_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    let no_operation = validate_no_operation_program(second_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    Ok(Some(FusedSelection::JumpCodeNoOperation(
+        jump_code,
+        no_operation,
+    )))
 }
 
 fn select_jump_data_shape(
