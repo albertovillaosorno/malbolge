@@ -73,6 +73,7 @@ enum FusedSelection {
     JumpCodePair(super::DirectJumpCodeProgram, super::DirectJumpCodeProgram),
     JumpCodeRotate(super::DirectJumpCodeProgram, DirectRotateProgram),
     JumpDataCode(super::DirectJumpDataProgram, super::DirectJumpCodeProgram),
+    JumpDataCrazy(super::DirectJumpDataProgram, DirectCrazyProgram),
     JumpDataNoOperation(super::DirectJumpDataProgram, DirectNoOperationProgram),
     JumpDataOutput(super::DirectJumpDataProgram, DirectOutputProgram),
     JumpDataPair(super::DirectJumpDataProgram, super::DirectJumpDataProgram),
@@ -268,6 +269,7 @@ fn canonical_fused_text(
             fused_jump_code_selection_text(admission, observation, selection)
         },
         FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::JumpDataOutput(..)
         | FusedSelection::JumpDataPair(..)
@@ -348,6 +350,7 @@ fn fused_jump_code_selection_text(
         | FusedSelection::CrazyPair(..)
         | FusedSelection::CrazyRotate(..)
         | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::JumpDataOutput(..)
         | FusedSelection::JumpDataPair(..)
@@ -379,6 +382,9 @@ fn fused_jump_data_selection_text(
                 jump_code,
             )
         },
+        FusedSelection::JumpDataCrazy(jump_data, crazy) => {
+            fused_jump_data_crazy_text(admission, observation, jump_data, crazy)
+        },
         FusedSelection::JumpDataOutput(jump_data, output) => {
             fused_jump_data_output_text(
                 admission,
@@ -395,6 +401,42 @@ fn fused_jump_data_selection_text(
                 no_operation,
             )
         },
+        FusedSelection::JumpDataPair(..)
+        | FusedSelection::JumpDataRotate(..) => {
+            fused_jump_data_remaining_selection_text(
+                admission,
+                observation,
+                selection,
+            )
+        },
+        FusedSelection::CrazyNoOperation(..)
+        | FusedSelection::CrazyOutput(..)
+        | FusedSelection::CrazyPair(..)
+        | FusedSelection::CrazyRotate(..)
+        | FusedSelection::JumpCodeData(..)
+        | FusedSelection::JumpCodeNoOperation(..)
+        | FusedSelection::JumpCodeOutput(..)
+        | FusedSelection::JumpCodePair(..)
+        | FusedSelection::JumpCodeRotate(..)
+        | FusedSelection::NoOperationCrazy(..)
+        | FusedSelection::NoOperationJumpCode(..)
+        | FusedSelection::NoOperationJumpData(..)
+        | FusedSelection::NoOperationOutput(..)
+        | FusedSelection::NoOperationPair(..)
+        | FusedSelection::NoOperationRotate(..)
+        | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateNoOperation(..)
+        | FusedSelection::RotateOutput(..)
+        | FusedSelection::RotatePair(..) => None,
+    }
+}
+
+fn fused_jump_data_remaining_selection_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    match *selection {
         FusedSelection::JumpDataPair(first, second) => {
             fused_jump_data_pair_text(admission, observation, first, second)
         },
@@ -415,6 +457,10 @@ fn fused_jump_data_selection_text(
         | FusedSelection::JumpCodeOutput(..)
         | FusedSelection::JumpCodePair(..)
         | FusedSelection::JumpCodeRotate(..)
+        | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
+        | FusedSelection::JumpDataNoOperation(..)
+        | FusedSelection::JumpDataOutput(..)
         | FusedSelection::NoOperationCrazy(..)
         | FusedSelection::NoOperationJumpCode(..)
         | FusedSelection::NoOperationJumpData(..)
@@ -457,6 +503,7 @@ fn fused_crazy_selection_text(
         | FusedSelection::JumpCodePair(..)
         | FusedSelection::JumpCodeRotate(..)
         | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::JumpDataOutput(..)
         | FusedSelection::JumpDataPair(..)
@@ -514,6 +561,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::JumpCodePair(..)
         | FusedSelection::JumpCodeRotate(..)
         | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::JumpDataOutput(..)
         | FusedSelection::JumpDataPair(..)
@@ -569,6 +617,7 @@ fn fused_no_operation_remaining_selection_text(
         | FusedSelection::JumpCodePair(..)
         | FusedSelection::JumpCodeRotate(..)
         | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
         | FusedSelection::JumpDataOutput(..)
         | FusedSelection::JumpDataPair(..)
@@ -751,6 +800,25 @@ fn fused_jump_code_no_operation_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_no_operation_pair_code(template),
         HostIsa::X86_64 => x86_64::fused_no_operation_pair_code(template),
+    }
+}
+
+fn fused_jump_data_crazy_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    jump_data: super::DirectJumpDataProgram,
+    crazy: DirectCrazyProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationCrazyTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: jump_data.commit,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_no_operation_crazy_code(template),
+        HostIsa::X86_64 => x86_64::fused_no_operation_crazy_code(template),
     }
 }
 
@@ -1278,6 +1346,13 @@ fn select_jump_data_shape(
     let jump_data = super::validate_jump_data_program(first_program)
         .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
     match second_kind {
+        DirectNativeKind::Crazy => {
+            let crazy =
+                validate_crazy_program(second_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::JumpDataCrazy(jump_data, crazy)))
+        },
         DirectNativeKind::JumpCode => {
             let jump_code = super::validate_jump_code_program(second_program)
                 .map_err(|_error| {
@@ -1309,8 +1384,7 @@ fn select_jump_data_shape(
                 no_operation,
             )))
         },
-        DirectNativeKind::Crazy
-        | DirectNativeKind::Deopt
+        DirectNativeKind::Deopt
         | DirectNativeKind::HaltFetch
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
