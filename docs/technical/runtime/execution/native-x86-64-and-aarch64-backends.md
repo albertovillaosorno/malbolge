@@ -867,6 +867,16 @@ first-attempt success, refreshed conflict success, final conflict retention, and
 no retry after committed durability failure. No sleep or backoff policy is
 inferred.
 
+The latency retry now also accepts the shared synchronous retry directive. A
+small immutable request carries source telemetry plus byte/attempt bounds so the
+controlled entry point stays within the runtime API shape rules. After a
+retryable conflict, the caller receives the exact completed-attempt count and
+may return `Continue` or `Stop`; stopping preserves that conflict unchanged.
+Continued attempts still perform a fresh bounded load/merge/CAS, with no runtime
+clock read, wait, backoff, or fairness action.
+
+Two focused cases cover continue and stop directives.
+
 Cached-cycle composition now binds the existing canonical count/latency codecs
 to an explicit persistence application service and reconstructs exact validated
 owners after load. The application service itself treats payloads as opaque

@@ -428,7 +428,7 @@ parts:
     path: composition/tier/cached_cycle/telemetry_latency_durable_merge_retry.rs
     kind: composition
     language: rust
-    responsibility: Retry durable latency merge conflicts within caller budget.
+    responsibility: Retry latency merge conflicts with caller direction.
   - id: part-0080
     path: composition/tier/cached_cycle/telemetry_ordered_window.rs
     kind: composition

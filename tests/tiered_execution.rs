@@ -220,6 +220,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyDurableMerge,
     NativeContinuationCachedRetryLatencyDurableMergeError,
     NativeContinuationCachedRetryLatencyDurableMergeRetry,
+    NativeContinuationCachedRetryLatencyDurableMergeRetryRequest,
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
@@ -291,6 +292,7 @@ use cached_cycle::{
     merge_cached_retry_latency_histogram_durably,
     merge_cached_retry_latency_histogram_durably_with_retries,
     merge_cached_retry_latency_histograms_exact,
+    merge_cached_retry_latency_with_retry_control,
     persist_cached_retry_latency_histogram,
     persist_cached_retry_latency_histogram_durably,
     persist_cached_retry_telemetry_ordered_pair_durably,
@@ -949,6 +951,8 @@ type LatencyDurableMergeRetry =
     NativeContinuationCachedRetryLatencyDurableMergeRetry<
         TestCachedRetryTelemetryBlobDurabilityError,
     >;
+type LatencyDurableMergeRetryRequest<'source> =
+    NativeContinuationCachedRetryLatencyDurableMergeRetryRequest<'source>;
 type TelemetryPairDurablePersistence =
     NativeContinuationCachedRetryTelemetryPairDurablePersistence<
         TestBlobPairDurabilityError,
@@ -52277,6 +52281,91 @@ fn cached_retry_latency_file_durable_merge_roundtrips() -> Result<(), String> {
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result
+}
+
+#[test]
+fn cached_retry_latency_merge_control_continues_conflict() -> Result<(), String>
+{
+    let mut first = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut first, &[10])?;
+    let mut raced = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut raced, &[20])?;
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[30])?;
+    let first_bytes = encode_cached_retry_latency_snapshot(&first.snapshot())
+        .map_err(|error| error.to_string())?;
+    let raced_bytes = encode_cached_retry_latency_snapshot(&raced.snapshot())
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut controlled_attempts = Vec::new();
+    let retry = merge_cached_retry_latency_with_retry_control(
+        &mut store,
+        LatencyDurableMergeRetryRequest::new(
+            &source,
+            nonzero_test_limit(4_096, "latency control bytes")?,
+            nonzero_test_limit(2, "latency control attempts")?,
+        ),
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Continue
+        },
+    )
+    .map_err(|error| format!("latency control failed: {error:?}"))?;
+    if retry.attempts() == 2
+        && controlled_attempts == [1]
+        && matches!(retry.outcome(), LatencyDurableMerge::Durable { .. })
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency continue directive drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_control_stops_conflict() -> Result<(), String> {
+    let mut first = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut first, &[10])?;
+    let mut raced = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut raced, &[20])?;
+    let mut source = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut source, &[30])?;
+    let first_bytes = encode_cached_retry_latency_snapshot(&first.snapshot())
+        .map_err(|error| error.to_string())?;
+    let raced_bytes = encode_cached_retry_latency_snapshot(&raced.snapshot())
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(first_bytes),
+        blobs_before_compare: VecDeque::from([raced_bytes]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut controlled_attempts = Vec::new();
+    let retry = merge_cached_retry_latency_with_retry_control(
+        &mut store,
+        LatencyDurableMergeRetryRequest::new(
+            &source,
+            nonzero_test_limit(4_096, "latency stop bytes")?,
+            nonzero_test_limit(3, "latency stop attempts")?,
+        ),
+        |conflict| {
+            controlled_attempts.push(conflict.completed_attempts());
+            RetryDirective::Stop
+        },
+    )
+    .map_err(|error| format!("latency control stop failed: {error:?}"))?;
+    if retry.attempts() == 1
+        && controlled_attempts == [1]
+        && matches!(retry.outcome(), LatencyDurableMerge::Conflict { .. })
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency stop directive drifted"))
+    }
 }
 
 #[test]

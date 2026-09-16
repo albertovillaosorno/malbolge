@@ -164,9 +164,11 @@ pub use telemetry_latency_durable_merge::{
 };
 pub use telemetry_latency_durable_merge_retry::{
     NativeContinuationCachedRetryLatencyDurableMergeRetry,
+    NativeContinuationCachedRetryLatencyDurableMergeRetryRequest,
     NativeContinuationCachedRetryLatencyDurableMergeRetryResult,
     NativeContinuationCachedRetryLatencyDurableMergeRetryStoreResult,
     merge_cached_retry_latency_histogram_durably_with_retries,
+    merge_cached_retry_latency_with_retry_control,
 };
 pub use telemetry_latency_merge::{
     NativeContinuationCachedRetryLatencyMergeError,
