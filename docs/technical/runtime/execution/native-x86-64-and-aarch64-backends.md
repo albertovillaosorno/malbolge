@@ -311,8 +311,9 @@ live-ins; a distinct revision-1 fused target binds the region-wide
 `NativeArtifactKey`, while the complete source plan and ordered sequence key
 remain provenance. Single-step plans are rejected.
 
-The fused emitter now covers twenty-seven reviewed two-step regions on
-x86-64 and AArch64: rotate/output, crazy/output, crazy/jump-data,
+The fused emitter now covers twenty-eight reviewed two-step regions on
+x86-64 and AArch64: rotate/output, crazy/output, crazy/jump-code,
+crazy/jump-data,
 no-operation/output,
 no-operation/no-operation, no-operation/jump-code, no-operation/jump-data,
 jump-code/crazy, jump-code/no-operation, jump-code/jump-code,
@@ -1328,7 +1329,7 @@ jump-data/output,
 jump-data/jump-data, jump-data/rotate,
 no-operation/rotate,
 no-operation/crazy,
-crazy/jump-data, crazy/no-operation, crazy/output,
+crazy/jump-code, crazy/jump-data, crazy/no-operation, crazy/output,
 crazy/rotate,
 crazy/crazy, rotate/no-operation, rotate/crazy, and rotate/rotate objects are
 also emitted, independently

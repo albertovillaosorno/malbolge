@@ -1624,6 +1624,15 @@ struct DerivedV5SequenceFixture {
     traces: Vec<ProfileStepTrace>,
 }
 
+struct CrazyJumpCodeAliasInvocation<'fixture> {
+    expected_memory: &'fixture [u32],
+    initial_memory: &'fixture [u32],
+    initial_output: &'fixture [u8],
+    input: &'fixture [u8],
+    isa: HostIsa,
+    programs: &'fixture [RegionEffectProgram],
+}
+
 struct CrazyJumpDataAliasInvocation<'fixture> {
     expected_memory: &'fixture [u32],
     initial_memory: &'fixture [u32],
@@ -14856,6 +14865,108 @@ fn direct_crazy_pair_sequence_programs()
         .collect()
 }
 
+fn direct_crazy_jump_code_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy/jump-code base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-five crazy cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("crazy/jump-code code 5 missing"))? =
+        crazy_cell;
+    let jump_code_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'i'))
+        .ok_or_else(|| String::from("phase-six jump-code cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("crazy/jump-code code 6 missing"))? =
+        jump_code_cell;
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("crazy/jump-code data 7 missing"))? = 10;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("crazy/jump-code data 8 missing"))? = 10;
+    *memory
+        .get_mut(10)
+        .ok_or_else(|| String::from("crazy/jump-code target 10 missing"))? = 35;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy/jump-code IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy/jump-code state: {error}"))
+}
+
+fn direct_crazy_jump_code_alias_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy/jump-code alias base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-five alias crazy missing"))?;
+    *memory.get_mut(5).ok_or_else(|| {
+        String::from("crazy/jump-code alias code 5 missing")
+    })? = crazy_cell;
+    let jump_code_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'i'))
+        .ok_or_else(|| String::from("phase-six alias jump-code missing"))?;
+    *memory.get_mut(6).ok_or_else(|| {
+        String::from("crazy/jump-code alias code 6 missing")
+    })? = jump_code_cell;
+    *memory.get_mut(4).ok_or_else(|| {
+        String::from("crazy/jump-code alias data 4 missing")
+    })? = 10;
+    *memory.get_mut(91).ok_or_else(|| {
+        String::from("crazy/jump-code alias target 91 missing")
+    })? = 35;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy/jump-code alias IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 4,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy/jump-code alias state: {error}"))
+}
+
+fn direct_crazy_jump_code_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_crazy_jump_code_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/jump-code trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/jump-code outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| format!("crazy/jump-code projection: {error:?}"),
+            )
+        })
+        .collect()
+}
+
 fn direct_crazy_jump_data_state() -> Result<ProfileMachineState, String> {
     let base =
         ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
@@ -17685,6 +17796,138 @@ fn fused_crazy_pair_internal_dependency_matches_profile_vm()
 }
 
 #[test]
+fn fused_crazy_jump_code_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_crazy_jump_code_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy/jump-code select: {error}"))?;
+        let [crazy, jump_code] = plan.artifacts() else {
+            return Err(format!("crazy/jump-code plan length: {plan:?}"));
+        };
+        if crazy.kind() != DirectNativeKind::Crazy
+            || jump_code.kind() != DirectNativeKind::JumpCode
+        {
+            return Err(format!("crazy/jump-code plan kind: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy/jump-code admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy/jump-code emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy/jump-code verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("crazy/jump-code image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || verified.object() != candidate.object()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!("crazy/jump-code evidence drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_jump_code_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_crazy_jump_code_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let initial_output = vec![0x5au8];
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/jump-code normative: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/jump-code outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy/jump-code projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy/jump-code invoke select: {error}"))?;
+        let admission =
+            admit_fused_direct_sequence(&plan).map_err(|error| {
+                format!("crazy/jump-code invoke admit: {error}")
+            })?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy/jump-code invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| {
+                format!("crazy/jump-code invoke verify: {error}")
+            })?;
+        let mut memory = initial_memory.clone();
+        let mut output = initial_output.clone();
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("crazy/jump-code prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("crazy/jump-code complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != initial_output
+        {
+            return Err(format!("crazy/jump-code diverged on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_jump_code_dependency_matches_vm() -> Result<(), String> {
+    let state = direct_crazy_jump_code_alias_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let initial_output = vec![0x5au8];
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/jump-code alias run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/jump-code alias outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy/jump-code alias project: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let fixture = CrazyJumpCodeAliasInvocation {
+            expected_memory: &expected_memory,
+            initial_memory: &initial_memory,
+            initial_output: &initial_output,
+            input: &input,
+            isa,
+            programs: &programs,
+        };
+        verify_crazy_jump_code_alias_invocation(&fixture)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn fused_crazy_jump_data_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_crazy_jump_data_sequence_programs()?;
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
@@ -18248,6 +18491,52 @@ fn verify_jump_code_noop_alias_invocation(
     {
         return Err(format!(
             "jump-code/no-op alias diverged from VM on {:?}",
+            fixture.isa
+        ));
+    }
+    Ok(())
+}
+
+fn verify_crazy_jump_code_alias_invocation(
+    fixture: &CrazyJumpCodeAliasInvocation<'_>,
+) -> Result<(), String> {
+    let plan = select_verified_direct_sequence(
+        fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        fixture.isa,
+    )
+    .map_err(|error| format!("crazy/jump-code alias select: {error}"))?;
+    let admission = admit_fused_direct_sequence(&plan)
+        .map_err(|error| format!("crazy/jump-code alias admit: {error}"))?;
+    if admission.program().memory_live_ins.len() != 4 {
+        return Err(format!(
+            "crazy/jump-code alias live-ins drifted on {:?}: {:?}",
+            fixture.isa,
+            admission.program().memory_live_ins
+        ));
+    }
+    let candidate = emit_fused_direct_sequence_coff(&admission)
+        .map_err(|error| format!("crazy/jump-code alias emit: {error}"))?;
+    let artifact = verify_fused_direct_sequence(&candidate, &admission)
+        .map_err(|error| format!("crazy/jump-code alias verify: {error}"))?;
+    let mut memory = fixture.initial_memory.to_vec();
+    let mut output = fixture.initial_output.to_vec();
+    let mut prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, fixture.input, &mut output),
+    )
+    .map_err(|error| format!("crazy/jump-code alias prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let completion = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("crazy/jump-code alias complete: {error}"))?;
+    if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+        || memory != fixture.expected_memory
+        || output != fixture.initial_output
+    {
+        return Err(format!(
+            "crazy/jump-code alias diverged on {:?}",
             fixture.isa
         ));
     }
@@ -21540,6 +21829,10 @@ fn direct_fused_sequence_jump_drift_cases()
 fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
     let mut cases = direct_fused_sequence_jump_drift_cases()?;
     cases.extend([
+        (
+            "crazy/jump-code",
+            direct_crazy_jump_code_sequence_programs()?,
+        ),
         (
             "crazy/jump-data",
             direct_crazy_jump_data_sequence_programs()?,

@@ -63,6 +63,7 @@ use super::{
 
 #[derive(Clone, Copy)]
 enum FusedSelection {
+    CrazyJumpCode(DirectCrazyProgram, super::DirectJumpCodeProgram),
     CrazyJumpData(DirectCrazyProgram, super::DirectJumpDataProgram),
     CrazyNoOperation(DirectCrazyProgram, DirectNoOperationProgram),
     CrazyOutput(DirectCrazyProgram, DirectOutputProgram),
@@ -257,7 +258,8 @@ fn canonical_fused_text(
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
     match *selection {
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -349,7 +351,8 @@ fn fused_jump_code_selection_text(
                 selection,
             )
         },
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -390,7 +393,8 @@ fn fused_jump_code_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -459,7 +463,8 @@ fn fused_jump_data_selection_text(
                 selection,
             )
         },
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -500,7 +505,8 @@ fn fused_jump_data_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -534,6 +540,9 @@ fn fused_crazy_selection_text(
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
     match *selection {
+        FusedSelection::CrazyJumpCode(crazy, jump_code) => {
+            fused_crazy_jump_code_text(admission, observation, crazy, jump_code)
+        },
         FusedSelection::CrazyJumpData(crazy, jump_data) => {
             fused_crazy_jump_data_text(admission, observation, crazy, jump_data)
         },
@@ -609,7 +618,8 @@ fn fused_no_operation_selection_text(
                 jump_data,
             )
         },
-        other @ (FusedSelection::CrazyJumpData(..)
+        other @ (FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -667,7 +677,8 @@ fn fused_no_operation_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CrazyJumpData(..)
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
         | FusedSelection::CrazyPair(..)
@@ -748,6 +759,25 @@ fn fused_crazy_pair_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_crazy_pair_code(template),
         HostIsa::X86_64 => x86_64::fused_crazy_pair_code(template),
+    }
+}
+
+fn fused_crazy_jump_code_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    crazy: DirectCrazyProgram,
+    jump_code: super::DirectJumpCodeProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedCrazyNoOperationTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: jump_code.commit,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_crazy_no_operation_code(template),
+        HostIsa::X86_64 => x86_64::fused_crazy_no_operation_code(template),
     }
 }
 
@@ -1303,6 +1333,13 @@ fn select_crazy_shape(
                 )?;
                 Ok(Some(FusedSelection::CrazyPair(crazy, second)))
             },
+            DirectNativeKind::JumpCode => {
+                let jump_code =
+                    super::validate_jump_code_program(second_program).map_err(
+                        |_error| DirectFusedSequenceObjectError::ProgramShape,
+                    )?;
+                Ok(Some(FusedSelection::CrazyJumpCode(crazy, jump_code)))
+            },
             DirectNativeKind::JumpData => {
                 let jump_data =
                     super::validate_jump_data_program(second_program).map_err(
@@ -1328,7 +1365,6 @@ fn select_crazy_shape(
             | DirectNativeKind::HaltRegisters
             | DirectNativeKind::InitialHalt
             | DirectNativeKind::Input
-            | DirectNativeKind::JumpCode
             | DirectNativeKind::NonGraphical
             | DirectNativeKind::Output => Ok(None),
         };
