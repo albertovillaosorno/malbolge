@@ -398,9 +398,10 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits twenty-six reviewed two-step regions as atomic
+`direct/fused.rs` now emits twenty-seven reviewed two-step regions as atomic
 x86-64
-or AArch64 COFF candidates: rotate/output, crazy/output, no-operation/output,
+or AArch64 COFF candidates: rotate/output, crazy/output, crazy/jump-data,
+no-operation/output,
 no-operation/no-operation, no-operation/jump-code, no-operation/jump-data,
 jump-code/crazy, jump-code/no-operation, jump-code/jump-code,
 jump-code/jump-data,

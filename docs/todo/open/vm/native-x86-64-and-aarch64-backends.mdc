@@ -191,7 +191,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retained source-plan/sequence-key provenance. It rejects single-step aliasing.
 
   Reviewed fused emission now covers rotate/output, crazy/output,
-  no-operation/output, no-operation/no-operation, no-operation/jump-code,
+  crazy/jump-data, no-operation/output, no-operation/no-operation,
+  no-operation/jump-code,
   no-operation/jump-data, jump-code/crazy, jump-code/no-operation,
   jump-code/jump-code, jump-code/jump-data, jump-code/output, jump-code/rotate,
   jump-data/crazy, jump-data/no-operation,
