@@ -54,6 +54,12 @@ conflict with
 zero generation deletion, and durable journal retention after reclamation
 rejection.
 
+Caller-directed bounded retry now wraps that guarded transition. Each conflict
+feeds its exact typed current journal into caller reconciliation before another
+attempt; exhausted conflict remains terminal evidence. Callback failure and
+every committed journal or cleanup outcome stop immediately, so the runtime
+still chooses no merge, backoff, ordering, or retention policy.
+
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
 manifest generation. A crash before manifest replacement can still leave

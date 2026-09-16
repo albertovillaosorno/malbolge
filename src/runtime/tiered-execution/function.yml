@@ -538,6 +538,12 @@ parts:
     language: rust
     responsibility: >-
       Durably transition pair retention before guarded generation reclamation.
+  - id: part-0101
+    path: composition/pair_reclaim_retry.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Reconcile and retry guarded retention/reclamation journal conflicts.
 projects: []
 tests: []
 graph:

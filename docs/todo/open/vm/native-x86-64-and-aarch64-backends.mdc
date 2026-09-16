@@ -912,6 +912,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   successful cleanup, stale conflict with zero deletion, and durable journal
   retention after reclamation rejection.
 
+  Caller-directed bounded retry now wraps that transition. Only prepublication
+  journal conflict retries; each typed conflict becomes the next reconciliation
+  callback input, while exhausted conflict remains terminal evidence. Callback
+  failure and every committed journal or reclamation outcome stop immediately;
+  merge, ordering, backoff, and retention policy remain caller-owned.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

@@ -1084,6 +1084,11 @@ journal conflict with no generation deletion, and durable journal retention
 after reclamation rejection. The transition still chooses no
 retention set, retry policy, ordering, or cleanup schedule.
 
+A caller-directed bounded retry layer now wraps only the conflict path. Exact
+typed conflict retention becomes the next callback input; exhausted conflict is
+terminal evidence. Callback failure and every committed journal or reclamation
+outcome stop immediately, so retry adds no implicit merge or backoff policy.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS
