@@ -1669,6 +1669,15 @@ struct JumpCodeNoopAliasInvocation<'fixture> {
     programs: &'fixture [RegionEffectProgram],
 }
 
+struct JumpCodeOutputAliasInvocation<'fixture> {
+    expected_memory: &'fixture [u32],
+    expected_output: &'fixture [u8],
+    initial_memory: &'fixture [u32],
+    input: &'fixture [u8],
+    isa: HostIsa,
+    programs: &'fixture [RegionEffectProgram],
+}
+
 struct JumpDataOutputAliasInvocation<'fixture> {
     expected_memory: &'fixture [u32],
     expected_output: &'fixture [u8],
@@ -15452,6 +15461,103 @@ fn direct_jump_code_no_operation_sequence_programs()
         .collect()
 }
 
+fn direct_jump_code_output_sequence_state()
+-> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("jump-code/output base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let jump_code_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'i'))
+        .ok_or_else(|| String::from("phase-five jump-code cell missing"))?;
+    *memory.get_mut(5).ok_or_else(|| {
+        String::from("jump-code/output code cell 5 missing")
+    })? = jump_code_cell;
+    *memory.get_mut(8).ok_or_else(|| {
+        String::from("jump-code/output data cell 8 missing")
+    })? = 10;
+    *memory.get_mut(10).ok_or_else(|| {
+        String::from("jump-code/output target cell 10 missing")
+    })? = 35;
+    let output_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 11) == Some(b'<'))
+        .ok_or_else(|| String::from("phase-eleven output cell missing"))?;
+    *memory.get_mut(11).ok_or_else(|| {
+        String::from("jump-code/output code cell 11 missing")
+    })? = output_cell;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("jump-code/output IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x00ab_cdef,
+            code_pointer: 5,
+            data_pointer: 8,
+        },
+        io,
+    )
+    .map_err(|error| format!("jump-code/output state: {error}"))
+}
+
+fn direct_jump_code_output_alias_state() -> Result<ProfileMachineState, String>
+{
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("jump-code/output alias base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let jump_code_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'i'))
+        .ok_or_else(|| String::from("phase-five alias jump-code missing"))?;
+    *memory.get_mut(5).ok_or_else(|| {
+        String::from("jump-code/output alias code 5 missing")
+    })? = jump_code_cell;
+    *memory.get_mut(49).ok_or_else(|| {
+        String::from("jump-code/output alias target 49 missing")
+    })? = 35;
+    *memory.get_mut(50).ok_or_else(|| {
+        String::from("jump-code/output alias data 50 missing")
+    })? = 49;
+    if decode_profile_instruction(49, 50) != Some(b'<') {
+        return Err(String::from("jump-code/output alias cell is not output"));
+    }
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("jump-code/output alias IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x00ab_cdef,
+            code_pointer: 5,
+            data_pointer: 50,
+        },
+        io,
+    )
+    .map_err(|error| format!("jump-code/output alias state: {error}"))
+}
+
+fn direct_jump_code_output_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_jump_code_output_sequence_state()?,
+    );
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("jump-code/output trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("jump-code/output outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| format!("jump-code/output projection: {error:?}"),
+            )
+        })
+        .collect()
+}
+
 fn direct_jump_data_output_sequence_state()
 -> Result<ProfileMachineState, String> {
     let base =
@@ -17474,6 +17580,53 @@ fn verify_jump_code_noop_alias_invocation(
     Ok(())
 }
 
+fn verify_jump_code_output_alias_invocation(
+    fixture: &JumpCodeOutputAliasInvocation<'_>,
+) -> Result<(), String> {
+    let plan = select_verified_direct_sequence(
+        fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        fixture.isa,
+    )
+    .map_err(|error| format!("jump-code/output alias select: {error}"))?;
+    let admission = admit_fused_direct_sequence(&plan)
+        .map_err(|error| format!("jump-code/output alias admit: {error}"))?;
+    if admission.program().memory_live_ins.len() != 3 {
+        return Err(format!(
+            "jump-code/output alias live-ins drifted on {:?}: {:?}",
+            fixture.isa,
+            admission.program().memory_live_ins
+        ));
+    }
+    let candidate = emit_fused_direct_sequence_coff(&admission)
+        .map_err(|error| format!("jump-code/output alias emit: {error}"))?;
+    let artifact = verify_fused_direct_sequence(&candidate, &admission)
+        .map_err(|error| format!("jump-code/output alias verify: {error}"))?;
+    let mut memory = fixture.initial_memory.to_vec();
+    let mut output = vec![0u8; fixture.expected_output.len().max(1)];
+    let mut prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, fixture.input, &mut output),
+    )
+    .map_err(|error| format!("jump-code/output alias prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let completion = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("jump-code/output alias complete: {error}"))?;
+    if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+        || memory != fixture.expected_memory
+        || output.get(..fixture.expected_output.len())
+            != Some(fixture.expected_output)
+    {
+        return Err(format!(
+            "jump-code/output alias diverged from VM on {:?}",
+            fixture.isa
+        ));
+    }
+    Ok(())
+}
+
 fn verify_jump_data_output_alias_invocation(
     fixture: &JumpDataOutputAliasInvocation<'_>,
 ) -> Result<(), String> {
@@ -18370,6 +18523,150 @@ fn fused_jump_code_noop_shared_live_in_matches_vm() -> Result<(), String> {
             programs: &programs,
         };
         verify_jump_code_noop_alias_invocation(&fixture)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_jump_code_output_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_jump_code_output_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("jump-code/output select: {error}"))?;
+        let [jump_code, output] = plan.artifacts() else {
+            return Err(format!(
+                "jump-code/output plan length drifted: {plan:?}"
+            ));
+        };
+        if jump_code.kind() != DirectNativeKind::JumpCode
+            || output.kind() != DirectNativeKind::Output
+        {
+            return Err(format!(
+                "jump-code/output plan kind drifted: {plan:?}"
+            ));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("jump-code/output admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("jump-code/output emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("jump-code/output verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("jump-code/output image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || verified.object() != candidate.object()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!(
+                "jump-code/output fused evidence drifted on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_jump_code_output_invocation_matches_profile_vm() -> Result<(), String>
+{
+    let state = direct_jump_code_output_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("jump-code/output normative: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!(
+            "jump-code/output normative outcome mismatch: {outcome:?}"
+        ));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("jump-code/output projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    let expected_output = normative.output().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("jump-code/out select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("jump-code/out admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("jump-code/out emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("jump-code/out verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0u8; expected_output.len().max(1)];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("jump-code/out prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("jump-code/out complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output.get(..expected_output.len())
+                != Some(expected_output.as_slice())
+        {
+            return Err(format!(
+                "jump-code/output invocation diverged on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_jump_code_output_shared_live_in_matches_vm() -> Result<(), String> {
+    let state = direct_jump_code_output_alias_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("jump-code/output alias run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!(
+            "jump-code/output alias outcome mismatch: {outcome:?}"
+        ));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!("jump-code/output alias projection: {error:?}")
+        })?;
+    let expected_memory = normative.memory().to_vec();
+    let expected_output = normative.output().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let fixture = JumpCodeOutputAliasInvocation {
+            expected_memory: &expected_memory,
+            expected_output: &expected_output,
+            initial_memory: &initial_memory,
+            input: &input,
+            isa,
+            programs: &programs,
+        };
+        verify_jump_code_output_alias_invocation(&fixture)?;
     }
     Ok(())
 }
@@ -19724,6 +20021,10 @@ fn direct_fused_sequence_jump_drift_cases()
         (
             "jump-data/output",
             direct_jump_data_output_sequence_programs()?,
+        ),
+        (
+            "jump-code/output",
+            direct_jump_code_output_sequence_programs()?,
         ),
         (
             "jump-code/data",
