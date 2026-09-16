@@ -131,6 +131,8 @@ pub mod native_retry;
 pub mod pair_retention_journal;
 #[path = "pair_reclaim.rs"]
 pub mod pair_retention_reclamation;
+#[path = "pair_reclaim_cas.rs"]
+pub mod pair_retention_reclamation_transition;
 #[path = "pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
 #[path = "tier/retry_cycle.rs"]

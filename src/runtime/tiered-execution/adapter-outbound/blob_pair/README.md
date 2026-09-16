@@ -43,6 +43,17 @@ empty journal authorizes removal of every superseded generation except current.
 Two host-real cases cover the missing-journal no-op and exact preserved revision
 behavior from a present durable journal.
 
+
+A separate guarded transition now updates retention before cleanup. It compares
+canonical journal bytes, confirms journal directory durability after commit, and
+only then reclaims generations using the replacement retention. Conflict never
+deletes; journal durability failure stops before reclamation, while a durable
+journal plus pre-deletion reclamation rejection remains committed journal
+evidence. Three host-real cases cover durable transition cleanup, stale
+conflict with
+zero generation deletion, and durable journal retention after reclamation
+rejection.
+
 Shared reader locking makes explicit generation reclamation safe: the exclusive
 reclaimer cannot proceed while a cooperating reader still depends on an older
 manifest generation. A crash before manifest replacement can still leave

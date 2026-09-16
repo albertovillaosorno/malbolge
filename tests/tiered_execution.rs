@@ -131,6 +131,8 @@ pub mod native_retry;
 pub mod pair_retention_journal;
 #[path = "../src/runtime/tiered-execution/composition/pair_reclaim.rs"]
 pub mod pair_retention_reclamation;
+#[path = "../src/runtime/tiered-execution/composition/pair_reclaim_cas.rs"]
+pub mod pair_retention_reclamation_transition;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
@@ -824,6 +826,11 @@ use pair_retention_journal::{
 use pair_retention_reclamation::{
     NativeContinuationFileBlobPairJournalReclamation,
     reclaim_file_blob_pair_from_retention_journal,
+};
+use pair_retention_reclamation_transition::{
+    NativeContinuationFileBlobPairJournalTransition,
+    NativeContinuationFileBlobPairJournalTransitionRequest,
+    transition_file_blob_pair_retention_and_reclaim,
 };
 use pair_retention_reconciliation::{
     NativeContinuationFileBlobPairRetentionReconcileError,
@@ -53162,6 +53169,25 @@ fn cached_retry_file_blob_pair_retention_reconciliation_stops_on_commit()
     }
 }
 
+fn restore_test_file_blob_pair_retention(
+    journal: &mut NativeContinuationFileBlobStore,
+    maximum_bytes: NonZeroUsize,
+) -> Result<
+    NativeContinuationBlobPairRetention<NativeContinuationFileBlobPairRevision>,
+    String,
+> {
+    let restored =
+        restore_file_blob_pair_retention_journal(journal, maximum_bytes)
+            .map_err(|error| format!("transition restore failed: {error:?}"))?;
+    let NativeContinuationFileBlobPairRetentionJournalLoad::Present {
+        retention,
+    } = restored
+    else {
+        return Err(String::from("transition journal disappeared"));
+    };
+    Ok(retention)
+}
+
 fn setup_retention_reclamation_pair(
     fixture: &TestTelemetryFileStoreFixture,
     coordination: &NativeContinuationFileCoordination,
@@ -53184,6 +53210,182 @@ fn setup_retention_reclamation_pair(
         maximum_bytes,
     )?;
     Ok((pair, preserved))
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_transition_reclaims_after_durable()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("retention-transition")?;
+    let maximum_bytes =
+        nonzero_test_limit(4_096, "retention transition bytes")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let (mut pair, preserved) = setup_retention_reclamation_pair(
+        &fixture,
+        &coordination,
+        maximum_bytes,
+    )?;
+    write_file_blob_pair_generation(
+        &fixture,
+        98,
+        98,
+        (b"orphan-first", b"orphan-second"),
+    )?;
+    let initial = test_file_blob_pair_retention(&[]);
+    let replacement = test_file_blob_pair_retention(&[preserved]);
+    let mut journal = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("retention.bin"),
+        coordination.clone(),
+    );
+    let _initial_write = persist_file_blob_pair_retention_journal_durably(
+        &mut journal,
+        &initial,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("transition setup journal failed: {error:?}"))?;
+    let outcome = transition_file_blob_pair_retention_and_reclaim(
+        &coordination,
+        &mut journal,
+        &mut pair,
+        NativeContinuationFileBlobPairJournalTransitionRequest::new(
+            Some(&initial),
+            &replacement,
+            maximum_bytes,
+        ),
+    )
+    .map_err(|error| format!("retention transition failed: {error:?}"))?;
+    let NativeContinuationFileBlobPairJournalTransition::Reclaimed {
+        reclamation,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("retention transition did not reclaim"));
+    };
+    let retention =
+        restore_test_file_blob_pair_retention(&mut journal, maximum_bytes)?;
+    let result = if retention == replacement && reclamation.removed().len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable journal transition evidence drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_transition_keeps_durable_on_reject()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("retention-transition-reject")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "transition reject bytes")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let (mut pair, preserved) = setup_retention_reclamation_pair(
+        &fixture,
+        &coordination,
+        maximum_bytes,
+    )?;
+    fs::write(&fixture.destination, [0u8; 24])
+        .map_err(|error| format!("cannot corrupt pair manifest: {error}"))?;
+    let initial = test_file_blob_pair_retention(&[]);
+    let replacement = test_file_blob_pair_retention(&[preserved]);
+    let mut journal = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("retention.bin"),
+        coordination.clone(),
+    );
+    let _initial_write = persist_file_blob_pair_retention_journal_durably(
+        &mut journal,
+        &initial,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("reject setup journal failed: {error:?}"))?;
+    let outcome = transition_file_blob_pair_retention_and_reclaim(
+        &coordination,
+        &mut journal,
+        &mut pair,
+        NativeContinuationFileBlobPairJournalTransitionRequest::new(
+            Some(&initial),
+            &replacement,
+            maximum_bytes,
+        ),
+    )
+    .map_err(|error| format!("transition rejection failed: {error:?}"))?;
+    let retained =
+        restore_test_file_blob_pair_retention(&mut journal, maximum_bytes)?;
+    let valid = matches!(
+        outcome,
+        NativeContinuationFileBlobPairJournalTransition::ReclamationRejected {
+            error: NativeContinuationFileBlobPairReclamationError::Store(
+                NativeContinuationFileBlobPairStoreError::ManifestMagic,
+            ),
+            ..
+        }
+    ) && retained == replacement;
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("reclamation rejection lost durable journal"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_blob_pair_retention_transition_conflict_does_not_reclaim()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("retention-transition-conflict")?;
+    let maximum_bytes = nonzero_test_limit(4_096, "transition conflict bytes")?;
+    let coordination = NativeContinuationFileCoordination::new(
+        fixture.directory.join("runtime.coordination.lock"),
+    );
+    let (mut pair, _preserved) = setup_retention_reclamation_pair(
+        &fixture,
+        &coordination,
+        maximum_bytes,
+    )?;
+    let current =
+        test_file_blob_pair_retention(&[test_file_blob_pair_revision(70, 1)?]);
+    let stale = test_file_blob_pair_retention(&[]);
+    let replacement =
+        test_file_blob_pair_retention(&[test_file_blob_pair_revision(70, 2)?]);
+    let mut journal = NativeContinuationFileBlobStore::with_coordination(
+        fixture.directory.join("retention.bin"),
+        coordination.clone(),
+    );
+    let _initial_write = persist_file_blob_pair_retention_journal_durably(
+        &mut journal,
+        &current,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("conflict setup journal failed: {error:?}"))?;
+    let before = file_blob_pair_generation_members(&fixture.directory)?.len();
+    let outcome = transition_file_blob_pair_retention_and_reclaim(
+        &coordination,
+        &mut journal,
+        &mut pair,
+        NativeContinuationFileBlobPairJournalTransitionRequest::new(
+            Some(&stale),
+            &replacement,
+            maximum_bytes,
+        ),
+    )
+    .map_err(|error| format!("transition conflict failed: {error:?}"))?;
+    let after = file_blob_pair_generation_members(&fixture.directory)?.len();
+    let valid = matches!(
+        outcome,
+        NativeContinuationFileBlobPairJournalTransition::Conflict {
+            current: Some(observed),
+        } if observed == current
+    ) && before == after;
+    let result = if valid {
+        Ok(())
+    } else {
+        Err(String::from("transition conflict touched pair generations"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

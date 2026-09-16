@@ -897,9 +897,20 @@ synchronization, and hardening remain adapters rather than VM semantics.
   pair-generation reclamation. Each requires one matching exclusive guard and
   rejects foreign guard identity before state access or deletion. One host-real
   case spans blob CAS/load and pair reclamation under one acquisition; another
-  proves both adapters reject a foreign guard. Journal-driven reclamation can
-  now use this primitive, but the cross-object orchestration itself remains
-  pending.
+  proves both adapters reject a foreign guard.
+
+  Journal-driven reclamation is now implemented under that shared guard. Missing
+  journal state performs no deletion, while a present canonical journal supplies
+  the exact preservation set for one reclamation pass. Two host-real cases cover
+  missing-journal safety and exact durable preservation.
+
+  A separate one-shot transition now CASes the canonical retention journal,
+  confirms journal durability, and only then reclaims using the replacement
+  retention under the same guard. Conflict cannot delete; journal durability
+  failure stops before cleanup, and durable journal publication plus reclamation
+  rejection remains committed journal evidence. Three host-real cases cover
+  successful cleanup, stale conflict with zero deletion, and durable journal
+  retention after reclamation rejection.
 
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and

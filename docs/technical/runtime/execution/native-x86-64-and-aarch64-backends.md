@@ -1071,6 +1071,19 @@ superseded generation except current. Two host-real cases cover missing-journal
 no-op and exact durable preservation from a present journal; the adapters still
 expose no retention-selection policy.
 
+
+A separate guarded transition now advances durable retention before cleanup.
+It performs canonical journal CAS under the same exclusive guard, confirms
+journal-directory durability after publication, and only then invokes exact
+pair-generation reclamation. Conflict is non-mutating; failed journal durability
+stops before deletion, while durable journal publication followed by a
+pre-deletion reclamation rejection is returned as committed journal evidence.
+
+Three host-real cases cover successful durable transition/reclamation, stale
+journal conflict with no generation deletion, and durable journal retention
+after reclamation rejection. The transition still chooses no
+retention set, retry policy, ordering, or cleanup schedule.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

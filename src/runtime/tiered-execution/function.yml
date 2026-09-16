@@ -532,6 +532,12 @@ parts:
     language: rust
     responsibility: >-
       Reclaim filesystem pair generations from durable retention under one lock.
+  - id: part-0100
+    path: composition/pair_reclaim_cas.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Durably transition pair retention before guarded generation reclamation.
 projects: []
 tests: []
 graph:
