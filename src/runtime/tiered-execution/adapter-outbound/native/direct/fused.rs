@@ -47,12 +47,12 @@ use super::super::fused_sequence::{
 use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
     CoffAdmissionError, DirectCodeWriteCommit, DirectCrazyProgram,
-    DirectEntryObservation, DirectFusedNoOperationCrazyTemplate,
-    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedRotateNoOperationTemplate,
-    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
-    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
-    DirectRotateProgram, HostIsa, HostOperatingSystem,
+    DirectEntryObservation, DirectFusedCrazyNoOperationTemplate,
+    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
+    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
+    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
+    DirectFusedRotatePairTemplate, DirectNativeKind, DirectNoOperationProgram,
+    DirectOutputProgram, DirectRotateProgram, HostIsa, HostOperatingSystem,
     NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
     aarch64, structurally_admit_coff, target_triple, validate_crazy_program,
@@ -61,6 +61,7 @@ use super::{
 };
 
 enum FusedSelection {
+    CrazyNoOperation(DirectCrazyProgram, DirectNoOperationProgram),
     NoOperationCrazy(DirectNoOperationProgram, DirectCrazyProgram),
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
@@ -224,6 +225,14 @@ fn canonical_fused_coff(
     let observation = direct_entry_observation(admission.source_plan().entry())
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
     let text = match selection {
+        FusedSelection::CrazyNoOperation(crazy, no_operation) => {
+            fused_crazy_no_operation_text(
+                admission,
+                observation,
+                crazy,
+                no_operation,
+            )
+        },
         FusedSelection::NoOperationCrazy(no_operation, crazy) => {
             fused_no_operation_crazy_text(
                 admission,
@@ -269,6 +278,25 @@ fn canonical_fused_coff(
     .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
     build_minimal_coff(admission.key(), &text)
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
+}
+
+fn fused_crazy_no_operation_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    crazy: DirectCrazyProgram,
+    no_operation: DirectNoOperationProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedCrazyNoOperationTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: no_operation_commit(no_operation),
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_crazy_no_operation_code(template),
+        HostIsa::X86_64 => x86_64::fused_crazy_no_operation_code(template),
+    }
 }
 
 fn fused_no_operation_crazy_text(
@@ -458,12 +486,21 @@ fn select_fused_shape(
     }
 }
 
-fn select_non_output_shape(
+fn select_crazy_shape(
     first_kind: DirectNativeKind,
     second_kind: DirectNativeKind,
     first_program: &RegionEffectProgram,
     second_program: &RegionEffectProgram,
 ) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind == DirectNativeKind::Crazy
+        && second_kind == DirectNativeKind::NoOperation
+    {
+        let crazy = validate_crazy_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let no_operation = validate_no_operation_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::CrazyNoOperation(crazy, no_operation)));
+    }
     if first_kind == DirectNativeKind::NoOperation
         && second_kind == DirectNativeKind::Crazy
     {
@@ -472,6 +509,23 @@ fn select_non_output_shape(
         let crazy = validate_crazy_program(second_program)
             .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
         return Ok(Some(FusedSelection::NoOperationCrazy(no_operation, crazy)));
+    }
+    Ok(None)
+}
+
+fn select_non_output_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if let Some(selection) = select_crazy_shape(
+        first_kind,
+        second_kind,
+        first_program,
+        second_program,
+    )? {
+        return Ok(Some(selection));
     }
     if first_kind == DirectNativeKind::NoOperation
         && second_kind == DirectNativeKind::NoOperation
