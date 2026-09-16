@@ -931,6 +931,20 @@ fn push_fused_no_operation_output_commit(
     Some(())
 }
 
+/// Encodes one atomic two-step rotate/crazy fused region.
+#[must_use]
+pub(super) fn fused_rotate_crazy_code(
+    template: super::direct::DirectFusedRotateCrazyTemplate<'_>,
+) -> Option<Vec<u8>> {
+    fused_rotate_pair_code(DirectFusedRotatePairTemplate {
+        first: template.rotate,
+        live_ins: template.live_ins,
+        observation: template.observation,
+        required_memory_words: template.required_memory_words,
+        second: template.crazy,
+    })
+}
+
 /// Encodes one atomic two-step rotate/no-operation fused region.
 #[must_use]
 pub(super) fn fused_rotate_no_operation_code(

@@ -70,6 +70,7 @@ enum FusedSelection {
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
+    RotateCrazy(DirectRotateProgram, DirectCrazyProgram),
     RotateNoOperation(DirectRotateProgram, DirectNoOperationProgram),
     RotateOutput(DirectRotateProgram, DirectOutputProgram),
     RotatePair(DirectRotateProgram, DirectRotateProgram),
@@ -281,6 +282,9 @@ fn canonical_fused_text(
                 rotate,
             )
         },
+        FusedSelection::RotateCrazy(rotate, crazy) => {
+            fused_rotate_crazy_text(admission, observation, rotate, crazy)
+        },
         FusedSelection::RotateNoOperation(rotate, no_operation) => {
             fused_rotate_no_operation_text(
                 admission,
@@ -428,6 +432,25 @@ fn fused_no_operation_rotate_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_no_operation_rotate_code(template),
         HostIsa::X86_64 => x86_64::fused_no_operation_rotate_code(template),
+    }
+}
+
+fn fused_rotate_crazy_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    rotate: DirectRotateProgram,
+    crazy: DirectCrazyProgram,
+) -> Option<Vec<u8>> {
+    let template = super::DirectFusedRotateCrazyTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_rotate_crazy_code(template),
+        HostIsa::X86_64 => x86_64::fused_rotate_crazy_code(template),
     }
 }
 
@@ -619,28 +642,55 @@ fn select_non_output_shape(
             rotate,
         )));
     }
-    if first_kind == DirectNativeKind::Rotate
-        && second_kind == DirectNativeKind::NoOperation
-    {
-        let rotate = validate_rotate_program(first_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let no_operation = validate_no_operation_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(Some(FusedSelection::RotateNoOperation(
-            rotate,
-            no_operation,
-        )));
+    select_rotate_shape(first_kind, second_kind, first_program, second_program)
+}
+
+fn select_rotate_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind != DirectNativeKind::Rotate {
+        return Ok(None);
     }
-    if first_kind == DirectNativeKind::Rotate
-        && second_kind == DirectNativeKind::Rotate
-    {
-        let first = validate_rotate_program(first_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let second = validate_rotate_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(Some(FusedSelection::RotatePair(first, second)));
+    let rotate = validate_rotate_program(first_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    match second_kind {
+        DirectNativeKind::Crazy => {
+            let crazy =
+                validate_crazy_program(second_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::RotateCrazy(rotate, crazy)))
+        },
+        DirectNativeKind::NoOperation => {
+            let no_operation = validate_no_operation_program(second_program)
+                .map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::RotateNoOperation(
+                rotate,
+                no_operation,
+            )))
+        },
+        DirectNativeKind::Rotate => {
+            let second =
+                validate_rotate_program(second_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::RotatePair(rotate, second)))
+        },
+        DirectNativeKind::Deopt
+        | DirectNativeKind::HaltFetch
+        | DirectNativeKind::HaltRegisters
+        | DirectNativeKind::InitialHalt
+        | DirectNativeKind::Input
+        | DirectNativeKind::JumpCode
+        | DirectNativeKind::JumpData
+        | DirectNativeKind::NonGraphical
+        | DirectNativeKind::Output => Ok(None),
     }
-    Ok(None)
 }
 
 const fn no_operation_commit(

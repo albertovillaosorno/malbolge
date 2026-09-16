@@ -311,11 +311,11 @@ live-ins; a distinct revision-1 fused target binds the region-wide
 `NativeArtifactKey`, while the complete source plan and ordered sequence key
 remain provenance. Single-step plans are rejected.
 
-The fused emitter now covers ten reviewed two-step regions on x86-64 and
+The fused emitter now covers eleven reviewed two-step regions on x86-64 and
 AArch64: rotate/output, crazy/output, no-operation/output,
 no-operation/no-operation, no-operation/rotate, no-operation/crazy,
-crazy/no-operation, crazy/crazy, rotate/no-operation, and rotate/rotate. Every
-fused guard
+crazy/no-operation, crazy/crazy, rotate/no-operation, rotate/crazy, and
+rotate/rotate. Every fused guard
 completes before
 the first store,
 including region-entry live-ins and output capacity where output is present.
@@ -326,8 +326,8 @@ publishing only the final region register state, without exposing an
 intermediate one-step observation.
 
 VM-derived traces exercise all six reviewed no-operation-containing templates
-plus crazy/output, crazy/crazy, and rotate/rotate on both ISAs through
-emission, semantic promotion,
+plus crazy/output, crazy/crazy, rotate/crazy, and rotate/rotate on both ISAs
+through emission, semantic promotion,
 relocation-free load-image extraction, and whole-region state comparison with
 the profile VM.
 
@@ -1312,7 +1312,8 @@ jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; atomic fused rotate/output,
 no-operation/output, no-operation/no-operation, no-operation/rotate,
 no-operation/crazy, crazy/no-operation, crazy/output, crazy/crazy,
-rotate/no-operation, and rotate/rotate objects are also emitted, independently
+rotate/no-operation, rotate/crazy, and rotate/rotate objects are also emitted,
+independently
 verified, and
 extracted as relocation-free load images on both ISAs, with dedicated safe
 lifecycle

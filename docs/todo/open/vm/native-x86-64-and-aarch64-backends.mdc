@@ -192,15 +192,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Reviewed fused emission now covers rotate/output, crazy/output,
   no-operation/output, no-operation/no-operation, no-operation/rotate,
-  no-operation/crazy, crazy/no-operation, crazy/crazy, rotate/no-operation, and
-  rotate/rotate on x86-64 and AArch64.
+  no-operation/crazy, crazy/no-operation, crazy/crazy, rotate/no-operation,
+  rotate/crazy, and rotate/rotate on x86-64 and AArch64.
   Each candidate completes its applicable region-entry live-in, termination,
   memory-capacity, and output-capacity guards before every store. Semantic
   promotion reconstructs admission, structurally admits COFF, regenerates the
   canonical object, and rejects text-byte drift. VM-derived traces for every
-  reviewed no-operation-containing shape plus crazy/output, crazy/crazy, and
-  rotate/rotate exercise both ISAs through emission, promotion, relocation-free
-  load-image extraction, and whole-region state comparison with the profile VM.
+  reviewed no-operation-containing shape plus crazy/output, crazy/crazy,
+  rotate/crazy, and rotate/rotate exercise both ISAs through emission,
+  promotion, relocation-free load-image extraction, and whole-region state
+  comparison with the profile VM.
 
   A distinct fused load-image type now extracts relocation-free code, rejects
   machine drift or relocations, validates ISA alignment, and retains the strict
