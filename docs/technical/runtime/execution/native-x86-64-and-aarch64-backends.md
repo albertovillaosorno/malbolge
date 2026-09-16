@@ -311,9 +311,10 @@ live-ins; a distinct revision-1 fused target binds the region-wide
 `NativeArtifactKey`, while the complete source plan and ordered sequence key
 remain provenance. Single-step plans are rejected.
 
-The fused emitter now covers five reviewed two-step regions on x86-64 and
+The fused emitter now covers six reviewed two-step regions on x86-64 and
 AArch64: rotate/output, no-operation/output, no-operation/no-operation,
-no-operation/rotate, and rotate/no-operation. Every fused guard completes before
+no-operation/rotate, rotate/no-operation, and rotate/rotate. Every fused guard
+completes before
 the first store,
 including region-entry live-ins and output capacity where output is present.
 Independent semantic promotion reconstructs admission, structurally admits COFF,
@@ -322,9 +323,10 @@ no-operation-containing templates preserve ordered guest-memory writes while
 publishing only the final region register state, without exposing an
 intermediate one-step observation.
 
-VM-derived traces exercise all four reviewed no-operation-containing
-templates on both ISAs through emission, semantic promotion, relocation-free
-load-image extraction, and whole-region state comparison with the profile VM.
+VM-derived traces exercise all four reviewed no-operation-containing templates
+plus rotate/rotate on both ISAs through emission, semantic promotion,
+relocation-free load-image extraction, and whole-region state comparison with
+the profile VM.
 
 `VerifiedDirectFusedLoadImage` now extracts the relocation-free fused entry
 without granting execution authority. It retains exact key/triple identity,
@@ -1305,8 +1307,9 @@ Clang-produced structurally admitted COFF remains semantically untrusted.
 Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; atomic fused rotate/output,
-no-operation/output, no-operation/no-operation, no-operation/rotate, and
-rotate/no-operation objects are also emitted, independently verified, and
+no-operation/output, no-operation/no-operation, no-operation/rotate,
+rotate/no-operation, and rotate/rotate objects are also emitted, independently
+verified, and
 extracted as relocation-free load images on both ISAs, with dedicated safe
 lifecycle
 typestates, transactional platform loading through synchronized RX readiness,

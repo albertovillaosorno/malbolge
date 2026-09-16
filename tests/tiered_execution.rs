@@ -14570,6 +14570,66 @@ fn direct_no_operation_rotate_sequence_programs()
         .collect()
 }
 
+fn direct_rotate_pair_sequence_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("rotate pair base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    for code_pointer in [5u32, 6u32] {
+        let cell = (33u32..=126u32)
+            .find(|cell| {
+                decode_profile_instruction(*cell, code_pointer) == Some(b'*')
+            })
+            .ok_or_else(|| {
+                format!("rotate pair cell missing at {code_pointer}")
+            })?;
+        let code_index = usize::try_from(code_pointer)
+            .map_err(|error| format!("rotate pair code index: {error}"))?;
+        *memory.get_mut(code_index).ok_or_else(|| {
+            format!("rotate pair code cell {code_pointer} missing")
+        })? = cell;
+    }
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("rotate pair data cell 7 missing"))? = 10;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("rotate pair data cell 8 missing"))? = 20;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("rotate pair IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("rotate pair state: {error}"))
+}
+
+fn direct_rotate_pair_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_rotate_pair_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("rotate pair trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("rotate pair outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("rotate pair projection: {error:?}"))
+        })
+        .collect()
+}
+
 fn direct_rotate_no_operation_sequence_state()
 -> Result<ProfileMachineState, String> {
     let base =
@@ -15290,6 +15350,97 @@ fn fused_noop_rotate_invocation_matches_profile_vm() -> Result<(), String> {
 }
 
 #[test]
+fn fused_rotate_pair_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_rotate_pair_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("rotate pair select: {error}"))?;
+        let [first, second] = plan.artifacts() else {
+            return Err(format!("rotate pair plan length drifted: {plan:?}"));
+        };
+        if first.kind() != DirectNativeKind::Rotate
+            || second.kind() != DirectNativeKind::Rotate
+        {
+            return Err(format!("rotate pair plan kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("rotate pair admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("rotate pair emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("rotate pair verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("rotate pair image: {error}"))?;
+        if verified.admission() != &admission
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!("rotate pair evidence drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_rotate_pair_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_rotate_pair_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("rotate pair normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("rotate pair normative outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("rotate pair projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("rotate pair invoke select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("rotate pair invoke admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("rotate pair invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("rotate pair invoke verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0x5au8];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("rotate pair invoke prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("rotate pair invoke complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != [0x5a]
+        {
+            return Err(format!("rotate pair diverged from VM on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn fused_rotate_noop_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_rotate_no_operation_sequence_programs()?;
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
@@ -15575,6 +15726,7 @@ fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
             "rotate/no-op",
             direct_rotate_no_operation_sequence_programs()?,
         ),
+        ("rotate/rotate", direct_rotate_pair_sequence_programs()?),
     ];
     for (label, programs) in cases {
         for isa in [HostIsa::X86_64, HostIsa::AArch64] {

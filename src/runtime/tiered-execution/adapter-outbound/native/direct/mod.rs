@@ -432,6 +432,15 @@ pub(super) struct DirectFusedRotateNoOperationTemplate<'live_ins> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedRotatePairTemplate<'live_ins> {
+    pub(super) first: DirectRotateCommit,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+    pub(super) second: DirectRotateCommit,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedRotateOutputTemplate<'live_ins> {
     pub(super) live_ins: &'live_ins [MemoryLiveIn],
     pub(super) observation: DirectEntryObservation,

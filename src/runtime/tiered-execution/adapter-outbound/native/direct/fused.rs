@@ -49,12 +49,13 @@ use super::{
     CoffAdmissionError, DirectCodeWriteCommit, DirectEntryObservation,
     DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
     DirectFusedNoOperationRotateTemplate, DirectFusedRotateNoOperationTemplate,
-    DirectFusedRotateOutputTemplate, DirectNativeKind,
-    DirectNoOperationProgram, DirectOutputProgram, DirectRotateProgram,
-    HostIsa, HostOperatingSystem, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactKey, StructurallyAdmittedNativeObjectArtifact,
-    UntrustedNativeObjectArtifact, aarch64, structurally_admit_coff,
-    target_triple, validate_no_operation_program, validate_output_program,
+    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
+    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
+    DirectRotateProgram, HostIsa, HostOperatingSystem,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
+    StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
+    aarch64, structurally_admit_coff, target_triple,
+    validate_no_operation_program, validate_output_program,
     validate_rotate_program, x86_64,
 };
 
@@ -64,6 +65,7 @@ enum FusedSelection {
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
     RotateNoOperation(DirectRotateProgram, DirectNoOperationProgram),
     RotateOutput(DirectRotateProgram, DirectOutputProgram),
+    RotatePair(DirectRotateProgram, DirectRotateProgram),
 }
 
 /// Failure while emitting or verifying one reviewed fused direct object.
@@ -247,6 +249,9 @@ fn canonical_fused_coff(
                 no_operation,
             )
         },
+        FusedSelection::RotatePair(first, second) => {
+            fused_rotate_pair_text(admission, observation, first, second)
+        },
         FusedSelection::RotateOutput(rotate, output) => {
             fused_rotate_output_text(admission, observation, rotate, output)
         },
@@ -329,6 +334,25 @@ fn fused_rotate_no_operation_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_rotate_no_operation_code(template),
         HostIsa::X86_64 => x86_64::fused_rotate_no_operation_code(template),
+    }
+}
+
+fn fused_rotate_pair_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    first: DirectRotateProgram,
+    second: DirectRotateProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedRotatePairTemplate {
+        first: first.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second: second.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_rotate_pair_code(template),
+        HostIsa::X86_64 => x86_64::fused_rotate_pair_code(template),
     }
 }
 
@@ -443,6 +467,15 @@ fn select_non_output_shape(
             rotate,
             no_operation,
         )));
+    }
+    if first_kind == DirectNativeKind::Rotate
+        && second_kind == DirectNativeKind::Rotate
+    {
+        let first = validate_rotate_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let second = validate_rotate_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::RotatePair(first, second)));
     }
     Ok(None)
 }
