@@ -23,7 +23,7 @@
 //   - General direct emission subsumes fused templates without weakening
 //     review.
 // - Summary:
-//   - Emits and verifies the first atomic rotate/output fused native object.
+//   - Emits and verifies reviewed atomic output-ending fused native objects.
 // - Description:
 //   - Reconstructs admission and canonical bytes independently before
 //     promotion.
@@ -44,15 +44,21 @@ use super::super::fused_sequence::{
 };
 use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
-    CoffAdmissionError, DirectFusedRotateOutputTemplate, DirectNativeKind,
-    DirectOutputProgram, DirectRotateProgram, HostIsa, HostOperatingSystem,
+    CoffAdmissionError, DirectCodeWriteCommit,
+    DirectFusedNoOperationOutputTemplate, DirectFusedRotateOutputTemplate,
+    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
+    DirectRotateProgram, HostIsa, HostOperatingSystem,
     NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
-    aarch64, structurally_admit_coff, target_triple, validate_output_program,
+    aarch64, structurally_admit_coff, target_triple,
+    validate_no_operation_program, validate_output_program,
     validate_rotate_program, x86_64,
 };
 
-type FusedRotateOutputSelection = (DirectRotateProgram, DirectOutputProgram);
+enum FusedOutputSelection {
+    NoOperation(DirectNoOperationProgram, DirectOutputProgram),
+    Rotate(DirectRotateProgram, DirectOutputProgram),
+}
 
 /// Failure while emitting or verifying one reviewed fused direct object.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,7 +71,7 @@ pub enum DirectFusedSequenceObjectError {
     Coff(CoffAdmissionError),
     /// Object bytes differ from the canonical fused template.
     ObjectBytes,
-    /// Source sequence is outside the reviewed rotate/output fused subset.
+    /// Source sequence is outside the reviewed fused subsets.
     ProgramShape,
     /// Fused target ABI revision is not the reviewed call-frame contract.
     TargetAbi,
@@ -75,7 +81,7 @@ pub enum DirectFusedSequenceObjectError {
     TargetFormat,
 }
 
-/// Semantically verified atomic fused rotate/output native object.
+/// Semantically verified atomic reviewed fused native object.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedDirectFusedSequenceObjectArtifact {
     admission: DirectFusedSequenceAdmission,
@@ -98,7 +104,7 @@ impl Display for DirectFusedSequenceObjectError {
                 "fused direct sequence object differs from canonical bytes"
             },
             Self::ProgramShape => {
-                "source sequence is outside fused rotate/output subset"
+                "source sequence is outside reviewed fused subsets"
             },
             Self::TargetAbi => {
                 "fused direct sequence target uses unsupported native ABI"
@@ -146,7 +152,7 @@ impl VerifiedDirectFusedSequenceObjectArtifact {
     }
 }
 
-/// Emits one untrusted candidate for the reviewed atomic rotate/output fusion.
+/// Emits one untrusted candidate for a reviewed atomic fused sequence.
 ///
 /// # Errors
 ///
@@ -204,47 +210,101 @@ pub fn verify_fused_direct_sequence(
 fn canonical_fused_coff(
     admission: &DirectFusedSequenceAdmission,
 ) -> Result<Vec<u8>, DirectFusedSequenceObjectError> {
-    let (rotate, output) = select_rotate_output(admission)?;
-    let observation = direct_entry_observation(rotate.observation)
+    let selection = select_fused_output(admission)?;
+    let observation = direct_entry_observation(admission.source_plan().entry())
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
-    let template = DirectFusedRotateOutputTemplate {
-        live_ins: &admission.program().memory_live_ins,
-        observation,
-        output: output.commit,
-        required_memory_words: admission.key().ir().required_memory_words(),
-        rotate: rotate.commit,
-    };
-    let text = match admission.key().target().host_isa() {
-        HostIsa::AArch64 => aarch64::fused_rotate_output_code(template),
-        HostIsa::X86_64 => x86_64::fused_rotate_output_code(template),
+    let text = match selection {
+        FusedOutputSelection::NoOperation(no_operation, output) => {
+            let template = DirectFusedNoOperationOutputTemplate {
+                live_ins: &admission.program().memory_live_ins,
+                no_operation: DirectCodeWriteCommit {
+                    encrypted_address: no_operation.live_in.address,
+                    encrypted_value: no_operation.encrypted_value,
+                    next_code_pointer: no_operation.next_code_pointer,
+                    next_data_pointer: no_operation.next_data_pointer,
+                },
+                observation,
+                output: output.commit,
+                required_memory_words: admission
+                    .key()
+                    .ir()
+                    .required_memory_words(),
+            };
+            match admission.key().target().host_isa() {
+                HostIsa::AArch64 => {
+                    aarch64::fused_no_operation_output_code(template)
+                },
+                HostIsa::X86_64 => {
+                    x86_64::fused_no_operation_output_code(template)
+                },
+            }
+        },
+        FusedOutputSelection::Rotate(rotate, output) => {
+            let template = DirectFusedRotateOutputTemplate {
+                live_ins: &admission.program().memory_live_ins,
+                observation,
+                output: output.commit,
+                required_memory_words: admission
+                    .key()
+                    .ir()
+                    .required_memory_words(),
+                rotate: rotate.commit,
+            };
+            match admission.key().target().host_isa() {
+                HostIsa::AArch64 => aarch64::fused_rotate_output_code(template),
+                HostIsa::X86_64 => x86_64::fused_rotate_output_code(template),
+            }
+        },
     }
     .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
     build_minimal_coff(admission.key(), &text)
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
 }
 
-fn select_rotate_output(
+fn select_fused_output(
     admission: &DirectFusedSequenceAdmission,
-) -> Result<FusedRotateOutputSelection, DirectFusedSequenceObjectError> {
-    let [rotate_program, output_program] = admission.source_plan().programs()
+) -> Result<FusedOutputSelection, DirectFusedSequenceObjectError> {
+    let [first_program, output_program] = admission.source_plan().programs()
     else {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     };
-    let [rotate_artifact, output_artifact] =
-        admission.source_plan().artifacts()
+    let [first_artifact, output_artifact] = admission.source_plan().artifacts()
     else {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     };
-    if rotate_artifact.kind() != DirectNativeKind::Rotate
-        || output_artifact.kind() != DirectNativeKind::Output
-    {
+    if output_artifact.kind() != DirectNativeKind::Output {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     }
-    let rotate = validate_rotate_program(rotate_program)
-        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
     let output = validate_output_program(output_program)
         .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-    Ok((rotate, output))
+    match first_artifact.kind() {
+        DirectNativeKind::NoOperation => {
+            let no_operation = validate_no_operation_program(first_program)
+                .map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(FusedOutputSelection::NoOperation(no_operation, output))
+        },
+        DirectNativeKind::Rotate => {
+            let rotate =
+                validate_rotate_program(first_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(FusedOutputSelection::Rotate(rotate, output))
+        },
+        DirectNativeKind::Crazy
+        | DirectNativeKind::Deopt
+        | DirectNativeKind::HaltFetch
+        | DirectNativeKind::HaltRegisters
+        | DirectNativeKind::InitialHalt
+        | DirectNativeKind::Input
+        | DirectNativeKind::JumpCode
+        | DirectNativeKind::JumpData
+        | DirectNativeKind::NonGraphical
+        | DirectNativeKind::Output => {
+            Err(DirectFusedSequenceObjectError::ProgramShape)
+        },
+    }
 }
 
 fn validate_admission(

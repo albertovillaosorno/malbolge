@@ -398,14 +398,19 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits the retained rotate/output region as one atomic
-x86-64 or AArch64 COFF candidate. Both ISA templates complete every fused
-entry, memory, termination, and output-capacity guard before their first store;
-a miss therefore preserves the original region entry rather than a step prefix.
+`direct/fused.rs` now emits two reviewed two-step regions as atomic x86-64 or
+AArch64 COFF candidates: rotate/output and no-operation/output. Both ISA
+families complete every fused entry, memory, termination, and output-capacity
+guard before their first store; a miss therefore preserves the original region
+entry rather than a step prefix. The no-operation/output shape commits both
+code-cell encryptions plus the final pointers/output state without publishing
+the intermediate no-operation observation.
 
 Semantic promotion reconstructs the fused admission from the retained verified
 source plan, structurally admits COFF, regenerates canonical bytes, and requires
 exact equality. A structurally valid text-byte mutation fails this verifier.
+VM-derived no-operation/output traces exercise both ISAs through emission,
+promotion, and relocation-free load-image extraction.
 
 `VerifiedDirectFusedLoadImage` now reparses only that verified fused object,
 rejects relocations, validates ISA alignment, and retains exact key/triple plus
