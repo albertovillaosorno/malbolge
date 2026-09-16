@@ -61,8 +61,10 @@ use super::{
     validate_rotate_program, x86_64,
 };
 
+#[derive(Clone, Copy)]
 enum FusedSelection {
     CrazyNoOperation(DirectCrazyProgram, DirectNoOperationProgram),
+    CrazyOutput(DirectCrazyProgram, DirectOutputProgram),
     CrazyPair(DirectCrazyProgram, DirectCrazyProgram),
     NoOperationCrazy(DirectNoOperationProgram, DirectCrazyProgram),
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
@@ -226,7 +228,18 @@ fn canonical_fused_coff(
     let selection = select_fused_shape(admission)?;
     let observation = direct_entry_observation(admission.source_plan().entry())
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
-    let text = match selection {
+    let text = canonical_fused_text(admission, observation, &selection)
+        .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
+    build_minimal_coff(admission.key(), &text)
+        .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
+}
+
+fn canonical_fused_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    match *selection {
         FusedSelection::CrazyNoOperation(crazy, no_operation) => {
             fused_crazy_no_operation_text(
                 admission,
@@ -234,6 +247,9 @@ fn canonical_fused_coff(
                 crazy,
                 no_operation,
             )
+        },
+        FusedSelection::CrazyOutput(crazy, output) => {
+            fused_crazy_output_text(admission, observation, crazy, output)
         },
         FusedSelection::CrazyPair(first, second) => {
             fused_crazy_pair_text(admission, observation, first, second)
@@ -280,9 +296,25 @@ fn canonical_fused_coff(
             fused_rotate_output_text(admission, observation, rotate, output)
         },
     }
-    .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
-    build_minimal_coff(admission.key(), &text)
-        .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
+}
+
+fn fused_crazy_output_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    crazy: DirectCrazyProgram,
+    output: DirectOutputProgram,
+) -> Option<Vec<u8>> {
+    let template = super::DirectFusedCrazyOutputTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        output: output.commit,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_crazy_output_code(template),
+        HostIsa::X86_64 => x86_64::fused_crazy_output_code(template),
+    }
 }
 
 fn fused_crazy_pair_text(
@@ -495,8 +527,14 @@ fn select_fused_shape(
                 })?;
             Ok(FusedSelection::RotateOutput(rotate, output))
         },
-        DirectNativeKind::Crazy
-        | DirectNativeKind::Deopt
+        DirectNativeKind::Crazy => {
+            let crazy =
+                validate_crazy_program(first_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(FusedSelection::CrazyOutput(crazy, output))
+        },
+        DirectNativeKind::Deopt
         | DirectNativeKind::HaltFetch
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
