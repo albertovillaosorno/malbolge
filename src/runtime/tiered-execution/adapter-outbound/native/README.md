@@ -398,20 +398,22 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits three reviewed two-step regions as atomic x86-64
-or AArch64 COFF candidates: rotate/output, no-operation/output, and
-no-operation/no-operation. Both ISA families complete every applicable fused
-entry, memory, termination, and output-capacity guard before their first store;
-a miss therefore preserves the original region entry rather than a step prefix.
-The no-operation templates commit their code-cell encryptions plus only the
-final region state, without publishing an intermediate one-step observation.
+`direct/fused.rs` now emits four reviewed two-step regions as atomic x86-64
+or AArch64 COFF candidates: rotate/output, no-operation/output,
+no-operation/no-operation, and no-operation/rotate. Both ISA families complete
+every applicable fused entry, memory, termination, and output-capacity guard
+before their first store; a miss therefore preserves the original region entry
+rather than a step prefix. The no-operation-led templates commit their
+code-cell encryption plus only the final region state, without publishing an
+intermediate one-step observation.
 
 Semantic promotion reconstructs the fused admission from the retained verified
 source plan, structurally admits COFF, regenerates canonical bytes, and requires
 exact equality. A structurally valid text-byte mutation fails this verifier.
-VM-derived no-operation/output and no-operation/no-operation traces exercise
-both ISAs through emission, promotion, relocation-free load-image extraction,
-and whole-region state comparison with the profile VM.
+VM-derived no-operation/output, no-operation/no-operation, and
+no-operation/rotate traces exercise both ISAs through emission, promotion,
+relocation-free load-image extraction, and whole-region state comparison with
+the profile VM.
 
 `VerifiedDirectFusedLoadImage` now reparses only that verified fused object,
 rejects relocations, validates ISA alignment, and retains exact key/triple plus

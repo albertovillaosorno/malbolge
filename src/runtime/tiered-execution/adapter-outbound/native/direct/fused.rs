@@ -44,20 +44,22 @@ use super::super::fused_sequence::{
 };
 use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
-    CoffAdmissionError, DirectCodeWriteCommit,
+    CoffAdmissionError, DirectCodeWriteCommit, DirectEntryObservation,
     DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedRotateOutputTemplate, DirectNativeKind,
-    DirectNoOperationProgram, DirectOutputProgram, DirectRotateProgram,
-    HostIsa, HostOperatingSystem, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactKey, StructurallyAdmittedNativeObjectArtifact,
-    UntrustedNativeObjectArtifact, aarch64, structurally_admit_coff,
-    target_triple, validate_no_operation_program, validate_output_program,
+    DirectFusedNoOperationRotateTemplate, DirectFusedRotateOutputTemplate,
+    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
+    DirectRotateProgram, HostIsa, HostOperatingSystem,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
+    StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
+    aarch64, structurally_admit_coff, target_triple,
+    validate_no_operation_program, validate_output_program,
     validate_rotate_program, x86_64,
 };
 
 enum FusedSelection {
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
+    NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
     RotateOutput(DirectRotateProgram, DirectOutputProgram),
 }
 
@@ -214,59 +216,109 @@ fn canonical_fused_coff(
     let selection = select_fused_shape(admission)?;
     let observation = direct_entry_observation(admission.source_plan().entry())
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
-    let required_memory_words = admission.key().ir().required_memory_words();
     let text = match selection {
-        FusedSelection::NoOperationPair(first, second) => {
-            let template = DirectFusedNoOperationPairTemplate {
-                first: no_operation_commit(first),
-                live_ins: &admission.program().memory_live_ins,
-                observation,
-                required_memory_words,
-                second: no_operation_commit(second),
-            };
-            match admission.key().target().host_isa() {
-                HostIsa::AArch64 => {
-                    aarch64::fused_no_operation_pair_code(template)
-                },
-                HostIsa::X86_64 => {
-                    x86_64::fused_no_operation_pair_code(template)
-                },
-            }
-        },
         FusedSelection::NoOperationOutput(no_operation, output) => {
-            let template = DirectFusedNoOperationOutputTemplate {
-                live_ins: &admission.program().memory_live_ins,
-                no_operation: no_operation_commit(no_operation),
+            fused_no_operation_output_text(
+                admission,
                 observation,
-                output: output.commit,
-                required_memory_words,
-            };
-            match admission.key().target().host_isa() {
-                HostIsa::AArch64 => {
-                    aarch64::fused_no_operation_output_code(template)
-                },
-                HostIsa::X86_64 => {
-                    x86_64::fused_no_operation_output_code(template)
-                },
-            }
+                no_operation,
+                output,
+            )
+        },
+        FusedSelection::NoOperationPair(first, second) => {
+            fused_no_operation_pair_text(admission, observation, first, second)
+        },
+        FusedSelection::NoOperationRotate(no_operation, rotate) => {
+            fused_no_operation_rotate_text(
+                admission,
+                observation,
+                no_operation,
+                rotate,
+            )
         },
         FusedSelection::RotateOutput(rotate, output) => {
-            let template = DirectFusedRotateOutputTemplate {
-                live_ins: &admission.program().memory_live_ins,
-                observation,
-                output: output.commit,
-                required_memory_words,
-                rotate: rotate.commit,
-            };
-            match admission.key().target().host_isa() {
-                HostIsa::AArch64 => aarch64::fused_rotate_output_code(template),
-                HostIsa::X86_64 => x86_64::fused_rotate_output_code(template),
-            }
+            fused_rotate_output_text(admission, observation, rotate, output)
         },
     }
     .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
     build_minimal_coff(admission.key(), &text)
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
+}
+
+fn fused_no_operation_output_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    no_operation: DirectNoOperationProgram,
+    output: DirectOutputProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationOutputTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: no_operation_commit(no_operation),
+        observation,
+        output: output.commit,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_no_operation_output_code(template),
+        HostIsa::X86_64 => x86_64::fused_no_operation_output_code(template),
+    }
+}
+
+fn fused_no_operation_pair_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    first: DirectNoOperationProgram,
+    second: DirectNoOperationProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationPairTemplate {
+        first: no_operation_commit(first),
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second: no_operation_commit(second),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_no_operation_pair_code(template),
+        HostIsa::X86_64 => x86_64::fused_no_operation_pair_code(template),
+    }
+}
+
+fn fused_no_operation_rotate_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    no_operation: DirectNoOperationProgram,
+    rotate: DirectRotateProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationRotateTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: no_operation_commit(no_operation),
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_no_operation_rotate_code(template),
+        HostIsa::X86_64 => x86_64::fused_no_operation_rotate_code(template),
+    }
+}
+
+fn fused_rotate_output_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    rotate: DirectRotateProgram,
+    output: DirectOutputProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedRotateOutputTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        output: output.commit,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_rotate_output_code(template),
+        HostIsa::X86_64 => x86_64::fused_rotate_output_code(template),
+    }
 }
 
 fn select_fused_shape(
@@ -288,6 +340,15 @@ fn select_fused_shape(
         let second = validate_no_operation_program(second_program)
             .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
         return Ok(FusedSelection::NoOperationPair(first, second));
+    }
+    if first_artifact.kind() == DirectNativeKind::NoOperation
+        && second_artifact.kind() == DirectNativeKind::Rotate
+    {
+        let no_operation = validate_no_operation_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let rotate = validate_rotate_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(FusedSelection::NoOperationRotate(no_operation, rotate));
     }
     if second_artifact.kind() != DirectNativeKind::Output {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
