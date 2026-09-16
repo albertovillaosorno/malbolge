@@ -48,11 +48,12 @@ use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
     CoffAdmissionError, DirectCodeWriteCommit, DirectCrazyProgram,
     DirectEntryObservation, DirectFusedCrazyNoOperationTemplate,
-    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
-    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
-    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
-    DirectFusedRotatePairTemplate, DirectNativeKind, DirectNoOperationProgram,
-    DirectOutputProgram, DirectRotateProgram, HostIsa, HostOperatingSystem,
+    DirectFusedCrazyPairTemplate, DirectFusedNoOperationCrazyTemplate,
+    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
+    DirectFusedNoOperationRotateTemplate, DirectFusedRotateNoOperationTemplate,
+    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
+    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
+    DirectRotateProgram, HostIsa, HostOperatingSystem,
     NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
     aarch64, structurally_admit_coff, target_triple, validate_crazy_program,
@@ -62,6 +63,7 @@ use super::{
 
 enum FusedSelection {
     CrazyNoOperation(DirectCrazyProgram, DirectNoOperationProgram),
+    CrazyPair(DirectCrazyProgram, DirectCrazyProgram),
     NoOperationCrazy(DirectNoOperationProgram, DirectCrazyProgram),
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
@@ -233,6 +235,9 @@ fn canonical_fused_coff(
                 no_operation,
             )
         },
+        FusedSelection::CrazyPair(first, second) => {
+            fused_crazy_pair_text(admission, observation, first, second)
+        },
         FusedSelection::NoOperationCrazy(no_operation, crazy) => {
             fused_no_operation_crazy_text(
                 admission,
@@ -278,6 +283,25 @@ fn canonical_fused_coff(
     .ok_or(DirectFusedSequenceObjectError::ObjectBytes)?;
     build_minimal_coff(admission.key(), &text)
         .ok_or(DirectFusedSequenceObjectError::ObjectBytes)
+}
+
+fn fused_crazy_pair_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    first: DirectCrazyProgram,
+    second: DirectCrazyProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedCrazyPairTemplate {
+        first: first.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second: second.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_crazy_pair_code(template),
+        HostIsa::X86_64 => x86_64::fused_crazy_pair_code(template),
+    }
 }
 
 fn fused_crazy_no_operation_text(
@@ -492,6 +516,15 @@ fn select_crazy_shape(
     first_program: &RegionEffectProgram,
     second_program: &RegionEffectProgram,
 ) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind == DirectNativeKind::Crazy
+        && second_kind == DirectNativeKind::Crazy
+    {
+        let first = validate_crazy_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let second = validate_crazy_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::CrazyPair(first, second)));
+    }
     if first_kind == DirectNativeKind::Crazy
         && second_kind == DirectNativeKind::NoOperation
     {

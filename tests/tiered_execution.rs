@@ -809,7 +809,7 @@ use malbolge::{
     TargetProfileRequirement, Termination, TraceInput, current_profile,
     decode_profile_instruction, historical_profile, preflight_profile,
     preflight_runtime_requirement, profile_cell_decodes_to_no_operation,
-    profile_rotate, safe_rust_classic_capability,
+    profile_crazy, profile_rotate, safe_rust_classic_capability,
     safe_rust_profiled_capability, target_profile,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
@@ -14455,6 +14455,110 @@ fn direct_normative_sequence_state() -> Result<ProfileMachineState, String> {
     .map_err(|error| format!("direct sequence state: {error}"))
 }
 
+fn direct_crazy_pair_sequence_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy pair base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    for code_pointer in [5u32, 6u32] {
+        let cell = (33u32..=126u32)
+            .find(|cell| {
+                decode_profile_instruction(*cell, code_pointer) == Some(b'p')
+            })
+            .ok_or_else(|| {
+                format!("crazy pair cell missing at {code_pointer}")
+            })?;
+        let index = usize::try_from(code_pointer)
+            .map_err(|error| format!("crazy pair code index: {error}"))?;
+        *memory.get_mut(index).ok_or_else(|| {
+            format!("crazy pair code cell {code_pointer} missing")
+        })? = cell;
+    }
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("crazy pair data cell 7 missing"))? = 10;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("crazy pair data cell 8 missing"))? = 20;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy pair IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy pair state: {error}"))
+}
+
+fn direct_crazy_pair_alias_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy pair alias base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-five alias crazy cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("crazy pair alias cell 5 missing"))? =
+        crazy_cell;
+    let profile = current_profile();
+    let accumulator = profile.memory_words().saturating_sub(1);
+    let aliased_cell = (0..profile.memory_words())
+        .find(|cell| {
+            decode_profile_instruction(
+                profile_crazy(*cell, accumulator, profile.word_trits()),
+                6,
+            ) == Some(b'p')
+        })
+        .ok_or_else(|| String::from("crazy pair alias source missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("crazy pair alias cell 6 missing"))? =
+        aliased_cell;
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("crazy pair alias cell 7 missing"))? = 10;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy pair alias IO: {error}"))?;
+    ProfileMachineState::new(
+        profile,
+        memory,
+        ProfileRegisters {
+            accumulator,
+            code_pointer: 5,
+            data_pointer: 6,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy pair alias state: {error}"))
+}
+
+fn direct_crazy_pair_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_crazy_pair_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy pair trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy pair outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("crazy pair projection: {error:?}"))
+        })
+        .collect()
+}
+
 fn direct_crazy_no_operation_sequence_state()
 -> Result<ProfileMachineState, String> {
     let base =
@@ -15266,6 +15370,162 @@ fn fused_direct_sequence_emits_and_verifies_both_isas() -> Result<(), String> {
 }
 
 #[test]
+fn fused_crazy_pair_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_crazy_pair_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy pair select: {error}"))?;
+        let [first, second] = plan.artifacts() else {
+            return Err(format!("crazy pair plan length drifted: {plan:?}"));
+        };
+        if first.kind() != DirectNativeKind::Crazy
+            || second.kind() != DirectNativeKind::Crazy
+        {
+            return Err(format!("crazy pair plan kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy pair admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy pair emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy pair verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("crazy pair image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || verified.object() != candidate.object()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!("crazy pair evidence drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_pair_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_crazy_pair_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy pair normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy pair normative outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy pair projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy pair invoke select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy pair invoke admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy pair invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy pair invoke verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0x5au8];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("crazy pair invoke prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("crazy pair invoke complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != [0x5a]
+        {
+            return Err(format!("crazy pair diverged from VM on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_pair_internal_dependency_matches_profile_vm()
+-> Result<(), String> {
+    let state = direct_crazy_pair_alias_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy pair alias run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy pair alias outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy pair alias projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy pair alias select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy pair alias admit: {error}"))?;
+        if admission.program().memory_live_ins.len() != 3 {
+            return Err(format!(
+                "crazy pair alias entry live-ins drifted on {isa:?}: {:?}",
+                admission.program().memory_live_ins
+            ));
+        }
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy pair alias emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy pair alias verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0x5au8];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("crazy pair alias prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("crazy pair alias complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != [0x5a]
+        {
+            return Err(format!(
+                "crazy pair alias diverged from VM on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn fused_crazy_noop_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_crazy_no_operation_sequence_programs()?;
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
@@ -16066,6 +16326,7 @@ fn verify_fused_direct_sequence_text_drift_case(
 #[test]
 fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
     let cases = [
+        ("crazy/crazy", direct_crazy_pair_sequence_programs()?),
         (
             "crazy/no-op",
             direct_crazy_no_operation_sequence_programs()?,

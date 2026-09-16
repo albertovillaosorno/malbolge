@@ -398,10 +398,10 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits eight reviewed two-step regions as atomic x86-64
+`direct/fused.rs` now emits nine reviewed two-step regions as atomic x86-64
 or AArch64 COFF candidates: rotate/output, no-operation/output,
 no-operation/no-operation, no-operation/rotate, no-operation/crazy,
-crazy/no-operation, rotate/no-operation, and rotate/rotate. Both
+crazy/no-operation, crazy/crazy, rotate/no-operation, and rotate/rotate. Both
 ISA families complete
 every applicable fused entry, memory, termination, and output-capacity guard
 before their first store; a miss therefore preserves the original region entry
@@ -412,8 +412,9 @@ state, without exposing an intermediate one-step observation.
 Semantic promotion reconstructs the fused admission from the retained verified
 source plan, structurally admits COFF, regenerates canonical bytes, and requires
 exact equality. A structurally valid text-byte mutation fails this verifier.
-VM-derived traces for every reviewed no-operation-containing shape and the
-rotate/rotate shape exercise both ISAs through emission, promotion,
+VM-derived traces for every reviewed no-operation-containing shape plus the
+crazy/crazy and rotate/rotate shapes exercise both ISAs through emission,
+promotion,
 relocation-free load-image extraction, and whole-region state comparison with
 the profile VM.
 
