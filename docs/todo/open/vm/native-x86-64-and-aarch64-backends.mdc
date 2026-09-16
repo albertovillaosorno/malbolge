@@ -195,7 +195,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   no-operation/jump-data, jump-code/no-operation,
   jump-code/jump-code, jump-code/jump-data, jump-code/output, jump-code/rotate,
   jump-data/no-operation,
-  jump-data/jump-code, jump-data/output, jump-data/jump-data,
+  jump-data/jump-code, jump-data/output, jump-data/jump-data, jump-data/rotate,
   no-operation/rotate,
   no-operation/crazy,
   crazy/no-operation, crazy/rotate, crazy/crazy, rotate/no-operation,
