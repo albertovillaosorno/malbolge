@@ -14978,34 +14978,46 @@ fn fused_noop_output_invocation_matches_profile_vm() -> Result<(), String> {
 #[test]
 fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
     const TEXT_START: usize = 20 + (2 * 40);
-    let programs = direct_normative_sequence_programs()?;
-    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let plan = select_verified_direct_sequence(
-            &programs,
-            safe_rust_profiled_capability(),
-            HostOperatingSystem::Windows,
-            isa,
-        )
-        .map_err(|error| format!("fused drift source: {error}"))?;
-        let admission = admit_fused_direct_sequence(&plan)
-            .map_err(|error| format!("fused drift admit: {error}"))?;
-        let candidate = emit_fused_direct_sequence_coff(&admission)
-            .map_err(|error| format!("fused drift emit: {error}"))?;
-        let mut object = candidate.object().to_vec();
-        let byte = object
-            .get_mut(TEXT_START)
-            .ok_or_else(|| String::from("fused COFF omitted text bytes"))?;
-        *byte ^= 1;
-        let changed = UntrustedNativeObjectArtifact::from_emitter_output(
-            candidate.key().clone(),
-            object,
-            candidate.target_triple(),
-        );
-        let result = verify_fused_direct_sequence(&changed, &admission);
-        if result != Err(DirectFusedSequenceObjectError::ObjectBytes) {
-            return Err(String::from(
-                "fused byte verifier accepted structurally valid text drift",
-            ));
+    let cases = [
+        ("rotate/output", direct_normative_sequence_programs()?),
+        (
+            "no-op/output",
+            direct_no_operation_output_sequence_programs()?,
+        ),
+    ];
+    for (label, programs) in cases {
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            let plan = select_verified_direct_sequence(
+                &programs,
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                isa,
+            )
+            .map_err(|error| format!("fused drift {label} source: {error}"))?;
+            let admission =
+                admit_fused_direct_sequence(&plan).map_err(|error| {
+                    format!("fused drift {label} admit: {error}")
+                })?;
+            let candidate = emit_fused_direct_sequence_coff(&admission)
+                .map_err(|error| {
+                    format!("fused drift {label} emit: {error}")
+                })?;
+            let mut object = candidate.object().to_vec();
+            let byte = object
+                .get_mut(TEXT_START)
+                .ok_or_else(|| String::from("fused COFF omitted text bytes"))?;
+            *byte ^= 1;
+            let changed = UntrustedNativeObjectArtifact::from_emitter_output(
+                candidate.key().clone(),
+                object,
+                candidate.target_triple(),
+            );
+            let result = verify_fused_direct_sequence(&changed, &admission);
+            if result != Err(DirectFusedSequenceObjectError::ObjectBytes) {
+                return Err(format!(
+                    "fused {label} verifier accepted text drift on {isa:?}"
+                ));
+            }
         }
     }
     Ok(())
