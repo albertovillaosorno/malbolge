@@ -54,7 +54,8 @@ use crate::pair_retention_journal::{
     restore_file_blob_pair_retention_journal,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
+    NativeContinuationRetryDirective,
 };
 
 /// Positive bounds for one retention-journal reconciliation retry loop.
@@ -233,10 +234,10 @@ where
             retention,
         } => Some(retention),
     };
-    let maximum_attempt_count = request.maximum_attempts.get();
-    let mut attempts = 0usize;
+    let mut attempts = NativeContinuationRetryAttemptCursor::after_first(
+        request.maximum_attempts,
+    );
     loop {
-        attempts = attempts.saturating_add(1);
         let replacement = reconcile(current.as_ref()).map_err(
             NativeContinuationFileBlobPairRetentionReconcileError::
                 Reconciliation,
@@ -253,14 +254,15 @@ where
             )?;
         match attempt_outcome {
             JournalCas::Conflict { current: next_current }
-                if attempts < maximum_attempt_count =>
+                if attempts.can_retry() =>
             {
-                if control(NativeContinuationRetryConflict::new(attempts))
+                if control(attempts.conflict())
                     == NativeContinuationRetryDirective::Stop
+                    || !attempts.advance()
                 {
                     return Ok(
                         NativeContinuationFileBlobPairRetentionReconcile {
-                            attempts,
+                            attempts: attempts.completed_attempts(),
                             outcome: JournalCas::Conflict {
                                 current: next_current,
                             },
@@ -273,7 +275,7 @@ where
             | JournalCas::Durable { .. }
             | JournalCas::Published { .. }) => {
                 return Ok(NativeContinuationFileBlobPairRetentionReconcile {
-                    attempts,
+                    attempts: attempts.completed_attempts(),
                     outcome: terminal,
                 });
             },

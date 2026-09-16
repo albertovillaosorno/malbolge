@@ -50,7 +50,8 @@ use crate::blob_store::{
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
+    NativeContinuationRetryDirective,
 };
 
 /// Immutable inputs for one bounded latency-merge retry loop.
@@ -184,23 +185,25 @@ where
         NativeContinuationRetryConflict,
     ) -> NativeContinuationRetryDirective,
 {
-    let mut attempts = 1usize;
     let mut outcome = merge_cached_retry_latency_histogram_durably(
         store,
         request.source,
         request.maximum_bytes,
     )?;
+    let mut attempts = NativeContinuationRetryAttemptCursor::after_first(
+        request.maximum_attempts,
+    );
     while matches!(
         outcome,
         NativeContinuationCachedRetryLatencyDurableMerge::Conflict { .. }
-    ) && attempts < request.maximum_attempts.get()
+    ) && attempts.can_retry()
     {
-        if control(NativeContinuationRetryConflict::new(attempts))
+        if control(attempts.conflict())
             == NativeContinuationRetryDirective::Stop
+            || !attempts.advance()
         {
             break;
         }
-        attempts = attempts.saturating_add(1);
         outcome = merge_cached_retry_latency_histogram_durably(
             store,
             request.source,
@@ -208,7 +211,7 @@ where
         )?;
     }
     Ok(NativeContinuationCachedRetryLatencyDurableMergeRetry {
-        attempts,
+        attempts: attempts.completed_attempts(),
         outcome,
     })
 }

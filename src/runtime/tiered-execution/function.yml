@@ -549,7 +549,8 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Let callers gate synchronous conflict retries without timing policy.
+      Gate retries and centralize exact attempt accounting without
+      timing policy.
 projects: []
 tests: []
 graph:

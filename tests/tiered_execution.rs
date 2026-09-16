@@ -853,7 +853,10 @@ use pair_retention_reconciliation::{
     reconcile_file_blob_pair_retention_journal_durably_with_retries,
     reconcile_file_blob_pair_retention_with_retry_control,
 };
-use retry_control::NativeContinuationRetryDirective as RetryDirective;
+use retry_control::{
+    NativeContinuationRetryAttemptCursor as RetryAttemptCursor,
+    NativeContinuationRetryDirective as RetryDirective,
+};
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
     execute_native_continuation_retry_cycle,
@@ -25186,6 +25189,40 @@ fn ensure_executable_cache_plan(
         .ensure_plan(adapter, plan)
         .map(|_entry| ())
         .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_attempt_cursor_advances_exactly() -> Result<(), String> {
+    let maximum = nonzero_test_limit(3, "retry cursor maximum")?;
+    let mut cursor = RetryAttemptCursor::after_first(maximum);
+    let first = cursor.conflict();
+    let advanced = cursor.advance();
+    let second = cursor.conflict();
+    if first.completed_attempts() == 1
+        && advanced
+        && second.completed_attempts() == 2
+        && cursor.completed_attempts() == 2
+        && cursor.can_retry()
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry attempt cursor progression drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_attempt_cursor_stops_at_limit() -> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "retry cursor limit")?;
+    let mut cursor = RetryAttemptCursor::after_first(maximum);
+    if cursor.completed_attempts() == 1
+        && !cursor.can_retry()
+        && !cursor.advance()
+        && cursor.conflict().completed_attempts() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry attempt cursor exceeded limit"))
+    }
 }
 
 fn nonzero_test_limit(

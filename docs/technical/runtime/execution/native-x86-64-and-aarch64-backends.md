@@ -1125,6 +1125,14 @@ the same typed conflict unchanged. Callers may wait, yield, or inspect their own
 cancellation state there, but tiered execution still owns no clock read, sleep,
 backoff interval, or fairness policy.
 
+
+The same retry-control boundary now centralizes exact attempt accounting for all
+of these synchronous loops. A private cursor starts after the first one-shot
+attempt, exposes the completed-attempt evidence used by control hooks, advances
+only while the caller-selected positive maximum permits it, and never supplies
+policy beyond that accounting. Two focused cases cover exact advancement and
+attempt-limit exhaustion; the existing retry suites retain their prior counts.
+
 Cached-cycle composition now binds that opaque pair revision to typed count and
 latency owners. Versioned restore decodes both canonical members together and
 retains the exact revision observed with them. One-shot durable typed CAS

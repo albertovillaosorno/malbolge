@@ -49,7 +49,8 @@ use crate::blob_pair_store::{
     NativeContinuationDurableBlobPairStore as DurablePairStore,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
+    NativeContinuationRetryDirective,
 };
 
 /// Final reconciliation outcome plus exact attempts consumed.
@@ -156,27 +157,28 @@ where
         NativeContinuationRetryConflict,
     ) -> NativeContinuationRetryDirective,
 {
-    let mut attempts = 1usize;
     let mut outcome =
         reconcile_cached_retry_telemetry_ordered_pair_durably(store, request)?;
+    let mut attempts =
+        NativeContinuationRetryAttemptCursor::after_first(maximum_attempts);
     while matches!(
         outcome,
         NativeContinuationCachedRetryOrderedPairReconciliation::Conflict { .. }
-    ) && attempts < maximum_attempts.get()
+    ) && attempts.can_retry()
     {
-        if control(NativeContinuationRetryConflict::new(attempts))
+        if control(attempts.conflict())
             == NativeContinuationRetryDirective::Stop
+            || !attempts.advance()
         {
             break;
         }
-        attempts = attempts.saturating_add(1);
         outcome = reconcile_cached_retry_telemetry_ordered_pair_durably(
             store, request,
         )?;
     }
     Ok(
         NativeContinuationCachedRetryOrderedPairReconciliationRetry {
-            attempts,
+            attempts: attempts.completed_attempts(),
             outcome,
         },
     )

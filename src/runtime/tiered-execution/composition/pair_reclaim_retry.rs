@@ -59,11 +59,19 @@ use crate::pair_retention_reclamation_transition::{
     transition_file_blob_pair_retention_and_reclaim,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
+    NativeContinuationRetryDirective,
 };
 
 type Retention =
     NativeContinuationBlobPairRetention<NativeContinuationFileBlobPairRevision>;
+
+type TransitionRetentionLoadResult = Result<
+    Option<Retention>,
+    NativeContinuationFileBlobPairRetentionJournalError<
+        NativeContinuationFileBlobStoreError,
+    >,
+>;
 
 /// Shared filesystem state participating in guarded transition retry.
 #[derive(Debug)]
@@ -167,6 +175,20 @@ const fn transition_retry_evidence(
     NativeContinuationFileBlobPairJournalTransitionRetry { attempts, outcome }
 }
 
+fn restore_transition_retry_retention(
+    journal: &mut NativeContinuationFileBlobStore,
+    maximum_bytes: NonZeroUsize,
+) -> TransitionRetentionLoadResult {
+    let load =
+        restore_file_blob_pair_retention_journal(journal, maximum_bytes)?;
+    Ok(match load {
+        NativeContinuationFileBlobPairRetentionJournalLoad::Missing => None,
+        NativeContinuationFileBlobPairRetentionJournalLoad::Present {
+            retention,
+        } => Some(retention),
+    })
+}
+
 /// Reconciles exact retention and retries guarded transitions only on conflict.
 ///
 /// The callback owns all retention-selection semantics and receives the exact
@@ -245,21 +267,13 @@ where
         journal,
         pair,
     } = context;
-    let load = restore_file_blob_pair_retention_journal(
-        journal,
-        request.maximum_bytes,
-    )
-    .map_err(RetryError::Journal)?;
-    let mut current = match load {
-        NativeContinuationFileBlobPairRetentionJournalLoad::Missing => None,
-        NativeContinuationFileBlobPairRetentionJournalLoad::Present {
-            retention,
-        } => Some(retention),
-    };
-    let maximum_attempt_count = request.maximum_attempts.get();
-    let mut attempts = 0usize;
+    let mut current =
+        restore_transition_retry_retention(journal, request.maximum_bytes)
+            .map_err(RetryError::Journal)?;
+    let mut attempts = NativeContinuationRetryAttemptCursor::after_first(
+        request.maximum_attempts,
+    );
     loop {
-        attempts = attempts.saturating_add(1);
         let replacement =
             reconcile(current.as_ref()).map_err(RetryError::Reconciliation)?;
         let outcome = transition_file_blob_pair_retention_and_reclaim(
@@ -275,13 +289,14 @@ where
         .map_err(RetryError::Transition)?;
         match outcome {
             Transition::Conflict { current: next_current }
-                if attempts < maximum_attempt_count =>
+                if attempts.can_retry() =>
             {
-                let directive =
-                    control(NativeContinuationRetryConflict::new(attempts));
-                if directive == NativeContinuationRetryDirective::Stop {
+                let directive = control(attempts.conflict());
+                if directive == NativeContinuationRetryDirective::Stop
+                    || !attempts.advance()
+                {
                     return Ok(transition_retry_evidence(
-                        attempts,
+                        attempts.completed_attempts(),
                         Transition::Conflict { current: next_current },
                     ));
                 }
@@ -291,7 +306,10 @@ where
             | Transition::JournalPublished { .. }
             | Transition::Reclaimed { .. }
             | Transition::ReclamationRejected { .. }) => {
-                return Ok(transition_retry_evidence(attempts, terminal));
+                return Ok(transition_retry_evidence(
+                    attempts.completed_attempts(),
+                    terminal,
+                ));
             },
         }
     }

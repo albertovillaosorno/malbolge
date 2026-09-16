@@ -956,6 +956,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   backoff intervals, fairness, and asynchronous scheduling remain outside the
   runtime.
 
+
+  Shared retry control now also centralizes exact attempt accounting for these
+  synchronous loops. A private cursor starts after the first one-shot attempt,
+  supplies the completed-attempt evidence seen by control hooks, and advances
+  only while the caller-selected positive maximum permits it. Two focused cases
+  cover exact advancement and attempt-limit exhaustion; no timing policy is
+  added.
+
   Cached-cycle composition now binds the opaque pair revision to typed count and
   latency owners. Versioned restore decodes both canonical members together and
   retains their exact revision. One-shot durable typed CAS preserves expected

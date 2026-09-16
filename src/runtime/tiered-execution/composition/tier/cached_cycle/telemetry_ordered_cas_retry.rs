@@ -48,7 +48,8 @@ use crate::blob_store::{
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
+    NativeContinuationRetryDirective,
 };
 
 /// Final one-shot ordered CAS outcome plus exact attempts consumed.
@@ -152,26 +153,27 @@ where
         NativeContinuationRetryConflict,
     ) -> NativeContinuationRetryDirective,
 {
-    let mut attempts = 1usize;
     let mut outcome =
         publish_cached_retry_telemetry_ordered_batch_durably(store, request)?;
+    let mut attempts =
+        NativeContinuationRetryAttemptCursor::after_first(maximum_attempts);
     while matches!(
         outcome,
         NativeContinuationCachedRetryTelemetryOrderedCas::Conflict { .. }
-    ) && attempts < maximum_attempts.get()
+    ) && attempts.can_retry()
     {
-        if control(NativeContinuationRetryConflict::new(attempts))
+        if control(attempts.conflict())
             == NativeContinuationRetryDirective::Stop
+            || !attempts.advance()
         {
             break;
         }
-        attempts = attempts.saturating_add(1);
         outcome = publish_cached_retry_telemetry_ordered_batch_durably(
             store, request,
         )?;
     }
     Ok(NativeContinuationCachedRetryTelemetryOrderedCasRetry {
-        attempts,
+        attempts: attempts.completed_attempts(),
         outcome,
     })
 }
