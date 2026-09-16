@@ -14512,6 +14512,110 @@ fn direct_crazy_output_sequence_programs()
         .collect()
 }
 
+fn direct_crazy_rotate_sequence_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy/rotate base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-five crazy cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("crazy/rotate code cell 5 missing"))? =
+        crazy_cell;
+    let rotate_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'*'))
+        .ok_or_else(|| String::from("phase-six rotate cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("crazy/rotate code cell 6 missing"))? =
+        rotate_cell;
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("crazy/rotate data cell 7 missing"))? = 10;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("crazy/rotate data cell 8 missing"))? = 20;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy/rotate IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy/rotate state: {error}"))
+}
+
+fn direct_crazy_rotate_alias_state() -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("crazy/rotate alias base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let crazy_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'p'))
+        .ok_or_else(|| String::from("phase-five alias crazy cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("crazy/rotate alias cell 5 missing"))? =
+        crazy_cell;
+    let profile = current_profile();
+    let accumulator = profile.memory_words().saturating_sub(1);
+    let aliased_cell = (0..profile.memory_words())
+        .find(|cell| {
+            decode_profile_instruction(
+                profile_crazy(*cell, accumulator, profile.word_trits()),
+                6,
+            ) == Some(b'*')
+        })
+        .ok_or_else(|| String::from("crazy/rotate alias source missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("crazy/rotate alias cell 6 missing"))? =
+        aliased_cell;
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("crazy/rotate alias cell 7 missing"))? = 10;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("crazy/rotate alias IO: {error}"))?;
+    ProfileMachineState::new(
+        profile,
+        memory,
+        ProfileRegisters {
+            accumulator,
+            code_pointer: 5,
+            data_pointer: 6,
+        },
+        io,
+    )
+    .map_err(|error| format!("crazy/rotate alias state: {error}"))
+}
+
+fn direct_crazy_rotate_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_crazy_rotate_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/rotate trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/rotate outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("crazy/rotate projection: {error:?}"))
+        })
+        .collect()
+}
+
 fn direct_crazy_pair_sequence_state() -> Result<ProfileMachineState, String> {
     let base =
         ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
@@ -15616,6 +15720,162 @@ fn fused_crazy_output_invocation_matches_profile_vm() -> Result<(), String> {
                 != Some(expected_output.as_slice())
         {
             return Err(format!("crazy/output diverged from VM on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_rotate_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_crazy_rotate_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy/rotate select: {error}"))?;
+        let [crazy, rotate] = plan.artifacts() else {
+            return Err(format!("crazy/rotate plan length drifted: {plan:?}"));
+        };
+        if crazy.kind() != DirectNativeKind::Crazy
+            || rotate.kind() != DirectNativeKind::Rotate
+        {
+            return Err(format!("crazy/rotate plan kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy/rotate admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy/rotate emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy/rotate verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("crazy/rotate image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || verified.object() != candidate.object()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!("crazy/rotate evidence drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_rotate_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_crazy_rotate_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/rotate normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/rotate normative outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy/rotate projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy/rotate invoke select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy/rotate invoke admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy/rotate invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy/rotate invoke verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0x5au8];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("crazy/rotate invoke prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| {
+                format!("crazy/rotate invoke complete: {error}")
+            })?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != [0x5a]
+        {
+            return Err(format!("crazy/rotate diverged from VM on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_crazy_rotate_internal_dependency_matches_profile_vm()
+-> Result<(), String> {
+    let state = direct_crazy_rotate_alias_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("crazy/rotate alias run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("crazy/rotate alias outcome: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("crazy/rotate alias projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("crazy/rotate alias select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("crazy/rotate alias admit: {error}"))?;
+        if admission.program().memory_live_ins.len() != 3 {
+            return Err(format!(
+                "crazy/rotate alias entry live-ins drifted on {isa:?}: {:?}",
+                admission.program().memory_live_ins
+            ));
+        }
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("crazy/rotate alias emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("crazy/rotate alias verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = vec![0x5au8];
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("crazy/rotate alias prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("crazy/rotate alias complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != [0x5a]
+        {
+            return Err(format!("crazy/rotate alias diverged on {isa:?}"));
         }
     }
     Ok(())
@@ -16732,6 +16992,7 @@ fn verify_fused_direct_sequence_text_drift_case(
 #[test]
 fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
     let cases = [
+        ("crazy/rotate", direct_crazy_rotate_sequence_programs()?),
         ("rotate/crazy", direct_rotate_crazy_sequence_programs()?),
         ("crazy/output", direct_crazy_output_sequence_programs()?),
         ("crazy/crazy", direct_crazy_pair_sequence_programs()?),

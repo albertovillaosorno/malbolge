@@ -66,6 +66,7 @@ enum FusedSelection {
     CrazyNoOperation(DirectCrazyProgram, DirectNoOperationProgram),
     CrazyOutput(DirectCrazyProgram, DirectOutputProgram),
     CrazyPair(DirectCrazyProgram, DirectCrazyProgram),
+    CrazyRotate(DirectCrazyProgram, DirectRotateProgram),
     NoOperationCrazy(DirectNoOperationProgram, DirectCrazyProgram),
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
@@ -241,19 +242,11 @@ fn canonical_fused_text(
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
     match *selection {
-        FusedSelection::CrazyNoOperation(crazy, no_operation) => {
-            fused_crazy_no_operation_text(
-                admission,
-                observation,
-                crazy,
-                no_operation,
-            )
-        },
-        FusedSelection::CrazyOutput(crazy, output) => {
-            fused_crazy_output_text(admission, observation, crazy, output)
-        },
-        FusedSelection::CrazyPair(first, second) => {
-            fused_crazy_pair_text(admission, observation, first, second)
+        FusedSelection::CrazyNoOperation(..)
+        | FusedSelection::CrazyOutput(..)
+        | FusedSelection::CrazyPair(..)
+        | FusedSelection::CrazyRotate(..) => {
+            fused_crazy_selection_text(admission, observation, selection)
         },
         FusedSelection::NoOperationCrazy(no_operation, crazy) => {
             fused_no_operation_crazy_text(
@@ -302,6 +295,40 @@ fn canonical_fused_text(
     }
 }
 
+fn fused_crazy_selection_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    match *selection {
+        FusedSelection::CrazyNoOperation(crazy, no_operation) => {
+            fused_crazy_no_operation_text(
+                admission,
+                observation,
+                crazy,
+                no_operation,
+            )
+        },
+        FusedSelection::CrazyOutput(crazy, output) => {
+            fused_crazy_output_text(admission, observation, crazy, output)
+        },
+        FusedSelection::CrazyPair(first, second) => {
+            fused_crazy_pair_text(admission, observation, first, second)
+        },
+        FusedSelection::CrazyRotate(crazy, rotate) => {
+            fused_crazy_rotate_text(admission, observation, crazy, rotate)
+        },
+        FusedSelection::NoOperationCrazy(..)
+        | FusedSelection::NoOperationOutput(..)
+        | FusedSelection::NoOperationPair(..)
+        | FusedSelection::NoOperationRotate(..)
+        | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateNoOperation(..)
+        | FusedSelection::RotateOutput(..)
+        | FusedSelection::RotatePair(..) => None,
+    }
+}
+
 fn fused_crazy_output_text(
     admission: &DirectFusedSequenceAdmission,
     observation: DirectEntryObservation,
@@ -318,6 +345,25 @@ fn fused_crazy_output_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_crazy_output_code(template),
         HostIsa::X86_64 => x86_64::fused_crazy_output_code(template),
+    }
+}
+
+fn fused_crazy_rotate_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    crazy: DirectCrazyProgram,
+    rotate: DirectRotateProgram,
+) -> Option<Vec<u8>> {
+    let template = super::DirectFusedCrazyRotateTemplate {
+        crazy: crazy.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_crazy_rotate_code(template),
+        HostIsa::X86_64 => x86_64::fused_crazy_rotate_code(template),
     }
 }
 
@@ -577,23 +623,39 @@ fn select_crazy_shape(
     first_program: &RegionEffectProgram,
     second_program: &RegionEffectProgram,
 ) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
-    if first_kind == DirectNativeKind::Crazy
-        && second_kind == DirectNativeKind::Crazy
-    {
-        let first = validate_crazy_program(first_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let second = validate_crazy_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(Some(FusedSelection::CrazyPair(first, second)));
-    }
-    if first_kind == DirectNativeKind::Crazy
-        && second_kind == DirectNativeKind::NoOperation
-    {
+    if first_kind == DirectNativeKind::Crazy {
         let crazy = validate_crazy_program(first_program)
             .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        let no_operation = validate_no_operation_program(second_program)
-            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-        return Ok(Some(FusedSelection::CrazyNoOperation(crazy, no_operation)));
+        return match second_kind {
+            DirectNativeKind::Crazy => {
+                let second = validate_crazy_program(second_program).map_err(
+                    |_error| DirectFusedSequenceObjectError::ProgramShape,
+                )?;
+                Ok(Some(FusedSelection::CrazyPair(crazy, second)))
+            },
+            DirectNativeKind::NoOperation => {
+                let no_operation =
+                    validate_no_operation_program(second_program).map_err(
+                        |_error| DirectFusedSequenceObjectError::ProgramShape,
+                    )?;
+                Ok(Some(FusedSelection::CrazyNoOperation(crazy, no_operation)))
+            },
+            DirectNativeKind::Rotate => {
+                let rotate = validate_rotate_program(second_program).map_err(
+                    |_error| DirectFusedSequenceObjectError::ProgramShape,
+                )?;
+                Ok(Some(FusedSelection::CrazyRotate(crazy, rotate)))
+            },
+            DirectNativeKind::Deopt
+            | DirectNativeKind::HaltFetch
+            | DirectNativeKind::HaltRegisters
+            | DirectNativeKind::InitialHalt
+            | DirectNativeKind::Input
+            | DirectNativeKind::JumpCode
+            | DirectNativeKind::JumpData
+            | DirectNativeKind::NonGraphical
+            | DirectNativeKind::Output => Ok(None),
+        };
     }
     if first_kind == DirectNativeKind::NoOperation
         && second_kind == DirectNativeKind::Crazy

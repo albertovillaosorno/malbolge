@@ -606,6 +606,20 @@ fn push_fused_crazy_pair_commit(
     Some(())
 }
 
+/// Encodes one atomic two-step crazy/rotate fused region.
+#[must_use]
+pub(super) fn fused_crazy_rotate_code(
+    template: super::direct::DirectFusedCrazyRotateTemplate<'_>,
+) -> Option<Vec<u8>> {
+    fused_rotate_pair_code(DirectFusedRotatePairTemplate {
+        first: template.crazy,
+        live_ins: template.live_ins,
+        observation: template.observation,
+        required_memory_words: template.required_memory_words,
+        second: template.rotate,
+    })
+}
+
 /// Encodes one atomic two-step crazy/no-operation fused region.
 #[must_use]
 pub(super) fn fused_crazy_no_operation_code(
