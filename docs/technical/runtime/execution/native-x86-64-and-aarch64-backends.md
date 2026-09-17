@@ -1399,6 +1399,12 @@ deterministically without changing guest-visible state silently.
   statistics. Because generated code is not loaded or executed, native
   execution performance evidence remains pending with concrete executable-memory
   and foreign-call integration.
+- A second retained phase-attribution run uses the same workload and sample
+  matrix: selection accounts for about 37-38% of summed phase medians across
+  both target ISAs and scales, semantic verification about 27-28%, COFF
+  emission about 21-22%, and fused admission about 13-14%. Per-stage timers add
+  overhead, so the phase run is attribution evidence rather than a replacement
+  for uninstrumented total-pipeline latency.
 
 ## References
 

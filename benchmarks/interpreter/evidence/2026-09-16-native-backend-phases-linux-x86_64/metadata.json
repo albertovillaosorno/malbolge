@@ -1,0 +1,176 @@
+{
+  "benchmark_scope": "native-fused-pipeline-phase-attribution",
+  "command": "cargo bench --bench native_backend_pipeline",
+  "producer_commit": "60f08086de07a434cf8892d8db386794aeb70cd0",
+  "workload": "current-profile rotate/jump-code two-step VM trace",
+  "host_class": "secondary-linux-x86_64",
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "sockets": 1,
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Fedora Linux 44 (Workstation Edition)",
+  "kernel": "7.2.5-200.fc44.x86_64",
+  "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "llvm": "22.1.8",
+  "pipeline_stages": [
+    "selection_ns",
+    "admission_ns",
+    "emission_ns",
+    "verification_ns"
+  ],
+  "successful_retained_samples": 90,
+  "failed_retained_samples": 0,
+  "machine_code_execution_included": false,
+  "selection_authority": false,
+  "measurement_policy": {
+    "warmup_policy": "one untimed identical pipeline per ISA and scale",
+    "retained_samples_per_isa_scale": 15,
+    "scales": [
+      1,
+      2,
+      4
+    ],
+    "ordering": "alternating ISA order by retained sample parity",
+    "stopping_rule": "exactly 15 retained samples per ISA and scale",
+    "outlier_policy": "retain-all"
+  },
+  "statistics_policy": {
+    "center": "median",
+    "dispersion": [
+      "min-max"
+    ],
+    "uncertainty": "observed-range",
+    "phase_share_denominator": "sum of per-phase medians within ISA/scale"
+  },
+  "resource_usage": {
+    "accelerator": "none",
+    "wall_seconds": 10.84,
+    "user_seconds": 32.77,
+    "system_seconds": 1.95,
+    "max_rss_kib": 588368,
+    "process_exit_status": 0
+  },
+  "summary": [
+    {
+      "isa": "x86_64",
+      "scale": 1,
+      "samples": 15,
+      "median_total_ns": 58371,
+      "min_total_ns": 57643,
+      "max_total_ns": 70919,
+      "median_selection_ns": 20057,
+      "median_admission_ns": 7044,
+      "median_emission_ns": 11063,
+      "median_verification_ns": 14346,
+      "median_phase_sum_ns": 52510,
+      "selection_share_of_median_phase_sum": 0.38196533993525045,
+      "admission_share_of_median_phase_sum": 0.13414587697581412,
+      "emission_share_of_median_phase_sum": 0.2106836792991811,
+      "verification_share_of_median_phase_sum": 0.2732051037897543,
+      "object_bytes_per_object": 717
+    },
+    {
+      "isa": "x86_64",
+      "scale": 2,
+      "samples": 15,
+      "median_total_ns": 118862,
+      "min_total_ns": 111712,
+      "max_total_ns": 140267,
+      "median_selection_ns": 38196,
+      "median_admission_ns": 13775,
+      "median_emission_ns": 21786,
+      "median_verification_ns": 28166,
+      "median_phase_sum_ns": 101923,
+      "selection_share_of_median_phase_sum": 0.3747534903799927,
+      "admission_share_of_median_phase_sum": 0.1351510453970154,
+      "emission_share_of_median_phase_sum": 0.21374959528271342,
+      "verification_share_of_median_phase_sum": 0.27634586894027846,
+      "object_bytes_per_object": 717
+    },
+    {
+      "isa": "x86_64",
+      "scale": 4,
+      "samples": 15,
+      "median_total_ns": 221791,
+      "min_total_ns": 218420,
+      "max_total_ns": 228750,
+      "median_selection_ns": 72739,
+      "median_admission_ns": 26896,
+      "median_emission_ns": 42212,
+      "median_verification_ns": 55753,
+      "median_phase_sum_ns": 197600,
+      "selection_share_of_median_phase_sum": 0.36811234817813765,
+      "admission_share_of_median_phase_sum": 0.13611336032388663,
+      "emission_share_of_median_phase_sum": 0.21362348178137652,
+      "verification_share_of_median_phase_sum": 0.28215080971659917,
+      "object_bytes_per_object": 717
+    },
+    {
+      "isa": "aarch64",
+      "scale": 1,
+      "samples": 15,
+      "median_total_ns": 58709,
+      "min_total_ns": 57538,
+      "max_total_ns": 69967,
+      "median_selection_ns": 19998,
+      "median_admission_ns": 6920,
+      "median_emission_ns": 11170,
+      "median_verification_ns": 14399,
+      "median_phase_sum_ns": 52487,
+      "selection_share_of_median_phase_sum": 0.3810086307085564,
+      "admission_share_of_median_phase_sum": 0.13184217044220473,
+      "emission_share_of_median_phase_sum": 0.21281460171089983,
+      "verification_share_of_median_phase_sum": 0.274334597138339,
+      "object_bytes_per_object": 891
+    },
+    {
+      "isa": "aarch64",
+      "scale": 2,
+      "samples": 15,
+      "median_total_ns": 115495,
+      "min_total_ns": 112792,
+      "max_total_ns": 127543,
+      "median_selection_ns": 38587,
+      "median_admission_ns": 13665,
+      "median_emission_ns": 22138,
+      "median_verification_ns": 28666,
+      "median_phase_sum_ns": 103056,
+      "selection_share_of_median_phase_sum": 0.3744274957304766,
+      "admission_share_of_median_phase_sum": 0.13259781089892875,
+      "emission_share_of_median_phase_sum": 0.21481524607980126,
+      "verification_share_of_median_phase_sum": 0.27815944729079334,
+      "object_bytes_per_object": 891
+    },
+    {
+      "isa": "aarch64",
+      "scale": 4,
+      "samples": 15,
+      "median_total_ns": 223927,
+      "min_total_ns": 220070,
+      "max_total_ns": 229540,
+      "median_selection_ns": 74083,
+      "median_admission_ns": 26879,
+      "median_emission_ns": 43021,
+      "median_verification_ns": 56332,
+      "median_phase_sum_ns": 200315,
+      "selection_share_of_median_phase_sum": 0.3698325137907795,
+      "admission_share_of_median_phase_sum": 0.1341836607343434,
+      "emission_share_of_median_phase_sum": 0.21476674238075033,
+      "verification_share_of_median_phase_sum": 0.28121708309412674,
+      "object_bytes_per_object": 891
+    }
+  ],
+  "workload_source": {
+    "sha256": "699ffdc9a1cd337ee750a55238c334026f07c030d0640162e59e3ef4ff280131"
+  },
+  "raw": {
+    "sha256": "1d3363a793e233570f43dc64bd8b9fb8aefb0e1c5e15abe45ce89d65e05f7ec8"
+  },
+  "instrumentation": {
+    "timer": "std::time::Instant around each backend stage",
+    "effect": "adds per-stage measurement overhead",
+    "comparison": "use this bundle for phase attribution only",
+    "total_latency_reference": "use the uninstrumented pipeline evidence bundle"
+  }
+}

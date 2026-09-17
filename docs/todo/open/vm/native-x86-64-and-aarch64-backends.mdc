@@ -1129,3 +1129,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   uncertainty, and scaling statistics are retained.
   Generated code is not loaded or executed, so native execution performance
   evidence remains pending with executable-memory and call-shim integration.
+- A second retained phase-attribution bundle under
+  `2026-09-16-native-backend-phases-linux-x86_64/` instruments the same
+  workload and sample matrix. Across both target ISAs and scales, selection is
+  about 37-38% of summed phase medians, semantic verification about 27-28%,
+  COFF emission about 21-22%, and fused admission about 13-14%. Per-stage
+  timers add overhead, so this evidence identifies preparation cost share and
+  does not replace the uninstrumented total-pipeline latency bundle.
