@@ -23,6 +23,11 @@ test = false
 bench = false
 doc = false
 
+[[bench]]
+name = "native_backend_pipeline"
+path = "benchmarks/interpreter/native_backend_pipeline.rs"
+harness = false
+
 [[bin]]
 name = "state_graph_benchmark"
 path = "src/research/algorithms/composition/state-graph/main.rs"

@@ -25,3 +25,29 @@ Run the check from the repository root:
 The Windows `_halloc` compatibility function is generated and linked as a
 separate temporary translation unit. The historical `main.c` is never patched,
 wrapped, copied back, or used as a source of safe modern semantics.
+
+## Native backend pipeline benchmark
+
+`native_backend_pipeline` measures the reviewed fused native backend preparation
+pipeline on the same VM-derived two-step `rotate/jump-code` workload for x86-64
+and AArch64. Each retained timing includes direct sequence selection, fused
+admission, COFF emission, and independent semantic object verification.
+
+Run it from the repository root with:
+
+```sh
+cargo bench --bench native_backend_pipeline
+```
+
+The benchmark emits CSV to standard output. It retains 15 samples per ISA at
+pipeline repetition scales 1, 2, and 4, performs one untimed warmup for each
+ISA/scale pair, alternates ISA order across retained samples, and records exact
+verified-object and emitted-byte counts beside elapsed nanoseconds.
+
+This benchmark does **not** allocate executable memory or invoke generated
+machine code. It therefore measures backend preparation and verification cost,
+not native execution throughput or interpreter-to-native speedup. AArch64 is a
+target encoding generated and verified on the benchmark host; it is not executed
+when the host is x86-64. Host-specific retained measurements belong under
+`evidence/` with exact source, workload, toolchain, hardware, operating-system,
+resource-budget, raw-sample, and statistical provenance.
