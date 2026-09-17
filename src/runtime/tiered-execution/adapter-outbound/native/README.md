@@ -398,9 +398,10 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits twenty-eight reviewed two-step regions as atomic
+`direct/fused.rs` now emits twenty-nine reviewed two-step regions as atomic
 x86-64
-or AArch64 COFF candidates: rotate/output, crazy/output, crazy/jump-code,
+or AArch64 COFF candidates: rotate/output, rotate/jump-data, crazy/output,
+crazy/jump-code,
 crazy/jump-data,
 no-operation/output,
 no-operation/no-operation, no-operation/jump-code, no-operation/jump-data,
@@ -412,7 +413,8 @@ jump-data/output,
 jump-data/jump-data, jump-data/rotate, no-operation/rotate,
 no-operation/crazy,
 crazy/no-operation, crazy/rotate,
-crazy/crazy, rotate/no-operation, rotate/crazy, and rotate/rotate. Both
+crazy/crazy, rotate/jump-data, rotate/no-operation, rotate/crazy, and
+rotate/rotate. Both
 ISA families complete
 every applicable fused entry, memory, termination, and output-capacity guard
 before their first store; a miss therefore preserves the original region entry

@@ -190,7 +190,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   dependency-aware entry live-ins, a distinct region-wide artifact key, and
   retained source-plan/sequence-key provenance. It rejects single-step aliasing.
 
-  Reviewed fused emission now covers rotate/output, crazy/output,
+  Reviewed fused emission now covers rotate/output, rotate/jump-data,
+  crazy/output,
   crazy/jump-code, crazy/jump-data, no-operation/output,
   no-operation/no-operation, no-operation/jump-code,
   no-operation/jump-data, jump-code/crazy, jump-code/no-operation,
@@ -199,7 +200,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   jump-data/jump-code, jump-data/output, jump-data/jump-data, jump-data/rotate,
   no-operation/rotate,
   no-operation/crazy,
-  crazy/no-operation, crazy/rotate, crazy/crazy, rotate/no-operation,
+  crazy/no-operation, crazy/rotate, crazy/crazy, rotate/jump-data,
+  rotate/no-operation,
   rotate/crazy, and rotate/rotate on x86-64 and AArch64.
   Each candidate completes its applicable region-entry live-in, termination,
   memory-capacity, and output-capacity guards before every store. Semantic
