@@ -106,8 +106,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   terminal objects on both ISAs with reduced C/live-in guards. The traced
   no-operation shape also has a distinct reviewed object family that guards C/D,
   exact memory extent, `memory[C]`, and prior live termination while leaving A
-  and I/O history unguarded. It grants no v6 no-operation lifecycle or runner
-  authority.
+  and I/O history unguarded. Its distinct relocation-free load image retains the
+  exact key, target, alignment, and strict RW-to-RX/full-sync policy. It grants
+  no v6 no-operation lifecycle, platform, binding, or runner authority.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,

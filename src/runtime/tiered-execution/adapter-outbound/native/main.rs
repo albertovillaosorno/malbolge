@@ -523,6 +523,7 @@ pub use loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
     VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use malbolge::{

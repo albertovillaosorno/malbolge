@@ -955,7 +955,11 @@ AArch64. `direct-register-masked-no-operation` revision 1 separately preserves
 full v6 masked identity while guarding only live C/D state, exact memory extent,
 `memory[C]`, and prior live termination. Dead A and I/O history do not change
 machine text, while live D changes do. Semantic promotion regenerates canonical
-x86-64/AArch64 bytes; no v6 no-operation load or invocation authority is added.
+x86-64/AArch64 bytes.
+
+A distinct relocation-free load image retains exact identity, alignment, and
+strict W^X/full-sync policy without granting lifecycle, platform, binding, or
+invocation authority.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
