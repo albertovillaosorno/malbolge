@@ -1410,6 +1410,13 @@ deterministically without changing guest-visible state silently.
   emission about 21-22%, and fused admission about 13-14%. Per-stage timers add
   overhead, so the phase run is attribution evidence rather than a replacement
   for uninstrumented total-pipeline latency.
+- A retained cold-versus-warm exact-cache run uses the same workload and scales
+  with 15 samples per mode/ISA/scale. Fresh warm caches are seeded outside the
+  timer, and every timed warm selection records exact hits with zero insertions.
+  Median warm selection is 2.606-2.885x faster than cold selection across the
+  six ISA/scale comparisons; total preparation improves 1.305-1.390x, while
+  fused-admission medians remain within about 3%. Generated code is still not
+  executed, so this remains preparation evidence rather than native throughput.
 
 ## References
 

@@ -1140,3 +1140,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   COFF emission about 21-22%, and fused admission about 13-14%. Per-stage
   timers add overhead, so this evidence identifies preparation cost share and
   does not replace the uninstrumented total-pipeline latency bundle.
+- A cold-versus-warm cache bundle under
+  `2026-09-17-native-backend-cache-linux-x86_64/` retains 15 samples per mode,
+  ISA, and scale. Warm samples seed a fresh direct-artifact cache outside the
+  timer and require exact hits with zero timed insertions. Median warm selection
+  is 2.606-2.885x faster than cold selection, while total preparation improves
+  1.305-1.390x and fused-admission medians stay within about 3%. This remains
+  backend-preparation evidence only; generated code is not executed.
