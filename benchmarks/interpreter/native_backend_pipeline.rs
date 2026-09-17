@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Claim native execution speed or bypass semantic verification.
 // - Allows:
-//   - Inputs: one VM-derived two-step workload and both reviewed host ISAs.
+//   - Inputs: reviewed VM-derived two-step workloads and both host ISAs.
 //   - Outputs: raw nanosecond samples and explicit completed-work counters.
 //   - Side effects: benchmark-process CPU time and stdout only.
 // - Split-When:
@@ -30,7 +30,7 @@
 //   - Uses 15 samples, one warmup per mode, alternation, and scales 1/2/4.
 //
 
-//! Raw fused native backend pipeline measurements for equivalent host targets.
+//! Raw fused native backend pipeline measurements for reviewed host targets.
 
 #[path = "../../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
@@ -45,7 +45,8 @@ use std::time::Instant;
 use malbolge::{
     ProfileMachine, ProfileMachineIoState, ProfileMachineState,
     ProfileRegisters, ProfileStepTrace, RegionEffectProgram, RunOutcome,
-    current_profile, decode_profile_instruction, safe_rust_profiled_capability,
+    current_profile, decode_profile_instruction,
+    profile_cell_decodes_to_no_operation, safe_rust_profiled_capability,
 };
 
 use crate::execution_cache::{HostIsa, HostOperatingSystem};
@@ -66,10 +67,17 @@ enum PipelineMode {
 }
 
 #[derive(Clone, Copy)]
+enum Workload {
+    NoOperationOutput,
+    RotateJumpCode,
+}
+
+#[derive(Clone, Copy)]
 struct PipelineCase {
     isa: HostIsa,
     mode: PipelineMode,
     scale: u8,
+    workload: Workload,
 }
 
 struct PipelineSample {
@@ -97,19 +105,24 @@ struct PipelineMeasurement {
 /// Returns an I/O error if the workload cannot be constructed, a backend stage
 /// rejects the reviewed workload, or writing samples to stdout fails.
 fn run() -> IoResult<()> {
-    let programs = rotate_jump_code_programs()?;
+    let workloads = [
+        (Workload::NoOperationOutput, no_operation_output_programs()?),
+        (Workload::RotateJumpCode, rotate_jump_code_programs()?),
+    ];
     let mut output = stdout().lock();
     writeln!(
         output,
         concat!(
-            "benchmark,mode,isa,scale,sample,nanoseconds,selection_ns,",
-            "admission_ns,emission_ns,verification_ns,cache_hits,",
-            "cache_insertions,verified_objects,object_bytes"
+            "benchmark,workload,mode,isa,scale,sample,nanoseconds,",
+            "selection_ns,admission_ns,emission_ns,verification_ns,",
+            "cache_hits,cache_insertions,verified_objects,object_bytes"
         )
     )?;
-    for scale in SCALES {
-        warm_up(&programs, scale)?;
-        emit_scale_samples(&mut output, &programs, scale)?;
+    for (workload, programs) in workloads {
+        for scale in SCALES {
+            warm_up(&programs, workload, scale)?;
+            emit_scale_samples(&mut output, &programs, workload, scale)?;
+        }
     }
     Ok(())
 }
@@ -117,6 +130,7 @@ fn run() -> IoResult<()> {
 fn emit_scale_samples(
     output: &mut impl Write,
     programs: &[RegionEffectProgram],
+    workload: Workload,
     scale: u8,
 ) -> IoResult<()> {
     let mut sample = 0u8;
@@ -133,7 +147,12 @@ fn emit_scale_samples(
                 [PipelineMode::Warm, PipelineMode::Cold]
             };
             for mode in modes {
-                let case = PipelineCase { isa, mode, scale };
+                let case = PipelineCase {
+                    isa,
+                    mode,
+                    scale,
+                    workload,
+                };
                 let mut cache = prepare_cache(programs, case)?;
                 let start = Instant::now();
                 let measurement = run_pipeline(programs, case, &mut cache)?;
@@ -168,17 +187,30 @@ fn emit_sample(
         selection_ns,
         verification_ns,
     } = &result.measurement;
-    let PipelineCase { isa, mode, scale } = result.case;
+    let PipelineCase {
+        isa,
+        mode,
+        scale,
+        workload,
+    } = result.case;
     let nanoseconds = result.nanoseconds;
     let sample = result.sample;
     writeln!(
         output,
-        "native-fused-pipeline,{},{},{scale},{sample},{nanoseconds},\
+        "native-fused-pipeline,{},{},{},{scale},{sample},{nanoseconds},\
          {selection_ns},{admission_ns},{emission_ns},{verification_ns},\
          {cache_hits},{cache_insertions},{scale},{object_bytes}",
+        workload_label(workload),
         mode_label(mode),
         isa_label(isa),
     )
+}
+
+const fn workload_label(workload: Workload) -> &'static str {
+    match workload {
+        Workload::NoOperationOutput => "no-operation-output",
+        Workload::RotateJumpCode => "rotate-jump-code",
+    }
 }
 
 const fn mode_label(mode: PipelineMode) -> &'static str {
@@ -193,6 +225,68 @@ const fn isa_label(isa: HostIsa) -> &'static str {
         HostIsa::AArch64 => "aarch64",
         HostIsa::X86_64 => "x86_64",
     }
+}
+
+fn no_operation_output_programs() -> IoResult<Vec<RegionEffectProgram>> {
+    let mut machine =
+        ProfileMachine::from_snapshot(no_operation_output_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| io_error("no-op/output benchmark trace", error))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(IoError::other(
+            "no-op/output benchmark trace did not run 2 steps",
+        ));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| {
+                    IoError::other(format!(
+                        "no-op/output benchmark projection: {error:?}"
+                    ))
+                },
+            )
+        })
+        .collect()
+}
+
+fn no_operation_output_state() -> IoResult<ProfileMachineState> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| io_error("no-op/output benchmark load", error))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let no_operation_cell = (33u32..=126u32)
+        .find(|cell| profile_cell_decodes_to_no_operation(*cell, 5))
+        .ok_or_else(|| {
+            IoError::other("phase-five no-operation cell missing")
+        })?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| IoError::other("no-op/output code cell 5 missing"))? =
+        no_operation_cell;
+    let output_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'<'))
+        .ok_or_else(|| IoError::other("phase-six output cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| IoError::other("no-op/output code cell 6 missing"))? =
+        output_cell;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| io_error("no-op/output benchmark IO", error))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x00ab_cdef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| io_error("no-op/output benchmark state", error))
 }
 
 fn rotate_jump_code_programs() -> IoResult<Vec<RegionEffectProgram>> {
@@ -404,10 +498,19 @@ fn validate_cache_activity(
     Ok(())
 }
 
-fn warm_up(programs: &[RegionEffectProgram], scale: u8) -> IoResult<()> {
+fn warm_up(
+    programs: &[RegionEffectProgram],
+    workload: Workload,
+    scale: u8,
+) -> IoResult<()> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
         for mode in [PipelineMode::Cold, PipelineMode::Warm] {
-            let case = PipelineCase { isa, mode, scale };
+            let case = PipelineCase {
+                isa,
+                mode,
+                scale,
+                workload,
+            };
             let mut cache = prepare_cache(programs, case)?;
             let _measurement = run_pipeline(programs, case, &mut cache)?;
         }
