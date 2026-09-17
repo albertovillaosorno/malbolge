@@ -349,10 +349,16 @@ any
 mismatch or null state returns `guard-miss=1` without mutation. Complete x86-64
 and AArch64 COFF bytes are independently frozen. A changed commit immediate may
 
-remain structurally valid but fails semantic admission. Development evidence
-links both ISA objects and executes x86-64 hit/miss/null cases, with miss state
-byte-identical before and after. General region-effect code generation remains
-outside this reviewed subset.
+remain structurally valid but fails semantic admission. The tracked POSIX
+x86-64 harness in `tests/execution/native_initial_halt_posix.c` receives `.text`
+extracted directly from that frozen COFF fixture, stages it RW, seals the same
+mapping RX, synchronizes instructions, and calls it through Clang `ms_abi`.
+
+`tests/test_native_direct_execution.py` proves hit, byte-identical miss, and
+null-state behavior, while the Rust fixture regression independently requires
+the production emitter to reproduce the complete frozen object. AArch64 object
+linkage remains independently verified. This is development execution evidence,
+not a production executable-memory adapter or runner.
 
 `select_verified_direct_native()` now owns deterministic direct-template
 selection for the implemented Windows surface. The caller supplies one explicit

@@ -1122,6 +1122,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   The reviewed thirty-shape fused two-step emission matrix is complete.
   Concrete executable-memory integration, instruction-cache implementation,
   and the foreign-call boundary remain pending for this TODO.
+- Tracked x86-64 development execution now binds the frozen
+  `direct-initial-halt` COFF fixture to a POSIX W^X harness. The harness stages
+  exact `.text` bytes RW, seals the same mapping RX, synchronizes instructions,
+  and invokes through Clang `ms_abi`; hit, byte-identical miss, and null-state
+  behavior pass. A separate Rust regression requires the production emitter to
+  reproduce the complete frozen object. This makes the existing execution claim
+  reproducible but does not implement the pending production memory/call ports.
 - Initial backend-pipeline performance evidence is retained under
   `benchmarks/interpreter/evidence/` in directory
   `2026-09-16-native-backend-pipeline-linux-x86_64/`.

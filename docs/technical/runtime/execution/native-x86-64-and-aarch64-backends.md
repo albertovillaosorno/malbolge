@@ -61,10 +61,18 @@ first
 state-applying fast path. It verifies zero entry registers/counters and live
 termination before writing only the halt termination byte. Any mismatch returns
 guard miss without mutation. Complete independently rendered COFF fixtures bind
-both ISA implementations; x86-64 execution evidence covers hit, miss, and null
-state, while ARM64 object linkage is verified on the development host. This
+both ISA implementations.
 
-remains a deliberately tiny subset rather than general instruction selection.
+A tracked POSIX x86-64 harness extracts the frozen fixture `.text`, stages it
+RW, seals the same mapping RX, synchronizes instructions, and invokes the entry
+with Clang `ms_abi`. Hit, byte-identical miss, and null-state execution are
+covered; ARM64 object linkage remains verified independently.
+
+The Rust regression separately requires the production emitter to reproduce the
+complete frozen object. This host harness is development execution evidence,
+not the concrete executable-memory adapter or runner required for production.
+The direct template remains a deliberately tiny subset rather than general
+instruction selection.
 
 `direct-halt-registers` revision 5 now covers the same halt-only effect across
 arbitrary 32-bit entry registers and full 64-bit input/output counter
