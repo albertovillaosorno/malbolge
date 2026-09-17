@@ -57,7 +57,7 @@ use super::direct::{
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
 };
 use super::fused_sequence::{
-    DirectFusedSequenceAdmissionError, admit_fused_direct_sequence,
+    DirectFusedSequenceAdmissionError, readmit_fused_direct_sequence,
 };
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyDirectFusedNativeExecutable,
@@ -612,7 +612,7 @@ impl<'artifact, 'buffers> PreparedDirectFusedInvocation<'artifact, 'buffers> {
         buffers: NativeRegionBuffers<'buffers>,
     ) -> Result<Self, DirectFusedInvocationError> {
         let admission =
-            admit_fused_direct_sequence(artifact.admission().source_plan())
+            readmit_fused_direct_sequence(artifact.admission().source_plan())
                 .map_err(DirectFusedInvocationError::Admission)?;
         if artifact.admission() != &admission
             || artifact.key() != admission.key()

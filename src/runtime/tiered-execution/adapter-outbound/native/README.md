@@ -432,6 +432,9 @@ crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, and rotate/rotate shapes
 exercise both ISAs through emission, promotion,
 relocation-free load-image extraction, and whole-region state comparison with
 the profile VM.
+Cached and uncached verified plans normalize to compact source provenance;
+fused admission therefore does not clone retained one-step object bytes.
+
 
 `VerifiedDirectFusedLoadImage` now reparses only that verified fused object,
 rejects relocations, validates ISA alignment, and retains exact key/triple plus

@@ -14,7 +14,7 @@
 //   - Emit object bytes, allocate executable memory, invoke code, or replace
 //   - one-step semantic verification.
 // - Allows:
-//   - Inputs: one exact `VerifiedDirectSequencePlan`.
+//   - Inputs: one exact cached or uncached verified direct sequence plan.
 //   - Outputs: one canonical multieffect program, fused artifact key, and
 //     ordered source-artifact provenance.
 //   - Side effects: process-local allocation only.
@@ -32,7 +32,8 @@
 // - Usage:
 //   - Admit a verified one-step sequence before any future fused emission.
 // - Defaults:
-//   - Ordered one-step artifact identity remains explicit provenance.
+//   - Ordered one-step artifact identity remains explicit provenance; object
+//   - bytes are not retained by fused admission.
 //
 
 //! Region-wide identity admission for verified direct-native sequences.
@@ -40,9 +41,15 @@
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use malbolge::{MemoryLiveIn, ProfileMemoryWrite, RegionEffectProgram};
+use malbolge::{
+    MemoryLiveIn, ProfileMachineObservation, ProfileMemoryWrite,
+    RegionEffectProgram, RunOutcome,
+};
 
-use super::direct::VerifiedDirectSequencePlan;
+use super::direct::{
+    CachedVerifiedDirectSequencePlan, DirectNativeKind,
+    VerifiedDirectSequencePlan,
+};
 use super::executable_cache::NativeExecutableSequenceKey;
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetConfig,
@@ -90,13 +97,23 @@ pub enum DirectFusedSequenceAdmissionError {
     },
 }
 
+/// Compact immutable provenance retained from independently verified steps.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DirectFusedSequenceSourcePlan {
+    artifact_kinds: Vec<DirectNativeKind>,
+    entry: ProfileMachineObservation,
+    exit: ProfileMachineObservation,
+    outcome: RunOutcome,
+    programs: Vec<RegionEffectProgram>,
+    source_key: NativeExecutableSequenceKey,
+}
+
 /// Canonical fused-region program plus exact source and target identities.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectFusedSequenceAdmission {
     key: NativeArtifactKey,
     program: RegionEffectProgram,
-    source_key: NativeExecutableSequenceKey,
-    source_plan: VerifiedDirectSequencePlan,
+    source_plan: DirectFusedSequenceSourcePlan,
 }
 
 impl Display for DirectFusedSequenceAdmissionError {
@@ -136,6 +153,86 @@ impl From<NativeIdentityError> for DirectFusedSequenceAdmissionError {
     }
 }
 
+impl DirectFusedSequenceSourcePlan {
+    /// Returns each reviewed direct template in semantic execution order.
+    #[must_use]
+    pub fn artifact_kinds(&self) -> &[DirectNativeKind] {
+        &self.artifact_kinds
+    }
+
+    /// Returns the exact first-step entry observation.
+    #[must_use]
+    pub const fn entry(&self) -> ProfileMachineObservation {
+        self.entry
+    }
+
+    /// Returns the exact final-step exit observation.
+    #[must_use]
+    pub const fn exit(&self) -> ProfileMachineObservation {
+        self.exit
+    }
+
+    fn from_cached_plan(plan: &CachedVerifiedDirectSequencePlan) -> Self {
+        Self {
+            artifact_kinds: plan
+                .artifacts()
+                .iter()
+                .map(|artifact| artifact.kind())
+                .collect(),
+            entry: plan.entry(),
+            exit: plan.exit(),
+            outcome: plan.outcome(),
+            programs: plan.programs().to_vec(),
+            source_key: NativeExecutableSequenceKey::from_cached_plan(plan),
+        }
+    }
+
+    fn from_verified_plan(plan: &VerifiedDirectSequencePlan) -> Self {
+        Self {
+            artifact_kinds: plan
+                .artifacts()
+                .iter()
+                .map(super::direct::VerifiedDirectNativeArtifact::kind)
+                .collect(),
+            entry: plan.entry(),
+            exit: plan.exit(),
+            outcome: plan.outcome(),
+            programs: plan.programs().to_vec(),
+            source_key: NativeExecutableSequenceKey::from_plan(plan),
+        }
+    }
+
+    /// Returns whether the retained source sequence contains no steps.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.programs.is_empty()
+    }
+
+    /// Returns the number of independently verified semantic source steps.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.programs.len()
+    }
+
+    /// Returns the exact regional outcome retained from source verification.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+
+    /// Returns exact one-step programs in semantic execution order.
+    #[must_use]
+    pub fn programs(&self) -> &[RegionEffectProgram] {
+        &self.programs
+    }
+
+    /// Returns exact ordered one-step artifact identity.
+    #[must_use]
+    pub const fn source_key(&self) -> &NativeExecutableSequenceKey {
+        &self.source_key
+    }
+}
+
 impl DirectFusedSequenceAdmission {
     /// Returns the exact region-wide native artifact identity.
     #[must_use]
@@ -152,12 +249,12 @@ impl DirectFusedSequenceAdmission {
     /// Returns ordered one-step artifact identity retained as provenance.
     #[must_use]
     pub const fn source_key(&self) -> &NativeExecutableSequenceKey {
-        &self.source_key
+        self.source_plan.source_key()
     }
 
-    /// Returns the complete independently verified one-step source evidence.
+    /// Returns compact independently verified one-step source provenance.
     #[must_use]
-    pub const fn source_plan(&self) -> &VerifiedDirectSequencePlan {
+    pub const fn source_plan(&self) -> &DirectFusedSequenceSourcePlan {
         &self.source_plan
     }
 }
@@ -176,19 +273,46 @@ impl DirectFusedSequenceAdmission {
 pub fn admit_fused_direct_sequence(
     plan: &VerifiedDirectSequencePlan,
 ) -> Result<DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError> {
-    if plan.len() < 2 {
+    admit_source_plan(DirectFusedSequenceSourcePlan::from_verified_plan(plan))
+}
+
+/// Admits one cache-aware verified sequence as fused-region identity.
+///
+/// The retained provenance copies only one-step IR, reviewed template kinds,
+/// observations, outcome, and exact artifact keys. Verified object bytes remain
+/// shared by the caller-owned cache and are not cloned into fused authority.
+///
+/// # Errors
+///
+/// Returns [`DirectFusedSequenceAdmissionError`] under the same fail-closed
+/// dependency and target assumptions as [`admit_fused_direct_sequence`].
+pub fn admit_cached_fused_direct_sequence(
+    plan: &CachedVerifiedDirectSequencePlan,
+) -> Result<DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError> {
+    admit_source_plan(DirectFusedSequenceSourcePlan::from_cached_plan(plan))
+}
+
+pub(super) fn readmit_fused_direct_sequence(
+    plan: &DirectFusedSequenceSourcePlan,
+) -> Result<DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError> {
+    admit_source_plan(plan.clone())
+}
+
+fn admit_source_plan(
+    source_plan: DirectFusedSequenceSourcePlan,
+) -> Result<DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError> {
+    if source_plan.len() < 2 {
         return Err(DirectFusedSequenceAdmissionError::SequenceLength {
-            steps: plan.len(),
+            steps: source_plan.len(),
         });
     }
-    let program = compose_fused_program(plan)?;
-    let target = fused_target(plan)?;
+    let program = compose_fused_program(&source_plan)?;
+    let target = fused_target(&source_plan)?;
     let key = NativeArtifactKey::new(&program, target)?;
     Ok(DirectFusedSequenceAdmission {
         key,
         program,
-        source_key: NativeExecutableSequenceKey::from_plan(plan),
-        source_plan: plan.clone(),
+        source_plan,
     })
 }
 
@@ -234,7 +358,7 @@ fn admit_write(
 }
 
 fn compose_fused_program(
-    plan: &VerifiedDirectSequencePlan,
+    plan: &DirectFusedSequenceSourcePlan,
 ) -> Result<RegionEffectProgram, DirectFusedSequenceAdmissionError> {
     let first = plan
         .programs()
@@ -286,17 +410,19 @@ fn compose_fused_program(
 }
 
 fn fused_target(
-    plan: &VerifiedDirectSequencePlan,
+    plan: &DirectFusedSequenceSourcePlan,
 ) -> Result<NativeTargetIdentity, DirectFusedSequenceAdmissionError> {
     let first = plan
-        .artifacts()
+        .source_key()
+        .artifact_keys()
         .first()
         .ok_or(DirectFusedSequenceAdmissionError::Empty)?
-        .key()
         .target();
     let mut required_features = Vec::new();
-    for (index, artifact) in plan.artifacts().iter().enumerate() {
-        let target = artifact.key().target();
+    for (index, artifact_key) in
+        plan.source_key().artifact_keys().iter().enumerate()
+    {
+        let target = artifact_key.target();
         if target.host_isa() != first.host_isa()
             || target.host_os() != first.host_os()
             || target.native_abi_revision() != first.native_abi_revision()

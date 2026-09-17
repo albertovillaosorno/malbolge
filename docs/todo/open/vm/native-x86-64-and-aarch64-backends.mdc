@@ -189,6 +189,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A fused admission boundary now derives one canonical multieffect region with
   dependency-aware entry live-ins, a distinct region-wide artifact key, and
   retained source-plan/sequence-key provenance. It rejects single-step aliasing.
+  Cache-aware verified sequences now enter the same admission boundary without
+  cloning verified one-step object bytes. Cached and uncached plans normalize to
+  the same compact source kinds, keys, one-step IR, observations, and outcome;
+  fused re-admission remains independent of the cache lifetime.
 
   Reviewed fused emission now covers rotate/output, rotate/jump-code,
   rotate/jump-data, crazy/output,

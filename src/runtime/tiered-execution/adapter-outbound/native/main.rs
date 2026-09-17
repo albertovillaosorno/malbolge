@@ -331,6 +331,7 @@ pub use fused_resident_cache::{
 pub use fused_sequence::{
     DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
     DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError,
+    DirectFusedSequenceSourcePlan, admit_cached_fused_direct_sequence,
     admit_fused_direct_sequence,
 };
 pub use fused_sequence_cache::{

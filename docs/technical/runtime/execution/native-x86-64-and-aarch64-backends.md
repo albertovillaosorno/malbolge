@@ -308,8 +308,13 @@ post-termination sequences.
 `DirectFusedSequenceAdmission` derives one canonical multieffect region from
 that already verified plan. Ordered memory evidence becomes exact region-entry
 live-ins; a distinct revision-1 fused target binds the region-wide
-`NativeArtifactKey`, while the complete source plan and ordered sequence key
-remain provenance. Single-step plans are rejected.
+`NativeArtifactKey`. Retained source provenance now consists of reviewed direct
+kinds, exact ordered artifact keys, one-step IR, entry/exit observations, and
+outcome. Cached and uncached verified plans normalize to the same provenance, so
+cache hits can enter fused admission without cloning verified object bytes and
+subsequent re-admission remains independent of cache lifetime.
+
+Single-step plans are rejected.
 
 The fused emitter now covers thirty reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,

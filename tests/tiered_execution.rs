@@ -417,13 +417,13 @@ use execution_native::{
     DirectFusedNativeTransactionalCachedRetryAcquisitionFailure,
     DirectFusedNativeTransactionalCachedRetryFailure,
     DirectFusedNativeYieldTarget, DirectFusedSequenceAdmissionError,
-    DirectFusedSequenceObjectError, DirectHaltFetchError,
-    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
-    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError,
+    DirectFusedSequenceObjectError, DirectFusedSequenceSourcePlan,
+    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
+    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRotateError, DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -515,9 +515,10 @@ use execution_native::{
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     acquire_direct_fused_native_sequence,
     acquire_direct_fused_native_sequence_transactionally,
-    admit_fused_direct_sequence, admit_register_masked_direct_native,
-    compile_preflighted_clang_c23, emit_direct_crazy_coff,
-    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
+    admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
+    admit_register_masked_direct_native, compile_preflighted_clang_c23,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -17493,8 +17494,10 @@ fn fused_direct_sequence_binds_region_identity_and_source_provenance()
             .iter()
             .zip(plan.artifacts())
             .all(|(key, artifact)| key == artifact.key());
+        let source_plan_matches =
+            direct_fused_source_matches(admission.source_plan(), &plan);
         if admission.source_key() != &source_key
-            || admission.source_plan() != &plan
+            || !source_plan_matches
             || !source_identity_matches
             || admission.program().effects.len() != 2
             || admission.program().step_budget != 2
@@ -25642,7 +25645,8 @@ fn fused_direct_handoff_rolls_back_late_live_in_drift() -> Result<(), String> {
     let (_plan, continuation) =
         fused_direct_guard_continuation(HostIsa::X86_64)?;
     let source = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
-    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let live_in =
+        distinct_second_live_in(source.admission().source_plan().programs())?;
     let index = usize::try_from(live_in.address)
         .map_err(|error| format!("fused late live-in index: {error}"))?;
     let mut memory = fixture.initial_memory.clone();
@@ -25854,7 +25858,8 @@ fn fused_direct_handoff_budget_resume_rolls_back_drift() -> Result<(), String> {
     let (_plan, continuation) =
         fused_direct_guard_continuation(HostIsa::AArch64)?;
     let source = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
-    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let live_in =
+        distinct_second_live_in(source.admission().source_plan().programs())?;
     let index = usize::try_from(live_in.address)
         .map_err(|error| format!("fused budget drift index: {error}"))?;
     let observed = live_in.value.saturating_sub(1);
@@ -26058,7 +26063,8 @@ fn fused_direct_scheduler_propagates_resumed_drift() -> Result<(), String> {
     let (_plan, continuation) =
         fused_direct_guard_continuation(HostIsa::X86_64)?;
     let source = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
-    let live_in = distinct_second_live_in(source.admission().source_plan())?;
+    let live_in =
+        distinct_second_live_in(source.admission().source_plan().programs())?;
     let index = usize::try_from(live_in.address)
         .map_err(|error| format!("fused scheduler drift index: {error}"))?;
     let observed = live_in.value.saturating_sub(1);
@@ -29512,6 +29518,70 @@ fn fused_direct_sequence_rejects_single_step_alias() -> Result<(), String> {
     } else {
         Err(String::from(
             "fused admission accepted an existing one-step backend alias",
+        ))
+    }
+}
+
+#[test]
+fn cached_fused_admission_reuses_verified_source_provenance()
+-> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        verify_cached_fused_admission(isa)?;
+    }
+    Ok(())
+}
+
+fn verify_cached_fused_admission(isa: HostIsa) -> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    let runtime = safe_rust_profiled_capability();
+    let host = DirectHost::new(HostOperatingSystem::Windows, isa);
+    let uncached = select_verified_direct_sequence(
+        &programs,
+        runtime,
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| format!("uncached fused source: {error}"))?;
+    let expected = admit_fused_direct_sequence(&uncached)
+        .map_err(|error| format!("uncached fused admission: {error}"))?;
+    let mut cache = VerifiedDirectNativeCache::default();
+    let inserted = select_cached_verified_direct_sequence(
+        &programs, runtime, host, &mut cache,
+    )
+    .map_err(|error| format!("cached fused insert: {error}"))?;
+    let inserted_admission = admit_cached_fused_direct_sequence(&inserted)
+        .map_err(|error| format!("cached fused insert admission: {error}"))?;
+    let hit = select_cached_verified_direct_sequence(
+        &programs, runtime, host, &mut cache,
+    )
+    .map_err(|error| format!("cached fused hit: {error}"))?;
+    let hit_admission = admit_cached_fused_direct_sequence(&hit)
+        .map_err(|error| format!("cached fused hit admission: {error}"))?;
+    let arcs_match = inserted
+        .artifacts()
+        .iter()
+        .zip(hit.artifacts())
+        .all(|(left, right)| Arc::ptr_eq(left, right));
+    if inserted_admission != expected
+        || hit_admission != expected
+        || hit.cache_hits() != 2
+        || hit.cache_insertions() != 0
+        || !arcs_match
+    {
+        return Err(String::from("cached fused provenance drifted"));
+    }
+    let candidate = emit_fused_direct_sequence_coff(&hit_admission)
+        .map_err(|error| format!("cached fused emit: {error}"))?;
+    drop(inserted);
+    drop(hit);
+    cache.clear();
+    let verified = verify_fused_direct_sequence(&candidate, &hit_admission)
+        .map_err(|error| format!("cached fused verify: {error}"))?;
+    if verified.admission() == &expected && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "cached fused provenance required cache lifetime",
         ))
     }
 }
@@ -35349,6 +35419,20 @@ fn release_leased_retry(
         .map_err(|failure| failure.to_string())
 }
 
+fn direct_fused_source_matches(
+    source: &DirectFusedSequenceSourcePlan,
+    plan: &VerifiedDirectSequencePlan,
+) -> bool {
+    source.programs() == plan.programs()
+        && source.entry() == plan.entry()
+        && source.exit() == plan.exit()
+        && source.outcome() == plan.outcome()
+        && source.artifact_kinds().iter().copied().eq(plan
+            .artifacts()
+            .iter()
+            .map(execution_native::VerifiedDirectNativeArtifact::kind))
+}
+
 fn profile_state_observation(
     state: &ProfileMachineState,
 ) -> ProfileMachineObservation {
@@ -35361,9 +35445,9 @@ fn profile_state_observation(
 }
 
 fn distinct_second_live_in(
-    plan: &VerifiedDirectSequencePlan,
+    programs: &[RegionEffectProgram],
 ) -> Result<MemoryLiveIn, String> {
-    let [first, second] = plan.programs() else {
+    let [first, second] = programs else {
         return Err(String::from("handoff rollback plan length drifted"));
     };
     second
@@ -54625,7 +54709,7 @@ fn native_interpreter_handoff_rolls_back_late_live_in_drift()
     } = native_handoff_fixture(HostIsa::X86_64, vec![
         FakeNativeRunnerBehavior::GuardMiss,
     ])?;
-    let live_in = distinct_second_live_in(&plan)?;
+    let live_in = distinct_second_live_in(plan.programs())?;
     let second = plan
         .programs()
         .get(1)
@@ -54819,7 +54903,7 @@ fn native_interpreter_handoff_budgeted_resume_rolls_back_drift()
     } = native_handoff_fixture(HostIsa::AArch64, vec![
         FakeNativeRunnerBehavior::GuardMiss,
     ])?;
-    let live_in = distinct_second_live_in(&plan)?;
+    let live_in = distinct_second_live_in(plan.programs())?;
     let index = usize::try_from(live_in.address)
         .map_err(|error| format!("budgeted drift index: {error}"))?;
     let observed = live_in.value.saturating_sub(1);
@@ -55056,7 +55140,7 @@ fn native_continuation_scheduler_propagates_drift() -> Result<(), String> {
     } = native_handoff_fixture(HostIsa::X86_64, vec![
         FakeNativeRunnerBehavior::GuardMiss,
     ])?;
-    let live_in = distinct_second_live_in(&plan)?;
+    let live_in = distinct_second_live_in(plan.programs())?;
     let index = usize::try_from(live_in.address)
         .map_err(|error| format!("scheduler drift index: {error}"))?;
     let observed = live_in.value.saturating_sub(1);

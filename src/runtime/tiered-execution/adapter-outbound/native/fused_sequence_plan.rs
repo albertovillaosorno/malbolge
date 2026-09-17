@@ -38,7 +38,7 @@ use malbolge::{ProfileMachineObservation, RunOutcome};
 
 use super::direct::VerifiedDirectFusedSequenceObjectArtifact;
 use super::fused_sequence::{
-    DirectFusedSequenceAdmissionError, admit_fused_direct_sequence,
+    DirectFusedSequenceAdmissionError, readmit_fused_direct_sequence,
 };
 
 /// Failure while admitting an ordered sequence of verified fused regions.
@@ -236,7 +236,7 @@ fn reconstructed_admission(
     use DirectFusedNativeSequencePlanError as Error;
 
     let admission =
-        admit_fused_direct_sequence(artifact.admission().source_plan())
+        readmit_fused_direct_sequence(artifact.admission().source_plan())
             .map_err(|error| Error::Admission { index, error })?;
     if &admission != artifact.admission() || admission.key() != artifact.key() {
         return Err(Error::ArtifactIdentity { index });

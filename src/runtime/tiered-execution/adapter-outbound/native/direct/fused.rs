@@ -42,7 +42,7 @@ use malbolge::RegionEffectProgram;
 use super::super::fused_sequence::{
     DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
     DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError,
-    admit_fused_direct_sequence,
+    readmit_fused_direct_sequence,
 };
 use super::coff::{build_minimal_coff, direct_entry_observation};
 use super::{
@@ -1400,24 +1400,24 @@ fn select_fused_shape(
     else {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     };
-    let [first_artifact, second_artifact] = admission.source_plan().artifacts()
+    let [first_kind, second_kind] = admission.source_plan().artifact_kinds()
     else {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     };
     if let Some(selection) = select_non_output_shape(
-        first_artifact.kind(),
-        second_artifact.kind(),
+        *first_kind,
+        *second_kind,
         first_program,
         second_program,
     )? {
         return Ok(selection);
     }
-    if second_artifact.kind() != DirectNativeKind::Output {
+    if *second_kind != DirectNativeKind::Output {
         return Err(DirectFusedSequenceObjectError::ProgramShape);
     }
     let output = validate_output_program(second_program)
         .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
-    select_output_shape(first_artifact.kind(), first_program, output)
+    select_output_shape(*first_kind, first_program, output)
 }
 
 fn select_output_shape(
@@ -1832,7 +1832,7 @@ const fn no_operation_commit(
 fn validate_admission(
     admission: &DirectFusedSequenceAdmission,
 ) -> Result<(), DirectFusedSequenceObjectError> {
-    let expected = admit_fused_direct_sequence(admission.source_plan())
+    let expected = readmit_fused_direct_sequence(admission.source_plan())
         .map_err(DirectFusedSequenceObjectError::Admission)?;
     if &expected != admission {
         return Err(DirectFusedSequenceObjectError::ArtifactIdentity);
