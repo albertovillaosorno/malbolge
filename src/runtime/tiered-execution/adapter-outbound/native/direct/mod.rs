@@ -58,8 +58,8 @@ use coff::{
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, is_zero_observation, jump_code_coff,
     jump_data_coff, no_operation_coff, non_graphical_coff, output_coff,
-    register_masked_halt_fetch_coff, register_masked_non_graphical_coff,
-    rotate_coff,
+    register_masked_halt_fetch_coff, register_masked_no_operation_coff,
+    register_masked_non_graphical_coff, rotate_coff,
 };
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
@@ -77,6 +77,7 @@ pub use emit::{
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_halt_fetch_coff,
+    emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
 };
 use emit::{
@@ -142,6 +143,7 @@ use shape::{
     validate_output_target, validate_register_masked_halt_fetch_program,
     validate_register_masked_halt_fetch_target,
     validate_register_masked_no_operation_program,
+    validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
     validate_register_masked_non_graphical_target, validate_rotate_program,
     validate_rotate_target, validate_target,
@@ -161,6 +163,7 @@ pub use verify::{
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_halt_fetch,
+    verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical, verify_direct_rotate,
 };
 
@@ -255,6 +258,11 @@ pub const DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID: &str =
     "direct-register-masked-halt-fetch";
 /// Register-masked v6 halt-fetch code-generation revision.
 pub const DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION: u32 = 1;
+/// Backend identity for register-masked v6 no-operation execution.
+pub const DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID: &str =
+    "direct-register-masked-no-operation";
+/// Register-masked v6 no-operation code-generation revision.
+pub const DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION: u32 = 1;
 /// Backend identity for register-masked v6 non-graphical fetch termination.
 pub const DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID: &str =
     "direct-register-masked-non-graphical";
@@ -327,6 +335,14 @@ pub(super) struct DirectFetchedCellGuard {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectRegisterMaskedTerminalGuard {
     pub(super) code_pointer: u32,
+    pub(super) live_in_value: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedNoOperationGuard {
+    pub(super) code_pointer: u32,
+    pub(super) data_pointer: u32,
     pub(super) live_in_value: u32,
     pub(super) required_memory_words: u64,
 }

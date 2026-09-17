@@ -44,7 +44,8 @@ use super::direct::{
     DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
     DirectFusedRotatePairTemplate, DirectInputCommit, DirectInputGuard,
     DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
-    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
+    DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedTerminalGuard,
+    DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -143,6 +144,52 @@ pub(super) fn register_masked_halt_fetch_code(
     guard: DirectRegisterMaskedTerminalGuard,
 ) -> Option<Vec<u8>> {
     register_masked_terminal_code(guard, 1)
+}
+
+/// Encodes v6 no-operation using only declared C/D dependencies.
+#[must_use]
+pub(super) fn register_masked_no_operation_code(
+    guard: DirectRegisterMaskedNoOperationGuard,
+    commit: DirectCodeWriteCommit,
+) -> Option<Vec<u8>> {
+    if commit.encrypted_address != guard.code_pointer {
+        return None;
+    }
+    let code_offset = memory_byte_offset(guard.code_pointer)?;
+    let commit_offset = memory_byte_offset(commit.encrypted_address)?;
+    let mut code = Vec::with_capacity(128);
+    let mut guard_jumps = Vec::with_capacity(7);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    push_u32_guard(&mut code, &mut guard_jumps, 0x44, guard.code_pointer);
+    push_u32_guard(&mut code, &mut guard_jumps, 0x48, guard.data_pointer);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.live_in_value,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&commit_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
 }
 
 /// Encodes v6 non-graphical fetch using only declared C dependency.

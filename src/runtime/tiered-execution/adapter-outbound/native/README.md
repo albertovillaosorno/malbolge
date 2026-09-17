@@ -951,7 +951,13 @@ fetched
 cell guards and commit only the encrypted code word plus the two advanced
 pointers. Independent complete objects are 557 bytes on x86-64 and 658 bytes on
 
-AArch64. The tracked `tests/execution/native_no_operation_posix.c` harness
+AArch64. `direct-register-masked-no-operation` revision 1 separately preserves
+full v6 masked identity while guarding only live C/D state, exact memory extent,
+`memory[C]`, and prior live termination. Dead A and I/O history do not change
+machine text, while live D changes do. Semantic promotion regenerates canonical
+x86-64/AArch64 bytes; no v6 no-operation load or invocation authority is added.
+
+The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
 instruction synchronization, and an explicit Clang `ms_abi` call. It proves
 `memory[5]:77->65`, `C:5->6`, `D:7->8`, preserved unrelated ABI fields, and

@@ -102,11 +102,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   x86-64/AArch64 templates, and every memory-backed template guards the exact
   key-bound IR footprint.
 
-  Register-masked v6 now has reviewed graphical halt
-  and non-graphical terminal objects on both ISAs with reduced C/live-in guards.
-  Host-independent admission additionally accepts the traced no-operation shape
-  only when C/D are live and written while A remains dead; it grants no v6
-  no-operation object or execution authority.
+  Register-masked v6 now has reviewed graphical halt and non-graphical
+  terminal objects on both ISAs with reduced C/live-in guards. The traced
+  no-operation shape also has a distinct reviewed object family that guards C/D,
+  exact memory extent, `memory[C]`, and prior live termination while leaving A
+  and I/O history unguarded. It grants no v6 no-operation lifecycle or runner
+  authority.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,

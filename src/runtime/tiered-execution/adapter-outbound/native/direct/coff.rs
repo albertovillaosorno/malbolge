@@ -49,13 +49,15 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataGuard,
     DirectJumpDataProgram, DirectNoOperationError, DirectNoOperationProgram,
     DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRegisterMaskedTerminalGuard, DirectRotateError, DirectRotateGuard,
-    DirectRotateProgram, HostIsa, IMAGE_FILE_MACHINE_AMD64,
-    IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT, IMAGE_SCN_PROFILE_METADATA,
-    IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL, IMAGE_SYM_DTYPE_FUNCTION,
-    NativeArtifactKey, ProfileMachineObservation, ProfileRegisters,
-    REQUIRED_ENTRY, aarch64, canonical_profile_metadata, x86_64,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedNoOperationGuard,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedTerminalGuard,
+    DirectRotateError, DirectRotateGuard, DirectRotateProgram, HostIsa,
+    IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT,
+    IMAGE_SCN_PROFILE_METADATA, IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL,
+    IMAGE_SYM_DTYPE_FUNCTION, NativeArtifactKey, ProfileMachineObservation,
+    ProfileRegisters, REQUIRED_ENTRY, aarch64, canonical_profile_metadata,
+    x86_64,
 };
 
 pub(super) fn canonical_coff(
@@ -440,6 +442,35 @@ pub(super) fn register_masked_halt_fetch_coff(
     .ok_or(DirectRegisterMaskedHaltFetchError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedHaltFetchError::ObjectBytes)
+}
+
+pub(super) fn register_masked_no_operation_coff(
+    key: &NativeArtifactKey,
+    selected: DirectNoOperationProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedNoOperationError> {
+    let guard = DirectRegisterMaskedNoOperationGuard {
+        code_pointer: selected.observation.registers.code_pointer,
+        data_pointer: selected.observation.registers.data_pointer,
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let commit = DirectCodeWriteCommit {
+        encrypted_address: selected.live_in.address,
+        encrypted_value: selected.encrypted_value,
+        next_code_pointer: selected.next_code_pointer,
+        next_data_pointer: selected.next_data_pointer,
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_no_operation_code(guard, commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_no_operation_code(guard, commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)
 }
 
 pub(super) fn register_masked_non_graphical_coff(

@@ -224,8 +224,12 @@ transition, and full-range synchronization.
 
 Host-independent v6 semantic admission also recognizes one traced no-operation
 shape. Its normative masks read C/D and write C/D while A remains dead, and the
-validator reuses the reviewed decode/encryption/successor transition. This adds
-no v6 no-operation object, executable lifecycle, or runner authority.
+validator reuses the reviewed decode/encryption/successor transition. A distinct
+revision-1 object family now emits this shape for both ISAs with guards over
+C/D, exact memory extent, `memory[C]`, and prior live termination; A and I/O
+history
+remain unguarded. This adds no v6 no-operation executable lifecycle or runner
+authority.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

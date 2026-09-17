@@ -64,6 +64,8 @@ use super::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
@@ -82,8 +84,9 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataProgram,
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateCommit, DirectRotateError, DirectRotateProgram,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateCommit,
+    DirectRotateError, DirectRotateProgram,
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
     EffectOp, ExecutionGeometryRegionEffectProgram, HostOperatingSystem,
     MemoryLiveIn, NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
@@ -1182,6 +1185,25 @@ pub(super) fn validate_register_masked_halt_fetch_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedHaltFetchError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_no_operation_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedNoOperationError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedNoOperationError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedNoOperationError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedNoOperationError::TargetFeatures);
     }
     Ok(())
 }

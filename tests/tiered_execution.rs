@@ -370,6 +370,8 @@ use execution_native::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
@@ -422,8 +424,9 @@ use execution_native::{
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateError, DirectSelectionError, DirectSequenceError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
+    DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -532,6 +535,7 @@ use execution_native::{
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_halt_fetch_coff,
+    emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, execute_cached_direct_fused_native_retry,
     execute_cached_direct_fused_native_retry_cycle,
@@ -592,6 +596,7 @@ use execution_native::{
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_halt_fetch,
+    verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical, verify_direct_rotate,
     verify_fused_direct_sequence,
 };
@@ -3178,6 +3183,19 @@ fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn register_masked_no_operation_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
+        ),
+        backend_revision: DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn register_masked_non_graphical_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(
@@ -4245,6 +4263,143 @@ fn register_masked_v6_admission_rejects_incomplete_mask_identity()
             ))
     {
         return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_no_operation_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    dead_state_variant: &RegisterMaskedRegionEffectProgram,
+    data_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_no_operation_target(isa);
+    let artifact =
+        emit_direct_register_masked_no_operation_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} no-op emit failed: {error}")
+            })?;
+    let dead = emit_direct_register_masked_no_operation_coff(
+        dead_state_variant,
+        target.clone(),
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} no-op dead-state emit failed: {error}")
+    })?;
+    let data =
+        emit_direct_register_masked_no_operation_coff(data_variant, target)
+            .map_err(|error| {
+                format!("v6 {isa:?} no-op data-pointer emit failed: {error}")
+            })?;
+    let text = direct_object_text(artifact.object())?;
+    if artifact.key() == dead.key()
+        || text != direct_object_text(dead.object())?
+        || text == direct_object_text(data.object())?
+    {
+        return Err(format!("v6 {isa:?} no-op guard surface drifted"));
+    }
+    if !artifact
+        .object()
+        .windows(6)
+        .any(|window| window == b"MBPF ")
+    {
+        return Err(format!("v6 {isa:?} no-op lost MBPF v6 marker"));
+    }
+    let verified =
+        verify_direct_register_masked_no_operation(&artifact, program)
+            .map_err(|error| {
+                format!("v6 {isa:?} no-op verify failed: {error}")
+            })?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} no-op verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_objects_honor_reduced_guard_surface()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let mut dead_state_variant = program.clone();
+    let dead_effect = dead_state_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 no-op dead-state effect missing"))?;
+    dead_effect.before.registers.accumulator ^= 1;
+    dead_effect.after.registers.accumulator ^= 1;
+    dead_effect.before.input_consumed = 3;
+    dead_effect.after.input_consumed = 3;
+    dead_effect.before.output_len = 4;
+    dead_effect.after.output_len = 4;
+
+    let mut data_variant = program.clone();
+    let data_effect = data_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 no-op data-pointer effect missing"))?;
+    data_effect.before.registers.data_pointer = 8;
+    data_effect.after.registers.data_pointer = 9;
+
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_no_operation_object(
+            &program,
+            &dead_state_variant,
+            &data_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_verifier_rejects_drift() -> TieredTestResult
+{
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact = emit_direct_register_masked_no_operation_coff(
+        &program,
+        register_masked_no_operation_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 no-op baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_no_operation(&tampered, &program)
+        != Err(DirectRegisterMaskedNoOperationError::ObjectBytes)
+    {
+        return Err(String::from("v6 no-op verifier admitted byte drift"));
+    }
+
+    let target = register_masked_no_operation_target(HostIsa::X86_64);
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(target.backend_id()),
+        backend_revision: target.backend_revision().saturating_add(1),
+        host_isa: target.host_isa(),
+        host_os: target.host_os(),
+        native_abi_revision: target.native_abi_revision(),
+        required_features: target.required_features().to_vec(),
+    });
+    if emit_direct_register_masked_no_operation_coff(&program, obsolete)
+        != Err(DirectRegisterMaskedNoOperationError::TargetBackend)
+    {
+        return Err(String::from(
+            "v6 no-op admitted obsolete backend revision",
+        ));
+    }
+    if emit_direct_register_masked_no_operation_coff(
+        &program,
+        register_masked_halt_fetch_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedNoOperationError::TargetBackend)
+    {
+        return Err(String::from("v6 no-op crossed halt backend identity"));
+    }
+    let halt = canonical_register_masked_halt_program()?;
+    if emit_direct_register_masked_no_operation_coff(
+        &halt,
+        register_masked_no_operation_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedNoOperationError::ProgramShape)
+    {
+        return Err(String::from("v6 no-op backend admitted graphical halt"));
     }
     Ok(())
 }

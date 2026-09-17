@@ -43,8 +43,9 @@ use super::{
     DirectHaltFetchError, DirectHaltRegistersError, DirectInitialHaltError,
     DirectInputError, DirectJumpCodeError, DirectJumpDataError,
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateError, ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
+    ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
     RegionEffectProgram, RegisterMaskedRegionEffectProgram,
     UntrustedNativeObjectArtifact, VerifiedCrazyNativeObjectArtifact,
     VerifiedDeoptNativeObjectArtifact,
@@ -65,6 +66,7 @@ use super::{
     VerifiedNonGraphicalNativeObjectArtifact,
     VerifiedOutputNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRotateNativeObjectArtifact, canonical_coff, crazy_coff,
     execution_geometry_crazy_coff, execution_geometry_initial_halt_coff,
@@ -74,9 +76,10 @@ use super::{
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, jump_code_coff, jump_data_coff,
     no_operation_coff, non_graphical_coff, output_coff,
-    register_masked_halt_fetch_coff, register_masked_non_graphical_coff,
-    rotate_coff, structurally_admit_coff, validate_crazy_program,
-    validate_crazy_target, validate_execution_geometry_crazy_program,
+    register_masked_halt_fetch_coff, register_masked_no_operation_coff,
+    register_masked_non_graphical_coff, rotate_coff, structurally_admit_coff,
+    validate_crazy_program, validate_crazy_target,
+    validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
     validate_execution_geometry_initial_halt_target,
@@ -104,6 +107,8 @@ use super::{
     validate_non_graphical_target, validate_output_program,
     validate_output_target, validate_register_masked_halt_fetch_program,
     validate_register_masked_halt_fetch_target,
+    validate_register_masked_no_operation_program,
+    validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
     validate_register_masked_non_graphical_target, validate_rotate_program,
     validate_rotate_target, validate_target,
@@ -508,6 +513,41 @@ pub fn verify_direct_register_masked_halt_fetch(
         return Err(DirectRegisterMaskedHaltFetchError::ObjectBytes);
     }
     Ok(VerifiedRegisterMaskedHaltFetchNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
+/// Promotes only the canonical mask-aware v6 no-operation object.
+///
+/// This verifier deliberately stops before load-image or invocation authority.
+///
+/// # Errors
+///
+/// Returns [`DirectRegisterMaskedNoOperationError`] for v6 shape, target,
+/// identity, COFF, or canonical-byte mismatch.
+pub fn verify_direct_register_masked_no_operation(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<
+    VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+    DirectRegisterMaskedNoOperationError,
+> {
+    let selected = validate_register_masked_no_operation_program(program)
+        .map_err(|_error| DirectRegisterMaskedNoOperationError::ProgramShape)?;
+    validate_register_masked_no_operation_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRegisterMaskedNoOperationError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = register_masked_no_operation_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedNoOperationError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedNoOperationNativeObjectArtifact {
         artifact: admitted,
     })
 }

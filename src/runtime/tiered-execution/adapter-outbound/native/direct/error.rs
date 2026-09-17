@@ -745,6 +745,65 @@ impl From<NativeIdentityError> for DirectRegisterMaskedHaltFetchError {
     }
 }
 
+/// Failure while emitting or verifying register-masked v6 no-operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedNoOperationError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v6 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical mask-aware no-operation object.
+    ObjectBytes,
+    /// Register-masked IR is outside the reviewed no-operation subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v6 contract.
+    TargetBackend,
+    /// Register-masked no-operation has no CPU feature specializations.
+    TargetFeatures,
+    /// Register-masked no-operation currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRegisterMaskedNoOperationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "register-masked no-operation COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "register-masked no-operation identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "register-masked no-operation object bytes differ"
+            },
+            Self::ProgramShape => {
+                "register-masked IR is outside direct no-operation subset"
+            },
+            Self::TargetBackend => {
+                "target does not select register-masked no-operation backend"
+            },
+            Self::TargetFeatures => {
+                "register-masked no-operation backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "register-masked no-operation backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedNoOperationError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRegisterMaskedNoOperationError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying register-masked v6 non-graphical fetch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectRegisterMaskedNonGraphicalError {
