@@ -88,6 +88,7 @@ enum FusedSelection {
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
     RotateCrazy(DirectRotateProgram, DirectCrazyProgram),
+    RotateJumpCode(DirectRotateProgram, super::DirectJumpCodeProgram),
     RotateJumpData(DirectRotateProgram, super::DirectJumpDataProgram),
     RotateNoOperation(DirectRotateProgram, DirectNoOperationProgram),
     RotateOutput(DirectRotateProgram, DirectOutputProgram),
@@ -291,8 +292,33 @@ fn canonical_fused_text(
         | FusedSelection::NoOperationRotate(..) => {
             fused_no_operation_selection_text(admission, observation, selection)
         },
+        FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
+        | FusedSelection::RotateJumpData(..)
+        | FusedSelection::RotateNoOperation(..)
+        | FusedSelection::RotateOutput(..)
+        | FusedSelection::RotatePair(..) => {
+            fused_rotate_selection_text(admission, observation, selection)
+        },
+    }
+}
+
+fn fused_rotate_selection_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    match *selection {
         FusedSelection::RotateCrazy(rotate, crazy) => {
             fused_rotate_crazy_text(admission, observation, rotate, crazy)
+        },
+        FusedSelection::RotateJumpCode(rotate, jump_code) => {
+            fused_rotate_jump_code_text(
+                admission,
+                observation,
+                rotate,
+                jump_code,
+            )
         },
         FusedSelection::RotateJumpData(rotate, jump_data) => {
             fused_rotate_jump_data_text(
@@ -302,6 +328,48 @@ fn canonical_fused_text(
                 jump_data,
             )
         },
+        FusedSelection::RotateNoOperation(..)
+        | FusedSelection::RotateOutput(..)
+        | FusedSelection::RotatePair(..) => {
+            fused_rotate_remaining_selection_text(
+                admission,
+                observation,
+                selection,
+            )
+        },
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
+        | FusedSelection::CrazyNoOperation(..)
+        | FusedSelection::CrazyOutput(..)
+        | FusedSelection::CrazyPair(..)
+        | FusedSelection::CrazyRotate(..)
+        | FusedSelection::JumpCodeCrazy(..)
+        | FusedSelection::JumpCodeData(..)
+        | FusedSelection::JumpCodeNoOperation(..)
+        | FusedSelection::JumpCodeOutput(..)
+        | FusedSelection::JumpCodePair(..)
+        | FusedSelection::JumpCodeRotate(..)
+        | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
+        | FusedSelection::JumpDataNoOperation(..)
+        | FusedSelection::JumpDataOutput(..)
+        | FusedSelection::JumpDataPair(..)
+        | FusedSelection::JumpDataRotate(..)
+        | FusedSelection::NoOperationCrazy(..)
+        | FusedSelection::NoOperationJumpCode(..)
+        | FusedSelection::NoOperationJumpData(..)
+        | FusedSelection::NoOperationOutput(..)
+        | FusedSelection::NoOperationPair(..)
+        | FusedSelection::NoOperationRotate(..) => None,
+    }
+}
+
+fn fused_rotate_remaining_selection_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    match *selection {
         FusedSelection::RotateNoOperation(rotate, no_operation) => {
             fused_rotate_no_operation_text(
                 admission,
@@ -310,12 +378,39 @@ fn canonical_fused_text(
                 no_operation,
             )
         },
-        FusedSelection::RotatePair(first, second) => {
-            fused_rotate_pair_text(admission, observation, first, second)
-        },
         FusedSelection::RotateOutput(rotate, output) => {
             fused_rotate_output_text(admission, observation, rotate, output)
         },
+        FusedSelection::RotatePair(first, second) => {
+            fused_rotate_pair_text(admission, observation, first, second)
+        },
+        FusedSelection::CrazyJumpCode(..)
+        | FusedSelection::CrazyJumpData(..)
+        | FusedSelection::CrazyNoOperation(..)
+        | FusedSelection::CrazyOutput(..)
+        | FusedSelection::CrazyPair(..)
+        | FusedSelection::CrazyRotate(..)
+        | FusedSelection::JumpCodeCrazy(..)
+        | FusedSelection::JumpCodeData(..)
+        | FusedSelection::JumpCodeNoOperation(..)
+        | FusedSelection::JumpCodeOutput(..)
+        | FusedSelection::JumpCodePair(..)
+        | FusedSelection::JumpCodeRotate(..)
+        | FusedSelection::JumpDataCode(..)
+        | FusedSelection::JumpDataCrazy(..)
+        | FusedSelection::JumpDataNoOperation(..)
+        | FusedSelection::JumpDataOutput(..)
+        | FusedSelection::JumpDataPair(..)
+        | FusedSelection::JumpDataRotate(..)
+        | FusedSelection::NoOperationCrazy(..)
+        | FusedSelection::NoOperationJumpCode(..)
+        | FusedSelection::NoOperationJumpData(..)
+        | FusedSelection::NoOperationOutput(..)
+        | FusedSelection::NoOperationPair(..)
+        | FusedSelection::NoOperationRotate(..)
+        | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
+        | FusedSelection::RotateJumpData(..) => None,
     }
 }
 
@@ -344,15 +439,8 @@ fn fused_jump_code_selection_text(
                 no_operation,
             )
         },
-        FusedSelection::JumpCodeOutput(jump_code, output) => {
-            fused_jump_code_output_text(
-                admission,
-                observation,
-                jump_code,
-                output,
-            )
-        },
-        FusedSelection::JumpCodePair(..)
+        FusedSelection::JumpCodeOutput(..)
+        | FusedSelection::JumpCodePair(..)
         | FusedSelection::JumpCodeRotate(..) => {
             fused_jump_code_remaining_selection_text(
                 admission,
@@ -379,6 +467,7 @@ fn fused_jump_code_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -392,6 +481,14 @@ fn fused_jump_code_remaining_selection_text(
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
     match *selection {
+        FusedSelection::JumpCodeOutput(jump_code, output) => {
+            fused_jump_code_output_text(
+                admission,
+                observation,
+                jump_code,
+                output,
+            )
+        },
         FusedSelection::JumpCodePair(first, second) => {
             fused_jump_code_pair_text(admission, observation, first, second)
         },
@@ -412,7 +509,6 @@ fn fused_jump_code_remaining_selection_text(
         | FusedSelection::JumpCodeCrazy(..)
         | FusedSelection::JumpCodeData(..)
         | FusedSelection::JumpCodeNoOperation(..)
-        | FusedSelection::JumpCodeOutput(..)
         | FusedSelection::JumpDataCode(..)
         | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
@@ -426,6 +522,7 @@ fn fused_jump_code_remaining_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -450,14 +547,6 @@ fn fused_jump_data_selection_text(
         FusedSelection::JumpDataCrazy(jump_data, crazy) => {
             fused_jump_data_crazy_text(admission, observation, jump_data, crazy)
         },
-        FusedSelection::JumpDataOutput(jump_data, output) => {
-            fused_jump_data_output_text(
-                admission,
-                observation,
-                jump_data,
-                output,
-            )
-        },
         FusedSelection::JumpDataNoOperation(jump_data, no_operation) => {
             fused_jump_data_no_operation_text(
                 admission,
@@ -466,7 +555,8 @@ fn fused_jump_data_selection_text(
                 no_operation,
             )
         },
-        FusedSelection::JumpDataPair(..)
+        FusedSelection::JumpDataOutput(..)
+        | FusedSelection::JumpDataPair(..)
         | FusedSelection::JumpDataRotate(..) => {
             fused_jump_data_remaining_selection_text(
                 admission,
@@ -493,6 +583,7 @@ fn fused_jump_data_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -506,6 +597,14 @@ fn fused_jump_data_remaining_selection_text(
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
     match *selection {
+        FusedSelection::JumpDataOutput(jump_data, output) => {
+            fused_jump_data_output_text(
+                admission,
+                observation,
+                jump_data,
+                output,
+            )
+        },
         FusedSelection::JumpDataPair(first, second) => {
             fused_jump_data_pair_text(admission, observation, first, second)
         },
@@ -532,7 +631,6 @@ fn fused_jump_data_remaining_selection_text(
         | FusedSelection::JumpDataCode(..)
         | FusedSelection::JumpDataCrazy(..)
         | FusedSelection::JumpDataNoOperation(..)
-        | FusedSelection::JumpDataOutput(..)
         | FusedSelection::NoOperationCrazy(..)
         | FusedSelection::NoOperationJumpCode(..)
         | FusedSelection::NoOperationJumpData(..)
@@ -540,6 +638,7 @@ fn fused_jump_data_remaining_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -595,6 +694,7 @@ fn fused_crazy_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -654,6 +754,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -714,6 +815,7 @@ fn fused_no_operation_remaining_selection_text(
         | FusedSelection::NoOperationJumpCode(..)
         | FusedSelection::NoOperationJumpData(..)
         | FusedSelection::RotateCrazy(..)
+        | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
@@ -1196,6 +1298,25 @@ fn fused_rotate_crazy_text(
     }
 }
 
+fn fused_rotate_jump_code_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    rotate: DirectRotateProgram,
+    jump_code: super::DirectJumpCodeProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedRotateNoOperationTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: jump_code.commit,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_rotate_no_operation_code(template),
+        HostIsa::X86_64 => x86_64::fused_rotate_no_operation_code(template),
+    }
+}
+
 fn fused_rotate_jump_data_text(
     admission: &DirectFusedSequenceAdmission,
     observation: DirectEntryObservation,
@@ -1656,6 +1777,13 @@ fn select_rotate_shape(
                 })?;
             Ok(Some(FusedSelection::RotateCrazy(rotate, crazy)))
         },
+        DirectNativeKind::JumpCode => {
+            let jump_code = super::validate_jump_code_program(second_program)
+                .map_err(|_error| {
+                DirectFusedSequenceObjectError::ProgramShape
+            })?;
+            Ok(Some(FusedSelection::RotateJumpCode(rotate, jump_code)))
+        },
         DirectNativeKind::JumpData => {
             let jump_data = super::validate_jump_data_program(second_program)
                 .map_err(|_error| {
@@ -1685,7 +1813,6 @@ fn select_rotate_shape(
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
         | DirectNativeKind::Input
-        | DirectNativeKind::JumpCode
         | DirectNativeKind::NonGraphical
         | DirectNativeKind::Output => Ok(None),
     }
