@@ -967,9 +967,10 @@ A distinct prepared call requires exact live C/D, permits dead A/I/O
 rebasing, validates exact completion, and binds only to the identical ready
 image. A dedicated no-operation runner consumes only that bound view, admits
 exact Applied/GuardMiss outcomes, and restores the rebased snapshot after
-runner or completion failure.
+runner or completion failure. One-shot orchestration composes exact
+load/call/release with cleanup and committed release-retry evidence.
 
-Transaction, owner, and cache authority remain separate.
+Owner and cache authority remain separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

@@ -683,6 +683,8 @@ pub use runner::{
     RegisterMaskedNativeRunner,
     RegisterMaskedNoOperationLoadedExecutionFailure,
     RegisterMaskedNoOperationLoadedExecutionResult,
+    RegisterMaskedNoOperationNativeExecutionFailure,
+    RegisterMaskedNoOperationNativeExecutionResult,
     RegisterMaskedNoOperationNativeRunner,
     RegisterMaskedNonGraphicalLoadedExecutionFailure,
     RegisterMaskedNonGraphicalLoadedExecutionResult,
@@ -697,6 +699,7 @@ pub use runner::{
     execute_loaded_verified_register_masked_non_graphical_native,
     execute_verified_direct_fused_native, execute_verified_native,
     execute_verified_register_masked_native,
+    execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
 };
 pub use sequence_continuation::{

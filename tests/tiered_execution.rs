@@ -490,6 +490,7 @@ use execution_native::{
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
+    RegisterMaskedNoOperationNativeExecutionFailure,
     RegisterMaskedNoOperationNativeRunner, RegisterMaskedNonGraphicalLease,
     RegisterMaskedNonGraphicalLeaseCache,
     RegisterMaskedNonGraphicalLeaseCacheAcquisition,
@@ -562,6 +563,7 @@ use execution_native::{
     execute_transactional_cached_direct_fused_native_retry,
     execute_verified_direct_fused_native, execute_verified_native,
     execute_verified_native_sequence, execute_verified_register_masked_native,
+    execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
@@ -7381,6 +7383,262 @@ fn register_masked_v6_loaded_runner_completion_drift_rolls_back()
         |release| format!("v6 completion-drift release failed: {release}"),
     )?;
     Ok(())
+}
+
+fn retry_no_operation_transaction_release(
+    error: RegisterMaskedNoOperationNativeExecutionFailure<
+        FakeNativeAdapterOperation,
+        FakeNativeRunnerError,
+    >,
+    adapter: &mut FakeNativeExecutableAdapter,
+    expected: ProfileMachineObservation,
+) -> TieredTestResult {
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+    {
+        return Err(String::from(
+            "v6 no-op transaction release failure drifted",
+        ));
+    }
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 no-op transaction retryable release missing")
+    })?;
+    failure
+        .retry(adapter)
+        .map_err(|retry| format!("v6 no-op transaction retry: {retry}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from(
+            "v6 no-op transaction release retry count drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_transaction_applies_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_no_operation_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op transaction preparation: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(173)?,
+        native_executable_address(0x22000)?,
+    );
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_no_operation_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 no-op transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 no-op transaction success evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("v6 no-op transaction load effect missing")
+        })?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 no-op transaction load-failure preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(174)?,
+        native_executable_address(0x23000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_no_operation_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 no-op transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 no-op transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let (entry, _expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 no-op transaction runner-failure preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(175)?,
+        native_executable_address(0x24000)?,
+    );
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_no_operation_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 no-op transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 no-op transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_no_operation_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 no-op transaction release-failure preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(176)?,
+        native_executable_address(0x25000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_no_operation_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 no-op transaction ignored release failure",
+        ));
+    };
+    if runner.calls != 1 || memory != expected_memory || output != entry_output
+    {
+        return Err(String::from(
+            "v6 no-op transaction committed state drifted",
+        ));
+    }
+    retry_no_operation_transaction_release(*error, &mut adapter, expected)
 }
 
 #[test]

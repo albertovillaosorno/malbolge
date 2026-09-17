@@ -240,9 +240,10 @@ A distinct prepared call requires exact C/D while allowing dead A/I/O
 rebasing, validates exact completion, and binds only to an identical ready
 image. A dedicated no-operation runner consumes only that bound view, admits
 exact Applied/GuardMiss outcomes, and restores the rebased snapshot after
-runner or completion failure.
+runner or completion failure. One-shot orchestration now composes exact
+load/call/release with cleanup and committed release-retry evidence.
 
-No transaction, owner, or cache authority is added.
+No owner or cache authority is added.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.
