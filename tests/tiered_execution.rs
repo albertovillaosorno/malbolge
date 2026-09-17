@@ -467,6 +467,7 @@ use execution_native::{
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
+    PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -474,6 +475,7 @@ use execution_native::{
     ReadyDirectFusedNativeExecutable, ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
     ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
@@ -488,7 +490,8 @@ use execution_native::{
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
-    RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
+    RegisterMaskedNoOperationNativeRunner, RegisterMaskedNonGraphicalLease,
+    RegisterMaskedNonGraphicalLeaseCache,
     RegisterMaskedNonGraphicalLeaseCacheAcquisition,
     RegisterMaskedNonGraphicalLeaseCacheEntryReleaseFailure,
     RegisterMaskedNonGraphicalLeaseCacheInvalidation,
@@ -553,6 +556,7 @@ use execution_native::{
     execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence,
     execute_loaded_verified_register_masked_native,
+    execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
     execute_selected_cached_direct_fused_native_retry,
     execute_transactional_cached_direct_fused_native_retry,
@@ -1074,6 +1078,8 @@ type TransactionalCachedAcquisitionFailure = Box<
 
 type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
+type RegisterMaskedObservationPair =
+    (ProfileMachineObservation, ProfileMachineObservation);
 
 type LeaseCacheFixture = (
     NativeExecutableSequenceLeaseCache,
@@ -1209,6 +1215,15 @@ struct FakeRegisterMaskedNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedNoOperationNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeRegisterMaskedNonGraphicalNativeRunner {
     behavior: FakeNativeRunnerBehavior,
     calls: usize,
@@ -1246,6 +1261,13 @@ struct RegisterMaskedNativeFixture {
     adapter: FakeNativeExecutableAdapter,
     artifact: VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     ready: ReadyRegisterMaskedNativeExecutable,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedNoOperationNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+    ready: ReadyRegisterMaskedNoOperationNativeExecutable,
 }
 
 #[derive(Debug)]
@@ -1827,6 +1849,18 @@ impl FakeRegisterMaskedNativeRunner {
     }
 }
 
+impl FakeRegisterMaskedNoOperationNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
 impl FakeRegisterMaskedNonGraphicalNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
@@ -2343,6 +2377,47 @@ impl RegisterMaskedNativeRunner for FakeRegisterMaskedNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl RegisterMaskedNoOperationNativeRunner
+    for FakeRegisterMaskedNoOperationNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationNativeInvocation<
+            '_,
+            '_,
+        >,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -3396,6 +3471,30 @@ fn register_masked_non_graphical_dead_state_variant(
     effect.before.registers.accumulator ^= 1;
     effect.after.registers.accumulator ^= 1;
     Ok(variant)
+}
+
+fn register_masked_no_operation_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedNoOperationNativeFixture, String> {
+    let artifact =
+        verified_register_masked_no_operation(program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| {
+            format!("v6 no-op fixture load image failed: {error}")
+        })?;
+    let mapping_id = native_executable_mapping_id(mapping_id_value)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(base_address)?,
+    );
+    let ready = load_register_masked_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 no-op fixture load failed: {error}"))?;
+    Ok(RegisterMaskedNoOperationNativeFixture { adapter, artifact, ready })
 }
 
 fn register_masked_non_graphical_native_fixture(
@@ -4788,6 +4887,308 @@ fn register_masked_v6_no_operation_binding_retains_exact_ready()
     drop(bound);
     release_register_masked_no_operation_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v6 no-op binding release: {error}"))?;
+    Ok(())
+}
+
+fn register_masked_no_operation_dead_state_variant(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut variant = program.clone();
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 no-op dead-state variant effect missing")
+    })?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    Ok(variant)
+}
+
+fn register_masked_no_operation_rebased_observations(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedObservationPair, String> {
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 no-op runner effect missing"))?;
+    let mut entry = effect.before;
+    entry.registers.accumulator = 0x1234_5678;
+    entry.input_consumed = 1;
+    entry.output_len = 2;
+    let mut expected = effect.after;
+    expected.registers.accumulator = entry.registers.accumulator;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    Ok((entry, expected))
+}
+
+fn apply_register_masked_no_operation_expected_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> TieredTestResult {
+    let write = program
+        .effects
+        .first()
+        .and_then(|effect| effect.memory_delta.encryption)
+        .ok_or_else(|| String::from("v6 no-op runner encryption missing"))?;
+    let address = usize::try_from(write.address)
+        .map_err(|error| format!("v6 no-op runner write address: {error}"))?;
+    let cell = memory
+        .get_mut(address)
+        .ok_or_else(|| String::from("v6 no-op runner write exceeds memory"))?;
+    *cell = write.after;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_loaded_runner_applies_rebased_state()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let RegisterMaskedNoOperationNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_no_operation_native_fixture(&program, 168, 0x1d000)?;
+    let (entry, expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_no_operation_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op loaded preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_verified_register_masked_no_operation_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 no-op loaded execution: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 no-op loaded runner semantics drifted"));
+    }
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 no-op loaded release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_loaded_runner_rejects_ready_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let variant = register_masked_no_operation_dead_state_variant(&program)?;
+    let RegisterMaskedNoOperationNativeFixture {
+        mut adapter,
+        artifact: _variant_artifact,
+        ready,
+    } = register_masked_no_operation_native_fixture(&variant, 169, 0x1e000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 no-op ready-drift effect missing"))?;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op ready-drift preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) =
+        execute_loaded_verified_register_masked_no_operation_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("v6 no-op mismatched ready was invoked"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Bind
+        || error.binding_error()
+            != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || runner.calls != 0
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 no-op ready rejection drifted"));
+    }
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|release| {
+            format!("v6 no-op ready-drift release: {release}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_loaded_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let RegisterMaskedNoOperationNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_no_operation_native_fixture(&program, 170, 0x1f000)?;
+    let (entry, _expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op rollback preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) =
+        execute_loaded_verified_register_masked_no_operation_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("v6 no-op runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 no-op runner failure did not roll back"));
+    }
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 no-op rollback release: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_loaded_runner_guard_miss_is_atomic()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let RegisterMaskedNoOperationNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_no_operation_native_fixture(&program, 171, 0x20000)?;
+    let (entry, _expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op guard-miss preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_verified_register_masked_no_operation_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 no-op guard miss: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::GuardMiss
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 no-op guard miss changed snapshot"));
+    }
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 no-op guard-miss release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_loaded_runner_completion_drift_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let RegisterMaskedNoOperationNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_no_operation_native_fixture(&program, 172, 0x21000)?;
+    let (entry, _expected) =
+        register_masked_no_operation_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op completion preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(error) =
+        execute_loaded_verified_register_masked_no_operation_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("v6 no-op completion drift was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Complete
+        || !matches!(
+            error.completion_error(),
+            Some(VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { .. },
+            ))
+        )
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from(
+            "v6 no-op completion drift did not roll back",
+        ));
+    }
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 no-op completion release: {release}"))?;
     Ok(())
 }
 

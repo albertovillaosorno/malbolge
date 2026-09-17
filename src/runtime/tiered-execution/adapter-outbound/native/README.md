@@ -963,10 +963,13 @@ bytes, same-mapping RX transition, full-range synchronization, and exact release
 evidence. A dedicated platform path adds transactional load, post-allocation
 cleanup, explicit release, and exact release-retry ownership.
 
-A distinct
-prepared call requires exact live C/D, permits dead A/I/O rebasing, validates
-exact completion, and binds only to the identical ready image. Runner,
-transaction, owner, and cache authority remain separate.
+A distinct prepared call requires exact live C/D, permits dead A/I/O
+rebasing, validates exact completion, and binds only to the identical ready
+image. A dedicated no-operation runner consumes only that bound view, admits
+exact Applied/GuardMiss outcomes, and restores the rebased snapshot after
+runner or completion failure.
+
+Transaction, owner, and cache authority remain separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

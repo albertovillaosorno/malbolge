@@ -42,6 +42,8 @@ use super::invocation::{
     PreparedNativeExecutableInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNoOperationInvocation,
+    PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -52,6 +54,7 @@ use super::lifecycle::{
     NativeExecutableReleaseRequest, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::platform::{
@@ -178,6 +181,25 @@ pub type RegisterMaskedLoadedExecutionResult<RunnerError> = Result<
 >;
 
 #[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedNoOperationNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 no-operation call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedNoOperationNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 no-operation call.
+pub type RegisterMaskedNoOperationLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
 enum RegisterMaskedNonGraphicalNativeCallFailure<RunnerError> {
     Binding(NativeExecutableInvocationBindingError),
     Completion(VerifiedRegisterMaskedInvocationError),
@@ -273,6 +295,13 @@ type NonGraphicalNativeAdapterExecutionResult<MemoryAdapter, Runner> =
         <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
         <Runner as RegisterMaskedNonGraphicalNativeRunner>::Error,
     >;
+
+type RegisterMaskedNoOperationNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedNoOperationNativeCallFailure<
+        <Runner as RegisterMaskedNoOperationNativeRunner>::Error,
+    >,
+>;
 
 type RegisterMaskedNonGraphicalNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
@@ -428,6 +457,32 @@ pub trait RegisterMaskedNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 no-operation call.
+///
+/// This port receives only a view constructed after exact no-operation v6
+/// image/executable identity binding.
+pub trait RegisterMaskedNoOperationNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 no-operation executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationNativeInvocation<
+            '_,
+            '_,
+        >,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -629,6 +684,64 @@ impl<RunnerError> RegisterMaskedLoadedExecutionFailure<RunnerError> {
             RegisterMaskedNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedNativeCallFailure::Binding(_)
             | RegisterMaskedNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedNoOperationNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Completion(_)
+            | RegisterMaskedNoOperationNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 no-operation result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedNoOperationNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Binding(_)
+            | RegisterMaskedNoOperationNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedNoOperationNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedNoOperationNativeCallFailure::Runner(error) => {
+                Some(error)
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Binding(_)
+            | RegisterMaskedNoOperationNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -1388,6 +1501,25 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 no-operation failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedNoOperationNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedNoOperationNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for NativeLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -1553,6 +1685,30 @@ where
             cause: ExecutionGeometryNativeCallFailure::Completion(error),
         })
     })
+}
+
+/// Binds, runs, and admits one v6 no-operation call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedNoOperationLoadedExecutionFailure`] for binding,
+/// runner, or completion failure.
+pub fn execute_loaded_verified_register_masked_no_operation_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedNoOperationNativeExecutable,
+    prepared: PreparedRegisterMaskedNoOperationInvocation<'_, '_>,
+) -> RegisterMaskedNoOperationLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedNoOperationNativeRunner,
+{
+    run_register_masked_no_operation_prepared(runner, executable, prepared)
+        .map_err(|cause| {
+            Box::new(RegisterMaskedNoOperationLoadedExecutionFailure { cause })
+        })
 }
 
 /// Binds, runs, and admits one non-graphical v6 call against a loaded mapping.
@@ -1861,6 +2017,31 @@ where
     bound
         .complete(raw_status)
         .map_err(DirectFusedNativeCallFailure::Completion)
+}
+
+fn run_register_masked_no_operation_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedNoOperationNativeExecutable,
+    prepared: PreparedRegisterMaskedNoOperationInvocation<'_, '_>,
+) -> RegisterMaskedNoOperationNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedNoOperationNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedNoOperationNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedNoOperationNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedNoOperationNativeCallFailure::Completion)
 }
 
 fn run_register_masked_non_graphical_prepared<Runner>(

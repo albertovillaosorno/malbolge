@@ -115,10 +115,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   loads/releases that ready state transactionally with post-allocation cleanup
   and exact release-retry ownership.
 
-A distinct prepared call now requires exact
-  C/D while allowing dead A/I/O rebasing, validates exact completion, and binds
-  only to the identical ready image. No runner, transaction, owner, or cache
-  authority is granted.
+  A distinct prepared call now requires exact C/D while allowing dead A/I/O
+  rebasing, validates exact completion, and binds only to the identical ready
+  image. A dedicated no-operation runner consumes only that bound view, admits
+  exact Applied/GuardMiss outcomes, and restores the rebased snapshot after
+  runner or completion failure.
+
+  No transaction, owner, or cache authority is granted.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,
