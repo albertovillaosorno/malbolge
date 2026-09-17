@@ -40,11 +40,12 @@ cargo bench --bench native_backend_pipeline
 ```
 
 The benchmark emits CSV to standard output. It retains 15 samples per ISA at
-pipeline repetition scales 1, 2, and 4, performs one untimed warmup for each
-ISA/scale pair, alternates ISA order across retained samples, and records exact
-verified-object and emitted-byte counts beside end-to-end nanoseconds. It also
-records accumulated selection, fused-admission, COFF-emission, and semantic-
-verification nanoseconds for each retained sample.
+pipeline repetition scales 1, 2, and 4 for both cold uncached and warm exact-
+cache modes. Warm samples seed a fresh direct-artifact cache outside the timer;
+every timed warm selection must report two exact hits per pipeline iteration and
+zero insertions. The harness performs one untimed warmup per ISA/scale/mode,
+alternates ISA and mode order across retained samples, and records exact cache,
+verified-object, emitted-byte, end-to-end, and per-stage timing counters.
 
 This benchmark does **not** allocate executable memory or invoke generated
 machine code. It therefore measures backend preparation and verification cost,

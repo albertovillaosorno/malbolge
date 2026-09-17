@@ -23,11 +23,11 @@
 // - Summary:
 //   - Measures equivalent x86-64/AArch64 fused backend pipeline cost.
 // - Description:
-//   - Times selection through semantic object verification, not execution.
+//   - Compares cold uncached and warm exact-cache preparation, not execution.
 // - Usage:
 //   - Run on an identified host/toolchain and retain stdout as raw evidence.
 // - Defaults:
-//   - Uses 15 samples, one warmup, fixed ISA alternation, and scales 1/2/4.
+//   - Uses 15 samples, one warmup per mode, alternation, and scales 1/2/4.
 //
 
 //! Raw fused native backend pipeline measurements for equivalent host targets.
@@ -50,16 +50,40 @@ use malbolge::{
 
 use crate::execution_cache::{HostIsa, HostOperatingSystem};
 use crate::execution_native::{
-    admit_fused_direct_sequence, emit_fused_direct_sequence_coff,
+    DirectFusedSequenceAdmission, DirectHost, VerifiedDirectNativeCache,
+    admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
+    emit_fused_direct_sequence_coff, select_cached_verified_direct_sequence,
     select_verified_direct_sequence, verify_fused_direct_sequence,
 };
 
 const SAMPLE_COUNT: u8 = 15;
 const SCALES: [u8; 3] = [1, 2, 4];
 
+#[derive(Clone, Copy)]
+enum PipelineMode {
+    Cold,
+    Warm,
+}
+
+#[derive(Clone, Copy)]
+struct PipelineCase {
+    isa: HostIsa,
+    mode: PipelineMode,
+    scale: u8,
+}
+
+struct PipelineSample {
+    case: PipelineCase,
+    measurement: PipelineMeasurement,
+    nanoseconds: u128,
+    sample: u8,
+}
+
 #[derive(Default)]
 struct PipelineMeasurement {
     admission_ns: u128,
+    cache_hits: usize,
+    cache_insertions: usize,
     emission_ns: u128,
     object_bytes: usize,
     selection_ns: u128,
@@ -78,9 +102,9 @@ fn run() -> IoResult<()> {
     writeln!(
         output,
         concat!(
-            "benchmark,isa,scale,sample,nanoseconds,selection_ns,",
-            "admission_ns,emission_ns,verification_ns,verified_objects,",
-            "object_bytes"
+            "benchmark,mode,isa,scale,sample,nanoseconds,selection_ns,",
+            "admission_ns,emission_ns,verification_ns,cache_hits,",
+            "cache_insertions,verified_objects,object_bytes"
         )
     )?;
     for scale in SCALES {
@@ -103,23 +127,24 @@ fn emit_scale_samples(
             [HostIsa::AArch64, HostIsa::X86_64]
         };
         for isa in order {
-            let start = Instant::now();
-            let measurement = run_pipeline(programs, isa, scale)?;
-            let nanoseconds = start.elapsed().as_nanos();
-            let isa_name = isa_label(isa);
-            let PipelineMeasurement {
-                admission_ns,
-                emission_ns,
-                object_bytes,
-                selection_ns,
-                verification_ns,
-            } = measurement;
-            writeln!(
-                output,
-                "native-fused-pipeline,{isa_name},{scale},{sample},\
-                 {nanoseconds},{selection_ns},{admission_ns},{emission_ns},\
-                 {verification_ns},{scale},{object_bytes}"
-            )?;
+            let modes = if sample.rem_euclid(2) == 0 {
+                [PipelineMode::Cold, PipelineMode::Warm]
+            } else {
+                [PipelineMode::Warm, PipelineMode::Cold]
+            };
+            for mode in modes {
+                let case = PipelineCase { isa, mode, scale };
+                let mut cache = prepare_cache(programs, case)?;
+                let start = Instant::now();
+                let measurement = run_pipeline(programs, case, &mut cache)?;
+                let result = PipelineSample {
+                    case,
+                    measurement,
+                    nanoseconds: start.elapsed().as_nanos(),
+                    sample,
+                };
+                emit_sample(output, &result)?;
+            }
         }
         sample = sample.saturating_add(1);
     }
@@ -128,6 +153,39 @@ fn emit_scale_samples(
 
 fn io_error(context: &str, error: impl Display) -> IoError {
     IoError::other(format!("{context}: {error}"))
+}
+
+fn emit_sample(
+    output: &mut impl Write,
+    result: &PipelineSample,
+) -> IoResult<()> {
+    let PipelineMeasurement {
+        admission_ns,
+        cache_hits,
+        cache_insertions,
+        emission_ns,
+        object_bytes,
+        selection_ns,
+        verification_ns,
+    } = &result.measurement;
+    let PipelineCase { isa, mode, scale } = result.case;
+    let nanoseconds = result.nanoseconds;
+    let sample = result.sample;
+    writeln!(
+        output,
+        "native-fused-pipeline,{},{},{scale},{sample},{nanoseconds},\
+         {selection_ns},{admission_ns},{emission_ns},{verification_ns},\
+         {cache_hits},{cache_insertions},{scale},{object_bytes}",
+        mode_label(mode),
+        isa_label(isa),
+    )
+}
+
+const fn mode_label(mode: PipelineMode) -> &'static str {
+    match mode {
+        PipelineMode::Cold => "cold-uncached",
+        PipelineMode::Warm => "warm-exact-cache",
+    }
 }
 
 const fn isa_label(isa: HostIsa) -> &'static str {
@@ -208,57 +266,151 @@ fn rotate_jump_code_state() -> IoResult<ProfileMachineState> {
 
 fn run_pipeline(
     programs: &[RegionEffectProgram],
-    isa: HostIsa,
-    scale: u8,
+    case: PipelineCase,
+    cache: &mut VerifiedDirectNativeCache,
 ) -> IoResult<PipelineMeasurement> {
     let mut measurement = PipelineMeasurement::default();
     let mut iteration = 0u8;
-    while iteration < scale {
-        let selection_start = Instant::now();
-        let plan = select_verified_direct_sequence(
-            black_box(programs),
-            safe_rust_profiled_capability(),
-            HostOperatingSystem::Windows,
-            isa,
-        )
-        .map_err(|error| io_error("native benchmark select", error))?;
-        measurement.selection_ns = measurement
-            .selection_ns
-            .saturating_add(selection_start.elapsed().as_nanos());
-
-        let admission_start = Instant::now();
-        let admission = admit_fused_direct_sequence(&plan)
-            .map_err(|error| io_error("native benchmark admission", error))?;
-        measurement.admission_ns = measurement
-            .admission_ns
-            .saturating_add(admission_start.elapsed().as_nanos());
-
-        let emission_start = Instant::now();
-        let candidate = emit_fused_direct_sequence_coff(&admission)
-            .map_err(|error| io_error("native benchmark emission", error))?;
-        measurement.emission_ns = measurement
-            .emission_ns
-            .saturating_add(emission_start.elapsed().as_nanos());
-
-        let verification_start = Instant::now();
-        let verified = verify_fused_direct_sequence(&candidate, &admission)
-            .map_err(|error| {
-                io_error("native benchmark verification", error)
-            })?;
-        measurement.verification_ns = measurement
-            .verification_ns
-            .saturating_add(verification_start.elapsed().as_nanos());
-        measurement.object_bytes = measurement
-            .object_bytes
-            .saturating_add(black_box(verified.object().len()));
+    while iteration < case.scale {
+        let admission = match case.mode {
+            PipelineMode::Cold => {
+                select_admit_cold(programs, case.isa, &mut measurement)?
+            },
+            PipelineMode::Warm => {
+                select_admit_warm(programs, case.isa, cache, &mut measurement)?
+            },
+        };
+        emit_verify(&admission, &mut measurement)?;
         iteration = iteration.saturating_add(1);
     }
+    validate_cache_activity(case.mode, case.scale, &measurement)?;
     Ok(measurement)
+}
+
+fn select_admit_cold(
+    programs: &[RegionEffectProgram],
+    isa: HostIsa,
+    measurement: &mut PipelineMeasurement,
+) -> IoResult<DirectFusedSequenceAdmission> {
+    let selection_start = Instant::now();
+    let plan = select_verified_direct_sequence(
+        black_box(programs),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| io_error("native benchmark cold select", error))?;
+    measurement.selection_ns = measurement
+        .selection_ns
+        .saturating_add(selection_start.elapsed().as_nanos());
+    let admission_start = Instant::now();
+    let admission = admit_fused_direct_sequence(&plan)
+        .map_err(|error| io_error("native benchmark cold admission", error))?;
+    measurement.admission_ns = measurement
+        .admission_ns
+        .saturating_add(admission_start.elapsed().as_nanos());
+    Ok(admission)
+}
+
+fn select_admit_warm(
+    programs: &[RegionEffectProgram],
+    isa: HostIsa,
+    cache: &mut VerifiedDirectNativeCache,
+    measurement: &mut PipelineMeasurement,
+) -> IoResult<DirectFusedSequenceAdmission> {
+    let selection_start = Instant::now();
+    let plan = select_cached_verified_direct_sequence(
+        black_box(programs),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, isa),
+        cache,
+    )
+    .map_err(|error| io_error("native benchmark warm select", error))?;
+    measurement.selection_ns = measurement
+        .selection_ns
+        .saturating_add(selection_start.elapsed().as_nanos());
+    measurement.cache_hits =
+        measurement.cache_hits.saturating_add(plan.cache_hits());
+    measurement.cache_insertions = measurement
+        .cache_insertions
+        .saturating_add(plan.cache_insertions());
+    let admission_start = Instant::now();
+    let admission = admit_cached_fused_direct_sequence(&plan)
+        .map_err(|error| io_error("native benchmark warm admission", error))?;
+    measurement.admission_ns = measurement
+        .admission_ns
+        .saturating_add(admission_start.elapsed().as_nanos());
+    Ok(admission)
+}
+
+fn emit_verify(
+    admission: &DirectFusedSequenceAdmission,
+    measurement: &mut PipelineMeasurement,
+) -> IoResult<()> {
+    let emission_start = Instant::now();
+    let candidate = emit_fused_direct_sequence_coff(admission)
+        .map_err(|error| io_error("native benchmark emission", error))?;
+    measurement.emission_ns = measurement
+        .emission_ns
+        .saturating_add(emission_start.elapsed().as_nanos());
+    let verification_start = Instant::now();
+    let verified = verify_fused_direct_sequence(&candidate, admission)
+        .map_err(|error| io_error("native benchmark verification", error))?;
+    measurement.verification_ns = measurement
+        .verification_ns
+        .saturating_add(verification_start.elapsed().as_nanos());
+    measurement.object_bytes = measurement
+        .object_bytes
+        .saturating_add(black_box(verified.object().len()));
+    Ok(())
+}
+
+fn prepare_cache(
+    programs: &[RegionEffectProgram],
+    case: PipelineCase,
+) -> IoResult<VerifiedDirectNativeCache> {
+    let mut cache = VerifiedDirectNativeCache::default();
+    if matches!(case.mode, PipelineMode::Warm) {
+        let seeded = select_cached_verified_direct_sequence(
+            programs,
+            safe_rust_profiled_capability(),
+            DirectHost::new(HostOperatingSystem::Windows, case.isa),
+            &mut cache,
+        )
+        .map_err(|error| io_error("native benchmark cache seed", error))?;
+        if seeded.cache_hits() != 0 || seeded.cache_insertions() != 2 {
+            return Err(IoError::other("native benchmark cache seed drifted"));
+        }
+    }
+    Ok(cache)
+}
+
+fn validate_cache_activity(
+    mode: PipelineMode,
+    scale: u8,
+    measurement: &PipelineMeasurement,
+) -> IoResult<()> {
+    let expected_hits = match mode {
+        PipelineMode::Cold => 0,
+        PipelineMode::Warm => usize::from(scale).saturating_mul(2),
+    };
+    if measurement.cache_hits != expected_hits
+        || measurement.cache_insertions != 0
+    {
+        return Err(IoError::other(
+            "native benchmark timed cache activity drifted",
+        ));
+    }
+    Ok(())
 }
 
 fn warm_up(programs: &[RegionEffectProgram], scale: u8) -> IoResult<()> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let _measurement = run_pipeline(programs, isa, scale)?;
+        for mode in [PipelineMode::Cold, PipelineMode::Warm] {
+            let case = PipelineCase { isa, mode, scale };
+            let mut cache = prepare_cache(programs, case)?;
+            let _measurement = run_pipeline(programs, case, &mut cache)?;
+        }
     }
     Ok(())
 }
