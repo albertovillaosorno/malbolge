@@ -958,8 +958,10 @@ machine text, while live D changes do. Semantic promotion regenerates canonical
 x86-64/AArch64 bytes.
 
 A distinct relocation-free load image retains exact identity, alignment, and
-strict W^X/full-sync policy without granting lifecycle, platform, binding, or
-invocation authority.
+strict W^X/full-sync policy. Dedicated lifecycle typestates admit exact copied
+bytes, same-mapping RX transition, full-range synchronization, and exact release
+evidence. Platform loading, binding, invocation, and runner authority remain
+separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

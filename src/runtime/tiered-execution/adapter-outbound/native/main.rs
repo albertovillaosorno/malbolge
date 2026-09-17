@@ -510,12 +510,15 @@ pub use lifecycle::{
     NativeInstructionSyncReport, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedNativeExecutable,
+    SealedRegisterMaskedNoOperationNativeExecutable,
     SealedRegisterMaskedNonGraphicalNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
+    StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
 };
 pub use loader::{

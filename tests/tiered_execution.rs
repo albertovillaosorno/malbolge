@@ -506,6 +506,7 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequencePlanError,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
+    StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     UntrustedNativeObjectArtifact, VerifiedDirectFusedLoadImage,
     VerifiedDirectInvocationError, VerifiedDirectLoadError,
@@ -515,6 +516,7 @@ use execution_native::{
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
+    VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     acquire_direct_fused_native_sequence,
@@ -3305,6 +3307,19 @@ fn verified_register_masked_halt_fetch(
         .map_err(|error| format!("v6 {isa:?} halt verify failed: {error}"))
 }
 
+fn verified_register_masked_no_operation(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedNoOperationNativeObjectArtifact, String> {
+    let artifact = emit_direct_register_masked_no_operation_coff(
+        program,
+        register_masked_no_operation_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} no-op emit failed: {error}"))?;
+    verify_direct_register_masked_no_operation(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} no-op verify failed: {error}"))
+}
+
 fn verified_register_masked_non_graphical(
     program: &RegisterMaskedRegionEffectProgram,
     isa: HostIsa,
@@ -4482,6 +4497,153 @@ fn register_masked_v6_no_operation_load_image_rejects_relocations()
     ) != Err(VerifiedDirectLoadError::Relocations)
     {
         return Err(String::from("v6 no-op load image admitted relocations"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_no_operation_lifecycle(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let artifact = verified_register_masked_no_operation(program, isa)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| {
+            format!("v6 {isa:?} no-op lifecycle image: {error}")
+        })?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = StagedRegisterMaskedNoOperationNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} no-op lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 {isa:?} no-op lifecycle seal: {error}"))?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v6 {isa:?} no-op lifecycle sync: {error}"))?;
+    let release = ready.release_request();
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.target_triple() != artifact.target_triple()
+        || release.mapping_id() != mapping_id
+        || release.base_address() != base
+        || release.mapped_len() != image.allocation_len()
+    {
+        return Err(format!("v6 {isa:?} no-op lifecycle identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_lifecycle_retains_exact_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    assert_register_masked_no_operation_lifecycle(
+        &program,
+        HostIsa::X86_64,
+        160,
+        0x16000,
+    )?;
+    assert_register_masked_no_operation_lifecycle(
+        &program,
+        HostIsa::AArch64,
+        161,
+        0x17000,
+    )
+}
+
+fn assert_register_masked_no_operation_code_drift(
+    image: &VerifiedRegisterMaskedNoOperationLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> TieredTestResult {
+    let mut changed = image.code().to_vec();
+    let first = changed.first_mut().ok_or_else(|| {
+        String::from("v6 no-op lifecycle code unexpectedly empty")
+    })?;
+    *first ^= 1;
+    if StagedRegisterMaskedNoOperationNativeExecutable::stage(
+        image, mapping, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("v6 no-op lifecycle admitted code drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_lifecycle_rejects_drift() -> TieredTestResult
+{
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 no-op lifecycle drift image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(162)?;
+    let base = native_executable_address(0x18000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    assert_register_masked_no_operation_code_drift(&image, writable)?;
+    let staged = StagedRegisterMaskedNoOperationNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 no-op lifecycle drift stage: {error}"))?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(163)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from("v6 no-op lifecycle admitted mapping drift"));
+    }
+    let sealed = StagedRegisterMaskedNoOperationNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 no-op lifecycle sync stage: {error}"))?
+    .admit_read_execute(NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    ))
+    .map_err(|error| format!("v6 no-op lifecycle drift seal: {error}"))?;
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        mapping_id,
+        base,
+        image.allocation_len().saturating_sub(1),
+    )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        return Err(String::from("v6 no-op lifecycle admitted short sync"));
     }
     Ok(())
 }
