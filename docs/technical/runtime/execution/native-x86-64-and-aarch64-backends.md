@@ -222,6 +222,11 @@ prepared-call type that validates exact `NonGraphicalCell` application or atomic
 guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
+Host-independent v6 semantic admission also recognizes one traced no-operation
+shape. Its normative masks read C/D and write C/D while A remains dead, and the
+validator reuses the reviewed decode/encryption/successor transition. This adds
+no v6 no-operation object, executable lifecycle, or runner authority.
+
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.
 A dedicated runner executes only that view and restores the rebased snapshot

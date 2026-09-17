@@ -176,8 +176,12 @@ correct by always falling back before direct region-effect selection is trusted.
 
 Register-masked effect IR v6 now crosses a separate host-independent admission
 boundary. `admit_register_masked_direct_native()` preserves full v6 identity and
-required-profile preflight, then admits the normative C-only/no-write one-step
-graphical halt-fetch and non-graphical terminal-fetch shapes.
+required-profile preflight for graphical halt-fetch, non-graphical terminal
+fetch, and no-operation semantics.
+
+No-operation admission requires the trace-derived C/D live-in and C/D write
+masks while A remains dead. It reuses the reviewed no-operation transition
+semantics but grants no v6 no-operation object, load, or invocation authority.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

@@ -3150,6 +3150,23 @@ fn canonical_register_masked_non_graphical_program()
     Ok(program)
 }
 
+fn canonical_register_masked_no_operation_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let state = direct_no_operation_pair_sequence_state()?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 no-op fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 no-op fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 no-op trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
+}
+
 fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID),
@@ -4038,6 +4055,98 @@ fn register_masked_v6_halt_admission_uses_normative_masks() -> TieredTestResult
         return Err(String::from("v6 invented write failed at wrong boundary"));
     }
     Ok(())
+}
+
+fn assert_register_masked_no_operation_mask_rejections(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let mut invented_read = program.clone();
+    invented_read.register_live_ins.accumulator = true;
+    let Err(read_error) = admit_register_masked_direct_native(
+        &invented_read,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 no-op admitted invented accumulator read",
+        ));
+    };
+    if read_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 no-op read mask failed at wrong boundary",
+        ));
+    }
+
+    let mut missing_write = program.clone();
+    let write_mask = missing_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 no-op write mask missing"))?;
+    write_mask.data_pointer = false;
+    let Err(write_error) = admit_register_masked_direct_native(
+        &missing_write,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 no-op admitted missing data-pointer write",
+        ));
+    };
+    if write_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 no-op write mask failed at wrong boundary",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_admission_uses_normative_masks()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let expected = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if program.register_live_ins != expected
+        || program.register_writes.as_slice() != [expected]
+    {
+        return Err(String::from("v6 no-op trace masks drifted"));
+    }
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 no-op admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 no-op identity failed: {error:?}"))?;
+    if admission.kind() != DirectNativeKind::NoOperation
+        || admission.identity() != &identity
+    {
+        return Err(String::from("v6 no-op admission lost semantic identity"));
+    }
+
+    let mut dead_accumulator = program.clone();
+    let effect = dead_accumulator
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 no-op effect missing"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let variant = admit_register_masked_direct_native(
+        &dead_accumulator,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 no-op dead accumulator rejected: {error}"))?;
+    if variant.kind() != DirectNativeKind::NoOperation
+        || variant.identity() == admission.identity()
+    {
+        return Err(String::from("v6 no-op dead state lost masked identity"));
+    }
+    assert_register_masked_no_operation_mask_rejections(&program)
 }
 
 #[test]

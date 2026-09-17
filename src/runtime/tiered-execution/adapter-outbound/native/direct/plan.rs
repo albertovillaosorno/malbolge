@@ -118,6 +118,7 @@ use super::{
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
     validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_register_masked_no_operation_program,
     validate_register_masked_non_graphical_program, validate_rotate_program,
     validate_rotate_target, validate_target, verify_direct_crazy,
     verify_direct_deopt_stub, verify_direct_execution_geometry_crazy,
@@ -797,6 +798,12 @@ pub fn admit_register_masked_direct_native<'requirement>(
         return Ok(VerifiedRegisterMaskedDirectAdmission::new(
             identity,
             DirectNativeKind::NonGraphical,
+        ));
+    }
+    if validate_register_masked_no_operation_program(program).is_ok() {
+        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
+            identity,
+            DirectNativeKind::NoOperation,
         ));
     }
     Err(RegisterMaskedDirectAdmissionError::unsupported_program())

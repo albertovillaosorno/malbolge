@@ -629,9 +629,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity retains register live-ins/write masks, rejects mask-dropping legacy
   construction, and keeps cache invalidation mask-exact.
 - `admit_register_masked_direct_native()` applies canonical-profile and
-  `002`/`001` preflight before independently admitting only a normative one-step
-  halt-fetch with C-only register live-in and no register writes. Extra
-  live-ins/writes fail as unsupported while mask cardinality fails identity.
+  `002`/`001` preflight before shape admission. It recognizes C-only/no-write
+  halt-fetch and non-graphical terminals plus traced no-operation semantics with
+  C/D live-ins and C/D writes while A remains dead. Mask drift fails as
+  unsupported while mask cardinality fails identity; no-operation admission
+  grants no v6 object or execution authority.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code
@@ -680,11 +682,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   publishes only after every owner is ready; execution reports exact
   Applied/GuardMiss/failure progress, and reverse release keeps cleanup
   retryable.
-  Halt-fetch is still the only admitted v6 template, so current valid sequences
-  are one terminal step and a second halt is rejected rather than batched.
-- V6 still lacks wider mask-aware template coverage; that is the next semantic
-  slice. Dynamic resident-limit reconfiguration remains a separate cache-policy
-  extension, and v6-to-v3/v4 projection remains forbidden.
+  Halt-fetch is still the only template admitted by this generic v6 sequence
+  type, so current valid sequences are one terminal step and a second halt is
+  rejected rather than batched.
+- V6 no-operation semantic admission is now the first non-terminal mask-aware
+  expansion beyond the terminal object families. Native object/lifecycle support
+  for that shape and wider mask-aware instruction coverage remain open; v6-to-
+  v3/v4 projection remains forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

@@ -1106,6 +1106,49 @@ pub(super) fn validate_register_masked_non_graphical_program(
     }
 }
 
+fn register_masked_no_operation_masks_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let expected = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied() == Some(expected)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_no_operation_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectNoOperationProgram, DirectNoOperationError> {
+    if !register_masked_no_operation_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 1
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectNoOperationError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectNoOperationError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or(DirectNoOperationError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectNoOperationError::ProgramShape)?;
+    derive_no_operation_effect(effect, live_in, memory_words)
+        .ok_or(DirectNoOperationError::ProgramShape)
+}
+
 pub(super) fn validate_halt_fetch_target(
     target: &NativeTargetIdentity,
 ) -> Result<(), DirectHaltFetchError> {
