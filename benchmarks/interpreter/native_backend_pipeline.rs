@@ -57,6 +57,15 @@ use crate::execution_native::{
 const SAMPLE_COUNT: u8 = 15;
 const SCALES: [u8; 3] = [1, 2, 4];
 
+#[derive(Default)]
+struct PipelineMeasurement {
+    admission_ns: u128,
+    emission_ns: u128,
+    object_bytes: usize,
+    selection_ns: u128,
+    verification_ns: u128,
+}
+
 /// Runs the fixed pipeline matrix and emits raw CSV samples.
 ///
 /// # Errors
@@ -68,7 +77,11 @@ fn run() -> IoResult<()> {
     let mut output = stdout().lock();
     writeln!(
         output,
-        "benchmark,isa,scale,sample,nanoseconds,verified_objects,object_bytes"
+        concat!(
+            "benchmark,isa,scale,sample,nanoseconds,selection_ns,",
+            "admission_ns,emission_ns,verification_ns,verified_objects,",
+            "object_bytes"
+        )
     )?;
     for scale in SCALES {
         warm_up(&programs, scale)?;
@@ -91,13 +104,21 @@ fn emit_scale_samples(
         };
         for isa in order {
             let start = Instant::now();
-            let object_bytes = run_pipeline(programs, isa, scale)?;
+            let measurement = run_pipeline(programs, isa, scale)?;
             let nanoseconds = start.elapsed().as_nanos();
             let isa_name = isa_label(isa);
+            let PipelineMeasurement {
+                admission_ns,
+                emission_ns,
+                object_bytes,
+                selection_ns,
+                verification_ns,
+            } = measurement;
             writeln!(
                 output,
                 "native-fused-pipeline,{isa_name},{scale},{sample},\
-                 {nanoseconds},{scale},{object_bytes}"
+                 {nanoseconds},{selection_ns},{admission_ns},{emission_ns},\
+                 {verification_ns},{scale},{object_bytes}"
             )?;
         }
         sample = sample.saturating_add(1);
@@ -189,10 +210,11 @@ fn run_pipeline(
     programs: &[RegionEffectProgram],
     isa: HostIsa,
     scale: u8,
-) -> IoResult<usize> {
-    let mut object_bytes = 0usize;
+) -> IoResult<PipelineMeasurement> {
+    let mut measurement = PipelineMeasurement::default();
     let mut iteration = 0u8;
     while iteration < scale {
+        let selection_start = Instant::now();
         let plan = select_verified_direct_sequence(
             black_box(programs),
             safe_rust_profiled_capability(),
@@ -200,24 +222,43 @@ fn run_pipeline(
             isa,
         )
         .map_err(|error| io_error("native benchmark select", error))?;
+        measurement.selection_ns = measurement
+            .selection_ns
+            .saturating_add(selection_start.elapsed().as_nanos());
+
+        let admission_start = Instant::now();
         let admission = admit_fused_direct_sequence(&plan)
             .map_err(|error| io_error("native benchmark admission", error))?;
+        measurement.admission_ns = measurement
+            .admission_ns
+            .saturating_add(admission_start.elapsed().as_nanos());
+
+        let emission_start = Instant::now();
         let candidate = emit_fused_direct_sequence_coff(&admission)
             .map_err(|error| io_error("native benchmark emission", error))?;
+        measurement.emission_ns = measurement
+            .emission_ns
+            .saturating_add(emission_start.elapsed().as_nanos());
+
+        let verification_start = Instant::now();
         let verified = verify_fused_direct_sequence(&candidate, &admission)
             .map_err(|error| {
                 io_error("native benchmark verification", error)
             })?;
-        object_bytes =
-            object_bytes.saturating_add(black_box(verified.object().len()));
+        measurement.verification_ns = measurement
+            .verification_ns
+            .saturating_add(verification_start.elapsed().as_nanos());
+        measurement.object_bytes = measurement
+            .object_bytes
+            .saturating_add(black_box(verified.object().len()));
         iteration = iteration.saturating_add(1);
     }
-    Ok(object_bytes)
+    Ok(measurement)
 }
 
 fn warm_up(programs: &[RegionEffectProgram], scale: u8) -> IoResult<()> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let _bytes = run_pipeline(programs, isa, scale)?;
+        let _measurement = run_pipeline(programs, isa, scale)?;
     }
     Ok(())
 }
