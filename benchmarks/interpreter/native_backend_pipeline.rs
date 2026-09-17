@@ -68,6 +68,7 @@ enum PipelineMode {
 
 #[derive(Clone, Copy)]
 enum Workload {
+    CrazyPair,
     NoOperationOutput,
     RotateJumpCode,
 }
@@ -106,6 +107,7 @@ struct PipelineMeasurement {
 /// rejects the reviewed workload, or writing samples to stdout fails.
 fn run() -> IoResult<()> {
     let workloads = [
+        (Workload::CrazyPair, crazy_pair_programs()?),
         (Workload::NoOperationOutput, no_operation_output_programs()?),
         (Workload::RotateJumpCode, rotate_jump_code_programs()?),
     ];
@@ -208,6 +210,7 @@ fn emit_sample(
 
 const fn workload_label(workload: Workload) -> &'static str {
     match workload {
+        Workload::CrazyPair => "crazy-pair",
         Workload::NoOperationOutput => "no-operation-output",
         Workload::RotateJumpCode => "rotate-jump-code",
     }
@@ -225,6 +228,69 @@ const fn isa_label(isa: HostIsa) -> &'static str {
         HostIsa::AArch64 => "aarch64",
         HostIsa::X86_64 => "x86_64",
     }
+}
+
+fn crazy_pair_programs() -> IoResult<Vec<RegionEffectProgram>> {
+    let mut machine = ProfileMachine::from_snapshot(crazy_pair_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| io_error("crazy pair benchmark trace", error))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(IoError::other(
+            "crazy pair benchmark trace did not run 2 steps",
+        ));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| {
+                    IoError::other(format!(
+                        "crazy pair benchmark projection: {error:?}"
+                    ))
+                },
+            )
+        })
+        .collect()
+}
+
+fn crazy_pair_state() -> IoResult<ProfileMachineState> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| io_error("crazy pair benchmark load", error))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    for code_pointer in [5u32, 6u32] {
+        let cell = (33u32..=126u32)
+            .find(|cell| {
+                decode_profile_instruction(*cell, code_pointer) == Some(b'p')
+            })
+            .ok_or_else(|| IoError::other("crazy pair code cell missing"))?;
+        let index = usize::try_from(code_pointer)
+            .map_err(|error| io_error("crazy pair code index", error))?;
+        *memory.get_mut(index).ok_or_else(|| {
+            IoError::other("crazy pair code address missing")
+        })? = cell;
+    }
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| IoError::other("crazy pair data cell 7 missing"))? = 10;
+    *memory
+        .get_mut(8)
+        .ok_or_else(|| IoError::other("crazy pair data cell 8 missing"))? = 20;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| io_error("crazy pair benchmark IO", error))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| io_error("crazy pair benchmark state", error))
 }
 
 fn no_operation_output_programs() -> IoResult<Vec<RegionEffectProgram>> {

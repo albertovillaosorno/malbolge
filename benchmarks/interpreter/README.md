@@ -29,10 +29,10 @@ wrapped, copied back, or used as a source of safe modern semantics.
 ## Native backend pipeline benchmark
 
 `native_backend_pipeline` measures the reviewed fused native backend preparation
-pipeline on VM-derived two-step `rotate/jump-code` and `no-operation/output`
-workloads for x86-64 and AArch64. Each retained timing includes direct sequence
-selection, fused admission, COFF emission, and independent semantic object
-verification.
+pipeline on VM-derived two-step `crazy/crazy`, `no-operation/output`, and
+`rotate/jump-code` workloads for x86-64 and AArch64. Each retained timing
+includes direct sequence selection, fused admission, COFF emission, and
+independent semantic object verification.
 
 Run it from the repository root with:
 
