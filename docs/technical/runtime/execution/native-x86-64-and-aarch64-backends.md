@@ -1423,6 +1423,12 @@ deterministically without changing guest-visible state silently.
   faster by median and total preparation improves 1.314-1.380x. Admission
   cold-over-warm ratios stay between 0.997x and 1.028x. This corroborates the
   selection-cache effect without extending the claim to machine-code execution.
+- A final preparation-only corroboration adds crazy/crazy, covering accumulator
+  and data-memory mutation beside output and control-transfer workloads. Across
+  all eighteen workload/ISA/scale comparisons, warm exact-cache selection is
+  2.516-2.881x faster by median and total preparation improves 1.267-1.407x.
+  Admission cold-over-warm ratios stay between 0.984x and 1.018x. Further
+  preparation-only workload widening is deferred until native execution exists.
 
 ## References
 
