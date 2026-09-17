@@ -1115,8 +1115,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
   concrete foreign-call shim remain open.
-  Remaining fused-region emission, concrete executable-memory integration, and
-  instruction-cache implementation remain pending for this TODO.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+  The reviewed thirty-shape fused two-step emission matrix is complete.
+  Concrete executable-memory integration, instruction-cache implementation,
+  and the foreign-call boundary remain pending for this TODO.
+- Initial backend-pipeline performance evidence is retained under
+  `benchmarks/interpreter/evidence/` in directory
+  `2026-09-16-native-backend-pipeline-linux-x86_64/`.
+  It records 15 release-profile samples per ISA at repetition scales 1, 2, and
+  4 for one equivalent VM-derived rotate/jump-code workload through direct
+  selection, fused admission, COFF emission, and semantic verification. Raw
+  samples, source/workload hashes, host/toolchain identity, process resource
+  usage, success/failure counts, retain-all outlier policy, observed-range
+  uncertainty, and scaling statistics are retained.
+  Generated code is not loaded or executed, so native execution performance
+  evidence remains pending with executable-memory and call-shim integration.

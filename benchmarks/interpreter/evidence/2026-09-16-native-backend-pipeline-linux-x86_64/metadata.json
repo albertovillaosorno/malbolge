@@ -1,0 +1,154 @@
+{
+  "benchmark_scope": "native-fused-select-admit-emit-verify-pipeline",
+  "command": "cargo bench --bench native_backend_pipeline",
+  "producer_commit": "bd4154af5b93d5fd46a74abf0fd01e79fed6d4d0",
+  "workload": "current-profile rotate/jump-code two-step VM trace",
+  "host_class": "secondary-linux-x86_64",
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "sockets": 1,
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Fedora Linux 44 (Workstation Edition)",
+  "kernel": "7.2.5-200.fc44.x86_64",
+  "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "llvm": "22.1.8",
+  "sample_count_per_isa_scale": 15,
+  "warmups_per_isa_scale": 1,
+  "scales": [
+    1,
+    2,
+    4
+  ],
+  "isa_order": "alternated by retained sample parity",
+  "pipeline_stages": [
+    "select_verified_direct_sequence",
+    "admit_fused_direct_sequence",
+    "emit_fused_direct_sequence_coff",
+    "verify_fused_direct_sequence"
+  ],
+  "successful_retained_samples": 90,
+  "failed_retained_samples": 0,
+  "machine_code_execution_included": false,
+  "selection_authority": false,
+  "summary": [
+    {
+      "isa": "x86_64",
+      "scale": 1,
+      "samples": 15,
+      "verified_objects_per_sample": 1,
+      "object_bytes_per_object": 717,
+      "min_ns": 59872,
+      "median_ns": 61019,
+      "mean_ns": 65965.8,
+      "max_ns": 87901,
+      "pstdev_ns": 8053.681354511115,
+      "median_ns_per_object": 61019.0,
+      "median_scaling_vs_scale_1": 1.0
+    },
+    {
+      "isa": "x86_64",
+      "scale": 2,
+      "samples": 15,
+      "verified_objects_per_sample": 2,
+      "object_bytes_per_object": 717,
+      "min_ns": 116615,
+      "median_ns": 118969,
+      "mean_ns": 120609.2,
+      "max_ns": 130870,
+      "pstdev_ns": 4129.746758983332,
+      "median_ns_per_object": 59484.5,
+      "median_scaling_vs_scale_1": 1.9497041904980417
+    },
+    {
+      "isa": "x86_64",
+      "scale": 4,
+      "samples": 15,
+      "verified_objects_per_sample": 4,
+      "object_bytes_per_object": 717,
+      "min_ns": 232082,
+      "median_ns": 247573,
+      "mean_ns": 279098.73333333334,
+      "max_ns": 418065,
+      "pstdev_ns": 66906.41312207837,
+      "median_ns_per_object": 61893.25,
+      "median_scaling_vs_scale_1": 4.057310018191055
+    },
+    {
+      "isa": "aarch64",
+      "scale": 1,
+      "samples": 15,
+      "verified_objects_per_sample": 1,
+      "object_bytes_per_object": 891,
+      "min_ns": 59933,
+      "median_ns": 61538,
+      "mean_ns": 64042.066666666666,
+      "max_ns": 79330,
+      "pstdev_ns": 5748.218233698354,
+      "median_ns_per_object": 61538.0,
+      "median_scaling_vs_scale_1": 1.0
+    },
+    {
+      "isa": "aarch64",
+      "scale": 2,
+      "samples": 15,
+      "verified_objects_per_sample": 2,
+      "object_bytes_per_object": 891,
+      "min_ns": 118307,
+      "median_ns": 120755,
+      "mean_ns": 122147,
+      "max_ns": 135332,
+      "pstdev_ns": 4284.693765797816,
+      "median_ns_per_object": 60377.5,
+      "median_scaling_vs_scale_1": 1.9622834671260034
+    },
+    {
+      "isa": "aarch64",
+      "scale": 4,
+      "samples": 15,
+      "verified_objects_per_sample": 4,
+      "object_bytes_per_object": 891,
+      "min_ns": 234136,
+      "median_ns": 248454,
+      "mean_ns": 278565.93333333335,
+      "max_ns": 420302,
+      "pstdev_ns": 59981.03694276124,
+      "median_ns_per_object": 62113.5,
+      "median_scaling_vs_scale_1": 4.037407780558354
+    }
+  ],
+  "workload_source": {
+    "sha256": "e27324ffedff3fa63a3199a6c90c3730605e671c8a409bfc379692755bbfb64b"
+  },
+  "raw": {
+    "sha256": "7da15954169e4eb84e8a5f164e5b8abf96fc7709037ea7a685abcfdef4ad098d"
+  },
+  "measurement_policy": {
+    "warmup_policy": "one untimed identical pipeline per ISA and scale",
+    "retained_samples_per_isa_scale": 15,
+    "scales": [
+      1,
+      2,
+      4
+    ],
+    "ordering": "alternating ISA order by retained sample parity",
+    "stopping_rule": "exactly 15 retained samples per ISA and scale",
+    "outlier_policy": "retain-all"
+  },
+  "statistics_policy": {
+    "center": "median",
+    "dispersion": [
+      "population-standard-deviation",
+      "min-max"
+    ],
+    "uncertainty": "observed-range"
+  },
+  "resource_usage": {
+    "accelerator": "none",
+    "wall_seconds": 11.01,
+    "user_seconds": 32.18,
+    "system_seconds": 2.02,
+    "max_rss_kib": 588592,
+    "process_exit_status": 0
+  }
+}

@@ -1389,9 +1389,16 @@ deterministically without changing guest-visible state silently.
   independent complete-object fixtures, rejects a one-byte opcode mutation after
   structural admission, links both ISA objects, and executes x86-64 guard miss
   without dereferencing its state pointer.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Initial backend-pipeline performance evidence now retains 15 release-profile
+  samples per ISA at repetition scales 1, 2, and 4 for one equivalent
+  VM-derived rotate/jump-code workload. The measured pipeline is direct
+  selection, fused admission, COFF emission, and semantic verification. The
+  retained bundle records raw samples, source/workload hashes, exact host and
+  toolchain identity, process resource usage, success/failure counts, the
+  retain-all outlier policy, observed-range uncertainty, and scaling
+  statistics. Because generated code is not loaded or executed, native
+  execution performance evidence remains pending with concrete executable-memory
+  and foreign-call integration.
 
 ## References
 
