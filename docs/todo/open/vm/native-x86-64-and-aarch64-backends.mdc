@@ -77,8 +77,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   a
   VM-classified non-graphical live-in with 538/631-byte objects.
   `direct-no-operation` revision 2 adds the first non-terminal code-memory write
-  and pointer advance with independent 557/658-byte objects, x86-64 atomic
-  execution, and AArch64 instruction decoding. `direct-jump-data` revision 1
+  and pointer advance with independent 557/658-byte objects.
+
+  A tracked POSIX x86-64 W^X/`ms_abi` harness proves the exact write/register
+  hit plus atomic live-in, capacity, null-memory, and null-state misses; AArch64
+  instruction decoding remains independent. `direct-jump-data` revision 1
   adds
   two distinct code/data live-in guards, an exact 125-word footprint, and the
   first instruction-specific semantic data read with independent 564/699-byte
@@ -1129,6 +1132,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   behavior pass. A separate Rust regression requires the production emitter to
   reproduce the complete frozen object. This makes the existing execution claim
   reproducible but does not implement the pending production memory/call ports.
+- The same tracked execution suite now covers the frozen x86-64
+  `direct-no-operation` fixture through a separate W^X/`ms_abi` C harness. It
+  proves `memory[5]:77->65`, `C:5->6`, `D:7->8`, preserved unrelated ABI fields,
+  and atomic live-in, capacity, null-memory, and null-state misses. The Rust
+  object fixture remains the production-emitter binding; this additional host
+  evidence still does not satisfy the pending concrete adapter/call boundary.
 - Initial backend-pipeline performance evidence is retained under
   `benchmarks/interpreter/evidence/` in directory
   `2026-09-16-native-backend-pipeline-linux-x86_64/`.

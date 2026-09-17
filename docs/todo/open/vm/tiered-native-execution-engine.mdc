@@ -175,8 +175,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   writing direct template. VM-owned no-op classification, `XLAT2`, and modular
   pointer successor derive the exact IR exit. Full fetched-cell guards precede a
   single commit of encrypted `memory[C]` plus advanced `C/D`. Independent
-  557/658-byte objects bind `77->65`, `5->6`, and `7->8`; x86-64 execution and
-  AArch64 instruction decoding prove hit semantics and atomic misses.
+  557/658-byte objects bind `77->65`, `5->6`, and `7->8`.
+
+  Tracked POSIX x86-64 W^X/`ms_abi` execution now proves the exact
+  memory/register hit and atomic live-in, capacity, null-memory, and null-state
+  misses; AArch64 instruction decoding independently confirms the same machine
+  contract.
 - `direct-jump-data` revision 1 adds the first instruction-specific semantic
   data read. Two distinct entry live-ins at `C/D` are required; VM-owned decode,
   encryption, and successors derive the exact no-I/O transition. Independent

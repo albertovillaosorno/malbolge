@@ -947,10 +947,15 @@ fetched
 cell guards and commit only the encrypted code word plus the two advanced
 pointers. Independent complete objects are 557 bytes on x86-64 and 658 bytes on
 
-AArch64. Development execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8`,
-and atomic live-in/capacity/null-memory misses; independent AArch64 decoding
-confirms the same writes and one common miss target. Input effects, linking,
-executable-memory ownership, and invocation policy remain outside this subset.
+AArch64. The tracked `tests/execution/native_no_operation_posix.c` harness
+executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
+instruction synchronization, and an explicit Clang `ms_abi` call. It proves
+`memory[5]:77->65`, `C:5->6`, `D:7->8`, preserved unrelated ABI fields, and
+atomic live-in/capacity/null-memory/null-state misses. Independent AArch64
+decoding confirms the same writes and one common miss target.
+
+This is development evidence; production executable-memory ownership and
+invocation remain outside this subset.
 
 `direct-non-graphical` revision 2 is the first direct template whose eligibility
 and machine code depend on verifier-owned memory evidence. It accepts exactly

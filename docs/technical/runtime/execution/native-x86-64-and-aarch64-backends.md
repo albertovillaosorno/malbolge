@@ -116,15 +116,19 @@ I/O write.
 `direct-no-operation` revision 2 is the first reviewed non-terminal template and
 first guest-memory-writing fast path. VM-owned no-op classification, `XLAT2`,
 and
-profile successor functions independently derive the required IR. Each ISA
-reuses
-the fetched-cell guards, then atomically writes the encrypted code cell and
-exact
-next `C/D`. Independent complete objects are 557/658 bytes. x86-64 development
-execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8` plus atomic
-live-in/capacity/null misses; independent AArch64 decoding confirms the same
+profile successor functions independently derive the required IR.
 
-commit and one common miss target.
+Each ISA reuses the fetched-cell guards, then atomically writes the encrypted
+code cell and exact next `C/D`. Independent complete objects are 557/658 bytes.
+A tracked POSIX x86-64 harness extracts the frozen `.text`, stages it RW, and
+seals the same mapping RX. It synchronizes instructions and invokes it through
+Clang `ms_abi`.
+
+It proves `memory[5]:77->65`, `C:5->6`, `D:7->8`, preserved unrelated ABI
+fields, and atomic live-in/capacity/null-memory/null-state misses. Independent
+AArch64 decoding confirms the same commit and one common miss target. This
+remains development execution evidence rather than the production platform
+adapter.
 
 `direct-jump-data` revision 1 adds the first instruction-specific semantic data
 read. Two distinct live-ins bind code and data cells; VM-owned decode,

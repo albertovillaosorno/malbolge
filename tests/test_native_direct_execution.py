@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Tracked execution of frozen x86-64 initial-halt native text on POSIX.
+#   - Tracked POSIX execution of frozen x86-64 direct-template native text.
 # - Must-Not:
 #   - Call unsafe Rust, execute unfrozen native bytes, or claim production load.
 # - Allows:
@@ -21,16 +21,16 @@
 # - Merge-When:
 #   - A tracked production adapter owns this exact execution evidence.
 # - Summary:
-#   - Proves W^X plus Windows-x64 ABI execution of the frozen initial-halt text.
+#   - Proves W^X plus Windows-x64 ABI execution of frozen direct-template text.
 # - Description:
-#   - Extracts .text directly from COFF and compiles a POSIX ms_abi C harness.
+#   - Extracts .text directly from COFF and compiles POSIX ms_abi C harnesses.
 # - Usage:
 #   - Collected by the repository Python test suite on Linux x86-64.
 # - Defaults:
 #   - Skips on hosts that cannot execute x86-64 POSIX native code.
 #
 
-"""Execute frozen Windows-x64 initial-halt text through a POSIX W^X harness."""
+"""Execute frozen Windows-x64 direct text through POSIX W^X harnesses."""
 
 from __future__ import annotations
 
@@ -43,11 +43,19 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
-FIXTURE = ROOT / "tests/execution/fixtures/native-initial-halt-x86_64-coff.hex"
-HARNESS = ROOT / "tests/execution/native_initial_halt_posix.c"
-TEXT_INCLUDE = "native_initial_halt_text.inc"
-TEXT_SECTION = b".text"
+INITIAL_HALT_FIXTURE = (
+    ROOT / "tests/execution/fixtures/native-initial-halt-x86_64-coff.hex"
+)
+INITIAL_HALT_HARNESS = ROOT / "tests/execution/native_initial_halt_posix.c"
+INITIAL_HALT_INCLUDE = "native_initial_halt_text.inc"
 INITIAL_HALT_TEXT_SIZE = 56
+NO_OPERATION_FIXTURE = (
+    ROOT / "tests/execution/fixtures/native-no-operation-x86_64-coff.hex"
+)
+NO_OPERATION_HARNESS = ROOT / "tests/execution/native_no_operation_posix.c"
+NO_OPERATION_INCLUDE = "native_no_operation_text.inc"
+NO_OPERATION_TEXT_SIZE = 147
+TEXT_SECTION = b".text"
 COFF_SECTION_HEADER_SIZE = 40
 X86_64_COFF_MACHINE = 0x8664
 X86_64_HOST_NAMES = frozenset({"amd64", "x86_64"})
@@ -131,18 +139,19 @@ def text_section(object_bytes: bytes) -> bytes:
     return object_bytes[raw_offset : raw_offset + raw_size]
 
 
-def fixture_text() -> bytes:
-    """Return exact entry text from the tracked x86-64 COFF fixture.
+def fixture_text(fixture: Path, expected_size: int) -> bytes:
+    """Return exact entry text from one tracked x86-64 COFF fixture.
 
     Returns:
         Relocation-free bytes beginning at the tracked entry symbol.
 
     """
-    object_bytes = bytes.fromhex("".join(FIXTURE.read_text().split()))
+    encoded = fixture.read_text(encoding="utf-8")
+    object_bytes = bytes.fromhex("".join(encoded.split()))
     assert read_u16(object_bytes, 0) == X86_64_COFF_MACHINE
     assert_entry_symbol(object_bytes)
     text = text_section(object_bytes)
-    assert len(text) == INITIAL_HALT_TEXT_SIZE
+    assert len(text) == expected_size
     return text
 
 
@@ -185,7 +194,10 @@ def run_command(
 def test_direct_initial_halt_posix_execution(tmp_path: Path) -> None:
     """Execute fixture text under W^X and the exact Windows-x64 call ABI."""
     assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
-    write_text_include(tmp_path / TEXT_INCLUDE, fixture_text())
+    write_text_include(
+        tmp_path / INITIAL_HALT_INCLUDE,
+        fixture_text(INITIAL_HALT_FIXTURE, INITIAL_HALT_TEXT_SIZE),
+    )
     executable = tmp_path / "native-initial-halt-posix"
     compiled = run_command(
         (
@@ -193,7 +205,37 @@ def test_direct_initial_halt_posix_execution(tmp_path: Path) -> None:
             "-std=c23",
             *STRICT_WARNINGS,
             f"-I{tmp_path}",
-            str(HARNESS),
+            str(INITIAL_HALT_HARNESS),
+            "-o",
+            str(executable),
+        ),
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = run_command((str(executable),), tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="tracked W^X execution harness requires Linux x86-64",
+)
+def test_direct_no_operation_posix_execution(tmp_path: Path) -> None:
+    """Execute memory-writing no-op text with exact hit and atomic misses."""
+    assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
+    write_text_include(
+        tmp_path / NO_OPERATION_INCLUDE,
+        fixture_text(NO_OPERATION_FIXTURE, NO_OPERATION_TEXT_SIZE),
+    )
+    executable = tmp_path / "native-no-operation-posix"
+    compiled = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            *STRICT_WARNINGS,
+            f"-I{tmp_path}",
+            str(NO_OPERATION_HARNESS),
             "-o",
             str(executable),
         ),
