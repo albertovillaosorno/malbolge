@@ -563,6 +563,7 @@ use execution_native::{
     load_direct_fused_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
+    load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
     load_register_masked_non_graphical_native_sequence,
     load_verified_execution_geometry_native_sequence,
@@ -574,6 +575,7 @@ use execution_native::{
     release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
     release_register_masked_native_executable,
+    release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
     return_direct_fused_native_retry_failure_leases,
     return_direct_fused_native_retry_leases, route_direct_fused_native_retry,
@@ -4644,6 +4646,125 @@ fn register_masked_v6_no_operation_lifecycle_rejects_drift() -> TieredTestResult
     )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
     {
         return Err(String::from("v6 no-op lifecycle admitted short sync"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_platform_loads_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 no-op platform image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(164)?,
+        native_executable_address(0x19000)?,
+    );
+    let ready = load_register_masked_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 no-op platform load: {error}"))?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v6 no-op platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 no-op platform release: {error}"))?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from("v6 no-op platform release evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_platform_cleans_up_copy_failure()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 no-op cleanup image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(165)?,
+        native_executable_address(0x1a000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) = load_register_masked_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    ) else {
+        return Err(String::from("v6 no-op copy failure was ignored"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error().is_some()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 no-op copy cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_release_failure_retries_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 no-op retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(166)?,
+        native_executable_address(0x1b000)?,
+    )
+    .with_release_failures(1);
+    let ready = load_register_masked_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 no-op retry load: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) = release_register_masked_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    ) else {
+        return Err(String::from("v6 no-op release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "v6 no-op release failure lost ready identity",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 no-op release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 no-op release retry count drifted"));
     }
     Ok(())
 }

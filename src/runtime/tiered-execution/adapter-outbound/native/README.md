@@ -960,8 +960,9 @@ x86-64/AArch64 bytes.
 A distinct relocation-free load image retains exact identity, alignment, and
 strict W^X/full-sync policy. Dedicated lifecycle typestates admit exact copied
 bytes, same-mapping RX transition, full-range synchronization, and exact release
-evidence. Platform loading, binding, invocation, and runner authority remain
-separate.
+evidence. A dedicated platform path adds transactional load, post-allocation
+cleanup, explicit release, and exact release-retry ownership. Binding,
+invocation, and runner authority remain separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

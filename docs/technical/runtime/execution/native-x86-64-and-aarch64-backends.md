@@ -232,8 +232,10 @@ history remains unguarded.
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle
 typestates admit exact copied bytes, same-mapping RX transition, full-range
-synchronization, and exact release evidence. No v6 no-operation platform,
-binding, invocation, or runner authority is added.
+synchronization, and exact release evidence. A dedicated platform path now
+loads/releases the ready image transactionally with post-allocation cleanup and
+exact release-retry ownership. No v6 no-operation binding, invocation, or
+runner authority is added.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.
