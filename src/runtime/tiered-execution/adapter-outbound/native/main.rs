@@ -497,6 +497,8 @@ pub use invocation::{
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNoOperationInvocation,
+    PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedVerifiedDirectInvocation,

@@ -466,6 +466,7 @@ use execution_native::{
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -4647,6 +4648,146 @@ fn register_masked_v6_no_operation_lifecycle_rejects_drift() -> TieredTestResult
     {
         return Err(String::from("v6 no-op lifecycle admitted short sync"));
     }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_invocation_rebases_dead_state()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 no-op invocation effect missing")
+        })?;
+    let mut entry = source.before;
+    entry.registers.accumulator = 0x1122_3344;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = source.after;
+    expected.registers.accumulator = entry.registers.accumulator;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    let write = source.memory_delta.encryption.ok_or_else(|| {
+        String::from("v6 no-op invocation encryption write missing")
+    })?;
+    let address = usize::try_from(write.address)
+        .map_err(|error| format!("v6 no-op write address: {error}"))?;
+    let cell = expected_memory.get_mut(address).ok_or_else(|| {
+        String::from("v6 no-op invocation write exceeds memory")
+    })?;
+    *cell = write.after;
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from("v6 no-op expected observation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 no-op invocation completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 no-op rebased application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_invocation_rejects_data_pointer_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 no-op data-drift effect missing")
+        })?;
+    let mut entry = source.before;
+    let expected = entry.registers.data_pointer;
+    entry.registers.data_pointer = expected.saturating_add(1);
+    let observed = entry.registers.data_pointer;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let result = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected: value,
+            observed: seen,
+        }) if value == expected && seen == observed
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 no-op data-pointer rejection drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_binding_retains_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNoOperationLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 no-op binding image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(167)?,
+        native_executable_address(0x1c000)?,
+    );
+    let ready = load_register_masked_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 no-op binding load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 no-op binding effect missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = PreparedRegisterMaskedNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 no-op binding prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v6 no-op binding failed: {error}"))?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 no-op bound identity drifted"));
+    }
+    drop(bound);
+    release_register_masked_no_operation_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 no-op binding release: {error}"))?;
     Ok(())
 }
 

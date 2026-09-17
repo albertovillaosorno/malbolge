@@ -54,6 +54,7 @@ use super::direct::{
     VerifiedDirectFusedSequenceObjectArtifact, VerifiedDirectNativeArtifact,
     VerifiedExecutionGeometryNativeArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
 };
 use super::fused_sequence::{
@@ -63,12 +64,14 @@ use super::lifecycle::{
     NativeExecutableMappingId, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
     VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use crate::execution_cache::{
@@ -253,6 +256,13 @@ pub enum VerifiedRegisterMaskedInvocationError {
         /// Code pointer supplied by the rebased runtime observation.
         observed: u32,
     },
+    /// The runtime D value differs from a required register live-in.
+    EntryDataPointer {
+        /// Data pointer retained by the verified v6 program.
+        expected: u32,
+        /// Data pointer supplied by the rebased runtime observation.
+        observed: u32,
+    },
     /// The rebased runtime observation was already terminated.
     EntryTermination,
     /// Exact v6 native identity could not be reconstructed.
@@ -295,6 +305,17 @@ pub struct PreparedRegisterMaskedHaltFetchInvocation<'artifact, 'buffers> {
     load_image: VerifiedRegisterMaskedLoadImage,
 }
 
+/// One verified v6 no-operation artifact bound to a rebased ABI transition.
+///
+/// This value proves exact masked-state preparation and completion semantics.
+/// It grants no runner authority by itself.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNoOperationInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedNoOperationLoadImage,
+}
+
 /// One verified v6 non-graphical artifact bound to a rebased ABI transition.
 ///
 /// This value deliberately has no executable binding. It proves relocation
@@ -334,6 +355,16 @@ pub struct PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNativeInvocation<'buffers, 'executable> {
     executable: &'executable ReadyRegisterMaskedNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact v6 no-operation call and synchronized mapping.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNoOperationNativeInvocation<
+    'buffers,
+    'executable,
+> {
+    executable: &'executable ReadyRegisterMaskedNoOperationNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -455,6 +486,9 @@ impl VerifiedRegisterMaskedInvocationError {
             },
             Self::EntryCodePointer { .. } => {
                 "rebased v6 entry changed the required code pointer"
+            },
+            Self::EntryDataPointer { .. } => {
+                "rebased v6 entry changed the required data pointer"
             },
             Self::EntryTermination => "rebased v6 entry was already terminated",
             Self::Identity(_) => "verified v6 invocation identity failed",
@@ -749,6 +783,151 @@ impl<'artifact, 'buffers>
             invocation,
             load_image,
         })
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedRegisterMaskedNoOperationInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete rebased entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed no-operation transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified v6 no-operation artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Binds this call to one synchronized v6 no-operation executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when executable image
+    /// identity differs. Failure restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedNoOperationNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedNoOperationNativeInvocation<
+            'buffers,
+            'executable,
+        >,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedNoOperationNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
+    /// Admits one raw status through the rebased no-operation contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError::Invocation`] when the
+    /// result violates exact application or atomic guard-miss requirements.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful observation derived from the rebased entry.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free v6 no-operation image.
+    #[must_use]
+    pub const fn load_image(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified no-operation over a mask-preserving entry.
+    ///
+    /// C and D must match their source live-ins. A and I/O cursors may rebase
+    /// because this v6 shape does not read or write them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError`] for identity, live
+    /// register, buffer, memory, or load-image disagreement.
+    pub fn new(
+        artifact:
+            &'artifact VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_no_operation_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image =
+            VerifiedRegisterMaskedNoOperationLoadImage::new(artifact)
+                .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::new_register_masked_no_operation(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the bound v6 artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared v6 call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
     }
 }
 
@@ -1195,6 +1374,43 @@ impl<'buffers, 'executable>
         value: u32,
     ) -> bool {
         self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedNoOperationNativeInvocation<'buffers, 'executable>
+{
+    /// Returns the synchronized non-zero no-operation v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedNoOperationNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyRegisterMaskedNoOperationNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for a future dedicated runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
     }
 }
 
@@ -2137,6 +2353,37 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    fn new_register_masked_no_operation(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [source] = program.effects.as_slice() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if program.step_budget != 1
+            || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+            || source.before.termination.is_some()
+            || source.after.termination.is_some()
+            || source.input.is_some()
+            || source.output.is_some()
+            || program.memory_live_ins.len() != 1
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let mut effect = *source;
+        effect.before = entry;
+        effect.after.registers.accumulator = entry.registers.accumulator;
+        effect.after.input_consumed = entry.input_consumed;
+        effect.after.output_len = entry.output_len;
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            buffers,
+        )
+    }
+
     fn new_register_masked_terminal(
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
@@ -2222,6 +2469,29 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         *cell = value;
         true
     }
+}
+
+fn validate_register_masked_no_operation_rebased_entry(
+    artifact_key: &NativeArtifactKey,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), VerifiedRegisterMaskedInvocationError> {
+    validate_register_masked_rebased_entry(artifact_key, program, entry)?;
+    let source_entry =
+        program.effects.first().map(|effect| effect.before).ok_or(
+            VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::ProgramShape,
+            ),
+        )?;
+    let expected = source_entry.registers.data_pointer;
+    let observed = entry.registers.data_pointer;
+    if observed != expected {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected,
+            observed,
+        });
+    }
+    Ok(())
 }
 
 fn validate_register_masked_rebased_entry(
