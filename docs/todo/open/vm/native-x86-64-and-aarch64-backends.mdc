@@ -1147,3 +1147,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   is 2.606-2.885x faster than cold selection, while total preparation improves
   1.305-1.390x and fused-admission medians stay within about 3%. This remains
   backend-preparation evidence only; generated code is not executed.
+- A multi-workload corroboration bundle under
+  `2026-09-17-native-backend-multiworkload-cache-linux-x86_64/` adds a reviewed
+  no-operation/output trace beside rotate/jump-code. Across all twelve
+  workload/ISA/scale comparisons, warm exact-cache selection is 2.561-2.855x
+  faster by median and total preparation improves 1.314-1.380x. Admission
+  cold-over-warm ratios stay between 0.997x and 1.028x. The same preparation-
+  only limitation applies because generated code is not executed.

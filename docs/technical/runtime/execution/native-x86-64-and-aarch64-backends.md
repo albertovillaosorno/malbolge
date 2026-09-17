@@ -1417,6 +1417,12 @@ deterministically without changing guest-visible state silently.
   six ISA/scale comparisons; total preparation improves 1.305-1.390x, while
   fused-admission medians remain within about 3%. Generated code is still not
   executed, so this remains preparation evidence rather than native throughput.
+- A multi-workload follow-up adds a reviewed no-operation/output trace beside
+  rotate/jump-code with the same modes, ISAs, scales, and 15-sample groups.
+  Across all twelve comparisons, warm exact-cache selection is 2.561-2.855x
+  faster by median and total preparation improves 1.314-1.380x. Admission
+  cold-over-warm ratios stay between 0.997x and 1.028x. This corroborates the
+  selection-cache effect without extending the claim to machine-code execution.
 
 ## References
 
