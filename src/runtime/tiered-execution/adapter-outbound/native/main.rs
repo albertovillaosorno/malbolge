@@ -78,6 +78,7 @@ mod loader;
 mod platform;
 mod process_call;
 mod process_call_wire;
+mod process_host;
 mod process_memory_wire;
 mod process_session;
 mod profile_metadata;
@@ -590,6 +591,7 @@ pub use process_call_wire::{
     encode_native_process_call_response, native_process_call_request_byte_len,
     native_process_call_response_byte_limit,
 };
+pub use process_host::{NativeProcessHost, NativeProcessHostError};
 pub use process_memory_wire::{
     NATIVE_PROCESS_MEMORY_WIRE_MAGIC, NativeProcessMemoryRequest,
     NativeProcessMemoryResponse, NativeProcessMemoryWireError,

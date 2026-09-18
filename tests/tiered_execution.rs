@@ -462,7 +462,7 @@ use execution_native::{
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
     NativeProcessCallRequest, NativeProcessCallResponse,
     NativeProcessCallResponseError, NativeProcessCallWireError,
-    NativeProcessMemoryRequest, NativeProcessMemoryResponse,
+    NativeProcessHost, NativeProcessMemoryRequest, NativeProcessMemoryResponse,
     NativeProcessMemoryWireError, NativeProcessSession,
     NativeProcessSessionConfig, NativeProcessSessionError, NativeRegionBuffers,
     NativeRegionCallFrame, NativeRegionCallFrameError,
@@ -1015,6 +1015,90 @@ if len(request) != length:
     raise SystemExit(3)
 sys.stdout.buffer.write((4).to_bytes(8, "little"))
 sys.stdout.buffer.write(b"x")
+sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_MEMORY_HOST_WORKER: &str = r#"
+import sys
+
+magic = b"MBNPM1\x00\x00"
+mapping_id = 91
+base_address = 0x9000
+expected = [0, 1, 2, 4, 3]
+
+def u64(data, offset):
+    return int.from_bytes(data[offset:offset + 8], "little")
+
+def pack64(*values):
+    return b"".join(value.to_bytes(8, "little") for value in values)
+
+def respond(payload):
+    sys.stdout.buffer.write(len(payload).to_bytes(8, "little"))
+    sys.stdout.buffer.write(payload)
+    sys.stdout.buffer.flush()
+
+for expected_command in expected:
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length or request[:8] != magic:
+        raise SystemExit(3)
+    command = request[8]
+    if command != expected_command:
+        raise SystemExit(4)
+    if command == 0:
+        byte_len = u64(request, 9)
+        alignment = u64(request, 17)
+        permission = request[25]
+        if byte_len == 0 or alignment == 0 or permission != 1:
+            raise SystemExit(5)
+        response = magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address, byte_len) + b"\x01"
+    elif command == 1:
+        reported_id = u64(request, 9)
+        reported_base = u64(request, 17)
+        permission = request[33]
+        code_len = u64(request, 34)
+        code = request[42:]
+        if (reported_id != mapping_id or reported_base != base_address
+                or permission != 1 or len(code) != code_len):
+            raise SystemExit(6)
+        response = magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address) + code
+    elif command == 2:
+        mapped_len = u64(request, 25)
+        if (u64(request, 9) != mapping_id
+                or u64(request, 17) != base_address
+                or request[33] != 1):
+            raise SystemExit(7)
+        response = magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address, mapped_len) + b"\x00"
+    elif command == 4:
+        if u64(request, 9) != mapping_id or u64(request, 17) != base_address:
+            raise SystemExit(8)
+        response = magic + bytes([command, 0]) + request[9:33]
+    else:
+        if u64(request, 9) != mapping_id or u64(request, 17) != base_address:
+            raise SystemExit(9)
+        response = magic + bytes([command, 0])
+    respond(response)
+"#;
+
+const NATIVE_PROCESS_MEMORY_HOST_FAILURE_WORKER: &str = r#"
+import sys
+magic = b"MBNPM1\x00\x00"
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length or request[:8] != magic:
+    raise SystemExit(3)
+response = magic + bytes([request[8], 1]) + (77).to_bytes(4, "little")
+sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+sys.stdout.buffer.write(response)
 sys.stdout.buffer.flush()
 "#;
 
@@ -38281,6 +38365,74 @@ fn native_process_session_python(
         .argument(OsString::from(script))
         .spawn()
         .map_err(|error| format!("native process session spawn: {error:?}"))
+}
+
+fn native_process_host_python(
+    script: &str,
+) -> Result<NativeProcessHost, String> {
+    native_process_session_python(script).map(NativeProcessHost::new)
+}
+
+#[test]
+fn native_process_host_reports_remote_memory_failure() -> Result<(), String> {
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_MEMORY_HOST_FAILURE_WORKER)?;
+    let Err(error) =
+        host.allocate_writable(NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ))
+    else {
+        return Err(String::from(
+            "configured remote allocation failure was ignored",
+        ));
+    };
+    if error.remote_code() == Some(77) && !host.session_poisoned() {
+        Ok(())
+    } else {
+        Err(String::from("native process host remote failure drifted"))
+    }
+}
+
+#[test]
+fn native_process_host_runs_complete_memory_lifecycle() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let image = VerifiedDirectLoadImage::from_artifact_for_test(&artifact)
+        .map_err(|error| error.to_string())?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_MEMORY_HOST_WORKER)?;
+    let ready = load_native_executable(&mut host, &image)
+        .map_err(|error| error.to_string())?;
+    let expected_mapping = native_executable_mapping_id(91)?;
+    let expected_base = native_executable_address(0x9000)?;
+    if ready.mapping().mapping_id() != expected_mapping
+        || ready.mapping().base_address() != expected_base
+        || ready.mapping().mapped_len() != image.allocation_len()
+        || ready.mapping().permissions()
+            != NativeExecutablePermission::ReadExecute
+        || host.session_poisoned()
+    {
+        return Err(String::from(
+            "native process host lifecycle evidence drifted",
+        ));
+    }
+    release_native_executable(&mut host, ready)
+        .map_err(|error| error.to_string())?;
+    if host.session_poisoned() {
+        Err(String::from(
+            "native process host poisoned successful lifecycle",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[test]

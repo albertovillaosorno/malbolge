@@ -245,6 +245,12 @@ A distinct single-resident lease cache
   lifecycle checks; copy response allocation is bounded by the original request.
   The concrete worker syscalls and MBNPC1 runner integration remain pending.
 
+  `NativeProcessHost` now implements the executable-memory adapter through one
+  retained session and MBNPM1. Deterministic child evidence covers the complete
+  allocate/copy/protect/synchronize/release loader transaction plus a remote
+  failure path without granting the child lifecycle authority. Production W^X
+  syscalls and the MBNPC1 runner remain pending.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 
