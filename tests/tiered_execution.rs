@@ -431,22 +431,24 @@ use execution_native::{
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
-    ExecutionGeometryNativeRunner, NATIVE_REGION_ABI_REVISION,
-    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
-    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
-    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
-    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
-    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
-    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
-    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
-    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
-    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
-    NativeExecutableLifecycleError, NativeExecutableLoadFailure,
-    NativeExecutableLoadPhase, NativeExecutableMappingId,
-    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
-    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
-    NativeExecutableReleaseRequest, NativeExecutableRunner,
-    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
+    ExecutionGeometryNativeRunner, NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES,
+    NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES, NATIVE_PROCESS_CALL_WIRE_MAGIC,
+    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
+    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
+    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
+    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
+    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
+    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
+    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
+    NativeArtifactError, NativeExecutableAllocationRequest,
+    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
+    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
+    NativeExecutableLoadFailure, NativeExecutableLoadPhase,
+    NativeExecutableMappingId, NativeExecutableMappingReport,
+    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
+    NativeExecutablePermission, NativeExecutableReleaseRequest,
+    NativeExecutableRunner, NativeExecutableSequenceCache,
+    NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -458,10 +460,11 @@ use execution_native::{
     NativeInterpreterContinuation, NativeInterpreterContinuationError,
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
     NativeProcessCallRequest, NativeProcessCallResponse,
-    NativeProcessCallResponseError, NativeRegionBuffers, NativeRegionCallFrame,
-    NativeRegionCallFrameError, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
-    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeProcessCallResponseError, NativeProcessCallWireError,
+    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, NativeRegionStatus,
+    NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -546,6 +549,7 @@ use execution_native::{
     acquire_direct_fused_native_sequence_transactionally,
     admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
+    decode_native_process_call_request, decode_native_process_call_response,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
@@ -563,7 +567,9 @@ use execution_native::{
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
-    emit_fused_direct_sequence_coff, execute_cached_direct_fused_native_retry,
+    emit_fused_direct_sequence_coff, encode_native_process_call_request,
+    encode_native_process_call_response,
+    execute_cached_direct_fused_native_retry,
     execute_cached_direct_fused_native_retry_cycle,
     execute_cached_verified_native_sequence, execute_direct_fused_native_retry,
     execute_direct_fused_native_sequence,
@@ -594,7 +600,8 @@ use execution_native::{
     load_register_masked_non_graphical_native_sequence,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
-    lower_preflighted_clang_c23, plan_direct_fused_native_retry,
+    lower_preflighted_clang_c23, native_process_call_request_byte_len,
+    native_process_call_response_byte_limit, plan_direct_fused_native_retry,
     rebase_direct_fused_native_retry, rebase_direct_fused_native_retry_failure,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable,
@@ -1105,6 +1112,9 @@ type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
 type RegisterMaskedObservationPair =
     (ProfileMachineObservation, ProfileMachineObservation);
+
+type NativeProcessCallWireFixture =
+    (NativeProcessCallRequest, ProfileMachineObservation);
 
 type LeaseCacheFixture = (
     NativeExecutableSequenceLeaseCache,
@@ -38122,6 +38132,192 @@ fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
         Err(String::from(
             "ready executable call did not apply exact effect",
         ))
+    }
+}
+
+fn native_process_call_wire_fixture()
+-> Result<NativeProcessCallWireFixture, String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&artifact, 55, 0x7400)?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("process wire effect missing"))?
+        .after;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    Ok((invocation.process_request(), expected))
+}
+
+#[test]
+fn native_process_call_wire_round_trips_exact_request_and_response()
+-> Result<(), String> {
+    let (request, expected) = native_process_call_wire_fixture()?;
+    let request_bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    let request_len = native_process_call_request_byte_len(&request)
+        .map_err(|error| error.to_string())?;
+    let decoded_request = decode_native_process_call_request(&request_bytes)
+        .map_err(|error| error.to_string())?;
+    if NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES != 69
+        || NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES != 74
+        || request_bytes.get(..NATIVE_PROCESS_CALL_WIRE_MAGIC.len())
+            != Some(NATIVE_PROCESS_CALL_WIRE_MAGIC.as_slice())
+        || request_bytes.len() != request_len
+        || decoded_request != request
+    {
+        return Err(String::from("process wire request round trip drifted"));
+    }
+    let response = applied_native_process_response(&request, expected)?;
+    let response_bytes =
+        encode_native_process_call_response(&request, &response)
+            .map_err(|error| error.to_string())?;
+    let response_limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let decoded_response =
+        decode_native_process_call_response(&response_bytes, &request)
+            .map_err(|error| error.to_string())?;
+    if response_bytes.len() == response_limit && decoded_response == response {
+        Ok(())
+    } else {
+        Err(String::from("process wire response round trip drifted"))
+    }
+}
+
+#[test]
+fn native_process_call_wire_response_size_uses_original_request()
+-> Result<(), String> {
+    const OUTPUT_CAPACITY_OFFSET: usize = 32;
+    let (request, expected) = native_process_call_wire_fixture()?;
+    let response = applied_native_process_response(&request, expected)?;
+    let mut bytes = encode_native_process_call_response(&request, &response)
+        .map_err(|error| error.to_string())?;
+    let end = OUTPUT_CAPACITY_OFFSET
+        .checked_add(size_of::<u64>())
+        .ok_or_else(|| String::from("process wire capacity offset overflow"))?;
+    bytes
+        .get_mut(OUTPUT_CAPACITY_OFFSET..end)
+        .ok_or_else(|| String::from("process wire capacity field missing"))?
+        .copy_from_slice(&u64::MAX.to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let decoded = decode_native_process_call_response(&bytes, &request)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == limit
+        && decoded.memory().len() == request.memory().len()
+        && decoded.output().len() == request.output().len()
+        && decoded.state().output_capacity() == u64::MAX
+    {
+        Ok(())
+    } else {
+        Err(String::from("process wire trusted forged response sizing"))
+    }
+}
+
+#[test]
+fn native_process_call_wire_rejects_response_payload_shape()
+-> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let short_memory = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state(),
+        (Vec::<u32>::new(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    if encode_native_process_call_response(&request, &short_memory)
+        != Err(NativeProcessCallWireError::MemoryLength)
+    {
+        return Err(String::from("process wire encoded short response memory"));
+    }
+    let short_output = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state(),
+        (request.memory().to_vec(), Vec::<u8>::new()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    if encode_native_process_call_response(&request, &short_output)
+        == Err(NativeProcessCallWireError::OutputLength)
+    {
+        Ok(())
+    } else {
+        Err(String::from("process wire encoded short response output"))
+    }
+}
+
+fn assert_native_process_wire_decode_rejections(
+    request: &NativeProcessCallRequest,
+    response: &NativeProcessCallResponse,
+) -> Result<(), String> {
+    let mut bad_magic = encode_native_process_call_request(request)
+        .map_err(|error| error.to_string())?;
+    let magic = bad_magic
+        .first_mut()
+        .ok_or_else(|| String::from("process wire request magic missing"))?;
+    *magic ^= 1;
+    if decode_native_process_call_request(&bad_magic)
+        != Err(NativeProcessCallWireError::RequestMagic)
+    {
+        return Err(String::from("process wire admitted wrong request magic"));
+    }
+    let mut zero_mapping = encode_native_process_call_request(request)
+        .map_err(|error| error.to_string())?;
+    zero_mapping
+        .get_mut(8..16)
+        .ok_or_else(|| String::from("process wire mapping field missing"))?
+        .fill(0);
+    if decode_native_process_call_request(&zero_mapping)
+        != Err(NativeProcessCallWireError::MappingIdentity)
+    {
+        return Err(String::from("process wire admitted zero mapping"));
+    }
+    let mut invalid_flag =
+        encode_native_process_call_response(request, response)
+            .map_err(|error| error.to_string())?;
+    let pointer_flag = invalid_flag
+        .get_mut(73)
+        .ok_or_else(|| String::from("process wire pointer flag missing"))?;
+    *pointer_flag = 2;
+    if decode_native_process_call_response(&invalid_flag, request)
+        == Err(NativeProcessCallWireError::PointerFlag(2))
+    {
+        Ok(())
+    } else {
+        Err(String::from("process wire admitted invalid pointer flag"))
+    }
+}
+
+#[test]
+fn native_process_call_wire_rejects_malformed_framing() -> Result<(), String> {
+    let (request, expected) = native_process_call_wire_fixture()?;
+    let response = applied_native_process_response(&request, expected)?;
+    assert_native_process_wire_decode_rejections(&request, &response)?;
+    let mut trailing = encode_native_process_call_response(&request, &response)
+        .map_err(|error| error.to_string())?;
+    trailing.push(0);
+    if decode_native_process_call_response(&trailing, &request)
+        == Err(NativeProcessCallWireError::TrailingBytes)
+        && trailing.get(..8).is_some_and(|truncated| {
+            decode_native_process_call_response(truncated, &request)
+                == Err(NativeProcessCallWireError::ReadFailure)
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("process wire malformed framing was admitted"))
     }
 }
 

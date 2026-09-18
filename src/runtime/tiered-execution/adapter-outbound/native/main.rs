@@ -77,6 +77,7 @@ mod lifecycle;
 mod loader;
 mod platform;
 mod process_call;
+mod process_call_wire;
 mod profile_metadata;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -578,6 +579,14 @@ pub use platform::{
 pub use process_call::{
     NativeProcessCallRequest, NativeProcessCallResponse,
     NativeProcessCallResponseError, NativeProcessCallState,
+};
+pub use process_call_wire::{
+    NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES,
+    NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES, NATIVE_PROCESS_CALL_WIRE_MAGIC,
+    NativeProcessCallWireError, decode_native_process_call_request,
+    decode_native_process_call_response, encode_native_process_call_request,
+    encode_native_process_call_response, native_process_call_request_byte_len,
+    native_process_call_response_byte_limit,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,

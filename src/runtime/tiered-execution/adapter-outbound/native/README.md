@@ -68,6 +68,13 @@ invocation completion verifier still decides whether the returned status and
 state are semantically admissible; transport and machine-code execution remain
 separate.
 
+`process_call_wire.rs` defines the version-one `MBNPC1` little-endian framing
+for this transfer. The fixed request prefix is 69 bytes and the fixed response
+prefix is 74 bytes; response memory/output lengths are always taken from the
+original request before child state is admitted. Zero mapping identity, invalid
+pointer flags, payload-shape drift, truncation, and trailing bytes fail closed.
+The wire codec does not spawn or retain a child process.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant
