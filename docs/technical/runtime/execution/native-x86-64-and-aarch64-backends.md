@@ -69,10 +69,10 @@ with Clang `ms_abi`. Hit, byte-identical miss, and null-state execution are
 covered; ARM64 object linkage remains verified independently.
 
 The Rust regression separately requires the production emitter to reproduce the
-complete frozen object. This host harness is development execution evidence,
-not the concrete executable-memory adapter or runner required for production.
-The direct template remains a deliberately tiny subset rather than general
-instruction selection.
+complete frozen object. This host harness remains independent development
+execution evidence; the concrete process-backed POSIX adapter and runner are
+described below. The direct template remains a deliberately tiny subset rather
+than general instruction selection.
 
 `direct-halt-registers` revision 5 now covers the same halt-only effect across
 arbitrary 32-bit entry registers and full 64-bit input/output counter
@@ -340,7 +340,7 @@ layout and function-pointer authority without adding executable-memory ownership
 or a production foreign-call implementation.
 
 `native/process_call.rs` now converts one already-bound direct invocation into
-pointer-free owned state, memory, input, and output evidence for a future
+pointer-free owned state, memory, input, and output evidence for the
 process-isolated host. Returned mapping identity, immutable capacities, buffer
 shape, and child pointer-integrity evidence are checked before caller buffers
 change; the existing invocation verifier still owns final status and semantic
@@ -387,10 +387,10 @@ ABI binding. Safe orchestration now performs load, bind, runner call,
 completion, and release, restoring the entry snapshot after runner or admission
 failure. Cleanup failure retains the executable for retry; final-release
 failure preserves the committed outcome. Applied, guard-miss, load-failure,
-runner-failure, completion-drift, and release-failure cases pass. Concrete
-Windows/POSIX memory
+runner-failure, completion-drift, and release-failure cases pass.
 
-operations and foreign-call shims remain pending.
+This generic safe port itself performs no OS operation or foreign call; the
+concrete process-backed POSIX implementation follows below.
 
 `execute_verified_native_with_host` now provides an ownership-safe orchestration
 path when one stateful host implements both executable-memory and runner ports.
@@ -427,16 +427,28 @@ structurally applied before the existing semantic completion verifier runs;
 mapping drift is rejected before caller mutation.
 
 Deterministic persistent workers prove the complete load/call/release
-transaction
-plus remote-memory and call-response rejection paths. The worker still performs
-no production executable-memory syscalls or architecture foreign call.
+transaction plus remote-memory and call-response rejection paths.
+
+`native/native_process_worker_posix.c` now supplies the first concrete child
+implementation. On Linux x86-64 it allocates anonymous RW mappings, copies exact
+verified image bytes, transitions the same mapping to RX, performs full-range
+instruction synchronization, invokes the retained entry through the reviewed
+Windows-x64 ABI bridge, and releases the mapping. Mapping identity remains
+child-owned while every platform/state result returns as untrusted evidence to
+the existing Rust lifecycle and semantic verifier. A host-real Rust regression
+compiles the tracked worker with pinned Clang and drives the admitted
+direct-output artifact through the complete process host; the exact
+`memory[5]:94->57`, output append `0xa8`, and `C/D:5/7->6/8` transition is
+accepted before release.
+
+The source includes an AArch64 call/cache-sync path,
+but host-real AArch64 execution and non-POSIX workers remain pending.
 
 `native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
 magic, command/outcome tags, fixed sizes, field offsets, and little-endian
-scalar
-helpers for C23 workers. A strict pinned-Clang conformance harness checks those
-declarations without spawning a worker, mapping executable memory, or invoking
-code. This keeps the future child implementation from duplicating wire literals.
+scalar helpers for C23 workers. A strict pinned-Clang conformance harness checks
+those declarations independently. The concrete POSIX child consumes this header
+rather than duplicating wire literals.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
@@ -1422,9 +1434,10 @@ sample without recording it automatically. Two deterministic cases cover exact
 sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
-Merge backoff/cancellation/fairness policy, native object fusion, foreign
-invocation, asynchronous timing, reclamation scheduling/automatic durable
-retention policy, and general N-object transactions remain open.
+Merge backoff/cancellation/fairness policy, native object fusion, host-real
+AArch64 and non-POSIX invocation, asynchronous timing, reclamation scheduling/
+automatic durable retention policy, and general N-object transactions remain
+open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
@@ -1556,9 +1569,9 @@ deterministically without changing guest-visible state silently.
   retained bundle records raw samples, source/workload hashes, exact host and
   toolchain identity, process resource usage, success/failure counts, the
   retain-all outlier policy, observed-range uncertainty, and scaling
-  statistics. Because generated code is not loaded or executed, native
-  execution performance evidence remains pending with concrete executable-memory
-  and foreign-call integration.
+  statistics. Because this benchmark does not load or execute generated code,
+  end-to-end native execution performance remains pending even though the
+  process worker now provides concrete executable-memory and call integration.
 - A second retained phase-attribution run uses the same workload and sample
   matrix: selection accounts for about 37-38% of summed phase medians across
   both target ISAs and scales, semantic verification about 27-28%, COFF

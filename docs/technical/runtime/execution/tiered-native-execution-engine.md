@@ -236,9 +236,18 @@ entry snapshot; completion rejection restores through the invocation contract.
 Cleanup failure retains the ready executable for retry, while final-release
 failure also retains the already committed outcome. Six runner cases cover
 `Applied`, `GuardMiss`, load short-circuit, runner mutation rollback, completion
-drift, and committed release failure. No concrete OS adapter or foreign-call
+drift, and committed release failure.
 
-implementation exists.
+The process-backed host now has a concrete POSIX child implementation. On Linux
+x86-64 the tracked C23 worker owns anonymous RW allocation, exact copy, RX
+protection, instruction synchronization, Windows-x64 ABI invocation, and
+release. The safe Rust lifecycle continues to admit every returned mapping and
+copy report, and the invocation verifier continues to own semantic acceptance.
+A host-real regression drives an admitted direct-output artifact through the
+full `NativeProcessHost` transaction.
+
+AArch64 host-real execution and non-POSIX
+workers remain open rather than being inferred from this x86-64 evidence.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output
@@ -2065,10 +2074,10 @@ reconfiguration is a separate cache-policy extension; unsupported v6 execution
 remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
-process-local cached cycles, asynchronous/product scheduling, executable-memory
-platform implementations and foreign invocation, durable cache
-serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
-beyond verified direct process-local reuse, and performance policy remain open.
+process-local cached cycles, asynchronous/product scheduling, host-real AArch64
+and non-POSIX native workers, durable cache serialization/storage and
+cross-process leasing, cache-aware AOT/JIT policy beyond verified direct
+process-local reuse, and performance policy remain open.
 The
 interpreter remains the only normative execution authority and the guaranteed
 fallback.

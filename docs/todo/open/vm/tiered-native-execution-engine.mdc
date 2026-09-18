@@ -689,7 +689,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   expansion beyond the terminal object families. Native object/lifecycle support
   for that shape and wider mask-aware instruction coverage remain open; v6-to-
   v3/v4 projection remains forbidden.
-- Remaining fused-region emission plus cache-aware AOT/JIT
-  policy beyond verified direct process-local reuse, durable cache
-  serialization/storage/eviction, executable-memory policy, invocation, and
-  end-to-end tier performance remain unimplemented.
+- The process-backed native host now has a tracked POSIX C23 worker. On Linux
+  x86-64 it owns real RW allocation, exact copy, RX transition, instruction
+  synchronization, Windows-x64 ABI invocation, and release inside the retained
+  child process. A host-real Rust regression drives an admitted direct-output
+  artifact through that full transaction while existing lifecycle and semantic
+  verification remain authoritative. Host-real AArch64 and non-POSIX workers
+  remain open.
+- Remaining fused-region emission plus cache-aware AOT/JIT policy beyond
+  verified direct process-local reuse, durable cache serialization/storage/
+  eviction, broader platform execution evidence, and end-to-end tier
+  performance remain unimplemented.

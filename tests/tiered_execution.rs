@@ -168,6 +168,8 @@ use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::panic::resume_unwind;
 use std::path::{Path, PathBuf};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::process::{Command, id as process_id};
 use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
@@ -462,13 +464,13 @@ use execution_native::{
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
     NativeProcessCallRequest, NativeProcessCallResponse,
     NativeProcessCallResponseError, NativeProcessCallWireError,
-    NativeProcessHost, NativeProcessMemoryRequest, NativeProcessMemoryResponse,
-    NativeProcessMemoryWireError, NativeProcessSession,
-    NativeProcessSessionConfig, NativeProcessSessionError, NativeRegionBuffers,
-    NativeRegionCallFrame, NativeRegionCallFrameError,
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, NativeRegionStatus,
-    NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeProcessHost, NativeProcessHostError, NativeProcessMemoryRequest,
+    NativeProcessMemoryResponse, NativeProcessMemoryWireError,
+    NativeProcessSession, NativeProcessSessionConfig,
+    NativeProcessSessionError, NativeRegionBuffers, NativeRegionCallFrame,
+    NativeRegionCallFrameError, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -971,6 +973,30 @@ use retry_turn::{
 const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
 const FIXTURE_PROFILE_VERSION: &str = "2026.3";
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const NATIVE_PROCESS_POSIX_WORKER_CLANG_ARGS: [&str; 20] = [
+    "-std=c23",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Wconversion",
+    "-Wsign-conversion",
+    "-Wshadow",
+    "-Wformat=2",
+    "-Wundef",
+    "-Wcast-qual",
+    "-Wcast-align",
+    "-Wswitch-enum",
+    "-Wswitch-default",
+    "-Wvla",
+    "-Wimplicit-fallthrough",
+    "-Wstrict-prototypes",
+    "-Wmissing-prototypes",
+    "-Wmissing-variable-declarations",
+    "-Wnull-dereference",
+    "-Werror",
+];
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -1255,6 +1281,9 @@ struct CoffCompileCase {
     expected_machine: [u8; 2],
     isa: HostIsa,
 }
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 type DirectFusedSequenceDriftCase = (&'static str, Vec<RegionEffectProgram>);
@@ -38519,6 +38548,147 @@ fn native_process_host_python(
     script: &str,
 ) -> Result<NativeProcessHost, String> {
     native_process_session_python(script).map(NativeProcessHost::new)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn native_process_posix_worker_fixture(
+    case_name: &str,
+) -> Result<NativeProcessPosixWorkerFixture, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/tiered_execution_native_process_worker")
+        .join(process_id().to_string())
+        .join(case_name);
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => {
+            return Err(format!(
+                "cannot clear native process worker fixture: {error}"
+            ));
+        },
+    }
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("cannot create native process worker fixture: {error}")
+    })?;
+    let executable = directory.join("native-process-worker-posix");
+    let source = root.join(concat!(
+        "src/runtime/tiered-execution/adapter-outbound/native/",
+        "native_process_worker_posix.c",
+    ));
+    let include =
+        root.join("src/runtime/tiered-execution/adapter-outbound/native");
+    let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");
+    if !clang.is_file() {
+        let _remove = fs::remove_dir_all(&directory);
+        return Err(format!("pinned Clang missing: {}", clang.display()));
+    }
+    let output = Command::new(&clang)
+        .current_dir(root)
+        .args(NATIVE_PROCESS_POSIX_WORKER_CLANG_ARGS)
+        .arg(format!("-I{}", include.display()))
+        .arg(&source)
+        .arg("-o")
+        .arg(&executable)
+        .output()
+        .map_err(|error| {
+            format!("cannot compile native POSIX worker: {error}")
+        })?;
+    if !output.status.success() {
+        let diagnostics = String::from_utf8_lossy(&output.stderr);
+        let _remove = fs::remove_dir_all(&directory);
+        return Err(format!(
+            "native POSIX worker compilation failed: {diagnostics}"
+        ));
+    }
+    let session = match NativeProcessSessionConfig::new(executable).spawn() {
+        Ok(session) => session,
+        Err(error) => {
+            let _remove = fs::remove_dir_all(&directory);
+            return Err(format!(
+                "native POSIX worker session spawn: {error:?}"
+            ));
+        },
+    };
+    Ok((directory, NativeProcessHost::new(session)))
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_real_posix_worker_releases_writable_mapping()
+-> Result<(), String> {
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("writable_release")?;
+    let mapping = host
+        .allocate_writable(NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ))
+        .map_err(|error| error.to_string())?;
+    let release = NativeExecutableReleaseRequest::from_mapping(mapping);
+    host.release(release).map_err(|error| error.to_string())?;
+    let duplicate_remote_failure = host
+        .release(release)
+        .err()
+        .and_then(NativeProcessHostError::remote_code)
+        .is_some();
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    remove_file_blob_store_fixture(&directory)?;
+    if duplicate_remote_failure && !session_poisoned {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native POSIX worker writable release ownership drifted",
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_executes_real_posix_worker() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("native POSIX worker effect missing"))?
+        .after;
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("direct_output_execution")?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let execution = execute_verified_native_with_host(&mut host, prepared)
+        .map_err(|error| error.to_string());
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    let outcome = execution?;
+    cleanup?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 57
+        && output == [0x10, 0xa8, 0]
+        && !session_poisoned
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native POSIX worker execution or lifecycle drifted",
+        ))
+    }
 }
 
 #[test]

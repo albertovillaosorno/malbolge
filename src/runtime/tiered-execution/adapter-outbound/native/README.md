@@ -60,7 +60,7 @@ only
 when the harness explicitly requests that bridge. It does not allocate pages or
 provide a production foreign-call implementation.
 
-`process_call.rs` is the pointer-free transfer boundary for a future persistent
+`process_call.rs` is the pointer-free transfer boundary for the persistent
 native host process. It copies one already-bound call into owned scalar ABI
 state and memory/input/output, then rejects response mapping, capacity, shape,
 or child pointer-integrity drift before mutating caller buffers. The existing
@@ -69,7 +69,7 @@ state are semantically admissible; transport and machine-code execution remain
 separate.
 
 `process_call_wire.rs` defines the version-one `MBNPC1` little-endian framing
-for this transfer. The fixed request prefix is 69 bytes and the fixed response
+for this transfer. The fixed request prefix is 77 bytes and the fixed response
 prefix is 74 bytes; response memory/output lengths are always taken from the
 original request before child state is admitted. Zero mapping identity, invalid
 pointer flags, payload-shape drift, truncation, and trailing bytes fail closed.
@@ -77,7 +77,7 @@ The wire codec does not spawn or retain a child process.
 
 `execute_verified_native_with_host` is the ownership-safe seam for a stateful
 host that implements both executable-memory and runner ports. One mutable owner
-therefore spans allocation through release, allowing a future persistent child
+therefore spans allocation through release, allowing the persistent process host
 to keep mapping identity valid through the call without `Arc<Mutex<_>>` or
 other aliasing indirection. Existing rollback and cleanup semantics are reused.
 
@@ -98,14 +98,26 @@ failures carry only an opaque `u32` code. The codec performs no memory syscall.
 `NativeExecutableRunner`, so one child sees allocation through release and the
 pointer-free call exchange in between. Returned call evidence is request-bounded
 and structurally checked before semantic completion; wrong mapping identity is
-rejected before caller mutation. The concrete child still does not own
-production W^X syscalls or the architecture-specific foreign call.
+rejected before caller mutation.
+
+`native_process_worker_posix.c` is the first concrete child for that host. On
+POSIX x86-64 it owns anonymous RW mappings, byte-exact copy, same-mapping RX
+transition, full-range instruction synchronization, Windows-x64 ABI invocation,
+and release. It retains mapping IDs only inside the child and returns every
+mapping, copy, sync, state, and status field as untrusted evidence for the safe
+Rust lifecycle and semantic verifier. The tracked end-to-end Rust regression
+compiles this worker with pinned Clang, then executes an admitted direct-output
+artifact through real mmap/mprotect/cache-sync/call/munmap operations.
+
+The source
+also contains the AArch64 cache-sync and native-call path, but AArch64 host-real
+execution evidence and non-POSIX workers remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance
 harness checks exact fixed sizes, tags, magic bytes, and call-field offsets. The
-header performs no process, memory, or call operation; it exists so the future C
-worker does not re-declare protocol literals independently.
+header performs no process, memory, or call operation; the tracked POSIX worker
+consumes it instead of re-declaring protocol literals independently.
 
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
@@ -146,8 +158,9 @@ inspectable. Explicit release consumes a ready executable only on success and
 retains it for exact retry on failure. The retained fake adapter covers all 24
 direct images, every operation failure, report drift, cleanup failure, and
 
-retry. There is still no concrete Windows/POSIX executable-memory
-implementation.
+retry. The process-backed POSIX worker now supplies the first concrete Linux
+implementation; Windows and host-real AArch64 execution remain outside this
+platform layer.
 
 `runner.rs` defines `NativeExecutableRunner` around the already bound
 `PreparedNativeExecutableInvocation`; implementations never receive unrelated
@@ -416,8 +429,9 @@ mapping RX, synchronizes instructions, and calls it through Clang `ms_abi`.
 `tests/test_native_direct_execution.py` proves hit, byte-identical miss, and
 null-state behavior, while the Rust fixture regression independently requires
 the production emitter to reproduce the complete frozen object. AArch64 object
-linkage remains independently verified. This is development execution evidence,
-not a production executable-memory adapter or runner.
+linkage remains independently verified. This harness remains independent
+development execution evidence; the process-backed POSIX worker above owns the
+concrete production-seam executable-memory and runner path.
 
 `select_verified_direct_native()` now owns deterministic direct-template
 selection for the implemented Windows surface. The caller supplies one explicit

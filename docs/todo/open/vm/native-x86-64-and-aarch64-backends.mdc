@@ -217,21 +217,21 @@ A distinct single-resident lease cache
   invocation into owned scalar state plus memory/input/output. Responses must
   preserve mapping identity, immutable capacities, buffer shape, and child
   pointer integrity before caller buffers change; existing semantic completion
-  remains authoritative. Process framing, executable-memory syscalls,
-  instruction synchronization, and the concrete foreign call remain pending.
+  remains authoritative. Process framing is implemented below, while concrete
+  OS ownership remains isolated behind the process host.
 
   The `MBNPC1` process-call wire contract now frames that transfer in
   little-endian bytes with stable 77-byte request and 74-byte response prefixes.
   Response payload allocation is bounded from the original admitted request,
   not child-controlled capacity fields; malformed identity, flags, shape,
-  truncation, and trailing bytes fail closed. Process spawning and the concrete
-  executable-memory/call worker remain pending.
+  truncation, and trailing bytes fail closed. The codec itself owns no process
+  or platform operation; the retained session and concrete worker follow below.
 
   A single-host execution seam now accepts one owner implementing both memory
   and runner ports, preserving exact load/call/release and rollback semantics
-  without aliased mutable references. This permits a future persistent child to
-  retain mapping identity across memory operations and the later native call;
-  the concrete process session still remains pending.
+  without aliased mutable references. The retained process host uses this seam
+  so one child keeps mapping identity across memory operations and the later
+  native call.
 
   A persistent native child-session transport now retains one process across
   multiple length-framed exchanges. Response lengths are bounded before
@@ -242,22 +242,29 @@ A distinct single-resident lease cache
   synchronize, and release commands over that session. Returned mapping, range,
   permission, and copied-byte fields remain untrusted evidence for the existing
   lifecycle checks; copy response allocation is bounded by the original request.
-  The concrete worker syscalls remain pending.
 
   `NativeProcessHost` now implements the executable-memory adapter through one
   retained session and MBNPM1. Deterministic child evidence covers the complete
   allocate/copy/protect/synchronize/release loader transaction plus a remote
-  failure path without granting the child lifecycle authority. Production W^X
-  syscalls remain pending. The same host now implements `NativeExecutableRunner`
-  through MBNPC1 on the retained session; end-to-end deterministic evidence
-  covers load, call, semantic admission, and release plus mapping-drift
-  rejection.
+  failure path without granting the child lifecycle authority. The same host
+  implements `NativeExecutableRunner` through MBNPC1 on the retained session;
+  end-to-end deterministic evidence covers load, call, semantic admission, and
+  release plus mapping-drift rejection.
+
+  A tracked POSIX C23 worker now provides concrete W^X and foreign-call
+  operations on Linux x86-64. It owns mmap/mprotect/cache synchronization,
+  Windows-x64 ABI invocation, and munmap only inside the child process. A
+  host-real Rust regression compiles it with pinned Clang and executes the
+  admitted direct-output artifact through the complete `NativeProcessHost`,
+  proving exact state/memory/output completion and release. The source includes
+  an AArch64 cache-sync/call path, but host-real AArch64 execution and non-POSIX
+  platform workers remain pending.
 
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
-  Clang conformance evidence passes without performing syscalls or native calls,
-  so the future production worker can consume one reviewed child-side wire
-  declaration set instead of duplicating literals.
+  Clang conformance evidence passes without performing syscalls or native calls.
+  The tracked POSIX worker consumes this reviewed declaration set instead of
+  duplicating literals.
 
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
@@ -285,13 +292,15 @@ A distinct single-resident lease cache
   retry. Deterministic evidence covers all 24 images and adversarial
   operation/report
 
-  paths. Concrete Windows/POSIX executable-memory adapters remain pending.
+  paths. The tracked process-backed POSIX worker now supplies concrete Linux
+  x86-64 operations; Windows and host-real AArch64 remain pending.
   `NativeExecutableRunner` now receives only the exact bound call. Safe
   orchestration composes load, bind, run, admission, and release; runner or
   completion failure restores entry state, cleanup failure retains retry state,
   and final-release failure preserves the committed outcome. Six deterministic
 
-  runner cases pass. Concrete architecture call shims remain pending.
+  runner cases pass. The POSIX worker supplies the concrete x86-64 call bridge;
+  host-real AArch64 and non-POSIX call paths remain pending.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
@@ -1237,23 +1246,24 @@ input/jump-code, input/jump-data, input/no-operation,
   shrink, live entry/byte blockage, post-return publication, and release-failure
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
-  concrete foreign-call shim remain open.
+  host-real AArch64 and non-POSIX call paths remain open.
   The reviewed forty-nine-shape fused two-step emission matrix is complete.
-  Concrete executable-memory integration, instruction-cache implementation,
-  and the foreign-call boundary remain pending for this TODO.
+  Concrete Linux x86-64 executable-memory, instruction-cache, and foreign-call
+  integration now exists through the process worker; broader host coverage and
+  fused-object execution remain pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen
   `direct-initial-halt` COFF fixture to a POSIX W^X harness. The harness stages
   exact `.text` bytes RW, seals the same mapping RX, synchronizes instructions,
   and invokes through Clang `ms_abi`; hit, byte-identical miss, and null-state
   behavior pass. A separate Rust regression requires the production emitter to
-  reproduce the complete frozen object. This makes the existing execution claim
-  reproducible but does not implement the pending production memory/call ports.
+  reproduce the complete frozen object. This harness remains independent
+  development evidence; the process worker owns the concrete memory/call ports.
 - The same tracked execution suite now covers the frozen x86-64
   `direct-no-operation` fixture through a separate W^X/`ms_abi` C harness. It
   proves `memory[5]:77->65`, `C:5->6`, `D:7->8`, preserved unrelated ABI fields,
   and atomic live-in, capacity, null-memory, and null-state misses. The Rust
-  object fixture remains the production-emitter binding; this additional host
-  evidence still does not satisfy the pending concrete adapter/call boundary.
+  object fixture remains the production-emitter binding; this harness is now
+  independent corroboration of the concrete process-backed adapter/call path.
 - Initial backend-pipeline performance evidence is retained under
   `benchmarks/interpreter/evidence/` in directory
   `2026-09-16-native-backend-pipeline-linux-x86_64/`.
@@ -1263,8 +1273,9 @@ input/jump-code, input/jump-data, input/no-operation,
   samples, source/workload hashes, host/toolchain identity, process resource
   usage, success/failure counts, retain-all outlier policy, observed-range
   uncertainty, and scaling statistics are retained.
-  Generated code is not loaded or executed, so native execution performance
-  evidence remains pending with executable-memory and call-shim integration.
+  Generated code is not loaded or executed in this benchmark, so end-to-end
+  native execution performance evidence remains pending despite the concrete
+  process-backed memory and call path.
 - A second retained phase-attribution bundle under
   `2026-09-16-native-backend-phases-linux-x86_64/` instruments the same
   workload and sample matrix. Across both target ISAs and scales, selection is
