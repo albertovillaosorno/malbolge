@@ -10857,7 +10857,9 @@ fn register_masked_v6_no_operation_load_cleanup() -> TieredTestResult {
     )
     .with_failure_at(FakeNativeAdapterOperation::Copy, 2);
     let Err(error) = load_noop_sequence(&plan, &mut adapter) else {
-        return Err(String::from("v6 no-op sequence ignored late load failure"));
+        return Err(String::from(
+            "v6 no-op sequence ignored late load failure",
+        ));
     };
     if error.index() != 1
         || error.loaded_count() != 1
