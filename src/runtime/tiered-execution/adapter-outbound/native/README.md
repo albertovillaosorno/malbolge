@@ -52,6 +52,14 @@ preserve every snapshot byte-for-byte; unknown status, unexpected
 `InvalidArgument`, topology drift, and partial commits fail closed. Every
 
 rejected completion restores the complete entry snapshot.
+
+`native_region_abi.h` is the tracked C-side ABI authority shared by bootstrap
+source generation and the POSIX x86-64 execution harnesses. It fixes the same
+scalar/status/call-frame declarations and exposes the `ms_abi` entry typedef
+only
+when the harness explicitly requests that bridge. It does not allocate pages or
+provide a production foreign-call implementation.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant

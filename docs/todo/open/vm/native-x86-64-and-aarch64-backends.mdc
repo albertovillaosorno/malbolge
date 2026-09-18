@@ -206,6 +206,13 @@ A distinct single-resident lease cache
   a mutation-free guard miss. Unknown status, unexpected invalid arguments,
   topology drift, and partial commits fail closed. Every rejected completion
   restores the complete entry snapshot.
+
+  A tracked `native_region_abi.h` now
+  supplies the same C scalar, status, call-frame, and opt-in POSIX Windows-x64
+  bridge declarations to bootstrap lowering and both development execution
+  harnesses. This removes duplicated C ABI authority without implementing the
+  pending executable-memory or production foreign-call boundary.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 

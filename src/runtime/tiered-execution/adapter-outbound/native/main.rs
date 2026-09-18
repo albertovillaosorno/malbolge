@@ -98,7 +98,7 @@ mod x86_64;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
 
-use abi::C_ABI_PREFIX;
+use abi::{C_ABI_DECLARATIONS, C_ABI_FUNCTION_PREFIX};
 pub use abi::{
     NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
     NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
@@ -1104,7 +1104,8 @@ impl<'program> LoweringPlan<'program> {
         )
         .map_err(|_error| NativeArtifactError::Rendering)?;
         render_profile_metadata(&mut output, key)?;
-        output.push_str(C_ABI_PREFIX);
+        output.push_str(C_ABI_DECLARATIONS);
+        output.push_str(C_ABI_FUNCTION_PREFIX);
         self.render_preflight(&mut output)?;
         self.render_commit(&mut output)?;
         output.push_str("    return MB_NATIVE_APPLIED;\n}\n");

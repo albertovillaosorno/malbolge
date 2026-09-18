@@ -38,44 +38,14 @@ use std::mem::offset_of;
 
 use malbolge::{ProfileMachineObservation, ProfileRegisters, Termination};
 
-/// Freestanding C declarations shared by bootstrap native candidates.
-pub(super) const C_ABI_PREFIX: &str = r#"
-typedef unsigned char mb_u8;
-typedef unsigned int mb_u32;
-typedef unsigned long long mb_u64;
+/// Canonical C declarations shared by bootstrap code and host evidence.
+pub(super) const C_ABI_DECLARATIONS: &str = include_str!("native_region_abi.h");
 
-#define MB_U8(value) ((mb_u8)(value))
-#define MB_U32(value) ((mb_u32)(value##U))
-#define MB_U64(value) ((mb_u64)(value##ULL))
-
-static_assert(sizeof(mb_u8) == 1, "8-bit byte required");
-static_assert(sizeof(mb_u32) == 4, "32-bit word required");
-static_assert(sizeof(mb_u64) == 8, "64-bit ABI integer required");
-
-enum mb_native_status {
-    MB_NATIVE_APPLIED = 0,
-    MB_NATIVE_GUARD_MISS = 1,
-    MB_NATIVE_INVALID_ARGUMENT = 2
-};
-
-struct mb_native_region_state {
-    mb_u32 *memory;
-    mb_u64 memory_words;
-    const mb_u8 *input;
-    mb_u64 input_len;
-    mb_u64 input_consumed;
-    mb_u8 *output;
-    mb_u64 output_capacity;
-    mb_u64 output_len;
-    mb_u32 accumulator;
-    mb_u32 code_pointer;
-    mb_u32 data_pointer;
-    mb_u8 termination;
-};
-
+/// Bootstrap entry function prefix appended after canonical ABI declarations.
+pub(super) const C_ABI_FUNCTION_PREFIX: &str = "
 int malbolge_native_region_apply(struct mb_native_region_state *state)
 {
-"#;
+";
 
 /// Complete byte size of [`NativeRegionState`] on the supported 64-bit hosts.
 pub const NATIVE_REGION_STATE_SIZE: usize = size_of::<NativeRegionState>();

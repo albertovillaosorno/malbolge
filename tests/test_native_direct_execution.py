@@ -43,6 +43,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
+NATIVE_INCLUDE = ROOT / "src/runtime/tiered-execution/adapter-outbound/native"
 INITIAL_HALT_FIXTURE = (
     ROOT / "tests/execution/fixtures/native-initial-halt-x86_64-coff.hex"
 )
@@ -205,6 +206,7 @@ def test_direct_initial_halt_posix_execution(tmp_path: Path) -> None:
             "-std=c23",
             *STRICT_WARNINGS,
             f"-I{tmp_path}",
+            f"-I{NATIVE_INCLUDE}",
             str(INITIAL_HALT_HARNESS),
             "-o",
             str(executable),
@@ -235,6 +237,7 @@ def test_direct_no_operation_posix_execution(tmp_path: Path) -> None:
             "-std=c23",
             *STRICT_WARNINGS,
             f"-I{tmp_path}",
+            f"-I{NATIVE_INCLUDE}",
             str(NO_OPERATION_HARNESS),
             "-o",
             str(executable),

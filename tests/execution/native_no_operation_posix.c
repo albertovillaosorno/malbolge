@@ -40,22 +40,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-typedef struct NativeRegionState {
-    uint32_t *memory;
-    uint64_t memory_words;
-    uint8_t *input;
-    uint64_t input_len;
-    uint64_t input_consumed;
-    uint8_t *output;
-    uint64_t output_capacity;
-    uint64_t output_len;
-    uint32_t accumulator;
-    uint32_t code_pointer;
-    uint32_t data_pointer;
-    uint8_t termination;
-} NativeRegionState;
+#define MB_NATIVE_POSIX_WINDOWS_X64_BRIDGE
+#include "native_region_abi.h"
 
-typedef uint32_t(__attribute__((ms_abi)) *NativeEntry)(NativeRegionState *);
+typedef struct mb_native_region_state NativeRegionState;
+typedef mb_native_entry_fn NativeEntry;
 
 static const uint8_t NO_OPERATION_TEXT[] = {
 #include "native_no_operation_text.inc"

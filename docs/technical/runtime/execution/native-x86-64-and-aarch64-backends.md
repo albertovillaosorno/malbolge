@@ -332,6 +332,13 @@ admits only exact application or a mutation-free guard miss. Unknown status,
 
 unexpected invalid arguments, topology drift, and partial commits fail closed.
 Every rejected completion restores the complete entry snapshot.
+
+The tracked `native/native_region_abi.h` now supplies the same C scalar, status,
+call-frame, and opt-in POSIX Windows-x64 bridge declarations to bootstrap source
+generation and both executable development harnesses. This removes duplicated C
+layout and function-pointer authority without adding executable-memory ownership
+or a production foreign-call implementation.
+
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
 verified artifact target, rejects program drift, and denies the deoptimization
 stub state-applying authority. `NativeRegionBuffers` keeps all caller loans in
