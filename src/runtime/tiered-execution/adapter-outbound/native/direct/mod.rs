@@ -449,6 +449,19 @@ pub(super) struct DirectFusedCrazyNoOperationTemplate<'live_ins> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedInputPairTemplate<'live_ins> {
+    pub(super) first: DirectInputCommit,
+    pub(super) first_input: TraceInput,
+    pub(super) first_input_index: u64,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+    pub(super) second: DirectInputCommit,
+    pub(super) second_input: TraceInput,
+    pub(super) second_input_index: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedNoOperationCrazyTemplate<'live_ins> {
     pub(super) crazy: DirectCrazyCommit,
     pub(super) live_ins: &'live_ins [MemoryLiveIn],

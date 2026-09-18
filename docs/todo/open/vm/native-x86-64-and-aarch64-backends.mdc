@@ -264,14 +264,16 @@ A distinct single-resident lease cache
   no-operation/crazy,
   crazy/no-operation, crazy/rotate, crazy/crazy, rotate/jump-code,
   rotate/jump-data,
-  rotate/no-operation, rotate/crazy, rotate/rotate, and output/output on x86-64
-  and AArch64.
+  rotate/no-operation, rotate/crazy, rotate/rotate, input/input, and
+  output/output on x86-64 and AArch64.
   Each candidate completes its applicable region-entry live-in, termination,
-  memory-capacity, and output-capacity guards before every store. Semantic
+  memory-capacity, exact byte/EOF input, and output-capacity guards before every
+  store. Semantic
   promotion reconstructs admission, structurally admits COFF, regenerates the
   canonical object, and rejects text-byte drift. VM-derived traces for every
   reviewed no-operation-containing shape plus crazy/output, crazy/rotate,
-  crazy/crazy, rotate/crazy, rotate/rotate, and output/output exercise both ISAs
+  crazy/crazy, rotate/crazy, rotate/rotate, input/input, and output/output
+  exercise both ISAs
   through
   emission, promotion, relocation-free load-image extraction, and whole-region
   state comparison with the profile VM.
@@ -1178,7 +1180,7 @@ A distinct single-resident lease cache
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
   concrete foreign-call shim remain open.
-  The reviewed thirty-one-shape fused two-step emission matrix is complete.
+  The reviewed thirty-two-shape fused two-step emission matrix is complete.
   Concrete executable-memory integration, instruction-cache implementation,
   and the foreign-call boundary remain pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen

@@ -386,9 +386,9 @@ subsequent re-admission remains independent of cache lifetime.
 
 Single-step plans are rejected.
 
-The fused emitter now covers thirty-one reviewed two-step regions on
+The fused emitter now covers thirty-two reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,
-crazy/output,
+crazy/output, input/input,
 crazy/jump-code,
 crazy/jump-data,
 no-operation/output,
@@ -406,7 +406,8 @@ rotate/crazy, rotate/rotate, and output/output. Every fused
 guard
 completes before
 the first store,
-including region-entry live-ins and output capacity where output is present.
+including region-entry live-ins, exact byte/EOF input preflight where input is
+present, and output capacity where output is present.
 Independent semantic promotion reconstructs admission, structurally admits COFF,
 rebuilds canonical bytes, and rejects text-byte drift. The
 no-operation-containing templates preserve ordered guest-memory writes while
@@ -415,7 +416,7 @@ intermediate one-step observation.
 
 VM-derived traces exercise all six reviewed no-operation-containing templates
 plus crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate, and
-output/output on both ISAs through emission, semantic promotion,
+input/input and output/output on both ISAs through emission, semantic promotion,
 relocation-free load-image extraction, and whole-region state comparison with
 the profile VM.
 
@@ -1410,7 +1411,7 @@ no-operation/crazy,
 crazy/jump-code, crazy/jump-data, crazy/no-operation, crazy/output,
 crazy/rotate,
 crazy/crazy, rotate/jump-code, rotate/jump-data, rotate/no-operation,
-rotate/crazy, rotate/rotate, and output/output objects are
+rotate/crazy, rotate/rotate, input/input, and output/output objects are
 also emitted, independently
 verified, and
 extracted as relocation-free load images on both ISAs, with dedicated safe
