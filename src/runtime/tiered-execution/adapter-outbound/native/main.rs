@@ -609,15 +609,21 @@ pub use register_masked_no_operation_sequence::{
 };
 pub use register_masked_no_operation_sequence_cache::{
     RegisterMaskedNoOperationNativeSequenceCache,
+    RegisterMaskedNoOperationNativeSequenceCacheCapacityError,
     RegisterMaskedNoOperationNativeSequenceCacheDisposition,
     RegisterMaskedNoOperationNativeSequenceCacheEntry,
     RegisterMaskedNoOperationNativeSequenceCacheInvalidationResult,
     RegisterMaskedNoOperationNativeSequenceCacheInvariantError,
+    RegisterMaskedNoOperationNativeSequenceCacheLimits,
     RegisterMaskedNoOperationNativeSequenceCacheLoadFailure,
     RegisterMaskedNoOperationNativeSequenceCacheLoadReleaseFailures,
     RegisterMaskedNoOperationNativeSequenceCacheLoadResult,
+    RegisterMaskedNoOperationNativeSequenceCacheReconfiguration,
+    RegisterMaskedNoOperationNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedNoOperationNativeSequenceCacheReconfigurationResult,
     RegisterMaskedNoOperationNativeSequenceCacheReleaseFailure,
     RegisterMaskedNoOperationNativeSequenceCacheReleaseResult,
+    RegisterMaskedNoOperationNativeSequenceCacheUsage,
 };
 pub use register_masked_no_operation_sequence_execution::{
     RegisterMaskedNoOperationNativeSequenceExecutionFailure,

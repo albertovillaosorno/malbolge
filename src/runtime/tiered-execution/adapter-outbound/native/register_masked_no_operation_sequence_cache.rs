@@ -9,37 +9,51 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Entry-count-bounded FIFO residency for loaded no-operation v6 sequences.
+//   - Weighted FIFO residency for loaded no-operation v6 sequences.
 // - Must-Not:
-//   - Execute native code, refresh FIFO age on hits, share borrowed entries
-//     concurrently across cache mutation, or claim weighted/lease policy.
+//   - Execute native code, refresh FIFO age on hits, or share borrowed entries
+//     concurrently across cache mutation or external lease ownership.
 // - Allows:
-//   - Inputs: admitted no-operation sequence plans and one memory adapter.
+//   - Inputs: admitted plans, weighted limits, and one memory adapter.
 //   - Outputs: borrowed exact hits/inserts plus explicit eviction/load
 //     failures.
 //   - Side effects: sequence load/release only through the supplied adapter.
 // - Split-When:
-//   - Live external leases or weighted reconfiguration gain authority.
+//   - Live external leases or asynchronous cleanup gain authority.
 // - Merge-When:
 //   - One reviewed no-operation sequence store subsumes cache and lease policy.
 // - Summary:
-//   - Reuses exact loaded no-operation chains under a fixed FIFO entry limit.
+//   - Reuses exact loaded no-operation chains under weighted FIFO limits.
 // - Description:
-//   - Hits perform no adapter work; misses load fully before oldest-first
-//     release and publish only after required cleanup succeeds.
+//   - Hits perform no adapter work; admission and limit changes release oldest
+//     entries before publishing weighted authority.
 // - Usage:
 //   - Ensure an admitted plan, execute the borrowed loaded sequence, then
 //     invalidate or release all explicitly.
 // - Defaults:
-//   - Capacity counts complete loaded sequences, not individual mappings.
+//   - Entry limits are required; mapping and mapped-byte limits are optional.
 //
 
-//! Fixed-entry FIFO cache for loaded no-operation register-masked v6 sequences.
+//! Weighted FIFO cache for loaded no-operation register-masked v6 sequences.
+
+#[path = "register_masked_no_operation_sequence_cache/reconfiguration.rs"]
+mod reconfiguration;
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 
+pub use reconfiguration::{
+    RegisterMaskedNoOperationNativeSequenceCacheReconfiguration,
+    RegisterMaskedNoOperationNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedNoOperationNativeSequenceCacheReconfigurationResult,
+};
+
+use super::executable_cache_capacity::{
+    NativeExecutableSequenceCacheCapacityError,
+    NativeExecutableSequenceCacheLimits, NativeExecutableSequenceCacheUsage,
+    NativeExecutableSequenceWeight,
+};
 use super::platform::NativeExecutableMemoryAdapter;
 use super::register_masked_no_operation_loaded_sequence::{
     LoadedRegisterMaskedNoOperationNativeSequence,
@@ -56,10 +70,27 @@ use super::register_masked_no_operation_sequence::{
 struct CacheValue {
     key: RegisterMaskedNoOperationNativeSequenceKey,
     sequence: LoadedRegisterMaskedNoOperationNativeSequence,
+    weight: NativeExecutableSequenceWeight,
+}
+
+#[derive(Debug)]
+struct CacheCandidate {
+    key: RegisterMaskedNoOperationNativeSequenceKey,
+    sequence: LoadedRegisterMaskedNoOperationNativeSequence,
+    weight: NativeExecutableSequenceWeight,
+}
+
+#[derive(Debug)]
+struct CacheCapacityFailureContext {
+    error: NativeExecutableSequenceCacheCapacityError,
+    evicted_keys: Vec<RegisterMaskedNoOperationNativeSequenceKey>,
+    key: RegisterMaskedNoOperationNativeSequenceKey,
+    sequence: LoadedRegisterMaskedNoOperationNativeSequence,
 }
 
 #[derive(Debug)]
 enum LoadFailureCause<E> {
+    Capacity(NativeExecutableSequenceCacheCapacityError),
     Eviction(Box<RegisterMaskedNoOperationNativeSequenceReleaseFailure<E>>),
     Invariant(RegisterMaskedNoOperationNativeSequenceCacheInvariantError),
     Load(Box<RegisterMaskedNoOperationNativeSequenceLoadFailure<E>>),
@@ -68,8 +99,9 @@ enum LoadFailureCause<E> {
 /// Caller-owned exact-plan cache with one positive FIFO entry limit.
 #[derive(Debug)]
 pub struct RegisterMaskedNoOperationNativeSequenceCache {
-    capacity: NonZeroUsize,
     entries: VecDeque<CacheValue>,
+    limits: NativeExecutableSequenceCacheLimits,
+    usage: NativeExecutableSequenceCacheUsage,
 }
 
 /// Whether ensuring one plan reused or inserted loaded cache state.
@@ -124,6 +156,7 @@ pub struct RegisterMaskedNoOperationNativeSequenceCacheReleaseFailure<E> {
     released_entries: usize,
 }
 
+type CapacityError = NativeExecutableSequenceCacheCapacityError;
 type CacheReleaseResult<E> =
     RegisterMaskedNoOperationNativeSequenceCacheReleaseResult<E>;
 
@@ -131,8 +164,31 @@ type CachePublicationResult<E> = Result<
     RegisterMaskedNoOperationNativeSequenceCacheDisposition,
     Box<RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E>>,
 >;
+type CacheFitResult<E> = Result<
+    (
+        CacheCandidate,
+        Vec<RegisterMaskedNoOperationNativeSequenceKey>,
+    ),
+    Box<RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E>>,
+>;
+type CachePrepareResult<E> = Result<
+    CacheCandidate,
+    Box<RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E>>,
+>;
 type SequenceReleaseFailure<E> =
     RegisterMaskedNoOperationNativeSequenceReleaseFailure<E>;
+
+/// Published weighted capacity limits for this no-operation sequence cache.
+pub type RegisterMaskedNoOperationNativeSequenceCacheLimits =
+    NativeExecutableSequenceCacheLimits;
+
+/// Exact resources retained by this no-operation sequence cache.
+pub type RegisterMaskedNoOperationNativeSequenceCacheUsage =
+    NativeExecutableSequenceCacheUsage;
+
+/// Capacity rejection produced by this no-operation sequence cache.
+pub type RegisterMaskedNoOperationNativeSequenceCacheCapacityError =
+    NativeExecutableSequenceCacheCapacityError;
 
 /// Result of loading or reusing one exact no-operation sequence plan.
 pub type RegisterMaskedNoOperationNativeSequenceCacheLoadResult<'cache, E> =
@@ -224,6 +280,19 @@ impl<E> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E> {
         }
     }
 
+    /// Returns weighted capacity rejection, when the candidate cannot fit.
+    #[must_use]
+    pub const fn capacity_error(
+        &self,
+    ) -> Option<RegisterMaskedNoOperationNativeSequenceCacheCapacityError> {
+        match self.cause {
+            LoadFailureCause::Capacity(error) => Some(error),
+            LoadFailureCause::Eviction(_)
+            | LoadFailureCause::Invariant(_)
+            | LoadFailureCause::Load(_) => None,
+        }
+    }
+
     /// Returns the first exact FIFO key removed before publication failed.
     #[must_use]
     pub fn evicted_key(
@@ -247,7 +316,9 @@ impl<E> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E> {
     ) -> Option<&RegisterMaskedNoOperationNativeSequenceReleaseFailure<E>> {
         match &self.cause {
             LoadFailureCause::Eviction(failure) => Some(failure),
-            LoadFailureCause::Invariant(_) | LoadFailureCause::Load(_) => None,
+            LoadFailureCause::Capacity(_)
+            | LoadFailureCause::Invariant(_)
+            | LoadFailureCause::Load(_) => None,
         }
     }
 
@@ -259,7 +330,9 @@ impl<E> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E> {
     {
         let eviction = match self.cause {
             LoadFailureCause::Eviction(failure) => Some(*failure),
-            LoadFailureCause::Invariant(_) | LoadFailureCause::Load(_) => None,
+            LoadFailureCause::Capacity(_)
+            | LoadFailureCause::Invariant(_)
+            | LoadFailureCause::Load(_) => None,
         };
         RegisterMaskedNoOperationNativeSequenceCacheLoadReleaseFailures {
             candidate: self.candidate_cleanup_failure.map(|failure| *failure),
@@ -275,7 +348,9 @@ impl<E> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E> {
     {
         match self.cause {
             LoadFailureCause::Invariant(error) => Some(error),
-            LoadFailureCause::Eviction(_) | LoadFailureCause::Load(_) => None,
+            LoadFailureCause::Capacity(_)
+            | LoadFailureCause::Eviction(_)
+            | LoadFailureCause::Load(_) => None,
         }
     }
 
@@ -286,9 +361,9 @@ impl<E> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<E> {
     ) -> Option<&RegisterMaskedNoOperationNativeSequenceLoadFailure<E>> {
         match &self.cause {
             LoadFailureCause::Load(failure) => Some(failure),
-            LoadFailureCause::Eviction(_) | LoadFailureCause::Invariant(_) => {
-                None
-            },
+            LoadFailureCause::Capacity(_)
+            | LoadFailureCause::Eviction(_)
+            | LoadFailureCause::Invariant(_) => None,
         }
     }
 
@@ -307,6 +382,9 @@ impl<E: Display> Display
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str("no-operation v6 sequence cache miss failed: ")?;
         match &self.cause {
+            LoadFailureCause::Capacity(error) => {
+                write!(f, "capacity: {error}")?;
+            },
             LoadFailureCause::Eviction(error) => {
                 write!(f, "eviction: {error}")?;
             },
@@ -432,7 +510,7 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
     /// Returns the maximum number of loaded sequence entries retained.
     #[must_use]
     pub const fn capacity(&self) -> NonZeroUsize {
-        self.capacity
+        self.limits.entry_limit()
     }
 
     /// Returns whether one exact admitted plan is currently loaded.
@@ -508,6 +586,43 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
             )
     }
 
+    fn evict_until_fits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        candidate: CacheCandidate,
+    ) -> CacheFitResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let mut evicted = Vec::new();
+        while self.limits.projected_exceeds(self.usage, candidate.weight) {
+            let Some(victim) = self.entries.pop_front() else {
+                let context = CacheCapacityFailureContext {
+                    error: CapacityError::WeightOverflow,
+                    evicted_keys: evicted,
+                    key: candidate.key,
+                    sequence: candidate.sequence,
+                };
+                return Err(Box::new(cache_capacity_failure(adapter, context)));
+            };
+            self.usage.remove(victim.weight);
+            evicted.push(victim.key);
+            if let Err(eviction_failure) = victim.sequence.release(adapter) {
+                let candidate_cleanup_failure =
+                    candidate.sequence.release(adapter).err();
+                return Err(Box::new(
+                    RegisterMaskedNoOperationNativeSequenceCacheLoadFailure {
+                        candidate_cleanup_failure,
+                        cause: LoadFailureCause::Eviction(eviction_failure),
+                        evicted_keys: evicted,
+                        requested_key: candidate.key,
+                    },
+                ));
+            }
+        }
+        Ok((candidate, evicted))
+    }
+
     /// Invalidates and releases one exact admitted plan.
     ///
     /// # Errors
@@ -530,6 +645,7 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
         let Some(entry) = self.entries.remove(index) else {
             return Ok(false);
         };
+        self.usage.remove(entry.weight);
         entry.sequence.release(adapter).map(|()| true)
     }
 
@@ -552,13 +668,18 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
         self.entries.len()
     }
 
+    /// Returns every caller-selected weighted capacity limit.
+    #[must_use]
+    pub const fn limits(
+        &self,
+    ) -> RegisterMaskedNoOperationNativeSequenceCacheLimits {
+        self.limits
+    }
+
     /// Constructs one empty cache with a positive entry limit.
     #[must_use]
     pub const fn new(capacity: NonZeroUsize) -> Self {
-        Self {
-            capacity,
-            entries: VecDeque::new(),
-        }
+        Self::with_limits(NativeExecutableSequenceCacheLimits::new(capacity))
     }
 
     fn position(
@@ -577,29 +698,63 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let mut evicted = Vec::new();
-        if self.entries.len() >= self.capacity.get()
-            && let Some(victim) = self.entries.pop_front()
-        {
-            evicted.push(victim.key);
-            if let Err(eviction_failure) = victim.sequence.release(adapter) {
-                let candidate_cleanup_failure = sequence.release(adapter).err();
-                return Err(Box::new(
-                    RegisterMaskedNoOperationNativeSequenceCacheLoadFailure {
-                        candidate_cleanup_failure,
-                        cause: LoadFailureCause::Eviction(eviction_failure),
-                        evicted_keys: evicted,
-                        requested_key: key,
-                    },
-                ));
-            }
+        let prepared_candidate =
+            prepare_cache_candidate(adapter, self.limits, key, sequence)?;
+        let (candidate, evicted) =
+            self.evict_until_fits(adapter, prepared_candidate)?;
+        if let Err(error) = self.usage.add(candidate.weight) {
+            let context = CacheCapacityFailureContext {
+                error,
+                evicted_keys: evicted,
+                key: candidate.key,
+                sequence: candidate.sequence,
+            };
+            return Err(Box::new(cache_capacity_failure(adapter, context)));
         }
-        self.entries.push_back(CacheValue { key, sequence });
+        self.entries.push_back(CacheValue {
+            key: candidate.key,
+            sequence: candidate.sequence,
+            weight: candidate.weight,
+        });
         Ok(
             RegisterMaskedNoOperationNativeSequenceCacheDisposition::Inserted {
                 evicted,
             },
         )
+    }
+
+    /// Publishes new weighted limits after required FIFO eviction.
+    ///
+    /// Expansion and already-satisfied requests perform no adapter work. A
+    /// shrinking request keeps prior limits published until every required
+    /// oldest-entry release succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact failed release or internal invariant ownership.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: RegisterMaskedNoOperationNativeSequenceCacheLimits,
+    ) -> RegisterMaskedNoOperationNativeSequenceCacheReconfigurationResult<
+        Adapter::Error,
+    >
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits;
+        let evicted_keys = reconfiguration::evict_for_reconfiguration(
+            self,
+            adapter,
+            requested_limits,
+            previous_limits,
+        )?;
+        self.limits = requested_limits;
+        Ok(reconfiguration::published(
+            evicted_keys,
+            requested_limits,
+            previous_limits,
+        ))
     }
 
     /// Removes and releases every loaded sequence in FIFO insertion order.
@@ -616,8 +771,79 @@ impl RegisterMaskedNoOperationNativeSequenceCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let entries = self.entries.drain(..).collect::<Vec<_>>();
+        self.usage.reset();
         release_cache_values(adapter, entries)
     }
+
+    /// Returns exact resources currently retained under cache authority.
+    #[must_use]
+    pub const fn usage(
+        &self,
+    ) -> RegisterMaskedNoOperationNativeSequenceCacheUsage {
+        self.usage
+    }
+
+    /// Constructs one empty cache with explicit weighted limits.
+    #[must_use]
+    pub const fn with_limits(
+        limits: RegisterMaskedNoOperationNativeSequenceCacheLimits,
+    ) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            limits,
+            usage: NativeExecutableSequenceCacheUsage::empty(),
+        }
+    }
+}
+
+fn cache_capacity_failure<Adapter>(
+    adapter: &mut Adapter,
+    context: CacheCapacityFailureContext,
+) -> RegisterMaskedNoOperationNativeSequenceCacheLoadFailure<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let candidate_cleanup_failure = context.sequence.release(adapter).err();
+    RegisterMaskedNoOperationNativeSequenceCacheLoadFailure {
+        candidate_cleanup_failure,
+        cause: LoadFailureCause::Capacity(context.error),
+        evicted_keys: context.evicted_keys,
+        requested_key: context.key,
+    }
+}
+
+fn prepare_cache_candidate<Adapter>(
+    adapter: &mut Adapter,
+    limits: RegisterMaskedNoOperationNativeSequenceCacheLimits,
+    key: RegisterMaskedNoOperationNativeSequenceKey,
+    sequence: LoadedRegisterMaskedNoOperationNativeSequence,
+) -> CachePrepareResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let Some(mapped_bytes) = sequence.mapped_bytes() else {
+        let context = CacheCapacityFailureContext {
+            error: CapacityError::WeightOverflow,
+            evicted_keys: Vec::new(),
+            key,
+            sequence,
+        };
+        return Err(Box::new(cache_capacity_failure(adapter, context)));
+    };
+    let weight = NativeExecutableSequenceWeight::from_parts(
+        mapped_bytes,
+        sequence.len(),
+    );
+    if let Some(error) = limits.candidate_error(weight) {
+        let context = CacheCapacityFailureContext {
+            error,
+            evicted_keys: Vec::new(),
+            key,
+            sequence,
+        };
+        return Err(Box::new(cache_capacity_failure(adapter, context)));
+    }
+    Ok(CacheCandidate { key, sequence, weight })
 }
 
 const fn cache_invariant_failure<E>(
