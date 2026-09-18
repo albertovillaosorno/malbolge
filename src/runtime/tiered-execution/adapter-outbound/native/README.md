@@ -981,8 +981,11 @@ one-effect v6 shape, profile/observation continuity, common target, exact
 artifact identity, and early termination before any mapping. A separate loaded
 owner maps the complete admitted plan only after every exact owner load
 succeeds, retains exact mapped-byte evidence, and releases mappings in reverse
-with aggregate retry ownership. Loaded-sequence execution and multi-entry cache
-authority remain separate.
+with aggregate retry ownership. A dedicated loaded-sequence executor now calls
+only retained no-operation owners and performs no adapter work. Applied and
+guard-miss outcomes retain exact progress; current-step failure rolls back and
+keeps the loaded mappings reusable. Multi-entry cache authority remains
+separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

@@ -334,6 +334,7 @@ use execution_cache::{
     RegionEffectIdentity,
 };
 use execution_clock::NativeContinuationSystemMonotonicClock;
+use execution_native as en;
 use execution_native::{
     BootstrapCompilerError, BootstrapProfilePreflightError,
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
@@ -500,6 +501,7 @@ use execution_native::{
     RegisterMaskedNoOperationNativeResidentLease,
     RegisterMaskedNoOperationNativeResidentLeaseCache,
     RegisterMaskedNoOperationNativeRunner,
+    RegisterMaskedNoOperationNativeSequenceOutcome,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlanError,
     RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
@@ -1230,6 +1232,7 @@ struct FakeRegisterMaskedNativeRunner {
 #[derive(Debug)]
 struct FakeRegisterMaskedNoOperationNativeRunner {
     behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
     calls: usize,
     entry_addresses: Vec<NonZeroUsize>,
     mapping_ids: Vec<NativeExecutableMappingId>,
@@ -1873,6 +1876,18 @@ impl FakeRegisterMaskedNoOperationNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
             behavior,
+            behaviors: Vec::new(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+
+    fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+        Self {
+            behavior: FakeNativeRunnerBehavior::GuardMiss,
+            behaviors,
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -2444,7 +2459,12 @@ impl RegisterMaskedNoOperationNativeRunner
         self.mapping_ids.push(invocation.mapping_id());
         self.state_pointers_non_null
             .push(!invocation.state_mut_ptr().is_null());
-        match self.behavior {
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
             FakeNativeRunnerBehavior::Applied => {
                 invocation.apply_expected_for_test();
                 Ok(NativeRegionStatus::Applied.code())
@@ -10923,6 +10943,231 @@ fn register_masked_v6_no_operation_release_retry() -> TieredTestResult {
             "v6 no-op sequence release retry count drifted",
         ))
     }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_executes_pair() -> TieredTestResult
+{
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(290)?,
+        native_executable_address(0x39000)?,
+    );
+    let loaded = load_noop_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("v6 no-op execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_no_operation_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let input = [];
+    let mut output = [];
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome =
+        en::execute_loaded_register_masked_no_operation_native_sequence(
+            &loaded,
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 no-op sequence execute: {error}"))?;
+    let expected = RegisterMaskedNoOperationNativeSequenceOutcome::Applied {
+        observation: plan.exit(),
+        steps: 2,
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 no-op sequence applied outcome drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 no-op execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_guard_miss() -> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(292)?,
+        native_executable_address(0x39200)?,
+    );
+    let loaded = load_noop_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("v6 no-op guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_no_operation_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome =
+        en::execute_loaded_register_masked_no_operation_native_sequence(
+            &loaded,
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 no-op guard execute: {error}"))?;
+    let expected = RegisterMaskedNoOperationNativeSequenceOutcome::GuardMiss {
+        index: 0,
+        observation: plan.entry(),
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 no-op sequence guard-miss boundary drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 no-op guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_runner_failure_reuses_mapping()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(294)?,
+        native_executable_address(0x39400)?,
+    );
+    let loaded = load_noop_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("v6 no-op reusable load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_no_operation_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut failing = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) =
+        en::execute_loaded_register_masked_no_operation_native_sequence(
+            &loaded,
+            &mut failing,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+    else {
+        return Err(String::from(
+            "v6 no-op sequence runner failure was ignored",
+        ));
+    };
+    if failure.completed_steps() != 0
+        || failure.step_index() != 0
+        || failure.resume_index() != 0
+        || failure.observation() != plan.entry()
+        || !matches!(
+            failure.execution_failure(),
+            RegisterMaskedNoOperationNativeOwnerExecutionFailure::Execution(_)
+        )
+        || memory != entry_memory
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 no-op sequence runner rollback drifted"));
+    }
+    let mut succeeding = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome =
+        en::execute_loaded_register_masked_no_operation_native_sequence(
+            &loaded,
+            &mut succeeding,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 no-op reusable execute: {error}"))?;
+    if !matches!(
+        outcome,
+        RegisterMaskedNoOperationNativeSequenceOutcome::Applied { .. }
+    ) || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 no-op sequence remapped after runner failure",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 no-op reusable release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_late_failure_keeps_prefix()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(296)?,
+        native_executable_address(0x39600)?,
+    );
+    let loaded = load_noop_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("v6 no-op late-failure load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_no_operation_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let first_program = plan
+        .programs()
+        .first()
+        .ok_or_else(|| String::from("v6 no-op sequence first step missing"))?;
+    apply_register_masked_no_operation_expected_memory(
+        first_program,
+        &mut expected_memory,
+    )?;
+    let first_observation = first_program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 no-op sequence first effect missing"))?
+        .after;
+    let input = [];
+    let mut output = [];
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::scripted(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) =
+        en::execute_loaded_register_masked_no_operation_native_sequence(
+            &loaded,
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+    else {
+        return Err(String::from(
+            "v6 no-op sequence ignored late runner failure",
+        ));
+    };
+    if failure.completed_steps() != 1
+        || failure.step_index() != 1
+        || failure.resume_index() != 1
+        || failure.observation() != first_observation
+        || !matches!(
+            failure.execution_failure(),
+            RegisterMaskedNoOperationNativeOwnerExecutionFailure::Execution(_)
+        )
+        || memory != expected_memory
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 no-op sequence committed-prefix evidence drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 no-op late-failure release: {error}"))
 }
 
 #[test]
