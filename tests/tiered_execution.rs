@@ -162,6 +162,7 @@ pub mod retry_turn;
 
 use std::collections::VecDeque;
 use std::convert::Infallible;
+use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -461,10 +462,11 @@ use execution_native::{
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
     NativeProcessCallRequest, NativeProcessCallResponse,
     NativeProcessCallResponseError, NativeProcessCallWireError,
-    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, NativeRegionStatus,
-    NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeProcessSession, NativeProcessSessionConfig,
+    NativeProcessSessionError, NativeRegionBuffers, NativeRegionCallFrame,
+    NativeRegionCallFrameError, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -962,6 +964,53 @@ use retry_turn::{
 
 const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
 const FIXTURE_PROFILE_VERSION: &str = "2026.3";
+
+const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
+import sys
+count = 0
+while True:
+    header = sys.stdin.buffer.read(8)
+    if header == b"":
+        break
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length:
+        raise SystemExit(3)
+    count += 1
+    response = bytes([count]) + request
+    sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+    sys.stdout.buffer.write(response)
+    sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_SESSION_OVERSIZED_WORKER: &str = r#"
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write((1024).to_bytes(8, "little"))
+sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_SESSION_TRUNCATED_WORKER: &str = r#"
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write((4).to_bytes(8, "little"))
+sys.stdout.buffer.write(b"x")
+sys.stdout.buffer.flush()
+"#;
 
 #[derive(Clone, Copy)]
 struct CoffCompileCase {
@@ -38202,6 +38251,76 @@ fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
     } else {
         Err(String::from(
             "ready executable call did not apply exact effect",
+        ))
+    }
+}
+
+fn native_process_session_python(
+    script: &str,
+) -> Result<NativeProcessSession, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let python = if cfg!(windows) {
+        root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
+    } else {
+        root.join(".dependencies/python/3.14.6/bin/python-jig")
+    };
+    NativeProcessSessionConfig::new(python)
+        .argument(OsString::from("-u"))
+        .argument(OsString::from("-c"))
+        .argument(OsString::from(script))
+        .spawn()
+        .map_err(|error| format!("native process session spawn: {error:?}"))
+}
+
+#[test]
+fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
+{
+    let mut session =
+        native_process_session_python(NATIVE_PROCESS_SESSION_OVERSIZED_WORKER)?;
+    if session.exchange(b"request", 16)
+        != Err(NativeProcessSessionError::ResponseTooLarge)
+        || !session.poisoned()
+        || session.exchange(b"again", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        Err(String::from(
+            "native process session accepted oversized response",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn native_process_session_rejects_truncated_response() -> Result<(), String> {
+    let mut session =
+        native_process_session_python(NATIVE_PROCESS_SESSION_TRUNCATED_WORKER)?;
+    let result = session.exchange(b"request", 16);
+    if matches!(result, Err(NativeProcessSessionError::Read(_)))
+        && session.poisoned()
+    {
+        Ok(())
+    } else {
+        Err(String::from("native process session admitted truncation"))
+    }
+}
+
+#[test]
+fn native_process_session_reuses_one_child_across_exchanges()
+-> Result<(), String> {
+    let mut session =
+        native_process_session_python(NATIVE_PROCESS_SESSION_ECHO_WORKER)?;
+    let first = session
+        .exchange(b"abc", 4)
+        .map_err(|error| format!("native process first exchange: {error:?}"))?;
+    let second = session.exchange(b"de", 3).map_err(|error| {
+        format!("native process second exchange: {error:?}")
+    })?;
+    if first == b"abc" && second == b"de" && !session.poisoned() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native process session did not remain persistent",
         ))
     }
 }

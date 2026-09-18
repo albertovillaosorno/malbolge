@@ -233,6 +233,13 @@ A distinct single-resident lease cache
   retain mapping identity across memory operations and the later native call;
   the concrete process session still remains pending.
 
+  A persistent native child-session transport now retains one process across
+  multiple length-framed exchanges. Response lengths are bounded before
+  allocation, transport/framing failure poisons and terminates the session, and
+  deterministic workers cover reuse plus oversized/truncated responses. The
+  executable-memory command protocol and MBNPC1 runner integration remain
+  pending.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 

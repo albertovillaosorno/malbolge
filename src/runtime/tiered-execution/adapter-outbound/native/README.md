@@ -81,6 +81,12 @@ therefore spans allocation through release, allowing a future persistent child
 to keep mapping identity valid through the call without `Arc<Mutex<_>>` or
 other aliasing indirection. Existing rollback and cleanup semantics are reused.
 
+`process_session.rs` provides the persistent child transport needed by that
+single-owner path. Exchanges use an outer little-endian `u64` length frame,
+check the announced response length against the caller bound before allocation,
+and poison/terminate the child after any transport or framing failure. The
+session intentionally does not interpret MBNPC1 or executable-memory commands.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant

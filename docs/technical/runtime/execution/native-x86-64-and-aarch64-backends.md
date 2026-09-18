@@ -401,6 +401,15 @@ the existing rollback, cleanup, and committed-outcome contracts. This is the
 intended seam for a persistent child process whose mapping IDs must remain valid
 through the later native call.
 
+`native/process_session.rs` now retains one configured child process across
+multiple bounded byte exchanges. Each request and response uses an outer
+little-endian `u64` payload length; child-announced response size is checked
+against the caller limit before allocation, and any I/O, truncation, or size
+failure poisons and terminates the session. Deterministic workers prove one
+child survives multiple exchanges and that oversized/truncated responses fail
+closed. The session does not interpret MBNPC1 or yet implement executable-memory
+commands or the foreign call itself.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact
