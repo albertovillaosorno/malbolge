@@ -251,8 +251,11 @@ and transfers cleanup retry ownership.
 
 A distinct no-operation sequence plan now validates non-empty/count,
 one-effect v6 shape, profile/observation continuity, common target, exact
-artifact identity, and early termination before any mapping. No loaded-sequence
-execution or multi-entry cache authority is added.
+artifact identity, and early termination before any mapping. A separate loaded
+owner maps the complete admitted plan only after every exact owner load
+succeeds, retains exact mapped-byte evidence, and releases mappings in reverse
+with aggregate retry ownership. Loaded-sequence execution and multi-entry cache
+authority remain separate.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

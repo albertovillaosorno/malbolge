@@ -130,8 +130,11 @@ A distinct single-resident lease cache
 
   A distinct no-operation sequence plan now validates non-empty/count,
   one-effect v6 shape, profile/observation continuity, common target, exact
-  artifact identity, and early termination before any mapping. No
-  loaded-sequence execution or multi-entry cache authority is granted.
+  artifact identity, and early termination before any mapping. A separate
+  loaded owner maps the complete admitted plan only after every exact owner load
+  succeeds, retains exact mapped-byte evidence, and releases mappings in
+  reverse with aggregate retry ownership. Loaded-sequence execution and
+  multi-entry cache authority remain separate.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,

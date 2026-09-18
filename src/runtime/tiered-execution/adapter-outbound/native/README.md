@@ -978,8 +978,11 @@ and transfers cleanup retry ownership.
 
 A distinct no-operation sequence plan now validates non-empty/count,
 one-effect v6 shape, profile/observation continuity, common target, exact
-artifact identity, and early termination before any mapping. Loaded-sequence
-execution and multi-entry cache authority remain separate.
+artifact identity, and early termination before any mapping. A separate loaded
+owner maps the complete admitted plan only after every exact owner load
+succeeds, retains exact mapped-byte evidence, and releases mappings in reverse
+with aggregate retry ownership. Loaded-sequence execution and multi-entry cache
+authority remain separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
