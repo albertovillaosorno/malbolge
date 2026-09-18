@@ -331,9 +331,7 @@ where
 fn retry_no_operation_release_failures<Adapter>(
     adapter: &mut Adapter,
     pending: Vec<
-        RegisterMaskedNoOperationNativeExecutableReleaseFailure<
-            Adapter::Error,
-        >,
+        RegisterMaskedNoOperationNativeExecutableReleaseFailure<Adapter::Error>,
     >,
 ) -> RegisterMaskedNoOperationNativeSequenceReleaseResult<Adapter::Error>
 where
