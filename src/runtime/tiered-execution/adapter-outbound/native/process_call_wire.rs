@@ -44,7 +44,7 @@ use super::process_call::{
 pub const NATIVE_PROCESS_CALL_WIRE_MAGIC: [u8; 8] = *b"MBNPC1\0\0";
 
 /// Fixed bytes before the request memory/input/output payloads.
-pub const NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES: usize = 69;
+pub const NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES: usize = 77;
 /// Fixed bytes before the response memory/output payloads.
 pub const NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES: usize = 74;
 
@@ -202,6 +202,7 @@ pub fn decode_native_process_call_request(
         return Err(NativeProcessCallWireError::RequestMagic);
     }
     let mapping_id = decode_mapping_id(&mut reader)?;
+    let entry_offset = usize_from_u64(reader.u64()?)?;
     let state = decode_state(&mut reader)?;
     let memory_words = usize_from_u64(state.memory_words())?;
     let input_len = usize_from_u64(state.input_len())?;
@@ -213,6 +214,7 @@ pub fn decode_native_process_call_request(
     Ok(NativeProcessCallRequest::new(
         mapping_id,
         state,
+        entry_offset,
         (&memory, &input, &output),
     ))
 }
@@ -269,6 +271,9 @@ pub fn encode_native_process_call_request(
     let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(&NATIVE_PROCESS_CALL_WIRE_MAGIC);
     push_u64(&mut bytes, request.mapping_id().get());
+    let entry_offset = u64::try_from(request.entry_offset())
+        .map_err(|_error| NativeProcessCallWireError::CounterOverflow)?;
+    push_u64(&mut bytes, entry_offset);
     encode_state(&mut bytes, request.state());
     for word in request.memory() {
         push_u32(&mut bytes, *word);

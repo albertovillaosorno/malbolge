@@ -38173,7 +38173,7 @@ fn native_process_call_wire_round_trips_exact_request_and_response()
         .map_err(|error| error.to_string())?;
     let decoded_request = decode_native_process_call_request(&request_bytes)
         .map_err(|error| error.to_string())?;
-    if NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES != 69
+    if NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES != 77
         || NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES != 74
         || request_bytes.get(..NATIVE_PROCESS_CALL_WIRE_MAGIC.len())
             != Some(NATIVE_PROCESS_CALL_WIRE_MAGIC.as_slice())

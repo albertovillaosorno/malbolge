@@ -349,7 +349,7 @@ implemented by this transfer boundary.
 
 `native/process_call_wire.rs` now defines the transport-neutral `MBNPC1`
 little-endian framing for that pointer-free transfer. Requests have a stable
-69-byte prefix before exact memory/input/output payloads, while responses have
+77-byte prefix before exact memory/input/output payloads, while responses have
 a 74-byte prefix before memory/output payloads; response allocation bounds are
 derived from the original request rather than child-reported capacities. The
 codec rejects malformed magic, zero mapping identity, noncanonical pointer

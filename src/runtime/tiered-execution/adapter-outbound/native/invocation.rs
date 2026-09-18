@@ -1667,9 +1667,10 @@ impl PreparedNativeExecutableInvocation<'_, '_, '_> {
     /// Copies this exact bound call into pointer-free process-owned evidence.
     #[must_use]
     pub fn process_request(&self) -> NativeProcessCallRequest {
-        self.invocation
-            .invocation
-            .process_request(self.mapping_id())
+        self.invocation.invocation.process_request(
+            self.mapping_id(),
+            self.executable.image().entry_offset(),
+        )
     }
 
     /// Returns the mutable ABI state pointer for the future unsafe invoker.
@@ -2535,10 +2536,12 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
     fn process_request(
         &self,
         mapping_id: NativeExecutableMappingId,
+        entry_offset: usize,
     ) -> NativeProcessCallRequest {
         NativeProcessCallRequest::new(
             mapping_id,
             self.frame.state().process_call_state(),
+            entry_offset,
             (self.frame.memory(), self.frame.input(), self.frame.output()),
         )
     }

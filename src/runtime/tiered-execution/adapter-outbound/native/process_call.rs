@@ -78,6 +78,7 @@ pub struct NativeProcessCallState {
 /// Owned native call request suitable for a process transport.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeProcessCallRequest {
+    entry_offset: usize,
     input: Box<[u8]>,
     mapping_id: NativeExecutableMappingId,
     memory: Box<[u32]>,
@@ -123,6 +124,12 @@ impl Display for NativeProcessCallResponseError {
 }
 
 impl NativeProcessCallRequest {
+    /// Returns the verified entry offset within the resident mapping.
+    #[must_use]
+    pub const fn entry_offset(&self) -> usize {
+        self.entry_offset
+    }
+
     /// Returns immutable input bytes copied for the child call.
     #[must_use]
     pub const fn input(&self) -> &[u8] {
@@ -144,10 +151,12 @@ impl NativeProcessCallRequest {
     pub(crate) fn new(
         mapping_id: NativeExecutableMappingId,
         state: NativeProcessCallState,
+        entry_offset: usize,
         buffers: NativeProcessCallBuffers<'_>,
     ) -> Self {
         let (memory, input, output) = buffers;
         Self {
+            entry_offset,
             input: input.into(),
             mapping_id,
             memory: memory.into(),

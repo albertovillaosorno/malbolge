@@ -221,7 +221,7 @@ A distinct single-resident lease cache
   instruction synchronization, and the concrete foreign call remain pending.
 
   The `MBNPC1` process-call wire contract now frames that transfer in
-  little-endian bytes with stable 69-byte request and 74-byte response prefixes.
+  little-endian bytes with stable 77-byte request and 74-byte response prefixes.
   Response payload allocation is bounded from the original admitted request,
   not child-controlled capacity fields; malformed identity, flags, shape,
   truncation, and trailing bytes fail closed. Process spawning and the concrete
