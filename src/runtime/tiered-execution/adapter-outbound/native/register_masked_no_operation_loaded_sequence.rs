@@ -51,9 +51,7 @@ use super::register_masked_resident::{
 pub struct RegisterMaskedNoOperationNativeSequenceLoadFailure<MemoryError> {
     cause: Box<RegisterMaskedNoOperationNativeOwnerLoadFailure<MemoryError>>,
     cleanup_failure: Option<
-        Box<
-            RegisterMaskedNoOperationNativeSequenceReleaseFailure<MemoryError>,
-        >,
+        Box<RegisterMaskedNoOperationNativeSequenceReleaseFailure<MemoryError>>,
     >,
     index: usize,
     loaded_count: usize,
@@ -80,9 +78,7 @@ pub type RegisterMaskedNoOperationNativeSequenceLoadResult<MemoryError> =
 pub type RegisterMaskedNoOperationNativeSequenceReleaseResult<MemoryError> =
     Result<
         (),
-        Box<
-            RegisterMaskedNoOperationNativeSequenceReleaseFailure<MemoryError>,
-        >,
+        Box<RegisterMaskedNoOperationNativeSequenceReleaseFailure<MemoryError>>,
     >;
 
 /// Fully loaded admitted no-operation v6 sequence without runner authority.
@@ -174,9 +170,8 @@ impl<MemoryError>
     #[must_use]
     pub fn failures(
         &self,
-    ) -> &[RegisterMaskedNoOperationNativeExecutableReleaseFailure<
-        MemoryError,
-    >] {
+    ) -> &[RegisterMaskedNoOperationNativeExecutableReleaseFailure<MemoryError>]
+    {
         &self.failures
     }
 
