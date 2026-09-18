@@ -259,9 +259,12 @@ only retained no-operation owners and performs no adapter work. Applied and
 guard-miss outcomes retain exact progress; current-step failure rolls back and
 keeps the loaded mappings reusable.
 
-An ordered sequence key now derives the exact artifact-key chain from the
-admitted plan, preserving semantic order and target identity for future cache
-lookup. Multi-entry cache policy remains separate.
+An ordered sequence key derives the exact artifact-key chain from the admitted
+plan. A fixed-entry FIFO cache now reuses exact loaded sequences through
+borrowed entries: hits perform no adapter work, misses load completely before
+oldest-entry release, and eviction failure transfers retryable victim/candidate
+cleanup ownership. Weighted limits and live external lease retirement remain
+separate policy.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

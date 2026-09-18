@@ -80,6 +80,7 @@ mod profile_metadata;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
+mod register_masked_no_operation_sequence_cache;
 mod register_masked_no_operation_sequence_execution;
 mod register_masked_non_graphical_lease_cache;
 mod register_masked_non_graphical_loaded_sequence;
@@ -605,6 +606,18 @@ pub use register_masked_no_operation_sequence::{
     RegisterMaskedNoOperationNativeSequenceKey,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlanError,
+};
+pub use register_masked_no_operation_sequence_cache::{
+    RegisterMaskedNoOperationNativeSequenceCache,
+    RegisterMaskedNoOperationNativeSequenceCacheDisposition,
+    RegisterMaskedNoOperationNativeSequenceCacheEntry,
+    RegisterMaskedNoOperationNativeSequenceCacheInvalidationResult,
+    RegisterMaskedNoOperationNativeSequenceCacheInvariantError,
+    RegisterMaskedNoOperationNativeSequenceCacheLoadFailure,
+    RegisterMaskedNoOperationNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedNoOperationNativeSequenceCacheLoadResult,
+    RegisterMaskedNoOperationNativeSequenceCacheReleaseFailure,
+    RegisterMaskedNoOperationNativeSequenceCacheReleaseResult,
 };
 pub use register_masked_no_operation_sequence_execution::{
     RegisterMaskedNoOperationNativeSequenceExecutionFailure,

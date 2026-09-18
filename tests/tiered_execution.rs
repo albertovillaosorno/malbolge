@@ -501,6 +501,7 @@ use execution_native::{
     RegisterMaskedNoOperationNativeResidentLease,
     RegisterMaskedNoOperationNativeResidentLeaseCache,
     RegisterMaskedNoOperationNativeRunner,
+    RegisterMaskedNoOperationNativeSequenceCache,
     RegisterMaskedNoOperationNativeSequenceKey,
     RegisterMaskedNoOperationNativeSequenceOutcome,
     RegisterMaskedNoOperationNativeSequencePlan,
@@ -10869,6 +10870,246 @@ fn register_masked_no_operation_loaded_sequence_fixture()
         .collect::<Result<Vec<_>, _>>()?;
     RegisterMaskedNoOperationNativeSequencePlan::new(&programs, &artifacts)
         .map_err(|error| format!("v6 no-op loaded plan: {error}"))
+}
+
+fn register_masked_no_operation_sequence_target_variant(
+    plan: &RegisterMaskedNoOperationNativeSequencePlan,
+    isa: HostIsa,
+) -> Result<RegisterMaskedNoOperationNativeSequencePlan, String> {
+    let artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| verified_register_masked_no_operation(program, isa))
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedNoOperationNativeSequencePlan::new(
+        plan.programs(),
+        &artifacts,
+    )
+    .map_err(|error| format!("v6 no-op target-variant plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_hit_reuses_chain()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(298)?,
+        native_executable_address(0x39800)?,
+    );
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 no-op cache insert: {error}"))?;
+        if inserted.disposition().is_hit()
+            || !inserted.disposition().evicted_keys().is_empty()
+            || inserted.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 no-op cache insert evidence drifted"));
+        }
+    }
+    let loaded_operations = adapter.operations.clone();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 no-op cache hit: {error}"))?;
+        if !hit.disposition().is_hit()
+            || hit.key()
+                != &RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan)
+            || hit.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 no-op cache exact hit drifted"));
+        }
+    }
+    if adapter.operations != loaded_operations || cache.len() != 1 {
+        return Err(String::from("v6 no-op cache hit performed adapter work"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 no-op cache release all: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_evicts_oldest()
+-> TieredTestResult {
+    let first = register_masked_no_operation_loaded_sequence_fixture()?;
+    let second = register_masked_no_operation_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(300)?,
+        native_executable_address(0x40000)?,
+    );
+    let _first_entry = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 no-op cache first insert: {error}"))?;
+    let disposition = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 no-op cache second insert: {error}"))?
+        .disposition()
+        .clone();
+    if disposition.is_hit()
+        || disposition.evicted_keys() != from_ref(&first_key)
+        || cache.contains_plan(&first)
+        || !cache.contains_plan(&second)
+        || cache.keys().next() != Some(&second_key)
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op cache FIFO eviction drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 no-op cache final release: {error}"))?;
+    if cache.is_empty() && adapter.release_attempts == 4 {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op cache release-all drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_eviction_failure_retries()
+-> TieredTestResult {
+    let first = register_masked_no_operation_loaded_sequence_fixture()?;
+    let second = register_masked_no_operation_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(302)?,
+        native_executable_address(0x40200)?,
+    );
+    let _first_entry = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 no-op cache failure fixture: {error}"))?;
+    adapter.release_failure_at = Some(1);
+    let Err(failure) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 no-op cache ignored eviction failure"));
+    };
+    if failure.evicted_key() != Some(&first_key)
+        || failure.requested_key() != &second_key
+        || failure
+            .eviction_failure()
+            .is_none_or(|item| item.failed_count() != 1)
+        || failure.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || adapter.release_attempts != 4
+    {
+        return Err(String::from("v6 no-op cache eviction failure drifted"));
+    }
+    let pending = failure.into_release_failures();
+    if pending.eviction_failure().is_none()
+        || pending.candidate_failure().is_some()
+    {
+        return Err(String::from("v6 no-op cache retry ownership drifted"));
+    }
+    pending
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 no-op cache eviction retry: {error}"))?;
+    if adapter.release_attempts == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op cache eviction retry count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_invalidation_is_explicit()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(304)?,
+        native_executable_address(0x40400)?,
+    );
+    let _entry = cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+        format!("v6 no-op cache invalidate fixture: {error}")
+    })?;
+    let released = cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 no-op cache invalidate: {error}"))?;
+    let release_attempts = adapter.release_attempts;
+    let missing =
+        cache
+            .invalidate_plan(&mut adapter, &plan)
+            .map_err(|error| {
+                format!("v6 no-op cache missing invalidate: {error}")
+            })?;
+    if released
+        && !missing
+        && cache.is_empty()
+        && release_attempts == 2
+        && adapter.release_attempts == release_attempts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op cache invalidation drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_release_all_retries()
+-> TieredTestResult {
+    let first = register_masked_no_operation_loaded_sequence_fixture()?;
+    let second = register_masked_no_operation_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(306)?,
+        native_executable_address(0x40600)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 no-op cache release first: {error}"))?;
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 no-op cache release second: {error}"))?;
+    adapter.release_failure_at = Some(1);
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from("v6 no-op cache ignored release-all failure"));
+    };
+    if failure.attempted_entries() != 2
+        || failure.released_entries() != 1
+        || failure.failed_entries() != 1
+        || failure.retained_mappings() != 1
+        || !cache.is_empty()
+        || adapter.release_attempts != 4
+    {
+        return Err(String::from(
+            "v6 no-op cache release-all evidence drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 no-op cache release-all retry: {error}")
+    })?;
+    if adapter.release_attempts == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op cache release-all retry drifted"))
+    }
 }
 
 #[test]
