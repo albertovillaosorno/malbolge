@@ -259,7 +259,9 @@ only retained no-operation owners and performs no adapter work. Applied and
 guard-miss outcomes retain exact progress; current-step failure rolls back and
 keeps the loaded mappings reusable.
 
-Multi-entry cache authority remains separate.
+An ordered sequence key now derives the exact artifact-key chain from the
+admitted plan, preserving semantic order and target identity for future cache
+lookup. Multi-entry cache policy remains separate.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

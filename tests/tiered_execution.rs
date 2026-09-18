@@ -501,6 +501,7 @@ use execution_native::{
     RegisterMaskedNoOperationNativeResidentLease,
     RegisterMaskedNoOperationNativeResidentLeaseCache,
     RegisterMaskedNoOperationNativeRunner,
+    RegisterMaskedNoOperationNativeSequenceKey,
     RegisterMaskedNoOperationNativeSequenceOutcome,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlanError,
@@ -10726,6 +10727,41 @@ fn register_masked_v6_no_operation_sequence_plan_admits_step()
         Ok(())
     } else {
         Err(String::from("v6 no-op sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_key_preserves_identity()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let key = RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan);
+    let expected = plan
+        .artifacts()
+        .iter()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let arm_artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| {
+            verified_register_masked_no_operation(program, HostIsa::AArch64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let arm_plan = RegisterMaskedNoOperationNativeSequencePlan::new(
+        plan.programs(),
+        &arm_artifacts,
+    )
+    .map_err(|error| format!("v6 no-op AArch64 key plan: {error}"))?;
+    let arm_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&arm_plan);
+    if key.len() == 2
+        && !key.is_empty()
+        && key.artifact_keys() == expected
+        && key != arm_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op sequence key identity drifted"))
     }
 }
 

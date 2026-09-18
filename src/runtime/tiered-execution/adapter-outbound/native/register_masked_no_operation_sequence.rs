@@ -15,7 +15,8 @@
 //     executable memory.
 // - Allows:
 //   - Inputs: ordered v6 one-step programs and verified no-operation artifacts.
-//   - Outputs: immutable admitted topology and exact entry/exit observations.
+//   - Outputs: immutable admitted topology, ordered cache identity, and exact
+//     entry/exit observations.
 //   - Side effects: process-local allocation for owned plan evidence only.
 // - Split-When:
 //   - Loaded ownership, execution, or release gains independent authority.
@@ -95,6 +96,12 @@ pub enum RegisterMaskedNoOperationNativeSequencePlanError {
     },
 }
 
+/// Exact ordered identity for one admitted no-operation v6 sequence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisterMaskedNoOperationNativeSequenceKey {
+    artifact_keys: Vec<NativeArtifactKey>,
+}
+
 /// Ordered no-operation v6 programs and exact verified artifacts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegisterMaskedNoOperationNativeSequencePlan {
@@ -147,6 +154,40 @@ impl Display for RegisterMaskedNoOperationNativeSequencePlanError {
                 "no-operation v6 step {index} terminated before sequence end",
             ),
         }
+    }
+}
+
+impl RegisterMaskedNoOperationNativeSequenceKey {
+    /// Returns exact artifact keys in semantic execution order.
+    #[must_use]
+    pub fn artifact_keys(&self) -> &[NativeArtifactKey] {
+        &self.artifact_keys
+    }
+
+    /// Derives exact ordered identity from one admitted no-operation plan.
+    #[must_use]
+    pub fn from_plan(
+        plan: &RegisterMaskedNoOperationNativeSequencePlan,
+    ) -> Self {
+        Self {
+            artifact_keys: plan
+                .artifacts()
+                .iter()
+                .map(|artifact| artifact.key().clone())
+                .collect(),
+        }
+    }
+
+    /// Returns whether this ordered identity contains no artifact positions.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.artifact_keys.is_empty()
+    }
+
+    /// Returns the number of artifact positions in this ordered identity.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.artifact_keys.len()
     }
 }
 

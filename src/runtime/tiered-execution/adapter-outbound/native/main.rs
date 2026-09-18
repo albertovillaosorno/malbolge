@@ -602,6 +602,7 @@ pub use register_masked_no_operation_loaded_sequence::{
     load_register_masked_no_operation_native_sequence,
 };
 pub use register_masked_no_operation_sequence::{
+    RegisterMaskedNoOperationNativeSequenceKey,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlanError,
 };
