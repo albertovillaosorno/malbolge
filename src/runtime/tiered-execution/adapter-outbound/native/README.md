@@ -972,7 +972,11 @@ load/call/release with cleanup and committed release-retry evidence. A reusable
 owner retains the exact no-operation mapping across rebased calls and runner
 failure without remapping.
 
-Cache authority remains separate.
+A distinct single-resident lease cache shares that
+owner on exact hits, blocks release while leased, rejects different identity,
+and transfers cleanup retry ownership.
+
+Multi-entry and sequence cache authority remain separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,

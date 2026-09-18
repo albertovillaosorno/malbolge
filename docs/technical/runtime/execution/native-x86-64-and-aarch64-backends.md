@@ -245,7 +245,11 @@ load/call/release with cleanup and committed release-retry evidence. A reusable
 owner retains the exact no-operation mapping across rebased calls and runner
 failure without remapping.
 
-No cache authority is added.
+A distinct single-resident lease cache shares that
+owner on exact hits, blocks release while leased, rejects different identity,
+and transfers cleanup retry ownership.
+
+No multi-entry or sequence cache authority is added.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

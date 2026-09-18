@@ -493,6 +493,12 @@ use execution_native::{
     RegisterMaskedNoOperationNativeExecutableOwner,
     RegisterMaskedNoOperationNativeExecutionFailure,
     RegisterMaskedNoOperationNativeOwnerExecutionFailure,
+    RegisterMaskedNoOperationNativeOwnerLoadFailure,
+    RegisterMaskedNoOperationNativeResidentCacheAcquireFailure,
+    RegisterMaskedNoOperationNativeResidentCacheDisposition,
+    RegisterMaskedNoOperationNativeResidentCacheRelease,
+    RegisterMaskedNoOperationNativeResidentLease,
+    RegisterMaskedNoOperationNativeResidentLeaseCache,
     RegisterMaskedNoOperationNativeRunner, RegisterMaskedNonGraphicalLease,
     RegisterMaskedNonGraphicalLeaseCache,
     RegisterMaskedNonGraphicalLeaseCacheAcquisition,
@@ -3869,6 +3875,77 @@ fn release_non_graphical_resident_after_leases(
         Err(String::from(
             "v6 non-graphical unleased resident did not release",
         ))
+    }
+}
+
+fn release_no_operation_resident_after_leases(
+    cache: &mut RegisterMaskedNoOperationNativeResidentLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    loaded_operations: &[FakeNativeAdapterOperation],
+    leases: (
+        RegisterMaskedNoOperationNativeResidentLease,
+        RegisterMaskedNoOperationNativeResidentLease,
+    ),
+) -> Result<(), String> {
+    if cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("v6 no-op leased release: {error}"))?
+        != (RegisterMaskedNoOperationNativeResidentCacheRelease::Leased {
+            leases: 2,
+        })
+        || adapter.operations.as_slice() != loaded_operations
+    {
+        return Err(String::from("v6 no-op live leases did not block release"));
+    }
+    drop(leases);
+    let released = cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("v6 no-op resident release: {error}"))?;
+    if released == RegisterMaskedNoOperationNativeResidentCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op unleased resident did not release"))
+    }
+}
+
+fn execute_register_masked_no_operation_lease_applied(
+    lease: &RegisterMaskedNoOperationNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<usize, String> {
+    let (entry, expected) =
+        register_masked_no_operation_rebased_observations(program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_no_operation_expected_memory(
+        program,
+        &mut expected_memory,
+    )?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 no-op resident lease execution failed: {error}")
+        })?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(runner.mapping_ids.len())
+    } else {
+        Err(String::from("v6 no-op resident lease execution drifted"))
     }
 }
 
@@ -8634,6 +8711,190 @@ fn register_masked_v6_owner_recovers_after_runner_failure() -> TieredTestResult
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 reusable owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_resident_cache_hits_without_adapter_work()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(180)?,
+        native_executable_address(0x29000)?,
+    );
+    let mut cache = RegisterMaskedNoOperationNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 no-op resident insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 no-op resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let mapping_count = execute_register_masked_no_operation_lease_applied(
+        &first_lease,
+        &program,
+    )?;
+    if first_disposition
+        != RegisterMaskedNoOperationNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != RegisterMaskedNoOperationNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || mapping_count != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 no-op resident hit or execution drifted"));
+    }
+    release_no_operation_resident_after_leases(
+        &mut cache,
+        &mut adapter,
+        &loaded_operations,
+        (first_lease, second_lease),
+    )
+}
+
+#[test]
+fn register_masked_v6_no_operation_resident_cache_rejects_different_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let variant = register_masked_no_operation_dead_state_variant(&program)?;
+    let variant_artifact =
+        verified_register_masked_no_operation(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(181)?,
+        native_executable_address(0x2a000)?,
+    );
+    let mut cache = RegisterMaskedNoOperationNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 no-op resident seed: {error}"))?;
+    let lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from(
+            "v6 no-op resident replaced a different identity",
+        ));
+    };
+    if error.as_ref()
+        != &RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::
+            IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from(
+            "v6 no-op resident identity rejection drifted",
+        ));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release_error| {
+            format!("v6 no-op identity cleanup: {release_error}")
+        })?
+        != RegisterMaskedNoOperationNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 no-op identity cleanup did not release"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_resident_cache_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(182)?,
+        native_executable_address(0x2b000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = RegisterMaskedNoOperationNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 no-op resident retry seed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v6 no-op resident release failure was ignored",
+        ));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 no-op resident release lost retry ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 no-op resident release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from(
+            "v6 no-op resident release retry count drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_no_operation_resident_load_failure_is_atomic()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(183)?,
+        native_executable_address(0x2c000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = RegisterMaskedNoOperationNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 no-op resident ignored load failure"));
+    };
+    match error.as_ref() {
+        RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::Load(
+            owner_error,
+        ) => {
+            if !matches!(
+                owner_error.as_ref(),
+                RegisterMaskedNoOperationNativeOwnerLoadFailure::Load(_)
+            ) {
+                return Err(String::from(
+                    "v6 no-op resident load failure lost cause",
+                ));
+            }
+        },
+        RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::
+            IdentityOccupied => {
+            return Err(String::from(
+                "v6 no-op load failure became identity occupancy",
+            ));
+        },
+    }
+    if cache.has_resident()
+        || cache.resident_lease_count() != 0
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 no-op failed load published partial residency",
+        ));
+    }
+    Ok(())
 }
 
 #[test]

@@ -124,7 +124,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   reusable owner retains the exact no-operation mapping across rebased calls
   and runner failure without remapping.
 
-  No cache authority is granted.
+A distinct single-resident lease cache
+  shares that owner on exact hits, blocks release while leased, rejects
+  different identity, and transfers cleanup retry ownership.
+
+  No multi-entry or sequence cache authority is granted.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,
