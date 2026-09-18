@@ -386,7 +386,7 @@ subsequent re-admission remains independent of cache lifetime.
 
 Single-step plans are rejected.
 
-The fused emitter now covers thirty-four reviewed two-step regions on
+The fused emitter now covers thirty-five reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,
 crazy/output, input/input, input/output,
 crazy/jump-code,
@@ -402,7 +402,8 @@ jump-data/jump-data, jump-data/rotate, no-operation/rotate,
 no-operation/crazy,
 crazy/no-operation, crazy/rotate,
 crazy/crazy, rotate/jump-code, rotate/jump-data, rotate/no-operation,
-rotate/crazy, rotate/rotate, output/input, and output/output. Every fused
+rotate/crazy, rotate/rotate, output/input, output/no-operation, and
+output/output. Every fused
 guard
 completes before
 the first store,
@@ -416,7 +417,8 @@ intermediate one-step observation.
 
 VM-derived traces exercise all six reviewed no-operation-containing templates
 plus crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate,
-input/input, input/output, output/input, and output/output on both ISAs through
+input/input, input/output, output/input, output/no-operation, and output/output
+on both ISAs through
 emission,
 semantic promotion,
 relocation-free load-image extraction, and whole-region state comparison with
@@ -1413,7 +1415,8 @@ no-operation/crazy,
 crazy/jump-code, crazy/jump-data, crazy/no-operation, crazy/output,
 crazy/rotate,
 crazy/crazy, rotate/jump-code, rotate/jump-data, rotate/no-operation,
-rotate/crazy, rotate/rotate, input/input, input/output, output/input, and
+rotate/crazy, rotate/rotate, input/input, input/output, output/input,
+output/no-operation, and
 output/output
 objects are
 also emitted, independently

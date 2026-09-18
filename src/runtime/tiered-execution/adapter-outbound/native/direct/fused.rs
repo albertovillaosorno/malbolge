@@ -92,6 +92,7 @@ enum FusedSelection {
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
     OutputInput(DirectOutputProgram, DirectInputProgram),
+    OutputNoOperation(DirectOutputProgram, DirectNoOperationProgram),
     OutputPair(DirectOutputProgram, DirectOutputProgram),
     RotateCrazy(DirectRotateProgram, DirectCrazyProgram),
     RotateJumpCode(DirectRotateProgram, super::DirectJumpCodeProgram),
@@ -265,6 +266,7 @@ fn canonical_fused_text(
     observation: DirectEntryObservation,
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
+    let output_noop = fused_output_no_operation_text;
     match *selection {
         FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
@@ -306,6 +308,9 @@ fn canonical_fused_text(
         },
         FusedSelection::OutputInput(output, input) => {
             fused_output_input_text(admission, observation, output, input)
+        },
+        FusedSelection::OutputNoOperation(output, no_operation) => {
+            output_noop(admission, observation, output, no_operation)
         },
         FusedSelection::OutputPair(first, second) => {
             fused_output_pair_text(admission, observation, first, second)
@@ -381,6 +386,7 @@ fn fused_rotate_selection_text(
         | FusedSelection::NoOperationOutput(..)
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::NoOperationRotate(..) => None,
     }
@@ -435,6 +441,7 @@ fn fused_rotate_remaining_selection_text(
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotateJumpData(..) => None,
     }
@@ -500,6 +507,7 @@ fn fused_jump_code_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -559,6 +567,7 @@ fn fused_jump_code_remaining_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -624,6 +633,7 @@ fn fused_jump_data_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -683,6 +693,7 @@ fn fused_jump_data_remaining_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -743,6 +754,7 @@ fn fused_crazy_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -798,6 +810,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
@@ -868,6 +881,7 @@ fn fused_no_operation_remaining_selection_text(
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
         | FusedSelection::OutputInput(..)
+        | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
@@ -1396,6 +1410,25 @@ fn fused_output_input_text(
     }
 }
 
+fn fused_output_no_operation_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    output: DirectOutputProgram,
+    no_operation: DirectNoOperationProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedNoOperationOutputTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        no_operation: no_operation_commit(no_operation),
+        observation,
+        output: output.commit,
+        required_memory_words: admission.key().ir().required_memory_words(),
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_output_no_operation_code(template),
+        HostIsa::X86_64 => x86_64::fused_output_no_operation_code(template),
+    }
+}
+
 fn fused_output_pair_text(
     admission: &DirectFusedSequenceAdmission,
     observation: DirectEntryObservation,
@@ -1893,12 +1926,41 @@ fn select_jump_data_shape(
     }
 }
 
+fn select_output_no_operation_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind != DirectNativeKind::Output
+        || second_kind != DirectNativeKind::NoOperation
+    {
+        return Ok(None);
+    }
+    let output = validate_output_program(first_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    let no_operation = validate_no_operation_program(second_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    Ok(Some(FusedSelection::OutputNoOperation(
+        output,
+        no_operation,
+    )))
+}
+
 fn select_no_operation_shape(
     first_kind: DirectNativeKind,
     second_kind: DirectNativeKind,
     first_program: &RegionEffectProgram,
     second_program: &RegionEffectProgram,
 ) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if let Some(selection) = select_output_no_operation_shape(
+        first_kind,
+        second_kind,
+        first_program,
+        second_program,
+    )? {
+        return Ok(Some(selection));
+    }
     if first_kind != DirectNativeKind::NoOperation {
         return Ok(None);
     }
