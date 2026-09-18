@@ -419,13 +419,17 @@ admission check. Copy response size derives from the original copy request, and
 child failures carry only an opaque `u32` platform code. No syscall or mapping
 ownership is implemented by this codec.
 
-`native/process_host.rs` now binds MBNPM1 to `NativeExecutableMemoryAdapter`
-through the retained child session. One host owns every allocate/copy/protect/
-synchronize/release exchange, maps valid child failure frames to adapter errors,
-and returns decoded reports only to the existing safe lifecycle for admission.
-A deterministic persistent worker proves the complete loader/release transaction
-and a separate failure worker proves remote failure does not poison a valid
-session. The worker still performs no production executable-memory syscalls.
+`native/process_host.rs` now binds both MBNPM1 and MBNPC1 to the retained
+child session. The same `NativeProcessHost` implements executable-memory and
+runner ports, so one child owns allocate/copy/protect/synchronize, the pointer-
+free call exchange, and release. MBNPC1 responses are request-bounded, then
+structurally applied before the existing semantic completion verifier runs;
+mapping drift is rejected before caller mutation.
+
+Deterministic persistent workers prove the complete load/call/release
+transaction
+plus remote-memory and call-response rejection paths. The worker still performs
+no production executable-memory syscalls or architecture foreign call.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,

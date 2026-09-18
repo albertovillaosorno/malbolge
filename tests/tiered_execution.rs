@@ -1102,6 +1102,154 @@ sys.stdout.buffer.write(response)
 sys.stdout.buffer.flush()
 "#;
 
+const NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER: &str = r#"
+import sys
+
+magic = b"MBNPC1\x00\x00"
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length or request[:8] != magic:
+    raise SystemExit(3)
+
+def u64(offset):
+    return int.from_bytes(request[offset:offset + 8], "little")
+
+mapping_id = u64(8)
+memory_words = u64(24)
+input_len = u64(32)
+output_capacity = u64(40)
+memory_start = 77
+memory_end = memory_start + memory_words * 4
+input_end = memory_end + input_len
+output_end = input_end + output_capacity
+if output_end != len(request):
+    raise SystemExit(4)
+state = request[24:77]
+memory = request[memory_start:memory_end]
+output = request[input_end:output_end]
+response = magic + (mapping_id + 1).to_bytes(8, "little") + state
+response += (1).to_bytes(4, "little", signed=True) + b"\x01"
+response += memory + output
+sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+sys.stdout.buffer.write(response)
+sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_FULL_HOST_WORKER: &str = r#"
+import sys
+
+memory_magic = b"MBNPM1\x00\x00"
+call_magic = b"MBNPC1\x00\x00"
+mapping_id = 93
+base_address = 0x9300
+mapped_len = None
+expected_memory_commands = [0, 1, 2, 4]
+
+def u32(data, offset):
+    return int.from_bytes(data[offset:offset + 4], "little")
+
+def u64(data, offset):
+    return int.from_bytes(data[offset:offset + 8], "little")
+
+def pack32(*values):
+    return b"".join(value.to_bytes(4, "little") for value in values)
+
+def pack64(*values):
+    return b"".join(value.to_bytes(8, "little") for value in values)
+
+def receive():
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    payload = sys.stdin.buffer.read(length)
+    if len(payload) != length:
+        raise SystemExit(3)
+    return payload
+
+def respond(payload):
+    sys.stdout.buffer.write(len(payload).to_bytes(8, "little"))
+    sys.stdout.buffer.write(payload)
+    sys.stdout.buffer.flush()
+
+for expected_command in expected_memory_commands:
+    request = receive()
+    if request[:8] != memory_magic or request[8] != expected_command:
+        raise SystemExit(4)
+    command = request[8]
+    if command == 0:
+        mapped_len = u64(request, 9)
+        if mapped_len == 0 or u64(request, 17) == 0 or request[25] != 1:
+            raise SystemExit(5)
+        response = memory_magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address, mapped_len) + b"\x01"
+    elif command == 1:
+        code_len = u64(request, 34)
+        code = request[42:]
+        if (u64(request, 9) != mapping_id or u64(request, 17) != base_address
+                or request[33] != 1 or len(code) != code_len):
+            raise SystemExit(6)
+        response = memory_magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address) + code
+    elif command == 2:
+        if (u64(request, 9) != mapping_id or u64(request, 17) != base_address
+                or u64(request, 25) != mapped_len or request[33] != 1):
+            raise SystemExit(7)
+        response = memory_magic + bytes([command, 0])
+        response += pack64(mapping_id, base_address, mapped_len) + b"\x00"
+    else:
+        if (u64(request, 9) != mapping_id or u64(request, 17) != base_address
+                or u64(request, 25) != mapped_len):
+            raise SystemExit(8)
+        response = memory_magic + bytes([command, 0]) + request[9:33]
+    respond(response)
+
+request = receive()
+if request[:8] != call_magic or u64(request, 8) != mapping_id:
+    raise SystemExit(9)
+entry_offset = u64(request, 16)
+if mapped_len is None or entry_offset >= mapped_len:
+    raise SystemExit(10)
+memory_words = u64(request, 24)
+input_len = u64(request, 32)
+output_capacity = u64(request, 40)
+input_consumed = u64(request, 48)
+output_len = u64(request, 56)
+accumulator = u32(request, 64)
+code_pointer = u32(request, 68)
+data_pointer = u32(request, 72)
+termination = request[76]
+memory_start = 77
+memory_end = memory_start + memory_words * 4
+input_end = memory_end + input_len
+output_end = input_end + output_capacity
+if (output_end != len(request) or memory_words <= 5
+        or output_capacity <= 1 or input_consumed != 0 or output_len != 1
+        or accumulator != 0xdeadbea8 or code_pointer != 5
+        or data_pointer != 7 or termination != 0):
+    raise SystemExit(11)
+memory = bytearray(request[memory_start:memory_end])
+memory[20:24] = (57).to_bytes(4, "little")
+output = bytearray(request[input_end:output_end])
+output[1] = 0xa8
+state = pack64(memory_words, input_len, output_capacity, 0, 2)
+state += pack32(accumulator, 6, 8) + b"\x00"
+response = call_magic + pack64(mapping_id) + state
+response += (0).to_bytes(4, "little", signed=True) + b"\x01"
+response += memory + output
+respond(response)
+
+request = receive()
+if (request[:8] != memory_magic or request[8] != 3
+        or u64(request, 9) != mapping_id or u64(request, 17) != base_address
+        or u64(request, 25) != mapped_len):
+    raise SystemExit(12)
+respond(memory_magic + b"\x03\x00")
+"#;
+
 #[derive(Clone, Copy)]
 struct CoffCompileCase {
     expected_machine: [u8; 2],
@@ -38432,6 +38580,92 @@ fn native_process_host_runs_complete_memory_lifecycle() -> Result<(), String> {
         ))
     } else {
         Ok(())
+    }
+}
+
+#[test]
+fn native_process_host_rejects_call_mapping_drift_before_mutation()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&artifact, 94, 0x9400)?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let Err(error) = host.run(&mut invocation) else {
+        return Err(String::from("native process host admitted mapping drift"));
+    };
+    if error.call_response_error()
+        != Some(NativeProcessCallResponseError::MappingIdentity)
+        || invocation.process_request() != request
+        || host.session_poisoned()
+    {
+        invocation.abort();
+        return Err(String::from(
+            "native process host mapping rejection drifted",
+        ));
+    }
+    invocation.abort();
+    if memory == entry_memory && output == entry_output {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native process host mapping drift mutated buffers",
+        ))
+    }
+}
+
+#[test]
+fn native_process_host_executes_call_over_same_session() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("native process host effect missing"))?
+        .after;
+    let mut host = native_process_host_python(NATIVE_PROCESS_FULL_HOST_WORKER)?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let outcome = execute_verified_native_with_host(&mut host, prepared)
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 57
+        && output == [0x10, 0xa8, 0]
+        && !host.session_poisoned()
+    {
+        Ok(())
+    } else {
+        Err(String::from("native process host call execution drifted"))
     }
 }
 

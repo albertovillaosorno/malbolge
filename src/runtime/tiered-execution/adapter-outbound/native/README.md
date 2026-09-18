@@ -93,11 +93,13 @@ platform reports and copied bytes as untrusted evidence for the existing safe
 lifecycle. Copy response sizing derives from the original request, and child
 failures carry only an opaque `u32` code. The codec performs no memory syscall.
 
-`process_host.rs` binds that wire to `NativeExecutableMemoryAdapter` using one
-persistent `NativeProcessSession`. It transports all five memory operations and
-returns untrusted reports to the existing safe loader, while valid remote
-failures become adapter errors without poisoning the session. The concrete child
-still does not own production W^X syscalls or native call execution.
+`process_host.rs` binds MBNPM1 and MBNPC1 to one persistent
+`NativeProcessSession`. It implements both `NativeExecutableMemoryAdapter` and
+`NativeExecutableRunner`, so one child sees allocation through release and the
+pointer-free call exchange in between. Returned call evidence is request-bounded
+and structurally checked before semantic completion; wrong mapping identity is
+rejected before caller mutation. The concrete child still does not own
+production W^X syscalls or the architecture-specific foreign call.
 
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the

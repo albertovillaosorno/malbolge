@@ -236,20 +236,22 @@ A distinct single-resident lease cache
   A persistent native child-session transport now retains one process across
   multiple length-framed exchanges. Response lengths are bounded before
   allocation, transport/framing failure poisons and terminates the session, and
-  deterministic workers cover reuse plus oversized/truncated responses. The
-  MBNPC1 runner integration remains pending.
+  deterministic workers cover reuse plus oversized/truncated responses.
 
   The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
   synchronize, and release commands over that session. Returned mapping, range,
   permission, and copied-byte fields remain untrusted evidence for the existing
   lifecycle checks; copy response allocation is bounded by the original request.
-  The concrete worker syscalls and MBNPC1 runner integration remain pending.
+  The concrete worker syscalls remain pending.
 
   `NativeProcessHost` now implements the executable-memory adapter through one
   retained session and MBNPM1. Deterministic child evidence covers the complete
   allocate/copy/protect/synchronize/release loader transaction plus a remote
   failure path without granting the child lifecycle authority. Production W^X
-  syscalls and the MBNPC1 runner remain pending.
+  syscalls remain pending. The same host now implements `NativeExecutableRunner`
+  through MBNPC1 on the retained session; end-to-end deterministic evidence
+  covers load, call, semantic admission, and release plus mapping-drift
+  rejection.
 
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub

@@ -9,9 +9,9 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Session-backed native host composition for executable-memory commands.
+//   - Session-backed native host composition for memory commands and calls.
 // - Must-Not:
-//   - Admit lifecycle evidence, perform local memory syscalls, or invoke code.
+//   - Admit lifecycle/semantic evidence or perform local memory/native calls.
 // - Allows:
 //   - Inputs: existing native executable-memory adapter requests.
 //   - Outputs: decoded untrusted MBNPM1 reports or stable host errors.
@@ -31,10 +31,11 @@
 //   - Remote, framing, transport, or response-shape failure fails closed.
 //
 
-//! Persistent-session implementation of the native executable-memory port.
+//! Persistent-session implementation of native memory and runner ports.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+use super::invocation::PreparedNativeExecutableInvocation;
 use super::lifecycle::{
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
     NativeInstructionSyncReport,
@@ -43,6 +44,12 @@ use super::platform::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
     NativeExecutableMemoryAdapter, NativeInstructionSyncRequest,
 };
+use super::process_call::NativeProcessCallResponseError;
+use super::process_call_wire::{
+    NativeProcessCallWireError, decode_native_process_call_response,
+    encode_native_process_call_request,
+    native_process_call_response_byte_limit,
+};
 use super::process_memory_wire::{
     NativeProcessMemoryRequest, NativeProcessMemoryResponse,
     NativeProcessMemoryWireError, decode_native_process_memory_response,
@@ -50,9 +57,12 @@ use super::process_memory_wire::{
     native_process_memory_response_byte_limit,
 };
 use super::process_session::{NativeProcessSession, NativeProcessSessionError};
+use super::runner::NativeExecutableRunner;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NativeProcessHostErrorKind {
+    CallResponse,
+    CallWire,
     Remote,
     ResponseShape,
     Session,
@@ -62,6 +72,8 @@ enum NativeProcessHostErrorKind {
 /// Stable failure surfaced by one persistent native process host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeProcessHostError {
+    call_response_error: Option<NativeProcessCallResponseError>,
+    call_wire_error: Option<NativeProcessCallWireError>,
     kind: NativeProcessHostErrorKind,
     remote_code: u32,
     session_error: Option<NativeProcessSessionError>,
@@ -77,6 +89,28 @@ pub struct NativeProcessHost {
 impl Display for NativeProcessHostError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self.kind {
+            NativeProcessHostErrorKind::CallResponse => {
+                match self.call_response_error {
+                    Some(error) => write!(
+                        f,
+                        "native process host call response failure: {error}",
+                    ),
+                    None => {
+                        f.write_str("native process host call response failure")
+                    },
+                }
+            },
+            NativeProcessHostErrorKind::CallWire => {
+                match self.call_wire_error {
+                    Some(error) => write!(
+                        f,
+                        "native process host call wire failure: {error}",
+                    ),
+                    None => {
+                        f.write_str("native process host call wire failure")
+                    },
+                }
+            },
             NativeProcessHostErrorKind::Remote => write!(
                 f,
                 "native process host remote failure code {}",
@@ -99,8 +133,46 @@ impl Display for NativeProcessHostError {
 }
 
 impl NativeProcessHostError {
+    const fn call_response(error: NativeProcessCallResponseError) -> Self {
+        Self {
+            call_response_error: Some(error),
+            call_wire_error: None,
+            kind: NativeProcessHostErrorKind::CallResponse,
+            remote_code: 0,
+            session_error: None,
+            wire_error: None,
+        }
+    }
+
+    /// Returns structural call-response detail when child evidence drifted.
+    #[must_use]
+    pub const fn call_response_error(
+        self,
+    ) -> Option<NativeProcessCallResponseError> {
+        self.call_response_error
+    }
+
+    const fn call_wire(error: NativeProcessCallWireError) -> Self {
+        Self {
+            call_response_error: None,
+            call_wire_error: Some(error),
+            kind: NativeProcessHostErrorKind::CallWire,
+            remote_code: 0,
+            session_error: None,
+            wire_error: None,
+        }
+    }
+
+    /// Returns MBNPC1 framing detail when the call transfer failed.
+    #[must_use]
+    pub const fn call_wire_error(self) -> Option<NativeProcessCallWireError> {
+        self.call_wire_error
+    }
+
     const fn remote(code: u32) -> Self {
         Self {
+            call_response_error: None,
+            call_wire_error: None,
             kind: NativeProcessHostErrorKind::Remote,
             remote_code: code,
             session_error: None,
@@ -113,7 +185,9 @@ impl NativeProcessHostError {
     pub const fn remote_code(self) -> Option<u32> {
         match self.kind {
             NativeProcessHostErrorKind::Remote => Some(self.remote_code),
-            NativeProcessHostErrorKind::ResponseShape
+            NativeProcessHostErrorKind::CallResponse
+            | NativeProcessHostErrorKind::CallWire
+            | NativeProcessHostErrorKind::ResponseShape
             | NativeProcessHostErrorKind::Session
             | NativeProcessHostErrorKind::Wire => None,
         }
@@ -121,6 +195,8 @@ impl NativeProcessHostError {
 
     const fn response_shape() -> Self {
         Self {
+            call_response_error: None,
+            call_wire_error: None,
             kind: NativeProcessHostErrorKind::ResponseShape,
             remote_code: 0,
             session_error: None,
@@ -130,6 +206,8 @@ impl NativeProcessHostError {
 
     const fn session(error: NativeProcessSessionError) -> Self {
         Self {
+            call_response_error: None,
+            call_wire_error: None,
             kind: NativeProcessHostErrorKind::Session,
             remote_code: 0,
             session_error: Some(error),
@@ -145,6 +223,8 @@ impl NativeProcessHostError {
 
     const fn wire(error: NativeProcessMemoryWireError) -> Self {
         Self {
+            call_response_error: None,
+            call_wire_error: None,
             kind: NativeProcessHostErrorKind::Wire,
             remote_code: 0,
             session_error: None,
@@ -160,6 +240,26 @@ impl NativeProcessHostError {
 }
 
 impl NativeProcessHost {
+    fn exchange_call(
+        &mut self,
+        invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    ) -> Result<i32, NativeProcessHostError> {
+        let request = invocation.process_request();
+        let encoded = encode_native_process_call_request(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response_limit = native_process_call_response_byte_limit(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response = self
+            .session
+            .exchange(&encoded, response_limit)
+            .map_err(NativeProcessHostError::session)?;
+        let decoded = decode_native_process_call_response(&response, &request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        invocation
+            .apply_process_response(&decoded)
+            .map_err(NativeProcessHostError::call_response)
+    }
+
     fn exchange_memory(
         &mut self,
         request: &NativeProcessMemoryRequest,
@@ -264,5 +364,15 @@ impl NativeExecutableMemoryAdapter for NativeProcessHost {
             return Err(NativeProcessHostError::response_shape());
         };
         Ok(report)
+    }
+}
+impl NativeExecutableRunner for NativeProcessHost {
+    type Error = NativeProcessHostError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.exchange_call(invocation)
     }
 }
