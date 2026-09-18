@@ -95,6 +95,7 @@ enum FusedSelection {
     OutputInput(DirectOutputProgram, DirectInputProgram),
     OutputNoOperation(DirectOutputProgram, DirectNoOperationProgram),
     OutputPair(DirectOutputProgram, DirectOutputProgram),
+    OutputRotate(DirectOutputProgram, DirectRotateProgram),
     RotateCrazy(DirectRotateProgram, DirectCrazyProgram),
     RotateJumpCode(DirectRotateProgram, super::DirectJumpCodeProgram),
     RotateJumpData(DirectRotateProgram, super::DirectJumpDataProgram),
@@ -276,11 +277,8 @@ fn canonical_fused_text(
         | FusedSelection::CrazyRotate(..) => {
             fused_crazy_selection_text(admission, observation, selection)
         },
-        FusedSelection::InputOutput(input, output) => {
-            fused_input_output_text(admission, observation, input, output)
-        },
-        FusedSelection::InputPair(first, second) => {
-            fused_input_pair_text(admission, observation, first, second)
+        FusedSelection::InputOutput(..) | FusedSelection::InputPair(..) => {
+            fused_input_selection_text(admission, observation, selection)
         },
         FusedSelection::JumpCodeCrazy(..)
         | FusedSelection::JumpCodeData(..)
@@ -309,7 +307,8 @@ fn canonical_fused_text(
         FusedSelection::OutputCrazy(..)
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
-        | FusedSelection::OutputPair(..) => {
+        | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..) => {
             fused_output_selection_text(admission, observation, selection)
         },
         FusedSelection::RotateCrazy(..)
@@ -328,17 +327,13 @@ fn fused_rotate_selection_text(
     observation: DirectEntryObservation,
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
+    let jump_code_text = fused_rotate_jump_code_text;
     match *selection {
         FusedSelection::RotateCrazy(rotate, crazy) => {
             fused_rotate_crazy_text(admission, observation, rotate, crazy)
         },
         FusedSelection::RotateJumpCode(rotate, jump_code) => {
-            fused_rotate_jump_code_text(
-                admission,
-                observation,
-                rotate,
-                jump_code,
-            )
+            jump_code_text(admission, observation, rotate, jump_code)
         },
         FusedSelection::RotateJumpData(rotate, jump_data) => {
             fused_rotate_jump_data_text(
@@ -386,6 +381,7 @@ fn fused_rotate_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::NoOperationRotate(..) => None,
     }
 }
@@ -442,6 +438,7 @@ fn fused_rotate_remaining_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotateJumpData(..) => None,
     }
 }
@@ -451,17 +448,13 @@ fn fused_jump_code_selection_text(
     observation: DirectEntryObservation,
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
+    let jump_data_text = fused_jump_code_jump_data_text;
     match *selection {
         FusedSelection::JumpCodeCrazy(jump_code, crazy) => {
             fused_jump_code_crazy_text(admission, observation, jump_code, crazy)
         },
         FusedSelection::JumpCodeData(jump_code, jump_data) => {
-            fused_jump_code_jump_data_text(
-                admission,
-                observation,
-                jump_code,
-                jump_data,
-            )
+            jump_data_text(admission, observation, jump_code, jump_data)
         },
         FusedSelection::JumpCodeNoOperation(jump_code, no_operation) => {
             fused_jump_code_no_operation_text(
@@ -509,6 +502,7 @@ fn fused_jump_code_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -570,6 +564,7 @@ fn fused_jump_code_remaining_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -579,14 +574,10 @@ fn fused_jump_data_selection_text(
     observation: DirectEntryObservation,
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
+    let jump_code_text = fused_jump_data_jump_code_text;
     match *selection {
         FusedSelection::JumpDataCode(jump_data, jump_code) => {
-            fused_jump_data_jump_code_text(
-                admission,
-                observation,
-                jump_data,
-                jump_code,
-            )
+            jump_code_text(admission, observation, jump_data, jump_code)
         },
         FusedSelection::JumpDataCrazy(jump_data, crazy) => {
             fused_jump_data_crazy_text(admission, observation, jump_data, crazy)
@@ -637,6 +628,7 @@ fn fused_jump_data_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -698,6 +690,7 @@ fn fused_jump_data_remaining_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -760,6 +753,7 @@ fn fused_crazy_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -813,6 +807,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
@@ -885,6 +880,7 @@ fn fused_no_operation_remaining_selection_text(
         | FusedSelection::OutputInput(..)
         | FusedSelection::OutputNoOperation(..)
         | FusedSelection::OutputPair(..)
+        | FusedSelection::OutputRotate(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -1020,6 +1016,20 @@ fn fused_jump_code_jump_data_text(
         HostIsa::AArch64 => aarch64::fused_no_operation_pair_code(template),
         HostIsa::X86_64 => x86_64::fused_no_operation_pair_code(template),
     }
+}
+
+fn fused_input_selection_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    selection: &FusedSelection,
+) -> Option<Vec<u8>> {
+    if let FusedSelection::InputOutput(input, output) = *selection {
+        return fused_input_output_text(admission, observation, input, output);
+    }
+    if let FusedSelection::InputPair(first, second) = *selection {
+        return fused_input_pair_text(admission, observation, first, second);
+    }
+    None
 }
 
 fn fused_input_output_text(
@@ -1414,6 +1424,14 @@ fn fused_output_selection_text(
     if let FusedSelection::OutputPair(first, second) = *selection {
         return fused_output_pair_text(admission, observation, first, second);
     }
+    if let FusedSelection::OutputRotate(output, rotate) = *selection {
+        return fused_output_rotate_text(
+            admission,
+            observation,
+            output,
+            rotate,
+        );
+    }
     None
 }
 
@@ -1473,6 +1491,25 @@ fn fused_output_no_operation_text(
     match admission.key().target().host_isa() {
         HostIsa::AArch64 => aarch64::fused_output_no_operation_code(template),
         HostIsa::X86_64 => x86_64::fused_output_no_operation_code(template),
+    }
+}
+
+fn fused_output_rotate_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    output: DirectOutputProgram,
+    rotate: DirectRotateProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedRotateOutputTemplate {
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        output: output.commit,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        rotate: rotate.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_output_rotate_code(template),
+        HostIsa::X86_64 => x86_64::fused_output_rotate_code(template),
     }
 }
 
@@ -1837,7 +1874,12 @@ fn select_non_output_shape(
     )? {
         return Ok(Some(selection));
     }
-    select_rotate_shape(first_kind, second_kind, first_program, second_program)
+    select_output_or_rotate_shape(
+        first_kind,
+        second_kind,
+        first_program,
+        second_program,
+    )
 }
 
 fn select_input_shape(
@@ -2086,6 +2128,24 @@ fn select_no_operation_shape(
         | DirectNativeKind::NonGraphical
         | DirectNativeKind::Output => Ok(None),
     }
+}
+
+fn select_output_or_rotate_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind == DirectNativeKind::Output
+        && second_kind == DirectNativeKind::Rotate
+    {
+        let output = validate_output_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let rotate = validate_rotate_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::OutputRotate(output, rotate)));
+    }
+    select_rotate_shape(first_kind, second_kind, first_program, second_program)
 }
 
 fn select_rotate_shape(

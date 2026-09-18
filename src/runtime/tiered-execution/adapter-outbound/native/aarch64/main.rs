@@ -1372,6 +1372,97 @@ fn push_fused_output_crazy_commit(
     Some(())
 }
 
+/// Encodes one atomic output/rotate fused region.
+#[must_use]
+pub(super) fn fused_output_rotate_code(
+    template: DirectFusedRotateOutputTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(128);
+    let mut guard_branches =
+        Vec::with_capacity(template.live_ins.len().saturating_add(12));
+    push_observation_guards(
+        &mut words,
+        &mut guard_branches,
+        template.observation,
+    )?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    for live_in in template.live_ins {
+        push_indexed_memory_guard(
+            &mut words,
+            &mut guard_branches,
+            live_in.address,
+            live_in.value,
+        );
+    }
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.push(0xf940_140b);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_000b);
+    words.push(0xf940_180c);
+    push_u64_x9(&mut words, template.output.output_index)?;
+    words.push(0xeb09_019f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0009);
+    push_fused_output_rotate_commit(&mut words, template)?;
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_fused_output_rotate_commit(
+    words: &mut Vec<u32>,
+    template: DirectFusedRotateOutputTemplate<'_>,
+) -> Option<()> {
+    for (address, value) in [
+        (
+            template.output.encrypted_address,
+            template.output.encrypted_value,
+        ),
+        (template.rotate.data_address, template.rotate.data_value),
+        (
+            template.rotate.encrypted_address,
+            template.rotate.encrypted_value,
+        ),
+    ] {
+        words.extend_from_slice(&[
+            movz_w10(address),
+            movk_w10_high(address),
+            0x8b0a_090a,
+            movz_w9(value),
+            movk_w9_high(value),
+            0xb900_0149,
+        ]);
+    }
+    words.push(0xf940_140b);
+    push_u64_x9(words, template.output.output_index)?;
+    words.extend_from_slice(&[
+        0x8b09_016b,
+        movz_w9(u32::from(template.output.output_byte)),
+        0x3900_0169,
+    ]);
+    push_u64_x9(words, template.output.next_output_len)?;
+    words.push(0xf900_1c09);
+    words.extend_from_slice(&[
+        movz_w9(template.rotate.accumulator),
+        movk_w9_high(template.rotate.accumulator),
+        0xb900_4009,
+        movz_w9(template.rotate.next_code_pointer),
+        movk_w9_high(template.rotate.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.rotate.next_data_pointer),
+        movk_w9_high(template.rotate.next_data_pointer),
+        0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    Some(())
+}
+
 /// Encodes one atomic output/input fused region.
 #[must_use]
 pub(super) fn fused_output_input_code(
