@@ -213,6 +213,13 @@ A distinct single-resident lease cache
   harnesses. This removes duplicated C ABI authority without implementing the
   pending executable-memory or production foreign-call boundary.
 
+  A pointer-free process-call transfer boundary now snapshots one bound direct
+  invocation into owned scalar state plus memory/input/output. Responses must
+  preserve mapping identity, immutable capacities, buffer shape, and child
+  pointer integrity before caller buffers change; existing semantic completion
+  remains authoritative. Process framing, executable-memory syscalls,
+  instruction synchronization, and the concrete foreign call remain pending.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 

@@ -38,6 +38,8 @@ use std::mem::offset_of;
 
 use malbolge::{ProfileMachineObservation, ProfileRegisters, Termination};
 
+use super::process_call::NativeProcessCallState;
+
 /// Canonical C declarations shared by bootstrap code and host evidence.
 pub(super) const C_ABI_DECLARATIONS: &str = include_str!("native_region_abi.h");
 
@@ -321,6 +323,15 @@ impl NativeRegionState {
         self.output_len
     }
 
+    pub(super) const fn process_call_state(&self) -> NativeProcessCallState {
+        NativeProcessCallState::from_raw(
+            [self.memory_words, self.input_len, self.output_capacity],
+            [self.input_consumed, self.output_len],
+            [self.accumulator, self.code_pointer, self.data_pointer],
+            self.termination,
+        )
+    }
+
     /// Returns the raw termination byte stored in the call frame.
     #[must_use]
     pub const fn termination_tag(&self) -> u8 {
@@ -507,6 +518,21 @@ impl<'buffers> NativeRegionCallFrame<'buffers> {
         self.output
             .get(..output_len)
             .ok_or(NativeRegionObservationError::OutputLength)
+    }
+
+    pub(super) const fn replace_process_state_for_invocation(
+        &mut self,
+        state: NativeProcessCallState,
+    ) {
+        self.state.memory_words = state.memory_words();
+        self.state.input_len = state.input_len();
+        self.state.input_consumed = state.input_consumed();
+        self.state.output_capacity = state.output_capacity();
+        self.state.output_len = state.output_len();
+        self.state.accumulator = state.accumulator();
+        self.state.code_pointer = state.code_pointer();
+        self.state.data_pointer = state.data_pointer();
+        self.state.termination = state.termination_tag();
     }
 
     pub(super) const fn replace_state_for_invocation(

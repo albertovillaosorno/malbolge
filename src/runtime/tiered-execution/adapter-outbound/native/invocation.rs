@@ -74,6 +74,10 @@ use super::loader::{
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
+use super::process_call::{
+    NativeProcessCallRequest, NativeProcessCallResponse,
+    NativeProcessCallResponseError,
+};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
@@ -1608,6 +1612,26 @@ impl PreparedNativeExecutableInvocation<'_, '_, '_> {
         self.invocation.apply_expected_for_test();
     }
 
+    /// Applies one structurally admitted process-call response.
+    ///
+    /// Final native status and semantic effects remain subject to
+    /// [`Self::complete`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeProcessCallResponseError`] before caller buffers change
+    /// when mapping identity, capacities, lengths, or child pointer integrity
+    /// disagree with this bound invocation.
+    pub fn apply_process_response(
+        &mut self,
+        response: &NativeProcessCallResponse,
+    ) -> Result<i32, NativeProcessCallResponseError> {
+        let mapping_id = self.mapping_id();
+        self.invocation
+            .invocation
+            .apply_process_response(mapping_id, response)
+    }
+
     /// Admits one raw status through the exact prepared call contract.
     ///
     /// # Errors
@@ -1638,6 +1662,14 @@ impl PreparedNativeExecutableInvocation<'_, '_, '_> {
     #[must_use]
     pub const fn mapping_id(&self) -> NativeExecutableMappingId {
         self.executable.mapping().mapping_id()
+    }
+
+    /// Copies this exact bound call into pointer-free process-owned evidence.
+    #[must_use]
+    pub fn process_request(&self) -> NativeProcessCallRequest {
+        self.invocation
+            .invocation
+            .process_request(self.mapping_id())
     }
 
     /// Returns the mutable ABI state pointer for the future unsafe invoker.
@@ -1805,6 +1837,36 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         self.frame
             .output_mut_for_invocation()
             .copy_from_slice(&self.expected_output);
+    }
+
+    fn apply_process_response(
+        &mut self,
+        mapping_id: NativeExecutableMappingId,
+        response: &NativeProcessCallResponse,
+    ) -> Result<i32, NativeProcessCallResponseError> {
+        let state = response.state();
+        let current = self.frame.state().process_call_state();
+        if response.mapping_id() != mapping_id {
+            return Err(NativeProcessCallResponseError::MappingIdentity);
+        }
+        if !response.pointers_unchanged() {
+            return Err(NativeProcessCallResponseError::PointerIntegrity);
+        }
+        validate_process_response_state(current, state)?;
+        if response.memory().len() != self.frame.memory().len() {
+            return Err(NativeProcessCallResponseError::MemoryLength);
+        }
+        if response.output().len() != self.frame.output().len() {
+            return Err(NativeProcessCallResponseError::OutputLength);
+        }
+        self.frame
+            .memory_mut_for_invocation()
+            .copy_from_slice(response.memory());
+        self.frame
+            .output_mut_for_invocation()
+            .copy_from_slice(response.output());
+        self.frame.replace_process_state_for_invocation(state);
+        Ok(response.raw_status())
     }
 
     /// Admits the raw status and all caller-visible state after a foreign call.
@@ -2470,6 +2532,17 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         self.frame.output()
     }
 
+    fn process_request(
+        &self,
+        mapping_id: NativeExecutableMappingId,
+    ) -> NativeProcessCallRequest {
+        NativeProcessCallRequest::new(
+            mapping_id,
+            self.frame.state().process_call_state(),
+            (self.frame.memory(), self.frame.input(), self.frame.output()),
+        )
+    }
+
     fn restore_entry(&mut self) {
         self.frame.replace_state_for_invocation(self.entry_state);
         self.frame
@@ -2505,6 +2578,22 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         *cell = value;
         true
     }
+}
+
+const fn validate_process_response_state(
+    expected: super::process_call::NativeProcessCallState,
+    observed: super::process_call::NativeProcessCallState,
+) -> Result<(), NativeProcessCallResponseError> {
+    if observed.input_len() != expected.input_len() {
+        return Err(NativeProcessCallResponseError::StateInputLength);
+    }
+    if observed.memory_words() != expected.memory_words() {
+        return Err(NativeProcessCallResponseError::StateMemoryWords);
+    }
+    if observed.output_capacity() != expected.output_capacity() {
+        return Err(NativeProcessCallResponseError::StateOutputCapacity);
+    }
+    Ok(())
 }
 
 fn validate_register_masked_no_operation_rebased_entry(

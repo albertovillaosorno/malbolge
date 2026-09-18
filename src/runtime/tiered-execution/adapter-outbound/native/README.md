@@ -60,6 +60,14 @@ only
 when the harness explicitly requests that bridge. It does not allocate pages or
 provide a production foreign-call implementation.
 
+`process_call.rs` is the pointer-free transfer boundary for a future persistent
+native host process. It copies one already-bound call into owned scalar ABI
+state and memory/input/output, then rejects response mapping, capacity, shape,
+or child pointer-integrity drift before mutating caller buffers. The existing
+invocation completion verifier still decides whether the returned status and
+state are semantically admissible; transport and machine-code execution remain
+separate.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant

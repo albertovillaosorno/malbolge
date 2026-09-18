@@ -457,10 +457,11 @@ use execution_native::{
     NativeInstructionSyncReport, NativeInstructionSyncRequest,
     NativeInterpreterContinuation, NativeInterpreterContinuationError,
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
-    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, NativeRegionStatus,
-    NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeProcessCallRequest, NativeProcessCallResponse,
+    NativeProcessCallResponseError, NativeRegionBuffers, NativeRegionCallFrame,
+    NativeRegionCallFrameError, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -38124,6 +38125,196 @@ fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
     }
 }
 
+fn applied_native_process_response(
+    request: &NativeProcessCallRequest,
+    expected: ProfileMachineObservation,
+) -> Result<NativeProcessCallResponse, String> {
+    let mut memory = request.memory().to_vec();
+    let memory_word = memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("process call memory fixture too short"))?;
+    *memory_word = 57;
+    let mut output = request.output().to_vec();
+    let output_byte = output
+        .get_mut(1)
+        .ok_or_else(|| String::from("process call output fixture too short"))?;
+    *output_byte = 0xa8;
+    let input_consumed = u64::try_from(expected.input_consumed)
+        .map_err(|error| format!("process input cursor conversion: {error}"))?;
+    let output_len = u64::try_from(expected.output_len).map_err(|error| {
+        format!("process output length conversion: {error}")
+    })?;
+    let state = request
+        .state()
+        .with_accumulator(expected.registers.accumulator)
+        .with_code_pointer(expected.registers.code_pointer)
+        .with_data_pointer(expected.registers.data_pointer)
+        .with_input_consumed(input_consumed)
+        .with_output_len(output_len)
+        .with_termination_tag(
+            NativeTerminationTag::from_termination(expected.termination).code(),
+        );
+    Ok(NativeProcessCallResponse::new(
+        request.mapping_id(),
+        state,
+        (memory, output),
+        (NativeRegionStatus::Applied.code(), true),
+    ))
+}
+
+fn assert_native_process_response_rejected(
+    invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    request: &NativeProcessCallRequest,
+    response: &NativeProcessCallResponse,
+    expected: NativeProcessCallResponseError,
+) -> Result<(), String> {
+    if invocation.apply_process_response(response) != Err(expected)
+        || invocation.process_request() != *request
+    {
+        Err(format!("process response rejection drifted: {expected}"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn native_process_call_response_applies_through_existing_verifier()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&artifact, 52, 0x7200)?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("process call effect missing"))?
+        .after;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let response = applied_native_process_response(&request, expected)?;
+    let raw_status = invocation
+        .apply_process_response(&response)
+        .map_err(|error| error.to_string())?;
+    let outcome = invocation
+        .complete(raw_status)
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory.get(5) == Some(&57)
+        && output == [0x10, 0xa8, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("process call response failed exact admission"))
+    }
+}
+
+fn assert_native_process_identity_rejections(
+    invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    request: &NativeProcessCallRequest,
+) -> Result<(), String> {
+    let wrong_mapping = NativeProcessCallResponse::new(
+        native_executable_mapping_id(54)?,
+        request.state(),
+        (request.memory().to_vec(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &wrong_mapping,
+        NativeProcessCallResponseError::MappingIdentity,
+    )?;
+    let pointer_drift = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state(),
+        (request.memory().to_vec(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), false),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &pointer_drift,
+        NativeProcessCallResponseError::PointerIntegrity,
+    )
+}
+
+fn assert_native_process_shape_rejections(
+    invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    request: &NativeProcessCallRequest,
+) -> Result<(), String> {
+    let capacity_drift = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state().with_output_capacity(
+            request.state().output_capacity().saturating_add(1),
+        ),
+        (request.memory().to_vec(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &capacity_drift,
+        NativeProcessCallResponseError::StateOutputCapacity,
+    )?;
+    let memory_drift = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state(),
+        (Vec::<u32>::new(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &memory_drift,
+        NativeProcessCallResponseError::MemoryLength,
+    )
+}
+
+#[test]
+fn native_process_call_response_rejects_structural_drift_before_mutation()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&artifact, 53, 0x7300)?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    assert_native_process_identity_rejections(&mut invocation, &request)?;
+    assert_native_process_shape_rejections(&mut invocation, &request)?;
+    invocation.abort();
+    if memory == native_verified_output_memory() && output == [0x10, 0, 0] {
+        Ok(())
+    } else {
+        Err(String::from("process rejection changed caller buffers"))
+    }
+}
+
 #[test]
 fn native_executable_invocation_rejects_different_image() -> Result<(), String>
 {
@@ -38492,6 +38683,21 @@ fn native_executable_release_failure_retries_exact_mapping()
     } else {
         Err(String::from("release retry changed exact mapping request"))
     }
+}
+
+fn bound_native_output_call<'artifact, 'buffers, 'executable>(
+    artifact: &'artifact execution_native::VerifiedDirectNativeArtifact,
+    program: &RegionEffectProgram,
+    ready: &'executable ReadyNativeExecutable,
+    buffers: NativeRegionBuffers<'buffers>,
+) -> Result<
+    PreparedNativeExecutableInvocation<'artifact, 'buffers, 'executable>,
+    String,
+> {
+    PreparedVerifiedDirectInvocation::new(artifact, program, buffers)
+        .map_err(|error| error.to_string())?
+        .bind_executable(ready)
+        .map_err(|error| error.to_string())
 }
 
 fn prepared_verified_output_call<'artifact, 'buffers>(

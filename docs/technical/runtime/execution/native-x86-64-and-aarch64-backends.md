@@ -339,6 +339,14 @@ generation and both executable development harnesses. This removes duplicated C
 layout and function-pointer authority without adding executable-memory ownership
 or a production foreign-call implementation.
 
+`native/process_call.rs` now converts one already-bound direct invocation into
+pointer-free owned state, memory, input, and output evidence for a future
+process-isolated host. Returned mapping identity, immutable capacities, buffer
+shape, and child pointer-integrity evidence are checked before caller buffers
+change; the existing invocation verifier still owns final status and semantic
+admission. No process transport, executable-memory syscall, or foreign call is
+implemented by this transfer boundary.
+
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
 verified artifact target, rejects program drift, and denies the deoptimization
 stub state-applying authority. `NativeRegionBuffers` keeps all caller loans in

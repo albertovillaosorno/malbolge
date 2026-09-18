@@ -76,6 +76,7 @@ mod invocation;
 mod lifecycle;
 mod loader;
 mod platform;
+mod process_call;
 mod profile_metadata;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -573,6 +574,10 @@ pub use platform::{
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
+};
+pub use process_call::{
+    NativeProcessCallRequest, NativeProcessCallResponse,
+    NativeProcessCallResponseError, NativeProcessCallState,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
