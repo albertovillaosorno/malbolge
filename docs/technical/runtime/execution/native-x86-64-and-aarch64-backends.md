@@ -249,7 +249,10 @@ A distinct single-resident lease cache shares that
 owner on exact hits, blocks release while leased, rejects different identity,
 and transfers cleanup retry ownership.
 
-No multi-entry or sequence cache authority is added.
+A distinct no-operation sequence plan now validates non-empty/count,
+one-effect v6 shape, profile/observation continuity, common target, exact
+artifact identity, and early termination before any mapping. No loaded-sequence
+execution or multi-entry cache authority is added.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.

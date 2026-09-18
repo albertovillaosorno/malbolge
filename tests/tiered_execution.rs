@@ -499,8 +499,10 @@ use execution_native::{
     RegisterMaskedNoOperationNativeResidentCacheRelease,
     RegisterMaskedNoOperationNativeResidentLease,
     RegisterMaskedNoOperationNativeResidentLeaseCache,
-    RegisterMaskedNoOperationNativeRunner, RegisterMaskedNonGraphicalLease,
-    RegisterMaskedNonGraphicalLeaseCache,
+    RegisterMaskedNoOperationNativeRunner,
+    RegisterMaskedNoOperationNativeSequencePlan,
+    RegisterMaskedNoOperationNativeSequencePlanError,
+    RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
     RegisterMaskedNonGraphicalLeaseCacheAcquisition,
     RegisterMaskedNonGraphicalLeaseCacheEntryReleaseFailure,
     RegisterMaskedNonGraphicalLeaseCacheInvalidation,
@@ -10676,6 +10678,115 @@ fn register_masked_v6_multi_cache_reconfiguration_transfers_release_retry()
         .release_all(&mut adapter)
         .map(|_result| ())
         .map_err(|error| format!("v6 retry-shrink cleanup failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_plan_admits_step()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let plan = RegisterMaskedNoOperationNativeSequencePlan::new(
+        from_ref(&program),
+        from_ref(&artifact),
+    )
+    .map_err(|error| format!("v6 no-op sequence plan: {error}"))?;
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 no-op sequence effect missing"))?;
+    if plan.len() == 1
+        && !plan.is_empty()
+        && plan.entry() == effect.before
+        && plan.exit() == effect.after
+        && plan.programs() == from_ref(&program)
+        && plan.artifacts() == from_ref(&artifact)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedNoOperationNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedNoOperationNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 no-op sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_no_operation_program()?;
+    let count = RegisterMaskedNoOperationNativeSequencePlan::new(
+        from_ref(&program),
+        &[],
+    );
+    if count
+        == Err(
+            RegisterMaskedNoOperationNativeSequencePlanError::ArtifactCount {
+                programs: 1,
+                artifacts: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 no-op sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_rejects_terminated_prefix()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let mut terminated = program.clone();
+    let effect = terminated.effects.first_mut().ok_or_else(|| {
+        String::from("v6 no-op sequence prefix effect missing")
+    })?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    let programs = [terminated, program];
+    let artifacts = [artifact.clone(), artifact];
+    let result =
+        RegisterMaskedNoOperationNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedNoOperationNativeSequencePlanError::
+                TerminationBeforeEnd { index: 0 },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op sequence admitted terminated prefix"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    let variant = register_masked_no_operation_dead_state_variant(&program)?;
+    let result = RegisterMaskedNoOperationNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(
+            RegisterMaskedNoOperationNativeSequencePlanError::ArtifactIdentity {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 no-op sequence ignored artifact identity drift",
+        ))
+    }
 }
 
 #[test]

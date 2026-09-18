@@ -78,6 +78,7 @@ mod loader;
 mod platform;
 mod profile_metadata;
 mod register_masked_lease_cache;
+mod register_masked_no_operation_sequence;
 mod register_masked_non_graphical_lease_cache;
 mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
@@ -589,6 +590,10 @@ pub use register_masked_lease_cache::{
     RegisterMaskedNativeLeaseCacheReconfigurationResult,
     RegisterMaskedNativeLeaseCacheReleaseFailure,
     RegisterMaskedNativeLeaseCacheUsage,
+};
+pub use register_masked_no_operation_sequence::{
+    RegisterMaskedNoOperationNativeSequencePlan,
+    RegisterMaskedNoOperationNativeSequencePlanError,
 };
 pub use register_masked_non_graphical_lease_cache::{
     RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
