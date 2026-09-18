@@ -21,7 +21,7 @@
 //   - Side effects: executable sequence load/release through the supplied
 //     adapter.
 // - Split-When:
-//   - Weighted limit reconfiguration or asynchronous reclamation gains policy.
+//   - Asynchronous reclamation or lease waiting gains independent policy.
 // - Merge-When:
 //   - One reviewed no-operation sequence store subsumes borrowed and leased
 //     use.
@@ -39,6 +39,8 @@
 
 #[path = "register_masked_no_operation_sequence_lease_cache/reconciliation.rs"]
 mod reconciliation;
+#[path = "register_masked_no_operation_sequence_lease_cache/reconfiguration.rs"]
+mod reconfiguration;
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -51,6 +53,11 @@ pub use reconciliation::{
     RegisterMaskedNoOperationNativeSequenceLeaseCacheReconciliation,
     RegisterMaskedNoOperationNativeSequenceLeaseCacheReleaseFailure,
     RegisterMaskedNoOperationNativeSequenceLeaseReconciliationResult,
+};
+pub use reconfiguration::{
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheReconfiguration,
+    RegisterMaskedNoOperationNativeSequenceLeaseReconfigurationFailure,
+    RegisterMaskedNoOperationNativeSequenceLeaseReconfigurationResult,
 };
 
 use super::executable_cache_capacity::{
@@ -730,6 +737,45 @@ impl RegisterMaskedNoOperationNativeSequenceLeaseCache {
             &mut self.retired,
             &mut self.usage,
         )
+    }
+
+    /// Publishes new resident limits after active FIFO processing.
+    ///
+    /// Expansion and already-satisfied requests perform no adapter work. Shrink
+    /// removes active lookup authority oldest-first, immediately releases
+    /// unleased entries, and retires live leased entries without reducing their
+    /// resident weight. Existing retired entries are never reclaimed
+    /// implicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident blockage or keyed release ownership while prior
+    /// limits remain published.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: NativeExecutableSequenceCacheLimits,
+    ) -> RegisterMaskedNoOperationNativeSequenceLeaseReconfigurationResult<
+        Adapter::Error,
+    >
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits;
+        let (evicted_keys, retired_keys) =
+            reconfiguration::evict_for_reconfiguration(
+                self,
+                adapter,
+                requested_limits,
+                previous_limits,
+            )?;
+        self.limits = requested_limits;
+        Ok(reconfiguration::published(
+            evicted_keys,
+            retired_keys,
+            requested_limits,
+            previous_limits,
+        ))
     }
 
     /// Removes all active lookup authority and reclaims every unleased

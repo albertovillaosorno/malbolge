@@ -152,7 +152,11 @@ A distinct single-resident lease cache
   immediately, and admission reports exact retired-resident blockage when no
   active FIFO release can fit the candidate. Invalidation, full drain, explicit
   lease return, and retired reconciliation retain keyed cleanup retry ownership.
-  Lease-aware limit reconfiguration remains separate policy.
+  Lease-aware limit reconfiguration now publishes expansion or already-fit
+  requests without adapter work and shrinks active FIFO authority through the
+  same release-or-retire path. Existing retired mappings are never reconciled
+  implicitly; blockage or release failure retains prior limits plus exact
+  blocker or keyed retry evidence.
 
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,

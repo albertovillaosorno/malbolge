@@ -1341,6 +1341,13 @@ type NonGraphicalResidentAcquireFailure =
 type NoOperationSequenceLeaseInvalidation =
     en::RegisterMaskedNoOperationNativeSequenceLeaseCacheInvalidation;
 
+type NoOperationSequenceLeasePairFixture = (
+    RegisterMaskedNoOperationNativeSequencePlan,
+    RegisterMaskedNoOperationNativeSequencePlan,
+    RegisterMaskedNoOperationNativeSequenceLeaseCache,
+    FakeNativeExecutableAdapter,
+);
+
 type RegisterMaskedNoOperationReconfigurationFixture = (
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlan,
@@ -11115,6 +11122,32 @@ fn register_masked_no_operation_sequence_lease_acquire(
     Ok(acquisition.into_lease())
 }
 
+fn register_masked_no_operation_sequence_lease_pair_fixture(
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<NoOperationSequenceLeasePairFixture, String> {
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "v6 no-op lease entry limit",
+    )?);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    for plan in [&first, &second] {
+        drop(register_masked_no_operation_sequence_lease_acquire(
+            &mut cache,
+            &mut adapter,
+            plan,
+        )?);
+    }
+    Ok((first, second, cache, adapter))
+}
+
 #[test]
 fn register_masked_v6_no_operation_sequence_lease_cache_shares_hits()
 -> TieredTestResult {
@@ -11397,6 +11430,409 @@ fn register_masked_v6_no_operation_sequence_lease_cache_retries_releases()
         Ok(())
     } else {
         Err(String::from("v6 no-op reconciliation retry drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_expands_limits()
+-> TieredTestResult {
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "v6 no-op lease entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 no-op lease entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(348)?,
+        native_executable_address(0x44800)?,
+    );
+    let first_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    drop(register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?);
+    let invalidation = cache
+        .invalidate_plan(&mut adapter, &first)
+        .map_err(|failure| failure.to_string())?;
+    let operations = adapter.operations.clone();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if invalidation
+        != (NoOperationSequenceLeaseInvalidation::Retired { leases: 1 })
+        || !report.evicted_keys().is_empty()
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [first_key]
+        || cache.limits() != new_limits
+        || cache.usage().entries() != 2
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 no-op leased expansion drifted"));
+    }
+    drop(first_lease);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_shrinks_entry_fifo()
+-> TieredTestResult {
+    let (first, second, third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let third_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&third);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 no-op lease entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 no-op lease entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(350)?,
+        native_executable_address(0x45000)?,
+    );
+    for plan in [&first, &second, &third] {
+        drop(register_masked_no_operation_sequence_lease_acquire(
+            &mut cache,
+            &mut adapter,
+            plan,
+        )?);
+    }
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if report.evicted_keys() != [first_key, second_key]
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op leased entry shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_shrinks_mapping_fifo()
+-> TieredTestResult {
+    let (first, _second, third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let third_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&third);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "v6 no-op lease entry limit")?,
+    );
+    let new_limits = old_limits.with_mapping_limit(nonzero_test_limit(
+        2,
+        "v6 no-op lease mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(360)?,
+        native_executable_address(0x46000)?,
+    );
+    for plan in [&first, &third] {
+        drop(register_masked_no_operation_sequence_lease_acquire(
+            &mut cache,
+            &mut adapter,
+            plan,
+        )?);
+    }
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if report.evicted_keys() != [first_key]
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 no-op leased mapping FIFO drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_blocks_limit_shrink()
+-> TieredTestResult {
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "v6 no-op lease entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 no-op lease entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(352)?,
+        native_executable_address(0x45200)?,
+    );
+    let first_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from(
+            "v6 no-op live shrink unexpectedly published",
+        ));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 no-op live shrink block missing"))?;
+    if failure.evicted_keys() != [first_key.clone(), second_key.clone()]
+        || failure.retired_keys() != [first_key.clone(), second_key.clone()]
+        || failure.limit_transition() != (old_limits, new_limits)
+        || block.limits() != new_limits
+        || block.retired_keys() != [first_key, second_key]
+        || block.usage() != cache.usage()
+        || failure.release_failure().is_some()
+        || cache.limits() != old_limits
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 no-op live shrink evidence drifted"));
+    }
+    drop(first_lease);
+    drop(second_lease);
+    cache
+        .reconcile_retired(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_publishes_after_return()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let key = RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 no-op lease entry limit")?,
+    );
+    let new_limits = old_limits.with_mapping_limit(nonzero_test_limit(
+        1,
+        "v6 no-op lease mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(354)?,
+        native_executable_address(0x45400)?,
+    );
+    let lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from(
+            "v6 no-op mapping shrink unexpectedly published",
+        ));
+    };
+    if failure.evicted_keys() != [key.clone()]
+        || failure.retired_keys() != [key.clone()]
+        || failure.block().is_none()
+        || failure.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != old_limits
+        || cache.usage().mappings() != 2
+    {
+        return Err(String::from("v6 no-op mapping shrink evidence drifted"));
+    }
+    let reconciliation = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|release| release.to_string())?;
+    let operations = adapter.operations.clone();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|retry| retry.to_string())?;
+    if reconciliation.released_keys() == [key]
+        && report.evicted_keys().is_empty()
+        && report.retired_keys().is_empty()
+        && report.limit_transition() == (old_limits, new_limits)
+        && cache.limits() == new_limits
+        && cache.is_empty()
+        && adapter.operations == operations
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op post-return publication drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_retries_shrink_release()
+-> TieredTestResult {
+    let (first, second, mut cache, mut adapter) =
+        register_masked_no_operation_sequence_lease_pair_fixture(356, 0x45600)?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let old_limits = cache.limits();
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 no-op lease entry limit")?,
+    );
+    adapter.release_failure_at =
+        Some(adapter.release_attempts.saturating_add(1));
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from("v6 no-op shrink release failure ignored"));
+    };
+    let keyed = failure
+        .release_failure()
+        .ok_or_else(|| String::from("v6 no-op shrink release owner missing"))?;
+    if failure.evicted_keys() != [first_key.clone()]
+        || !failure.retired_keys().is_empty()
+        || failure.limit_transition() != (old_limits, new_limits)
+        || failure.block().is_some()
+        || keyed.key() != &first_key
+        || cache.limits() != old_limits
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.usage().entries() != 1
+    {
+        return Err(String::from("v6 no-op shrink release evidence drifted"));
+    }
+    failure
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 no-op shrink retry owner missing"))?
+        .into_failure()
+        .retry(&mut adapter)
+        .map_err(|release| release.to_string())?;
+    let operations = adapter.operations.clone();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|retry| retry.to_string())?;
+    if report.evicted_keys().is_empty()
+        && report.limit_transition() == (old_limits, new_limits)
+        && cache.limits() == new_limits
+        && adapter.operations == operations
+    {
+        cache
+            .release_all(&mut adapter)
+            .map(|_report| ())
+            .map_err(|release| release.to_string())
+    } else {
+        Err(String::from("v6 no-op shrink retry publication drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_blocks_byte_shrink()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let key = RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 no-op lease entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(
+            old_limits,
+        );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(358)?,
+        native_executable_address(0x45800)?,
+    )
+    .with_mapped_len_overrides(vec![12_288, 16_384]);
+    let lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let mapped_bytes = cache.usage().mapped_bytes();
+    let byte_limit = nonzero_test_limit(
+        mapped_bytes.saturating_sub(1),
+        "v6 no-op lease byte limit",
+    )?;
+    let new_limits = old_limits.with_mapped_byte_limit(byte_limit);
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from(
+            "v6 no-op byte shrink unexpectedly published",
+        ));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 no-op byte shrink block missing"))?;
+    if failure.evicted_keys() != [key.clone()]
+        || failure.retired_keys() != [key.clone()]
+        || block.limits() != new_limits
+        || block.retired_keys() != [key.clone()]
+        || block.usage().mapped_bytes() != mapped_bytes
+        || cache.limits() != old_limits
+        || cache.usage().mapped_bytes() != mapped_bytes
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 no-op byte shrink evidence drifted"));
+    }
+    let report = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|release| release.to_string())?;
+    if report.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op byte shrink cleanup drifted"))
     }
 }
 

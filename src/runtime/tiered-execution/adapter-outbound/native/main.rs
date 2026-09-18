@@ -647,9 +647,12 @@ pub use register_masked_no_operation_sequence_lease_cache::{
     RegisterMaskedNoOperationNativeSequenceLeaseCacheLoadReleaseFailures,
     RegisterMaskedNoOperationNativeSequenceLeaseCacheLoadResult,
     RegisterMaskedNoOperationNativeSequenceLeaseCacheReconciliation,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheReconfiguration,
     RegisterMaskedNoOperationNativeSequenceLeaseCacheReleaseFailure,
     RegisterMaskedNoOperationNativeSequenceLeaseCacheUsage,
     RegisterMaskedNoOperationNativeSequenceLeaseReconciliationResult,
+    RegisterMaskedNoOperationNativeSequenceLeaseReconfigurationFailure,
+    RegisterMaskedNoOperationNativeSequenceLeaseReconfigurationResult,
 };
 pub use register_masked_non_graphical_lease_cache::{
     RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
