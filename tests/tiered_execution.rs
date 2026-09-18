@@ -10872,6 +10872,18 @@ fn register_masked_no_operation_loaded_sequence_fixture()
         .map_err(|error| format!("v6 no-op loaded plan: {error}"))
 }
 
+fn register_masked_no_operation_single_sequence_plan()
+-> Result<RegisterMaskedNoOperationNativeSequencePlan, String> {
+    let program = canonical_register_masked_no_operation_program()?;
+    let artifact =
+        verified_register_masked_no_operation(&program, HostIsa::X86_64)?;
+    RegisterMaskedNoOperationNativeSequencePlan::new(
+        from_ref(&program),
+        from_ref(&artifact),
+    )
+    .map_err(|error| format!("v6 no-op single cache plan: {error}"))
+}
+
 fn register_masked_no_operation_sequence_target_variant(
     plan: &RegisterMaskedNoOperationNativeSequencePlan,
     isa: HostIsa,
@@ -10886,6 +10898,110 @@ fn register_masked_no_operation_sequence_target_variant(
         &artifacts,
     )
     .map_err(|error| format!("v6 no-op target-variant plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_hit_keeps_fifo_age()
+-> TieredTestResult {
+    let first = register_masked_no_operation_loaded_sequence_fixture()?;
+    let second = register_masked_no_operation_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let third = register_masked_no_operation_single_sequence_plan()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let third_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&third);
+    if first_key == third_key {
+        return Err(String::from("v6 no-op cache FIFO fixture key collision"));
+    }
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(308)?,
+        native_executable_address(0x40800)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 no-op FIFO first: {error}"))?
+        .disposition()
+        .clone();
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 no-op FIFO second: {error}"))?
+        .disposition()
+        .clone();
+    let hit_operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 no-op FIFO hit: {error}"))?
+        .disposition()
+        .clone();
+    let hit_no_adapter_work = adapter.operations == hit_operations;
+    let inserted = cache
+        .ensure_plan(&mut adapter, &third)
+        .map_err(|error| format!("v6 no-op FIFO third: {error}"))?
+        .disposition()
+        .clone();
+    let keys = cache.keys().cloned().collect::<Vec<_>>();
+    if !hit.is_hit()
+        || !hit_no_adapter_work
+        || inserted.evicted_key() != Some(&first_key)
+        || keys != [second_key, third_key]
+    {
+        return Err(String::from("v6 no-op cache hit refreshed FIFO age"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 no-op FIFO release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_executes_borrowed_chain()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 no-op cache capacity missing"))?;
+    let mut cache = RegisterMaskedNoOperationNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(310)?,
+        native_executable_address(0x41000)?,
+    );
+    {
+        let entry =
+            cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+                format!("v6 no-op cached execute load: {error}")
+            })?;
+        let loaded_operations = adapter.operations.clone();
+        let mut memory =
+            direct_no_operation_pair_sequence_state()?.memory().to_vec();
+        let (input, mut output) = ([], []);
+        let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+            FakeNativeRunnerBehavior::Applied,
+        );
+        let outcome =
+            en::execute_loaded_register_masked_no_operation_native_sequence(
+                entry.sequence(),
+                &mut runner,
+                plan.entry(),
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v6 no-op cached execute: {error}"))?;
+        if outcome.completed_steps() != 2
+            || outcome.observation() != plan.exit()
+            || runner.calls != 2
+            || adapter.operations != loaded_operations
+        {
+            return Err(String::from("v6 no-op cached execution drifted"));
+        }
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 no-op cached execute release: {error}"))
 }
 
 #[test]
