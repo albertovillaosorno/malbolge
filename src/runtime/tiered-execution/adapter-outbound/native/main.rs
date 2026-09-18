@@ -82,6 +82,7 @@ mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
 mod register_masked_no_operation_sequence_cache;
 mod register_masked_no_operation_sequence_execution;
+mod register_masked_no_operation_sequence_lease_cache;
 mod register_masked_non_graphical_lease_cache;
 mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
@@ -630,6 +631,25 @@ pub use register_masked_no_operation_sequence_execution::{
     RegisterMaskedNoOperationNativeSequenceExecutionResult,
     RegisterMaskedNoOperationNativeSequenceOutcome,
     execute_loaded_register_masked_no_operation_native_sequence,
+};
+pub use register_masked_no_operation_sequence_lease_cache::{
+    RegisterMaskedNoOperationNativeSequenceLease,
+    RegisterMaskedNoOperationNativeSequenceLeaseCache,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheAcquisition,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheBlock,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheCapacityError,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheDisposition,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheInvalidation,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheInvalidationResult,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheLimits,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheLoadFailure,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheLoadReleaseFailures,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheLoadResult,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheReconciliation,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheReleaseFailure,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheUsage,
+    RegisterMaskedNoOperationNativeSequenceLeaseReconciliationResult,
 };
 pub use register_masked_non_graphical_lease_cache::{
     RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,

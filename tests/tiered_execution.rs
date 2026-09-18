@@ -503,6 +503,9 @@ use execution_native::{
     RegisterMaskedNoOperationNativeRunner,
     RegisterMaskedNoOperationNativeSequenceCache,
     RegisterMaskedNoOperationNativeSequenceKey,
+    RegisterMaskedNoOperationNativeSequenceLease,
+    RegisterMaskedNoOperationNativeSequenceLeaseCache,
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheDisposition,
     RegisterMaskedNoOperationNativeSequenceOutcome,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlanError,
@@ -1334,6 +1337,9 @@ type NonGraphicalResidentAcquireFailure =
     RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
         FakeNativeAdapterOperation,
     >;
+
+type NoOperationSequenceLeaseInvalidation =
+    en::RegisterMaskedNoOperationNativeSequenceLeaseCacheInvalidation;
 
 type RegisterMaskedNoOperationReconfigurationFixture = (
     RegisterMaskedNoOperationNativeSequencePlan,
@@ -11098,6 +11104,412 @@ fn register_masked_no_operation_weighted_reconfiguration_fixture()
     Ok((first, second, third))
 }
 
+fn register_masked_no_operation_sequence_lease_acquire(
+    cache: &mut RegisterMaskedNoOperationNativeSequenceLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    plan: &RegisterMaskedNoOperationNativeSequencePlan,
+) -> Result<RegisterMaskedNoOperationNativeSequenceLease, String> {
+    let acquisition = cache
+        .ensure_plan(adapter, plan)
+        .map_err(|failure| failure.to_string())?;
+    Ok(acquisition.into_lease())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_shares_hits()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let key = RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(334)?,
+        native_executable_address(0x43400)?,
+    );
+    let first = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let operations = adapter.operations.clone();
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    if acquisition.disposition()
+        != &RegisterMaskedNoOperationNativeSequenceLeaseCacheDisposition::Hit
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 no-op leased exact hit remapped"));
+    }
+    let second = acquisition.into_lease();
+    if !first.shares_resident_with(&second)
+        || first.key() != &key
+        || first.strong_owner_count() != 3
+    {
+        return Err(String::from("v6 no-op shared lease identity drifted"));
+    }
+    let thread_lease = second.clone();
+    let len = thread::spawn(move || thread_lease.sequence().len())
+        .join()
+        .map_err(|_panic| String::from("v6 no-op lease reader panicked"))?;
+    if len != plan.len() || first.strong_owner_count() != 3 {
+        return Err(String::from("v6 no-op cross-thread lease drifted"));
+    }
+    drop(second);
+    drop(first);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [key]
+        && report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op shared lease cleanup drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_blocks_resident()
+-> TieredTestResult {
+    let first = register_masked_no_operation_loaded_sequence_fixture()?;
+    let second = register_masked_no_operation_single_sequence_plan()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "v6 no-op lease entry limit",
+    )?)
+    .with_mapping_limit(nonzero_test_limit(2, "v6 no-op lease mapping limit")?);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceLeaseCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(336)?,
+        native_executable_address(0x43600)?,
+    );
+    let lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 no-op leased resident exceeded limits"));
+    };
+    let block = error
+        .block()
+        .ok_or_else(|| String::from("v6 no-op resident block missing"))?;
+    if error.evicted_keys() != [first_key.clone()]
+        || error.retired_keys() != [first_key.clone()]
+        || block.limits() != limits
+        || block.retired_keys() != [first_key.clone()]
+        || block.usage() != cache.usage()
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 no-op resident block evidence drifted"));
+    }
+    drop(lease);
+    let report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [first_key]
+        && report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op resident reconciliation drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_invalidation_waits()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_single_sequence_plan()?;
+    let key = RegisterMaskedNoOperationNativeSequenceKey::from_plan(&plan);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(338)?,
+        native_executable_address(0x43800)?,
+    );
+    let first = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let second = first.clone();
+    let invalidation = cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    if invalidation
+        != (NoOperationSequenceLeaseInvalidation::Retired { leases: 2 })
+        || cache.contains_plan(&plan)
+        || cache.retired_len() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 no-op leased invalidation drifted"));
+    }
+    let first_report = cache
+        .return_lease(&mut adapter, first)
+        .map_err(|failure| failure.to_string())?;
+    if !first_report.released_keys().is_empty()
+        || first_report.retained_keys() != [key.clone()]
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 no-op first lease return released early"));
+    }
+    let final_report = cache
+        .return_lease(&mut adapter, second)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.released_keys() == [key]
+        && final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op final lease return drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_release_all_retires()
+-> TieredTestResult {
+    let first = register_masked_no_operation_single_sequence_plan()?;
+    let second = register_masked_no_operation_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(340)?,
+        native_executable_address(0x44000)?,
+    );
+    let first_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    drop(second_lease);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [second_key]
+        || report.retained_keys() != [first_key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 no-op lease drain evidence drifted"));
+    }
+    drop(first_lease);
+    let final_report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.released_keys() == [first_key]
+        && final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op deferred drain cleanup drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_retries_releases()
+-> TieredTestResult {
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(342)?,
+        native_executable_address(0x44200)?,
+    );
+    let first_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    let _first = cache
+        .invalidate_plan(&mut adapter, &first)
+        .map_err(|failure| failure.to_string())?;
+    let _second = cache
+        .invalidate_plan(&mut adapter, &second)
+        .map_err(|failure| failure.to_string())?;
+    drop(first_lease);
+    drop(second_lease);
+    adapter.release_failures_remaining = 2;
+    let Err(failure) = cache.reconcile_retired(&mut adapter) else {
+        return Err(String::from("v6 no-op reconciliation failure ignored"));
+    };
+    let failed_keys = failure
+        .failures()
+        .iter()
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<_>>();
+    if failed_keys != [first_key.clone(), second_key.clone()]
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op reconciliation evidence drifted"));
+    }
+    let report = failure
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op reconciliation retry drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_mixes_retirement()
+-> TieredTestResult {
+    let (first, second, third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let third_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&third);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(344)?,
+        native_executable_address(0x44400)?,
+    );
+    let first_lease = register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    drop(register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?);
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &third)
+        .map_err(|failure| failure.to_string())?;
+    if acquisition.disposition().evicted_keys()
+        != [first_key.clone(), second_key]
+        || acquisition.disposition().retired_keys() != [first_key.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.retired_keys().cloned().collect::<Vec<_>>()
+            != [first_key.clone()]
+        || cache.resident_len() != 2
+        || cache.usage().entries() != 2
+        || cache.usage().mappings() != 3
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 no-op mixed lease eviction drifted"));
+    }
+    let third_lease = acquisition.into_lease();
+    drop(first_lease);
+    let report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [first_key] || cache.resident_len() != 1 {
+        return Err(String::from("v6 no-op retired lease cleanup drifted"));
+    }
+    drop(third_lease);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_lease_cache_retries_eviction()
+-> TieredTestResult {
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let first_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first);
+    let second_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedNoOperationNativeSequenceLeaseCache::new(
+        nonzero_test_limit(1, "v6 no-op lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(346)?,
+        native_executable_address(0x44600)?,
+    );
+    drop(register_masked_no_operation_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?);
+    adapter.release_failures_remaining = 2;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 no-op leased eviction failure ignored"));
+    };
+    if error.requested_key() != &second_key
+        || error.evicted_keys() != [first_key.clone()]
+        || !error.retired_keys().is_empty()
+        || error.release_failure().is_none()
+        || error.candidate_cleanup_failure().is_none()
+        || error.block().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op leased eviction evidence drifted"));
+    }
+    let report = error
+        .into_release_failures()
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op leased eviction retry drifted"))
+    }
+}
+
 #[test]
 fn register_masked_v6_no_operation_sequence_cache_capacity_cleanup_retries()
 -> TieredTestResult {
@@ -11419,11 +11831,8 @@ fn register_masked_v6_no_operation_sequence_cache_shrinks_byte_limit_fifo()
 #[test]
 fn register_masked_v6_no_operation_sequence_cache_usage_overflow_is_atomic()
 -> TieredTestResult {
-    let first = register_masked_no_operation_single_sequence_plan()?;
-    let second = register_masked_no_operation_sequence_target_variant(
-        &first,
-        HostIsa::AArch64,
-    )?;
+    let (first, second, _third) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
     let base_value = 0x42800usize;
     let first_mapped_len =
         usize::MAX.checked_sub(base_value).ok_or_else(|| {

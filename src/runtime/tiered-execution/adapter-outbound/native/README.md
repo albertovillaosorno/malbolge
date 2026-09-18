@@ -992,8 +992,15 @@ entries: hits perform no adapter work, misses load completely before
 oldest-first entry/mapping/byte admission, and overflow or oversize candidates
 fail closed with retryable cleanup ownership. Explicit limit reconfiguration
 expands without adapter work and shrinks through the same FIFO release path;
-failed shrink keeps prior limits published. Live external lease retirement
-remains separate policy.
+failed shrink keeps prior limits published.
+
+A separate weighted sequence lease cache now shares immutable loaded sequences
+on exact no-I/O hits. Active victims with live leases retire without reducing
+their entry, mapping, or mapped-byte weight; unleased victims release
+immediately, and admission reports exact retired-resident blockage when no
+active FIFO release can fit the candidate. Invalidation, full drain, explicit
+lease return, and retired reconciliation retain keyed cleanup retry ownership.
+Lease-aware limit reconfiguration remains separate policy.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
