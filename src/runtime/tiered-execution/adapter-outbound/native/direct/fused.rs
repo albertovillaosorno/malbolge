@@ -1941,13 +1941,22 @@ fn select_input_shape(
                 })?;
             Ok(Some(FusedSelection::OutputInput(output, second)))
         },
+        DirectNativeKind::JumpData => {
+            let jump_data = super::validate_jump_data_program(first_program)
+                .map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::CodeWriteInput(
+                jump_data.commit,
+                second,
+            )))
+        },
         DirectNativeKind::Crazy
         | DirectNativeKind::Deopt
         | DirectNativeKind::HaltFetch
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
         | DirectNativeKind::JumpCode
-        | DirectNativeKind::JumpData
         | DirectNativeKind::NoOperation
         | DirectNativeKind::NonGraphical
         | DirectNativeKind::Rotate => Ok(None),

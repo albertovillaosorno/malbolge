@@ -386,7 +386,7 @@ subsequent re-admission remains independent of cache lifetime.
 
 Single-step plans are rejected.
 
-The fused emitter now covers forty reviewed two-step regions on
+The fused emitter now covers forty-one reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,
 crazy/output, input/input, input/output,
 crazy/jump-code,
@@ -398,7 +398,7 @@ jump-code/crazy, jump-code/no-operation, jump-code/jump-code,
 jump-code/jump-data,
 jump-code/output, jump-code/rotate,
 jump-data/crazy, jump-data/no-operation, jump-data/jump-code,
-jump-data/output,
+jump-data/input, jump-data/output,
 jump-data/jump-data, jump-data/rotate, no-operation/rotate,
 no-operation/crazy,
 crazy/no-operation, crazy/rotate,
