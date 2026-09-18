@@ -38691,6 +38691,67 @@ fn native_process_host_executes_real_posix_worker() -> Result<(), String> {
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_executes_real_posix_loaded_sequence()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("loaded_sequence")?;
+    let execution = (|| -> Result<(), String> {
+        let sequence = load_verified_native_sequence(&mut host, &plan)
+            .map_err(|error| error.to_string())?;
+        let mapping_ids = sequence
+            .executables()
+            .iter()
+            .map(|executable| executable.mapping().mapping_id())
+            .collect::<Vec<_>>();
+        if mapping_ids.len() != 2 || mapping_ids.first() == mapping_ids.get(1) {
+            return Err(String::from(
+                "native POSIX worker sequence mapping identity drifted",
+            ));
+        }
+        let mut memory = fixture.initial_memory.clone();
+        let mut output = fixture.initial_output.clone();
+        let outcome = execute_loaded_verified_native_sequence(
+            &mut host,
+            &plan,
+            &sequence,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+        if outcome.completed_steps() != 2
+            || memory != fixture.final_memory
+            || output != fixture.final_output
+        {
+            return Err(String::from(
+                "native POSIX worker sequence execution drifted",
+            ));
+        }
+        release_native_executable_sequence(&mut host, sequence)
+            .map_err(|error| error.to_string())
+    })();
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    execution?;
+    cleanup?;
+    if session_poisoned {
+        Err(String::from(
+            "native POSIX worker sequence poisoned successful session",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 #[test]
 fn native_process_host_reports_remote_memory_failure() -> Result<(), String> {
     let mut host =

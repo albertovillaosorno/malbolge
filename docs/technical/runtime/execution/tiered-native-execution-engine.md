@@ -1846,6 +1846,11 @@ unique mapping identities and non-overlapping live ranges. Seven deterministic
 cases bind reuse, cached guard resume, partial cleanup, aggregate release,
 prevalidation, and rollback.
 
+Linux x86-64 host-real evidence now loads the retained two-step rotate/output
+plan into two distinct mappings owned by one `NativeProcessHost`. The concrete
+POSIX worker applies both steps exactly and releases the complete chain through
+the same retained child session.
+
 `NativeExecutableSequenceCache` adds weighted process-local reuse above that
 owner. One positive entry limit is always present; optional positive limits
 bound

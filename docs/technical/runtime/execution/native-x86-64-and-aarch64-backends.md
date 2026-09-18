@@ -1446,6 +1446,11 @@ mapping and keeps failed ownership for retry. Complete image identity is checked
 before buffers change, so an x86-64 chain cannot execute an AArch64 plan. The
 memory adapter must provide unique, non-overlapping live allocations.
 
+The concrete Linux x86-64 process worker now supplies host-real sequence
+evidence as well. One retained child owns two distinct RX mappings, applies the
+reviewed rotate/output chain exactly, and releases both mappings through the
+aggregate sequence owner.
+
 A weighted loaded-sequence FIFO now reuses exact ordered artifact-key chains on
 both ISAs. Hits neither refresh insertion age nor call the memory adapter.
 `new()` bounds complete entries, while explicit limits can additionally bound

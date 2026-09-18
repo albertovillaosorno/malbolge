@@ -578,6 +578,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   release, cross-ISA rejection, and runner failure. The adapter owns unique
 
   non-overlapping live mappings.
+
+  Linux x86-64 host-real evidence now loads the retained rotate/output plan into
+  two distinct mappings in one concrete process worker, applies both steps, and
+  releases the complete chain through the same child session.
 - `NativeExecutableSequenceCache` applies positive entry limits plus optional
   live-mapping and admitted mapped-byte limits to exact ordered artifact lists.
   Candidate weight comes from ready mapping reports. Hits preserve FIFO age and

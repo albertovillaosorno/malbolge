@@ -1215,9 +1215,14 @@ input/jump-code, input/jump-data, input/no-operation,
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
-  unique non-overlapping live allocations. A weighted exact-key FIFO reuses
+  unique non-overlapping live allocations.
 
-  complete loaded chains without refreshing hits. Positive limits cover entries
+  One Linux x86-64 host-real case now loads the retained rotate/output chain
+  into two distinct mappings owned by the concrete process worker, applies both
+  steps exactly, and releases the aggregate sequence through that same child.
+
+  A weighted exact-key FIFO reuses complete loaded chains without refreshing
+  hits. Positive limits cover entries
   and can also cover live mappings plus admitted mapped bytes. Candidate weight
   comes from ready mapping reports; oversized candidates clean themselves, while
   fitting candidates evict repeatedly until every projected limit fits. Failed
