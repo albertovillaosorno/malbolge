@@ -75,6 +75,12 @@ original request before child state is admitted. Zero mapping identity, invalid
 pointer flags, payload-shape drift, truncation, and trailing bytes fail closed.
 The wire codec does not spawn or retain a child process.
 
+`execute_verified_native_with_host` is the ownership-safe seam for a stateful
+host that implements both executable-memory and runner ports. One mutable owner
+therefore spans allocation through release, allowing a future persistent child
+to keep mapping identity valid through the call without `Arc<Mutex<_>>` or
+other aliasing indirection. Existing rollback and cleanup semantics are reused.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant

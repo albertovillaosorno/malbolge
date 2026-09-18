@@ -227,6 +227,12 @@ A distinct single-resident lease cache
   truncation, and trailing bytes fail closed. Process spawning and the concrete
   executable-memory/call worker remain pending.
 
+  A single-host execution seam now accepts one owner implementing both memory
+  and runner ports, preserving exact load/call/release and rollback semantics
+  without aliased mutable references. This permits a future persistent child to
+  retain mapping identity across memory operations and the later native call;
+  the concrete process session still remains pending.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 

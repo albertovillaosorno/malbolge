@@ -586,7 +586,8 @@ use execution_native::{
     execute_selected_cached_direct_fused_native_retry,
     execute_transactional_cached_direct_fused_native_retry,
     execute_verified_direct_fused_native, execute_verified_native,
-    execute_verified_native_sequence, execute_verified_register_masked_native,
+    execute_verified_native_sequence, execute_verified_native_with_host,
+    execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
@@ -1175,6 +1176,12 @@ struct FakeNativeExecutableAdapter {
     release_failures_remaining: usize,
     release_requests: Vec<NativeExecutableReleaseRequest>,
     synchronization_requests: Vec<NativeInstructionSyncRequest>,
+}
+
+#[derive(Debug)]
+struct FakeNativeExecutableHost {
+    adapter: FakeNativeExecutableAdapter,
+    runner: FakeNativeExecutableRunner,
 }
 
 struct BlockingNativeExecutableAdapter {
@@ -1978,6 +1985,19 @@ impl FakeNativeSequenceRunner {
     }
 }
 
+impl FakeNativeExecutableHost {
+    const fn new(
+        mapping_id: NativeExecutableMappingId,
+        base_address: NonZeroUsize,
+        behavior: FakeNativeRunnerBehavior,
+    ) -> Self {
+        Self {
+            adapter: FakeNativeExecutableAdapter::new(mapping_id, base_address),
+            runner: FakeNativeExecutableRunner::new(behavior),
+        }
+    }
+}
+
 impl FakeNativeExecutableAdapter {
     fn fail_if_requested(
         &self,
@@ -2144,6 +2164,46 @@ impl NativeExecutableMemoryAdapter for PanickingNativeExecutableAdapter {
         request: NativeInstructionSyncRequest,
     ) -> Result<NativeInstructionSyncReport, Self::Error> {
         self.inner.synchronize_instructions(request)
+    }
+}
+
+impl NativeExecutableMemoryAdapter for FakeNativeExecutableHost {
+    type Error = FakeNativeAdapterOperation;
+
+    fn allocate_writable(
+        &mut self,
+        request: NativeExecutableAllocationRequest,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        self.adapter.allocate_writable(request)
+    }
+
+    fn copy_code(
+        &mut self,
+        mapping: NativeExecutableMappingReport,
+        code: &[u8],
+    ) -> Result<NativeExecutableCodeCopyReport, Self::Error> {
+        self.adapter.copy_code(mapping, code)
+    }
+
+    fn protect_read_execute(
+        &mut self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        self.adapter.protect_read_execute(mapping)
+    }
+
+    fn release(
+        &mut self,
+        request: NativeExecutableReleaseRequest,
+    ) -> Result<(), Self::Error> {
+        self.adapter.release(request)
+    }
+
+    fn synchronize_instructions(
+        &mut self,
+        request: NativeInstructionSyncRequest,
+    ) -> Result<NativeInstructionSyncReport, Self::Error> {
+        self.adapter.synchronize_instructions(request)
     }
 }
 
@@ -2573,6 +2633,17 @@ impl RegisterMaskedNonGraphicalNativeRunner
                 Ok(NativeRegionStatus::GuardMiss.code())
             },
         }
+    }
+}
+
+impl NativeExecutableRunner for FakeNativeExecutableHost {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.runner.run(invocation)
     }
 }
 
@@ -38910,6 +38981,102 @@ fn repeated_release_request(adapter: &FakeNativeExecutableAdapter) -> bool {
         adapter.release_requests.as_slice(),
         [.., first, second] if first == second
     )
+}
+
+#[test]
+fn native_executable_host_execution_applies_through_one_owner()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?
+        .after;
+    let mapping_id = native_executable_mapping_id(598)?;
+    let base_address = native_executable_address(0x5e_000)?;
+    let mut host = FakeNativeExecutableHost::new(
+        mapping_id,
+        base_address,
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let outcome = execute_verified_native_with_host(&mut host, prepared)
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 57
+        && output == [0x10, 0xa8, 0]
+        && host.runner.calls == 1
+        && host.runner.mapping_ids == [mapping_id]
+        && host.adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("single-host native execution drifted"))
+    }
+}
+
+#[test]
+fn native_executable_host_execution_restores_runner_failure()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut host = FakeNativeExecutableHost::new(
+        native_executable_mapping_id(599)?,
+        native_executable_address(0x5f_000)?,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let Err(error) = execute_verified_native_with_host(&mut host, prepared)
+    else {
+        return Err(String::from("single-host runner failure was ignored"));
+    };
+    if error.phase() == NativeExecutableExecutionPhase::Run
+        && error.runner_error() == Some(&FakeNativeRunnerError::Call)
+        && error.release_failure().is_none()
+        && host.adapter.release_requests.len() == 1
+        && memory == entry_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("single-host runner rollback drifted"))
+    }
 }
 
 #[test]

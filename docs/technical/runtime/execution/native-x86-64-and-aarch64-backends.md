@@ -392,6 +392,15 @@ Windows/POSIX memory
 
 operations and foreign-call shims remain pending.
 
+`execute_verified_native_with_host` now provides an ownership-safe orchestration
+path when one stateful host implements both executable-memory and runner ports.
+The same mutable owner performs load, bind, call, admission, and release without
+requiring aliased mutable references or shared-lock indirection, while
+preserving
+the existing rollback, cleanup, and committed-outcome contracts. This is the
+intended seam for a persistent child process whose mapping IDs must remain valid
+through the later native call.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact

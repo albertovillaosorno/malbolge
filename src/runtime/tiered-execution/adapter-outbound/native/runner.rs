@@ -113,6 +113,13 @@ pub type NativeExecutableExecutionResult<MemoryError, RunnerError> = Result<
     Box<NativeExecutableExecutionFailure<MemoryError, RunnerError>>,
 >;
 
+/// Result of one complete call when one host owns memory and runner authority.
+pub type NativeExecutableHostExecutionResult<Host> =
+    NativeExecutableExecutionResult<
+        <Host as NativeExecutableMemoryAdapter>::Error,
+        <Host as NativeExecutableRunner>::Error,
+    >;
+
 type NativeExecutableAdapterExecutionResult<MemoryAdapter, Runner> =
     NativeExecutableExecutionResult<
         <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
@@ -2468,6 +2475,43 @@ where
         },
     };
     release_committed(memory_adapter, executable, release_request, outcome)
+}
+
+/// Loads, calls, admits, and releases through one stateful native host.
+///
+/// This is the ownership-safe orchestration seam for adapters whose executable
+/// mappings and calls must share one persistent session. It preserves the same
+/// rollback and release semantics as [`execute_verified_native`] without
+/// requiring two mutable aliases to the host.
+///
+/// # Errors
+///
+/// Returns [`NativeExecutableExecutionFailure`] with the same phase-specific
+/// primary and cleanup evidence as the split-adapter orchestration.
+pub fn execute_verified_native_with_host<Host>(
+    host: &mut Host,
+    prepared_call: PreparedVerifiedDirectInvocation<'_, '_>,
+) -> NativeExecutableHostExecutionResult<Host>
+where
+    Host: NativeExecutableMemoryAdapter + NativeExecutableRunner,
+{
+    let LoadedNativeExecution {
+        executable,
+        prepared,
+        release_request,
+    } = load_prepared::<Host, Host>(host, prepared_call)?;
+    let outcome = match run_prepared(host, &executable, prepared) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            return Err(Box::new(fail_after_ready(
+                host,
+                executable,
+                release_request,
+                error,
+            )));
+        },
+    };
+    release_committed(host, executable, release_request, outcome)
 }
 
 fn fail_after_ready<MemoryAdapter, RunnerError>(
