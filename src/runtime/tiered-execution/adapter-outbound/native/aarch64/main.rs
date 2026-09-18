@@ -39,13 +39,14 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard,
     DirectFusedCodeWriteInputTemplate, DirectFusedCrazyNoOperationTemplate,
-    DirectFusedCrazyPairTemplate, DirectFusedInputOutputTemplate,
-    DirectFusedInputPairTemplate, DirectFusedNoOperationCrazyTemplate,
-    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedOutputPairTemplate,
-    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
-    DirectFusedRotatePairTemplate, DirectInputCommit, DirectInputGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
+    DirectFusedCrazyPairTemplate, DirectFusedInputCodeWriteTemplate,
+    DirectFusedInputOutputTemplate, DirectFusedInputPairTemplate,
+    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
+    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
+    DirectFusedOutputPairTemplate, DirectFusedRotateNoOperationTemplate,
+    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
+    DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
+    DirectJumpDataGuard, DirectOutputCommit,
     DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedTerminalGuard,
     DirectRotateCommit, DirectRotateGuard,
 };
@@ -1094,6 +1095,87 @@ fn push_fused_code_write_input_commit(
         0xb900_4409,
         movz_w9(template.input.next_data_pointer),
         movk_w9_high(template.input.next_data_pointer),
+        0xb900_4809,
+    ]);
+    push_u64_x9(words, template.input.next_input_consumed)?;
+    words.extend_from_slice(&[0xf900_1009, 0x2a1f_03e0, 0xd65f_03c0]);
+    Some(())
+}
+
+/// Encodes one atomic input/code-write fused region.
+#[must_use]
+pub(super) fn fused_input_code_write_code(
+    template: &DirectFusedInputCodeWriteTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(128);
+    let mut guard_branches =
+        Vec::with_capacity(template.live_ins.len().saturating_add(14));
+    push_observation_guards(
+        &mut words,
+        &mut guard_branches,
+        template.observation,
+    )?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    for live_in in template.live_ins {
+        push_indexed_memory_guard(
+            &mut words,
+            &mut guard_branches,
+            live_in.address,
+            live_in.value,
+        );
+    }
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_input_guard(
+        &mut words,
+        &mut guard_branches,
+        template.input_evidence,
+        template.input_index,
+    )?;
+    push_fused_input_code_write_commit(&mut words, template)?;
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_fused_input_code_write_commit(
+    words: &mut Vec<u32>,
+    template: &DirectFusedInputCodeWriteTemplate<'_>,
+) -> Option<()> {
+    for (address, value) in [
+        (
+            template.input.encrypted_address,
+            template.input.encrypted_value,
+        ),
+        (
+            template.second.encrypted_address,
+            template.second.encrypted_value,
+        ),
+    ] {
+        words.extend_from_slice(&[
+            movz_w10(address),
+            movk_w10_high(address),
+            0x8b0a_090a,
+            movz_w9(value),
+            movk_w9_high(value),
+            0xb900_0149,
+        ]);
+    }
+    words.extend_from_slice(&[
+        movz_w9(template.input.accumulator),
+        movk_w9_high(template.input.accumulator),
+        0xb900_4009,
+        movz_w9(template.second.next_code_pointer),
+        movk_w9_high(template.second.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.second.next_data_pointer),
+        movk_w9_high(template.second.next_data_pointer),
         0xb900_4809,
     ]);
     push_u64_x9(words, template.input.next_input_consumed)?;

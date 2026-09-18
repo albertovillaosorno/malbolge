@@ -1438,6 +1438,16 @@ type FusedRetryPauseFixture = (
     DirectFusedNativeScheduleSuspension,
 );
 
+struct FusedInputCodeWriteCase<'case> {
+    expected_input_consumed: usize,
+    expected_memory: &'case [u32],
+    initial_memory: &'case [u32],
+    input: &'case [u8],
+    label: &'case str,
+    programs: &'case [RegionEffectProgram],
+    second_kind: DirectNativeKind,
+}
+
 #[derive(Debug)]
 struct NativeSequenceFixture {
     final_memory: Vec<u32>,
@@ -21570,6 +21580,96 @@ fn direct_rotate_no_operation_sequence_programs()
         .collect()
 }
 
+fn direct_input_code_write_state(
+    second_kind: DirectNativeKind,
+    input: Vec<u8>,
+) -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("input/code-write base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let input_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'/'))
+        .ok_or_else(|| String::from("phase-five input cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("input/code-write cell 5 missing"))? =
+        input_cell;
+    let second_cell = match second_kind {
+        DirectNativeKind::JumpCode => (33u32..=126u32)
+            .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'i')),
+        DirectNativeKind::JumpData => (33u32..=126u32)
+            .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'j')),
+        DirectNativeKind::NoOperation => (33u32..=126u32)
+            .find(|cell| profile_cell_decodes_to_no_operation(*cell, 6)),
+        DirectNativeKind::Crazy
+        | DirectNativeKind::Deopt
+        | DirectNativeKind::HaltFetch
+        | DirectNativeKind::HaltRegisters
+        | DirectNativeKind::InitialHalt
+        | DirectNativeKind::Input
+        | DirectNativeKind::NonGraphical
+        | DirectNativeKind::Output
+        | DirectNativeKind::Rotate => None,
+    }
+    .ok_or_else(|| format!("phase-six {second_kind:?} cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("input/code-write cell 6 missing"))? =
+        second_cell;
+    if matches!(
+        second_kind,
+        DirectNativeKind::JumpCode | DirectNativeKind::JumpData
+    ) {
+        *memory
+            .get_mut(8)
+            .ok_or_else(|| String::from("input/code-write data 8 missing"))? =
+            10;
+    }
+    if second_kind == DirectNativeKind::JumpCode {
+        *memory.get_mut(10).ok_or_else(|| {
+            String::from("input/jump-code encryption target missing")
+        })? = 35;
+    }
+    let io = ProfileMachineIoState::new(input, 0, Vec::new(), None)
+        .map_err(|error| format!("input/code-write IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x00ab_cdef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("input/code-write state: {error}"))
+}
+
+fn direct_input_code_write_programs(
+    second_kind: DirectNativeKind,
+    input: Vec<u8>,
+) -> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_input_code_write_state(second_kind, input)?,
+    );
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("input/code-write trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("input/code-write outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| format!("input/code-write projection: {error:?}"),
+            )
+        })
+        .collect()
+}
+
 fn direct_input_output_sequence_state_with_input(
     input: Vec<u8>,
 ) -> Result<ProfileMachineState, String> {
@@ -27610,6 +27710,119 @@ fn fused_noop_output_invocation_matches_profile_vm() -> Result<(), String> {
     Ok(())
 }
 
+fn assert_fused_input_code_write_isa(
+    case: &FusedInputCodeWriteCase<'_>,
+    isa: HostIsa,
+) -> Result<(), String> {
+    let FusedInputCodeWriteCase {
+        expected_input_consumed,
+        expected_memory,
+        initial_memory,
+        input,
+        label,
+        programs,
+        second_kind,
+    } = *case;
+    let plan = select_verified_direct_sequence(
+        programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| format!("{label} select: {error}"))?;
+    let [first, second] = plan.artifacts() else {
+        return Err(format!("{label} plan length drifted: {plan:?}"));
+    };
+    if first.kind() != DirectNativeKind::Input || second.kind() != second_kind {
+        return Err(format!("{label} kind drifted: {plan:?}"));
+    }
+    let admission = admit_fused_direct_sequence(&plan)
+        .map_err(|error| format!("{label} admit: {error}"))?;
+    let candidate = emit_fused_direct_sequence_coff(&admission)
+        .map_err(|error| format!("{label} emit: {error}"))?;
+    let artifact = verify_fused_direct_sequence(&candidate, &admission)
+        .map_err(|error| format!("{label} verify: {error}"))?;
+    let mut memory = initial_memory.to_vec();
+    let mut output = Vec::new();
+    let mut prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, input, &mut output),
+    )
+    .map_err(|error| format!("{label} prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let completion = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("{label} complete: {error}"))?;
+    if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+        || memory != expected_memory
+        || plan.exit().input_consumed != expected_input_consumed
+    {
+        return Err(format!("{label} diverged from VM on {isa:?}"));
+    }
+    Ok(())
+}
+
+fn assert_fused_input_code_write_case(
+    label: &str,
+    second_kind: DirectNativeKind,
+    input: &[u8],
+) -> Result<(), String> {
+    let state = direct_input_code_write_state(second_kind, input.to_vec())?;
+    let initial_memory = state.memory().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("{label} normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("{label} outcome mismatch: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("{label} projection: {error:?}"))?;
+    let [first_program, _second_program] = programs.as_slice() else {
+        return Err(format!("{label} program length drifted: {programs:?}"));
+    };
+    if input.is_empty()
+        && first_program
+            .effects
+            .first()
+            .and_then(|effect| effect.input)
+            != Some(TraceInput::EndOfInput)
+    {
+        return Err(format!("{label} EOF evidence drifted"));
+    }
+    let expected_memory = normative.memory().to_vec();
+    let case = FusedInputCodeWriteCase {
+        expected_input_consumed: normative.input_consumed(),
+        expected_memory: &expected_memory,
+        initial_memory: &initial_memory,
+        input,
+        label,
+        programs: &programs,
+        second_kind,
+    };
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_fused_input_code_write_isa(&case, isa)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_input_code_write_families_match_profile_vm() -> Result<(), String> {
+    for (label, kind) in [
+        ("input/jump-code", DirectNativeKind::JumpCode),
+        ("input/jump-data", DirectNativeKind::JumpData),
+        ("input/no-op", DirectNativeKind::NoOperation),
+    ] {
+        assert_fused_input_code_write_case(label, kind, &[0x42])?;
+        assert_fused_input_code_write_case(label, kind, &[])?;
+    }
+    Ok(())
+}
+
 #[test]
 fn fused_input_output_eof_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_input_output_eof_sequence_programs()?;
@@ -28680,6 +28893,27 @@ fn direct_fused_sequence_jump_drift_cases()
 fn direct_fused_sequence_input_drift_cases()
 -> Result<Vec<DirectFusedSequenceDriftCase>, String> {
     Ok(vec![
+        (
+            "input/jump-code",
+            direct_input_code_write_programs(
+                DirectNativeKind::JumpCode,
+                vec![0x42],
+            )?,
+        ),
+        (
+            "input/jump-data",
+            direct_input_code_write_programs(
+                DirectNativeKind::JumpData,
+                vec![0x42],
+            )?,
+        ),
+        (
+            "input/no-op",
+            direct_input_code_write_programs(
+                DirectNativeKind::NoOperation,
+                vec![0x42],
+            )?,
+        ),
         (
             "jump-code/input",
             direct_jump_code_input_sequence_programs()?,

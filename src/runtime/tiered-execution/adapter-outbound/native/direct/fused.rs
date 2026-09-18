@@ -49,18 +49,19 @@ use super::{
     CoffAdmissionError, DirectCodeWriteCommit, DirectCrazyProgram,
     DirectEntryObservation, DirectFusedCodeWriteInputTemplate,
     DirectFusedCrazyNoOperationTemplate, DirectFusedCrazyPairTemplate,
-    DirectFusedInputOutputTemplate, DirectFusedInputPairTemplate,
-    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
-    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
-    DirectFusedOutputPairTemplate, DirectFusedRotateNoOperationTemplate,
-    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
-    DirectInputProgram, DirectNativeKind, DirectNoOperationProgram,
-    DirectOutputProgram, DirectRotateProgram, HostIsa, HostOperatingSystem,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
-    StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
-    aarch64, structurally_admit_coff, target_triple, validate_crazy_program,
-    validate_input_program, validate_no_operation_program,
-    validate_output_program, validate_rotate_program, x86_64,
+    DirectFusedInputCodeWriteTemplate, DirectFusedInputOutputTemplate,
+    DirectFusedInputPairTemplate, DirectFusedNoOperationCrazyTemplate,
+    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
+    DirectFusedNoOperationRotateTemplate, DirectFusedOutputPairTemplate,
+    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
+    DirectFusedRotatePairTemplate, DirectInputProgram, DirectNativeKind,
+    DirectNoOperationProgram, DirectOutputProgram, DirectRotateProgram,
+    HostIsa, HostOperatingSystem, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactKey, StructurallyAdmittedNativeObjectArtifact,
+    UntrustedNativeObjectArtifact, aarch64, structurally_admit_coff,
+    target_triple, validate_crazy_program, validate_input_program,
+    validate_no_operation_program, validate_output_program,
+    validate_rotate_program, x86_64,
 };
 
 #[derive(Clone, Copy)]
@@ -72,6 +73,7 @@ enum FusedSelection {
     CrazyOutput(DirectCrazyProgram, DirectOutputProgram),
     CrazyPair(DirectCrazyProgram, DirectCrazyProgram),
     CrazyRotate(DirectCrazyProgram, DirectRotateProgram),
+    InputCodeWrite(DirectInputProgram, DirectCodeWriteCommit),
     InputOutput(DirectInputProgram, DirectOutputProgram),
     InputPair(DirectInputProgram, DirectInputProgram),
     JumpCodeCrazy(super::DirectJumpCodeProgram, DirectCrazyProgram),
@@ -281,7 +283,9 @@ fn canonical_fused_text(
         | FusedSelection::CrazyRotate(..) => {
             fused_crazy_selection_text(admission, observation, selection)
         },
-        FusedSelection::InputOutput(..) | FusedSelection::InputPair(..) => {
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::InputOutput(..)
+        | FusedSelection::InputPair(..) => {
             fused_input_selection_text(admission, observation, selection)
         },
         FusedSelection::JumpCodeCrazy(..)
@@ -356,7 +360,8 @@ fn fused_rotate_selection_text(
                 selection,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -411,7 +416,8 @@ fn fused_rotate_remaining_selection_text(
         FusedSelection::RotatePair(first, second) => {
             fused_rotate_pair_text(admission, observation, first, second)
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -479,7 +485,8 @@ fn fused_jump_code_selection_text(
                 selection,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::InputOutput(..)
         | FusedSelection::InputPair(..)
         | FusedSelection::CrazyJumpCode(..)
@@ -539,7 +546,8 @@ fn fused_jump_code_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -607,7 +615,8 @@ fn fused_jump_data_selection_text(
                 selection,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -667,7 +676,8 @@ fn fused_jump_data_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -734,7 +744,8 @@ fn fused_crazy_selection_text(
         FusedSelection::CrazyRotate(crazy, rotate) => {
             fused_crazy_rotate_text(admission, observation, crazy, rotate)
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::InputOutput(..)
         | FusedSelection::InputPair(..)
         | FusedSelection::JumpCodeCrazy(..)
@@ -792,7 +803,8 @@ fn fused_no_operation_selection_text(
                 jump_data,
             )
         },
-        other @ (FusedSelection::CrazyJumpCode(..)
+        other @ (FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
         | FusedSelection::CrazyOutput(..)
@@ -860,7 +872,8 @@ fn fused_no_operation_remaining_selection_text(
                 rotate,
             )
         },
-        FusedSelection::CodeWriteInput(..)
+        FusedSelection::InputCodeWrite(..)
+        | FusedSelection::CodeWriteInput(..)
         | FusedSelection::CrazyJumpCode(..)
         | FusedSelection::CrazyJumpData(..)
         | FusedSelection::CrazyNoOperation(..)
@@ -1057,6 +1070,14 @@ fn fused_input_selection_text(
     observation: DirectEntryObservation,
     selection: &FusedSelection,
 ) -> Option<Vec<u8>> {
+    if let FusedSelection::InputCodeWrite(input, second) = *selection {
+        return fused_input_code_write_text(
+            admission,
+            observation,
+            input,
+            second,
+        );
+    }
     if let FusedSelection::InputOutput(input, output) = *selection {
         return fused_input_output_text(admission, observation, input, output);
     }
@@ -1064,6 +1085,27 @@ fn fused_input_selection_text(
         return fused_input_pair_text(admission, observation, first, second);
     }
     None
+}
+
+fn fused_input_code_write_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    input: DirectInputProgram,
+    second: DirectCodeWriteCommit,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedInputCodeWriteTemplate {
+        input: input.commit,
+        input_evidence: input.input,
+        input_index: u64::try_from(input.observation.input_consumed).ok()?,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_input_code_write_code(&template),
+        HostIsa::X86_64 => x86_64::fused_input_code_write_code(&template),
+    }
 }
 
 fn fused_input_output_text(
@@ -1883,7 +1925,7 @@ fn select_non_output_shape(
     )? {
         return Ok(Some(selection));
     }
-    if let Some(selection) = select_input_shape(
+    if let Some(selection) = select_input_shapes(
         first_kind,
         second_kind,
         first_program,
@@ -1913,6 +1955,63 @@ fn select_non_output_shape(
         first_program,
         second_program,
     )
+}
+
+fn select_input_shapes(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if let Some(selection) = select_input_code_write_shape(
+        first_kind,
+        second_kind,
+        first_program,
+        second_program,
+    )? {
+        return Ok(Some(selection));
+    }
+    select_input_shape(first_kind, second_kind, first_program, second_program)
+}
+
+fn select_input_code_write_shape(
+    first_kind: DirectNativeKind,
+    second_kind: DirectNativeKind,
+    first_program: &RegionEffectProgram,
+    second_program: &RegionEffectProgram,
+) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
+    if first_kind != DirectNativeKind::Input {
+        return Ok(None);
+    }
+    let input = validate_input_program(first_program)
+        .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+    let second = match second_kind {
+        DirectNativeKind::JumpCode => {
+            super::validate_jump_code_program(second_program)
+                .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?
+                .commit
+        },
+        DirectNativeKind::JumpData => {
+            super::validate_jump_data_program(second_program)
+                .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?
+                .commit
+        },
+        DirectNativeKind::NoOperation => no_operation_commit(
+            validate_no_operation_program(second_program).map_err(
+                |_error| DirectFusedSequenceObjectError::ProgramShape,
+            )?,
+        ),
+        DirectNativeKind::Crazy
+        | DirectNativeKind::Deopt
+        | DirectNativeKind::HaltFetch
+        | DirectNativeKind::HaltRegisters
+        | DirectNativeKind::InitialHalt
+        | DirectNativeKind::Input
+        | DirectNativeKind::NonGraphical
+        | DirectNativeKind::Output
+        | DirectNativeKind::Rotate => return Ok(None),
+    };
+    Ok(Some(FusedSelection::InputCodeWrite(input, second)))
 }
 
 fn select_input_shape(
