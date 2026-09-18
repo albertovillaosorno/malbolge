@@ -11131,8 +11131,7 @@ fn register_masked_v6_no_operation_sequence_late_failure_keeps_prefix()
         .first()
         .ok_or_else(|| String::from("v6 no-op sequence first effect missing"))?
         .after;
-    let input = [];
-    let mut output = [];
+    let (input, mut output) = ([], []);
     let mut runner = FakeRegisterMaskedNoOperationNativeRunner::scripted(vec![
         FakeNativeRunnerBehavior::Applied,
         FakeNativeRunnerBehavior::FailureAfterMutation,
