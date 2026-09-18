@@ -50,10 +50,10 @@ use super::{
     DirectEntryObservation, DirectFusedCrazyNoOperationTemplate,
     DirectFusedCrazyPairTemplate, DirectFusedNoOperationCrazyTemplate,
     DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedRotateNoOperationTemplate,
-    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
-    DirectNativeKind, DirectNoOperationProgram, DirectOutputProgram,
-    DirectRotateProgram, HostIsa, HostOperatingSystem,
+    DirectFusedNoOperationRotateTemplate, DirectFusedOutputPairTemplate,
+    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
+    DirectFusedRotatePairTemplate, DirectNativeKind, DirectNoOperationProgram,
+    DirectOutputProgram, DirectRotateProgram, HostIsa, HostOperatingSystem,
     NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
     aarch64, structurally_admit_coff, target_triple, validate_crazy_program,
@@ -87,6 +87,7 @@ enum FusedSelection {
     NoOperationOutput(DirectNoOperationProgram, DirectOutputProgram),
     NoOperationPair(DirectNoOperationProgram, DirectNoOperationProgram),
     NoOperationRotate(DirectNoOperationProgram, DirectRotateProgram),
+    OutputPair(DirectOutputProgram, DirectOutputProgram),
     RotateCrazy(DirectRotateProgram, DirectCrazyProgram),
     RotateJumpCode(DirectRotateProgram, super::DirectJumpCodeProgram),
     RotateJumpData(DirectRotateProgram, super::DirectJumpDataProgram),
@@ -292,6 +293,9 @@ fn canonical_fused_text(
         | FusedSelection::NoOperationRotate(..) => {
             fused_no_operation_selection_text(admission, observation, selection)
         },
+        FusedSelection::OutputPair(first, second) => {
+            fused_output_pair_text(admission, observation, first, second)
+        },
         FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
@@ -360,6 +364,7 @@ fn fused_rotate_selection_text(
         | FusedSelection::NoOperationJumpData(..)
         | FusedSelection::NoOperationOutput(..)
         | FusedSelection::NoOperationPair(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::NoOperationRotate(..) => None,
     }
 }
@@ -410,6 +415,7 @@ fn fused_rotate_remaining_selection_text(
         | FusedSelection::NoOperationRotate(..)
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotateJumpData(..) => None,
     }
 }
@@ -471,6 +477,7 @@ fn fused_jump_code_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -526,6 +533,7 @@ fn fused_jump_code_remaining_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -587,6 +595,7 @@ fn fused_jump_data_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -642,6 +651,7 @@ fn fused_jump_data_remaining_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -698,6 +708,7 @@ fn fused_crazy_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -753,6 +764,7 @@ fn fused_no_operation_selection_text(
         | FusedSelection::NoOperationOutput(..)
         | FusedSelection::NoOperationPair(..)
         | FusedSelection::NoOperationRotate(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotateCrazy(..)
         | FusedSelection::RotateJumpCode(..)
         | FusedSelection::RotateJumpData(..)
@@ -819,6 +831,7 @@ fn fused_no_operation_remaining_selection_text(
         | FusedSelection::RotateJumpData(..)
         | FusedSelection::RotateNoOperation(..)
         | FusedSelection::RotateOutput(..)
+        | FusedSelection::OutputPair(..)
         | FusedSelection::RotatePair(..) => None,
     }
 }
@@ -1279,6 +1292,25 @@ fn fused_no_operation_rotate_text(
     }
 }
 
+fn fused_output_pair_text(
+    admission: &DirectFusedSequenceAdmission,
+    observation: DirectEntryObservation,
+    first: DirectOutputProgram,
+    second: DirectOutputProgram,
+) -> Option<Vec<u8>> {
+    let template = DirectFusedOutputPairTemplate {
+        first: first.commit,
+        live_ins: &admission.program().memory_live_ins,
+        observation,
+        required_memory_words: admission.key().ir().required_memory_words(),
+        second: second.commit,
+    };
+    match admission.key().target().host_isa() {
+        HostIsa::AArch64 => aarch64::fused_output_pair_code(&template),
+        HostIsa::X86_64 => x86_64::fused_output_pair_code(&template),
+    }
+}
+
 fn fused_rotate_crazy_text(
     admission: &DirectFusedSequenceAdmission,
     observation: DirectEntryObservation,
@@ -1461,13 +1493,19 @@ fn select_output_shape(
                 })?;
             Ok(FusedSelection::CrazyOutput(crazy, output))
         },
+        DirectNativeKind::Output => {
+            let first =
+                validate_output_program(first_program).map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(FusedSelection::OutputPair(first, output))
+        },
         DirectNativeKind::Deopt
         | DirectNativeKind::HaltFetch
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
         | DirectNativeKind::Input
-        | DirectNativeKind::NonGraphical
-        | DirectNativeKind::Output => {
+        | DirectNativeKind::NonGraphical => {
             Err(DirectFusedSequenceObjectError::ProgramShape)
         },
     }

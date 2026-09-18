@@ -485,6 +485,15 @@ pub(super) struct DirectFusedNoOperationOutputTemplate<'live_ins> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedOutputPairTemplate<'live_ins> {
+    pub(super) first: DirectOutputCommit,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+    pub(super) second: DirectOutputCommit,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedRotateCrazyTemplate<'live_ins> {
     pub(super) crazy: DirectCrazyCommit,
     pub(super) live_ins: &'live_ins [MemoryLiveIn],
