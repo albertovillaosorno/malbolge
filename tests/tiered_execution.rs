@@ -11099,6 +11099,113 @@ fn register_masked_no_operation_weighted_reconfiguration_fixture()
 }
 
 #[test]
+fn register_masked_v6_no_operation_sequence_cache_capacity_cleanup_retries()
+-> TieredTestResult {
+    let plan = register_masked_no_operation_loaded_sequence_fixture()?;
+    let mapping_limit = nonzero_test_limit(1, "v6 no-op cache mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "v6 no-op cache entry limit",
+    )?)
+    .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(330)?,
+        native_executable_address(0x43000)?,
+    )
+    .with_release_failure_at(1);
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 no-op capacity cleanup failure ignored"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::Mappings {
+            limit: mapping_limit,
+            required: 2,
+        })
+        || error
+            .candidate_cleanup_failure()
+            .is_none_or(|failure| failure.failed_count() != 1)
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op capacity cleanup evidence drifted"));
+    }
+    let pending = error.into_release_failures();
+    if pending.candidate_failure().is_none()
+        || pending.eviction_failure().is_some()
+    {
+        return Err(String::from("v6 no-op capacity retry ownership drifted"));
+    }
+    pending.retry(&mut adapter).map_err(|failure| {
+        format!("v6 no-op capacity cleanup retry: {failure}")
+    })?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 no-op capacity cleanup retry count drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_no_operation_sequence_cache_evicts_for_byte_limit()
+-> TieredTestResult {
+    let (first, second, candidate) =
+        register_masked_no_operation_weighted_reconfiguration_fixture()?;
+    let expected = [
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&first),
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&second),
+    ];
+    let candidate_key =
+        RegisterMaskedNoOperationNativeSequenceKey::from_plan(&candidate);
+    let mapped_lengths = [8_192usize, 12_288usize, 16_384usize, 20_480usize];
+    let candidate_bytes = mapped_lengths[2].saturating_add(mapped_lengths[3]);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "v6 no-op cache entry limit",
+    )?)
+    .with_mapped_byte_limit(nonzero_test_limit(
+        candidate_bytes,
+        "v6 no-op cache byte limit",
+    )?);
+    let mut cache =
+        RegisterMaskedNoOperationNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(332)?,
+        native_executable_address(0x43200)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    for plan in [&first, &second] {
+        let _entry = cache
+            .ensure_plan(&mut adapter, plan)
+            .map_err(|error| format!("v6 no-op byte admission setup: {error}"))?
+            .disposition()
+            .clone();
+    }
+    let evicted = cache
+        .ensure_plan(&mut adapter, &candidate)
+        .map_err(|error| format!("v6 no-op byte admission: {error}"))?
+        .disposition()
+        .evicted_keys()
+        .to_vec();
+    if evicted != expected
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != candidate_bytes
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 no-op byte admission FIFO drifted"));
+    }
+    cache.release_all(&mut adapter).map_err(|failure| {
+        format!("v6 no-op byte admission cleanup: {failure}")
+    })
+}
+
+#[test]
 fn register_masked_v6_no_operation_sequence_cache_expands_limits_no_io()
 -> TieredTestResult {
     let plan = register_masked_no_operation_loaded_sequence_fixture()?;
