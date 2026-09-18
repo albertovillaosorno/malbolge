@@ -1000,6 +1000,7 @@ their entry, mapping, or mapped-byte weight; unleased victims release
 immediately, and admission reports exact retired-resident blockage when no
 active FIFO release can fit the candidate. Invalidation, full drain, explicit
 lease return, and retired reconciliation retain keyed cleanup retry ownership.
+
 Lease-aware limit reconfiguration now publishes expansion or already-fit
 requests without adapter work and shrinks active FIFO authority through the
 same release-or-retire path. Existing retired mappings are never reconciled
