@@ -2136,6 +2136,18 @@ fn select_output_or_rotate_shape(
     second_program: &RegionEffectProgram,
 ) -> Result<Option<FusedSelection>, DirectFusedSequenceObjectError> {
     if first_kind == DirectNativeKind::Output
+        && second_kind == DirectNativeKind::JumpCode
+    {
+        let output = validate_output_program(first_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        let jump_code = super::validate_jump_code_program(second_program)
+            .map_err(|_error| DirectFusedSequenceObjectError::ProgramShape)?;
+        return Ok(Some(FusedSelection::OutputCodeWrite(
+            output,
+            jump_code.commit,
+        )));
+    }
+    if first_kind == DirectNativeKind::Output
         && second_kind == DirectNativeKind::JumpData
     {
         let output = validate_output_program(first_program)
