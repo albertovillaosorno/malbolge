@@ -408,7 +408,7 @@ full verified source plan and its ordered `NativeExecutableSequenceKey`.
 Single-step plans are rejected so this identity cannot alias an existing direct
 template.
 
-`direct/fused.rs` now emits thirty-three reviewed two-step regions as atomic
+`direct/fused.rs` now emits thirty-four reviewed two-step regions as atomic
 x86-64
 or AArch64 COFF candidates: rotate/output, rotate/jump-code,
 rotate/jump-data, crazy/output, input/input, input/output,
@@ -425,7 +425,8 @@ jump-data/jump-data, jump-data/rotate, no-operation/rotate,
 no-operation/crazy,
 crazy/no-operation, crazy/rotate,
 crazy/crazy, rotate/jump-code, rotate/jump-data, rotate/no-operation,
-rotate/crazy, rotate/rotate, input/input, input/output, and output/output. Both
+rotate/crazy, rotate/rotate, input/input, input/output, output/input, and
+output/output. Both
 ISA families complete
 every applicable fused entry, memory, termination, exact byte/EOF input, and
 output-capacity guard before their first store; a miss therefore preserves the
@@ -439,7 +440,8 @@ source plan, structurally admits COFF, regenerates canonical bytes, and requires
 exact equality. A structurally valid text-byte mutation fails this verifier.
 VM-derived traces for every reviewed no-operation-containing shape plus the
 crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate,
-input/input, input/output, and output/output shapes exercise both ISAs through
+input/input, input/output, output/input, and output/output shapes exercise both
+ISAs through
 emission,
 promotion,
 relocation-free load-image extraction, and whole-region state comparison with

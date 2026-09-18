@@ -265,7 +265,7 @@ A distinct single-resident lease cache
   crazy/no-operation, crazy/rotate, crazy/crazy, rotate/jump-code,
   rotate/jump-data,
   rotate/no-operation, rotate/crazy, rotate/rotate, input/input, input/output,
-  and output/output on x86-64 and AArch64.
+  output/input, and output/output on x86-64 and AArch64.
   Each candidate completes its applicable region-entry live-in, termination,
   memory-capacity, exact byte/EOF input, and output-capacity guards before every
   store. Semantic
@@ -1180,7 +1180,7 @@ A distinct single-resident lease cache
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
   concrete foreign-call shim remain open.
-  The reviewed thirty-three-shape fused two-step emission matrix is complete.
+  The reviewed thirty-four-shape fused two-step emission matrix is complete.
   Concrete executable-memory integration, instruction-cache implementation,
   and the foreign-call boundary remain pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen
