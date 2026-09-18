@@ -413,6 +413,17 @@ pub(super) struct DirectRotateCommit {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedCodeWriteInputTemplate<'live_ins> {
+    pub(super) first: DirectCodeWriteCommit,
+    pub(super) input: DirectInputCommit,
+    pub(super) input_evidence: TraceInput,
+    pub(super) input_index: u64,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedCrazyRotateTemplate<'live_ins> {
     pub(super) crazy: DirectCrazyCommit,
     pub(super) live_ins: &'live_ins [MemoryLiveIn],

@@ -386,13 +386,14 @@ subsequent re-admission remains independent of cache lifetime.
 
 Single-step plans are rejected.
 
-The fused emitter now covers thirty-nine reviewed two-step regions on
+The fused emitter now covers forty reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,
 crazy/output, input/input, input/output,
 crazy/jump-code,
 crazy/jump-data,
 no-operation/output,
-no-operation/no-operation, no-operation/jump-code, no-operation/jump-data,
+no-operation/no-operation, no-operation/input, no-operation/jump-code,
+no-operation/jump-data,
 jump-code/crazy, jump-code/no-operation, jump-code/jump-code,
 jump-code/jump-data,
 jump-code/output, jump-code/rotate,
@@ -416,7 +417,7 @@ no-operation-containing templates preserve ordered guest-memory writes while
 publishing only the final region register state, without exposing an
 intermediate one-step observation.
 
-VM-derived traces exercise all six reviewed no-operation-containing templates
+VM-derived traces exercise all seven reviewed no-operation-containing templates
 plus crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate,
 input/input, input/output, output/crazy, output/rotate, output/jump-code,
 output/jump-data,
