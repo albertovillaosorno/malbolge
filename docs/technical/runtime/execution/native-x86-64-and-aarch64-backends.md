@@ -431,6 +431,13 @@ transaction
 plus remote-memory and call-response rejection paths. The worker still performs
 no production executable-memory syscalls or architecture foreign call.
 
+`native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
+magic, command/outcome tags, fixed sizes, field offsets, and little-endian
+scalar
+helpers for C23 workers. A strict pinned-Clang conformance harness checks those
+declarations without spawning a worker, mapping executable memory, or invoking
+code. This keeps the future child implementation from duplicating wire literals.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact

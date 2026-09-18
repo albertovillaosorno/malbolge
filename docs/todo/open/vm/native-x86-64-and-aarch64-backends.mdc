@@ -253,6 +253,12 @@ A distinct single-resident lease cache
   covers load, call, semantic admission, and release plus mapping-drift
   rejection.
 
+  A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
+  magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
+  Clang conformance evidence passes without performing syscalls or native calls,
+  so the future production worker can consume one reviewed child-side wire
+  declaration set instead of duplicating literals.
+
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
 

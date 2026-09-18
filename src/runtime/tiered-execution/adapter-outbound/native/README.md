@@ -101,6 +101,12 @@ and structurally checked before semantic completion; wrong mapping identity is
 rejected before caller mutation. The concrete child still does not own
 production W^X syscalls or the architecture-specific foreign call.
 
+`native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
+constants and little-endian scalar access. Its strict pinned-Clang conformance
+harness checks exact fixed sizes, tags, magic bytes, and call-field offsets. The
+header performs no process, memory, or call operation; it exists so the future C
+worker does not re-declare protocol literals independently.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant
