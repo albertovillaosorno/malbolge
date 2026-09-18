@@ -264,7 +264,8 @@ A distinct single-resident lease cache
   no-operation/crazy,
   crazy/no-operation, crazy/rotate, crazy/crazy, rotate/jump-code,
   rotate/jump-data,
-  rotate/no-operation, rotate/crazy, rotate/rotate, input/input, input/output,
+  rotate/no-operation, rotate/crazy, rotate/rotate, rotate/input, input/input,
+  input/output,
 input/jump-code, input/jump-data, input/no-operation,
   output/crazy, output/rotate, output/jump-code, output/jump-data, output/input,
   output/no-operation, and output/output on
@@ -1184,7 +1185,7 @@ input/jump-code, input/jump-data, input/no-operation,
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
   concrete foreign-call shim remain open.
-  The reviewed forty-five-shape fused two-step emission matrix is complete.
+  The reviewed forty-nine-shape fused two-step emission matrix is complete.
   Concrete executable-memory integration, instruction-cache implementation,
   and the foreign-call boundary remain pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen

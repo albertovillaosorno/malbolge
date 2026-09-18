@@ -1438,9 +1438,10 @@ type FusedRetryPauseFixture = (
     DirectFusedNativeScheduleSuspension,
 );
 
-struct FusedInputCodeWriteCase<'case> {
+struct FusedInputCase<'case> {
     expected_input_consumed: usize,
     expected_memory: &'case [u32],
+    first_kind: DirectNativeKind,
     initial_memory: &'case [u32],
     input: &'case [u8],
     label: &'case str,
@@ -21580,6 +21581,89 @@ fn direct_rotate_no_operation_sequence_programs()
         .collect()
 }
 
+fn direct_input_data_state(
+    kinds: (DirectNativeKind, DirectNativeKind),
+    input: Vec<u8>,
+) -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("input/data base: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    for (address, kind) in [(5usize, kinds.0), (6usize, kinds.1)] {
+        let phase = u32::try_from(address)
+            .map_err(|error| format!("input/data phase: {error}"))?;
+        let opcode = match kind {
+            DirectNativeKind::Crazy => b'p',
+            DirectNativeKind::Input => b'/',
+            DirectNativeKind::Rotate => b'*',
+            DirectNativeKind::Deopt
+            | DirectNativeKind::HaltFetch
+            | DirectNativeKind::HaltRegisters
+            | DirectNativeKind::InitialHalt
+            | DirectNativeKind::JumpCode
+            | DirectNativeKind::JumpData
+            | DirectNativeKind::NoOperation
+            | DirectNativeKind::NonGraphical
+            | DirectNativeKind::Output => {
+                return Err(format!("unsupported input/data kind: {kind:?}"));
+            },
+        };
+        let cell = (33u32..=126u32)
+            .find(|cell| {
+                decode_profile_instruction(*cell, phase) == Some(opcode)
+            })
+            .ok_or_else(|| format!("phase-{phase} {kind:?} cell missing"))?;
+        *memory.get_mut(address).ok_or_else(|| {
+            format!("input/data code cell {address} missing")
+        })? = cell;
+    }
+    if matches!(kinds.0, DirectNativeKind::Crazy | DirectNativeKind::Rotate) {
+        *memory.get_mut(7).ok_or_else(|| {
+            String::from("input/data first data cell missing")
+        })? = 10;
+    }
+    if matches!(kinds.1, DirectNativeKind::Crazy | DirectNativeKind::Rotate) {
+        *memory.get_mut(8).ok_or_else(|| {
+            String::from("input/data second data cell missing")
+        })? = 10;
+    }
+    let io = ProfileMachineIoState::new(input, 0, Vec::new(), None)
+        .map_err(|error| format!("input/data IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("input/data state: {error}"))
+}
+
+fn direct_input_data_programs(
+    kinds: (DirectNativeKind, DirectNativeKind),
+    input: Vec<u8>,
+) -> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_input_data_state(kinds, input)?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("input/data trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("input/data outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("input/data projection: {error:?}"))
+        })
+        .collect()
+}
+
 fn direct_input_code_write_state(
     second_kind: DirectNativeKind,
     input: Vec<u8>,
@@ -27710,13 +27794,14 @@ fn fused_noop_output_invocation_matches_profile_vm() -> Result<(), String> {
     Ok(())
 }
 
-fn assert_fused_input_code_write_isa(
-    case: &FusedInputCodeWriteCase<'_>,
+fn assert_fused_input_case_isa(
+    case: &FusedInputCase<'_>,
     isa: HostIsa,
 ) -> Result<(), String> {
-    let FusedInputCodeWriteCase {
+    let FusedInputCase {
         expected_input_consumed,
         expected_memory,
+        first_kind,
         initial_memory,
         input,
         label,
@@ -27733,7 +27818,7 @@ fn assert_fused_input_code_write_isa(
     let [first, second] = plan.artifacts() else {
         return Err(format!("{label} plan length drifted: {plan:?}"));
     };
-    if first.kind() != DirectNativeKind::Input || second.kind() != second_kind {
+    if first.kind() != first_kind || second.kind() != second_kind {
         return Err(format!("{label} kind drifted: {plan:?}"));
     }
     let admission = admit_fused_direct_sequence(&plan)
@@ -27758,6 +27843,80 @@ fn assert_fused_input_code_write_isa(
         || plan.exit().input_consumed != expected_input_consumed
     {
         return Err(format!("{label} diverged from VM on {isa:?}"));
+    }
+    Ok(())
+}
+
+fn assert_fused_input_data_case(
+    label: &str,
+    kinds: (DirectNativeKind, DirectNativeKind),
+    input: &[u8],
+) -> Result<(), String> {
+    let state = direct_input_data_state(kinds, input.to_vec())?;
+    let initial_memory = state.memory().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("{label} normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("{label} outcome mismatch: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("{label} projection: {error:?}"))?;
+    let input_step = usize::from(kinds.0 != DirectNativeKind::Input);
+    if input.is_empty()
+        && programs
+            .get(input_step)
+            .and_then(|program| program.effects.first())
+            .and_then(|effect| effect.input)
+            != Some(TraceInput::EndOfInput)
+    {
+        return Err(format!("{label} EOF evidence drifted"));
+    }
+    let expected_memory = normative.memory().to_vec();
+    let case = FusedInputCase {
+        expected_input_consumed: normative.input_consumed(),
+        expected_memory: &expected_memory,
+        first_kind: kinds.0,
+        initial_memory: &initial_memory,
+        input,
+        label,
+        programs: &programs,
+        second_kind: kinds.1,
+    };
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_fused_input_case_isa(&case, isa)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_remaining_input_data_families_match_profile_vm() -> Result<(), String>
+{
+    for (label, kinds) in [
+        (
+            "crazy/input",
+            (DirectNativeKind::Crazy, DirectNativeKind::Input),
+        ),
+        (
+            "input/crazy",
+            (DirectNativeKind::Input, DirectNativeKind::Crazy),
+        ),
+        (
+            "input/rotate",
+            (DirectNativeKind::Input, DirectNativeKind::Rotate),
+        ),
+        (
+            "rotate/input",
+            (DirectNativeKind::Rotate, DirectNativeKind::Input),
+        ),
+    ] {
+        assert_fused_input_data_case(label, kinds, &[0x42])?;
+        assert_fused_input_data_case(label, kinds, &[])?;
     }
     Ok(())
 }
@@ -27795,9 +27954,10 @@ fn assert_fused_input_code_write_case(
         return Err(format!("{label} EOF evidence drifted"));
     }
     let expected_memory = normative.memory().to_vec();
-    let case = FusedInputCodeWriteCase {
+    let case = FusedInputCase {
         expected_input_consumed: normative.input_consumed(),
         expected_memory: &expected_memory,
+        first_kind: DirectNativeKind::Input,
         initial_memory: &initial_memory,
         input,
         label,
@@ -27805,7 +27965,7 @@ fn assert_fused_input_code_write_case(
         second_kind,
     };
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        assert_fused_input_code_write_isa(&case, isa)?;
+        assert_fused_input_case_isa(&case, isa)?;
     }
     Ok(())
 }
@@ -28890,9 +29050,32 @@ fn direct_fused_sequence_jump_drift_cases()
     ])
 }
 
+fn direct_input_data_drift_case(
+    label: &'static str,
+    kinds: (DirectNativeKind, DirectNativeKind),
+) -> Result<DirectFusedSequenceDriftCase, String> {
+    Ok((label, direct_input_data_programs(kinds, vec![0x42])?))
+}
+
 fn direct_fused_sequence_input_drift_cases()
 -> Result<Vec<DirectFusedSequenceDriftCase>, String> {
     Ok(vec![
+        direct_input_data_drift_case(
+            "crazy/input",
+            (DirectNativeKind::Crazy, DirectNativeKind::Input),
+        )?,
+        direct_input_data_drift_case(
+            "input/crazy",
+            (DirectNativeKind::Input, DirectNativeKind::Crazy),
+        )?,
+        direct_input_data_drift_case(
+            "input/rotate",
+            (DirectNativeKind::Input, DirectNativeKind::Rotate),
+        )?,
+        direct_input_data_drift_case(
+            "rotate/input",
+            (DirectNativeKind::Rotate, DirectNativeKind::Input),
+        )?,
         (
             "input/jump-code",
             direct_input_code_write_programs(

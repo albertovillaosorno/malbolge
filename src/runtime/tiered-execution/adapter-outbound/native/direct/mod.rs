@@ -460,6 +460,17 @@ pub(super) struct DirectFusedCrazyNoOperationTemplate<'live_ins> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedDataWriteInputTemplate<'live_ins> {
+    pub(super) first: DirectRotateCommit,
+    pub(super) input: DirectInputCommit,
+    pub(super) input_evidence: TraceInput,
+    pub(super) input_index: u64,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DirectFusedInputCodeWriteTemplate<'live_ins> {
     pub(super) input: DirectInputCommit,
     pub(super) input_evidence: TraceInput,
@@ -468,6 +479,17 @@ pub(super) struct DirectFusedInputCodeWriteTemplate<'live_ins> {
     pub(super) observation: DirectEntryObservation,
     pub(super) required_memory_words: u64,
     pub(super) second: DirectCodeWriteCommit,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedInputDataWriteTemplate<'live_ins> {
+    pub(super) input: DirectInputCommit,
+    pub(super) input_evidence: TraceInput,
+    pub(super) input_index: u64,
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) required_memory_words: u64,
+    pub(super) second: DirectRotateCommit,
 }
 
 #[derive(Clone, Copy, Debug)]
