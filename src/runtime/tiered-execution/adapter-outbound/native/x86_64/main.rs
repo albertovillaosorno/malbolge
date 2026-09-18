@@ -39,12 +39,13 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard,
     DirectFusedCrazyNoOperationTemplate, DirectFusedCrazyPairTemplate,
-    DirectFusedInputPairTemplate, DirectFusedNoOperationCrazyTemplate,
-    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedOutputPairTemplate,
-    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
-    DirectFusedRotatePairTemplate, DirectInputCommit, DirectInputGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
+    DirectFusedInputOutputTemplate, DirectFusedInputPairTemplate,
+    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
+    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
+    DirectFusedOutputPairTemplate, DirectFusedRotateNoOperationTemplate,
+    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
+    DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
+    DirectJumpDataGuard, DirectOutputCommit,
     DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedTerminalGuard,
     DirectRotateCommit, DirectRotateGuard,
 };
@@ -1018,6 +1019,98 @@ fn push_input_guard_near(
             push_near_guard_jump(code, guard_jumps, 0x85);
         },
     }
+}
+
+/// Encodes one atomic input/output fused region.
+#[must_use]
+pub(super) fn fused_input_output_code(
+    template: &DirectFusedInputOutputTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut code = Vec::with_capacity(384);
+    let mut guard_jumps =
+        Vec::with_capacity(template.live_ins.len().saturating_add(18));
+    push_observation_guards_near(
+        &mut code,
+        &mut guard_jumps,
+        template.observation,
+    );
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&template.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    for live_in in template.live_ins {
+        push_direct_memory_guard_near(
+            &mut code,
+            &mut guard_jumps,
+            memory_byte_offset(live_in.address)?,
+            live_in.value,
+        );
+    }
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    push_input_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        template.input_evidence,
+        template.input_index,
+    );
+    code.extend_from_slice(&[0x4c, 0x8b, 0x59, 0x28, 0x4d, 0x85, 0xdb]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x41, 0x30, 0x49, 0xba]);
+    code.extend_from_slice(&template.output.output_index.to_le_bytes());
+    code.extend_from_slice(&[0x4d, 0x39, 0xd0]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x86);
+    push_fused_input_output_commit(&mut code, template)?;
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_fused_input_output_commit(
+    code: &mut Vec<u8>,
+    template: &DirectFusedInputOutputTemplate<'_>,
+) -> Option<()> {
+    for (address, value) in [
+        (
+            template.input.encrypted_address,
+            template.input.encrypted_value,
+        ),
+        (
+            template.output.encrypted_address,
+            template.output.encrypted_value,
+        ),
+    ] {
+        let code_offset = memory_byte_offset(address)?;
+        code.extend_from_slice(&[0xc7, 0x82]);
+        code.extend_from_slice(&code_offset.to_le_bytes());
+        code.extend_from_slice(&value.to_le_bytes());
+    }
+    code.extend_from_slice(&[0xc7, 0x41, 0x40]);
+    code.extend_from_slice(&template.input.accumulator.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&template.output.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&template.output.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x49, 0xba]);
+    code.extend_from_slice(&template.input.next_input_consumed.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x89, 0x51, 0x20]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x59, 0x28, 0x49, 0xba]);
+    code.extend_from_slice(&template.output.output_index.to_le_bytes());
+    code.extend_from_slice(&[
+        0x43,
+        0xc6,
+        0x04,
+        0x13,
+        template.output.output_byte,
+    ]);
+    code.extend_from_slice(&[0x49, 0xba]);
+    code.extend_from_slice(&template.output.next_output_len.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x89, 0x51, 0x38, 0x31, 0xc0, 0xc3]);
+    Some(())
 }
 
 /// Encodes one atomic two-step input/input fused region.

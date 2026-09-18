@@ -21410,6 +21410,88 @@ fn direct_rotate_no_operation_sequence_programs()
         .collect()
 }
 
+fn direct_input_output_sequence_state_with_input(
+    input: Vec<u8>,
+) -> Result<ProfileMachineState, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
+            .map_err(|error| format!("input/output base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let input_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'/'))
+        .ok_or_else(|| String::from("phase-five input cell missing"))?;
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("input/output code cell 5 missing"))? =
+        input_cell;
+    let output_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'<'))
+        .ok_or_else(|| String::from("phase-six output cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("input/output code cell 6 missing"))? =
+        output_cell;
+    let io = ProfileMachineIoState::new(input, 0, vec![0x7f], None)
+        .map_err(|error| format!("input/output IO: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x00ab_cdef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("input/output state: {error}"))
+}
+
+fn direct_input_output_sequence_state() -> Result<ProfileMachineState, String> {
+    direct_input_output_sequence_state_with_input(vec![0x41])
+}
+
+fn direct_input_output_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_input_output_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("input/output trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("input/output outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace)
+                .map_err(|error| format!("input/output projection: {error:?}"))
+        })
+        .collect()
+}
+
+fn direct_input_output_eof_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_input_output_sequence_state_with_input(Vec::new())?,
+    );
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("input/output EOF trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("input/output EOF outcome mismatch: {outcome:?}"));
+    }
+    traces
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| format!("input/output EOF projection: {error:?}"),
+            )
+        })
+        .collect()
+}
+
 fn direct_input_pair_sequence_state() -> Result<ProfileMachineState, String> {
     let base =
         ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
@@ -26582,6 +26664,159 @@ fn fused_noop_output_invocation_matches_profile_vm() -> Result<(), String> {
 }
 
 #[test]
+fn fused_input_output_eof_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_input_output_eof_sequence_programs()?;
+    let [first_program, _second_program] = programs.as_slice() else {
+        return Err(format!("input/output EOF length drifted: {programs:?}"));
+    };
+    if first_program
+        .effects
+        .first()
+        .and_then(|effect| effect.input)
+        != Some(TraceInput::EndOfInput)
+    {
+        return Err(String::from("input/output EOF fixture drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("input/output EOF select: {error}"))?;
+        let [first, second] = plan.artifacts() else {
+            return Err(format!("input/output EOF plan drifted: {plan:?}"));
+        };
+        if first.kind() != DirectNativeKind::Input
+            || second.kind() != DirectNativeKind::Output
+        {
+            return Err(format!("input/output EOF kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("input/output EOF admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("input/output EOF emit: {error}"))?;
+        let _verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("input/output EOF verify: {error}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_input_output_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_input_output_sequence_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(format!(
+            "input/output source length drifted: {programs:?}"
+        ));
+    };
+    if first_program
+        .effects
+        .first()
+        .and_then(|effect| effect.input)
+        != Some(TraceInput::Byte(0x41))
+        || second_program
+            .effects
+            .first()
+            .and_then(|effect| effect.output)
+            != Some(0x41)
+    {
+        return Err(String::from("input/output fixture drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("input/output select: {error}"))?;
+        let [first, second] = plan.artifacts() else {
+            return Err(format!("input/output plan length drifted: {plan:?}"));
+        };
+        if first.kind() != DirectNativeKind::Input
+            || second.kind() != DirectNativeKind::Output
+        {
+            return Err(format!("input/output plan kind drifted: {plan:?}"));
+        }
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("input/output admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("input/output emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("input/output verify: {error}"))?;
+        let image = VerifiedDirectFusedLoadImage::new(&verified)
+            .map_err(|error| format!("input/output image: {error}"))?;
+        if verified.admission() != &admission
+            || verified.key() != admission.key()
+            || image.code() != direct_object_text(verified.object())?
+            || image.host_isa() != isa
+        {
+            return Err(format!("input/output evidence drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_input_output_invocation_matches_profile_vm() -> Result<(), String> {
+    let state = direct_input_output_sequence_state()?;
+    let initial_memory = state.memory().to_vec();
+    let input = state.io().input().to_vec();
+    let initial_output = state.io().output().to_vec();
+    let mut normative = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = normative
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("input/output normative run: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("input/output outcome mismatch: {outcome:?}"));
+    }
+    let programs = traces
+        .iter()
+        .map(RegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("input/output projection: {error:?}"))?;
+    let expected_memory = normative.memory().to_vec();
+    let expected_output = normative.output().to_vec();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("input/output invoke select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("input/output invoke admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("input/output invoke emit: {error}"))?;
+        let artifact = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("input/output invoke verify: {error}"))?;
+        let mut memory = initial_memory.clone();
+        let mut output = initial_output.clone();
+        output.resize(expected_output.len(), 0);
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("input/output invoke prepare: {error}"))?;
+        prepared.apply_expected_for_test();
+        let completion = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("input/output complete: {error}"))?;
+        if completion != NativeRegionInvocationOutcome::Applied(plan.exit())
+            || memory != expected_memory
+            || output != expected_output
+        {
+            return Err(format!("input/output diverged from VM on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn fused_input_pair_emits_and_verifies_both_isas() -> Result<(), String> {
     let programs = direct_input_pair_sequence_programs()?;
     let [first_program, second_program] = programs.as_slice() else {
@@ -26924,6 +27159,7 @@ fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
             "no-op/output",
             direct_no_operation_output_sequence_programs()?,
         ),
+        ("input/output", direct_input_output_sequence_programs()?),
         ("input/input", direct_input_pair_sequence_programs()?),
         ("output/output", direct_output_pair_sequence_programs()?),
         (

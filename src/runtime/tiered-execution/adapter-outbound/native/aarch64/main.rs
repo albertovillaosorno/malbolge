@@ -39,12 +39,13 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard,
     DirectFusedCrazyNoOperationTemplate, DirectFusedCrazyPairTemplate,
-    DirectFusedInputPairTemplate, DirectFusedNoOperationCrazyTemplate,
-    DirectFusedNoOperationOutputTemplate, DirectFusedNoOperationPairTemplate,
-    DirectFusedNoOperationRotateTemplate, DirectFusedOutputPairTemplate,
-    DirectFusedRotateNoOperationTemplate, DirectFusedRotateOutputTemplate,
-    DirectFusedRotatePairTemplate, DirectInputCommit, DirectInputGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard, DirectOutputCommit,
+    DirectFusedInputOutputTemplate, DirectFusedInputPairTemplate,
+    DirectFusedNoOperationCrazyTemplate, DirectFusedNoOperationOutputTemplate,
+    DirectFusedNoOperationPairTemplate, DirectFusedNoOperationRotateTemplate,
+    DirectFusedOutputPairTemplate, DirectFusedRotateNoOperationTemplate,
+    DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
+    DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
+    DirectJumpDataGuard, DirectOutputCommit,
     DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedTerminalGuard,
     DirectRotateCommit, DirectRotateGuard,
 };
@@ -1016,6 +1017,102 @@ fn push_input_guard(
             push_guard_branch(words, guard_branches, 0x5400_0001);
         },
     }
+    Some(())
+}
+
+/// Encodes one atomic input/output fused region.
+#[must_use]
+pub(super) fn fused_input_output_code(
+    template: &DirectFusedInputOutputTemplate<'_>,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(160);
+    let mut guard_branches =
+        Vec::with_capacity(template.live_ins.len().saturating_add(18));
+    push_observation_guards(
+        &mut words,
+        &mut guard_branches,
+        template.observation,
+    )?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    for live_in in template.live_ins {
+        push_indexed_memory_guard(
+            &mut words,
+            &mut guard_branches,
+            live_in.address,
+            live_in.value,
+        );
+    }
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_input_guard(
+        &mut words,
+        &mut guard_branches,
+        template.input_evidence,
+        template.input_index,
+    )?;
+    words.push(0xf940_140b);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_000b);
+    words.push(0xf940_180c);
+    push_u64_x9(&mut words, template.output.output_index)?;
+    words.push(0xeb09_019f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0009);
+    push_fused_input_output_commit(&mut words, template)?;
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_fused_input_output_commit(
+    words: &mut Vec<u32>,
+    template: &DirectFusedInputOutputTemplate<'_>,
+) -> Option<()> {
+    for (address, value) in [
+        (
+            template.input.encrypted_address,
+            template.input.encrypted_value,
+        ),
+        (
+            template.output.encrypted_address,
+            template.output.encrypted_value,
+        ),
+    ] {
+        words.extend_from_slice(&[
+            movz_w10(address),
+            movk_w10_high(address),
+            0x8b0a_090a,
+            movz_w9(value),
+            movk_w9_high(value),
+            0xb900_0149,
+        ]);
+    }
+    words.extend_from_slice(&[
+        movz_w9(template.input.accumulator),
+        movk_w9_high(template.input.accumulator),
+        0xb900_4009,
+        movz_w9(template.output.next_code_pointer),
+        movk_w9_high(template.output.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.output.next_data_pointer),
+        movk_w9_high(template.output.next_data_pointer),
+        0xb900_4809,
+    ]);
+    push_u64_x9(words, template.input.next_input_consumed)?;
+    words.push(0xf900_1009);
+    words.push(0xf940_140b);
+    push_u64_x9(words, template.output.output_index)?;
+    words.extend_from_slice(&[
+        0x8b09_016b,
+        movz_w9(u32::from(template.output.output_byte)),
+        0x3900_0169,
+    ]);
+    push_u64_x9(words, template.output.next_output_len)?;
+    words.extend_from_slice(&[0xf900_1c09, 0x2a1f_03e0, 0xd65f_03c0]);
     Some(())
 }
 

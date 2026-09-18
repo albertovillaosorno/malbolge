@@ -386,9 +386,9 @@ subsequent re-admission remains independent of cache lifetime.
 
 Single-step plans are rejected.
 
-The fused emitter now covers thirty-two reviewed two-step regions on
+The fused emitter now covers thirty-three reviewed two-step regions on
 x86-64 and AArch64: rotate/output, rotate/jump-code, rotate/jump-data,
-crazy/output, input/input,
+crazy/output, input/input, input/output,
 crazy/jump-code,
 crazy/jump-data,
 no-operation/output,
@@ -415,8 +415,9 @@ publishing only the final region register state, without exposing an
 intermediate one-step observation.
 
 VM-derived traces exercise all six reviewed no-operation-containing templates
-plus crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate, and
-input/input and output/output on both ISAs through emission, semantic promotion,
+plus crazy/output, crazy/rotate, crazy/crazy, rotate/crazy, rotate/rotate,
+input/input, input/output, and output/output on both ISAs through emission,
+semantic promotion,
 relocation-free load-image extraction, and whole-region state comparison with
 the profile VM.
 
@@ -1411,7 +1412,8 @@ no-operation/crazy,
 crazy/jump-code, crazy/jump-data, crazy/no-operation, crazy/output,
 crazy/rotate,
 crazy/crazy, rotate/jump-code, rotate/jump-data, rotate/no-operation,
-rotate/crazy, rotate/rotate, input/input, and output/output objects are
+rotate/crazy, rotate/rotate, input/input, input/output, and output/output
+objects are
 also emitted, independently
 verified, and
 extracted as relocation-free load images on both ISAs, with dedicated safe
