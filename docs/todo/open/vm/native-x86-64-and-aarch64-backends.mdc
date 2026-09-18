@@ -1183,7 +1183,7 @@ A distinct single-resident lease cache
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
   concrete foreign-call shim remain open.
-  The reviewed forty-one-shape fused two-step emission matrix is complete.
+  The reviewed forty-two-shape fused two-step emission matrix is complete.
   Concrete executable-memory integration, instruction-cache implementation,
   and the foreign-call boundary remain pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen

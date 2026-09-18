@@ -1941,6 +1941,16 @@ fn select_input_shape(
                 })?;
             Ok(Some(FusedSelection::OutputInput(output, second)))
         },
+        DirectNativeKind::JumpCode => {
+            let jump_code = super::validate_jump_code_program(first_program)
+                .map_err(|_error| {
+                    DirectFusedSequenceObjectError::ProgramShape
+                })?;
+            Ok(Some(FusedSelection::CodeWriteInput(
+                jump_code.commit,
+                second,
+            )))
+        },
         DirectNativeKind::JumpData => {
             let jump_data = super::validate_jump_data_program(first_program)
                 .map_err(|_error| {
@@ -1956,7 +1966,6 @@ fn select_input_shape(
         | DirectNativeKind::HaltFetch
         | DirectNativeKind::HaltRegisters
         | DirectNativeKind::InitialHalt
-        | DirectNativeKind::JumpCode
         | DirectNativeKind::NoOperation
         | DirectNativeKind::NonGraphical
         | DirectNativeKind::Rotate => Ok(None),
