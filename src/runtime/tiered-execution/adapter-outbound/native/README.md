@@ -87,6 +87,12 @@ check the announced response length against the caller bound before allocation,
 and poison/terminate the child after any transport or framing failure. The
 session intentionally does not interpret MBNPC1 or executable-memory commands.
 
+`process_memory_wire.rs` defines `MBNPM1`, a transport-only little-endian wire
+for allocate, copy, protect, synchronize, and release. It preserves exact
+platform reports and copied bytes as untrusted evidence for the existing safe
+lifecycle. Copy response sizing derives from the original request, and child
+failures carry only an opaque `u32` code. The codec performs no memory syscall.
+
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
 artifact's exact target, rejects canonical program drift, and refuses to grant

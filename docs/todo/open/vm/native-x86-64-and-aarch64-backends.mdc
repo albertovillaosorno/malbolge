@@ -237,8 +237,13 @@ A distinct single-resident lease cache
   multiple length-framed exchanges. Response lengths are bounded before
   allocation, transport/framing failure poisons and terminates the session, and
   deterministic workers cover reuse plus oversized/truncated responses. The
-  executable-memory command protocol and MBNPC1 runner integration remain
-  pending.
+  MBNPC1 runner integration remains pending.
+
+  The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
+  synchronize, and release commands over that session. Returned mapping, range,
+  permission, and copied-byte fields remain untrusted evidence for the existing
+  lifecycle checks; copy response allocation is bounded by the original request.
+  The concrete worker syscalls and MBNPC1 runner integration remain pending.
 
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub

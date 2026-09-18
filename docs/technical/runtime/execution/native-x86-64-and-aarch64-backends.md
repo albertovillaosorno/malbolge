@@ -410,6 +410,15 @@ child survives multiple exchanges and that oversized/truncated responses fail
 closed. The session does not interpret MBNPC1 or yet implement executable-memory
 commands or the foreign call itself.
 
+`native/process_memory_wire.rs` now defines the transport-neutral `MBNPM1`
+little-endian command protocol for writable allocation, exact code copy, RX
+protection, instruction synchronization, and release. Mapping/address/length/
+permission reports and copied bytes remain untrusted evidence; the existing safe
+lifecycle still owns every identity, W^X, range, capacity, and byte-exact
+admission check. Copy response size derives from the original copy request, and
+child failures carry only an opaque `u32` platform code. No syscall or mapping
+ownership is implemented by this codec.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact

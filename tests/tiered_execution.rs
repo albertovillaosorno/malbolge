@@ -434,22 +434,22 @@ use execution_native::{
     ExecutionGeometryLoadedSequenceAdmissionError,
     ExecutionGeometryNativeRunner, NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES,
     NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES, NATIVE_PROCESS_CALL_WIRE_MAGIC,
-    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
-    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
-    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
-    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
-    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
-    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
-    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
-    NativeArtifactError, NativeExecutableAllocationRequest,
-    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
-    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
-    NativeExecutableLoadFailure, NativeExecutableLoadPhase,
-    NativeExecutableMappingId, NativeExecutableMappingReport,
-    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
-    NativeExecutablePermission, NativeExecutableReleaseRequest,
-    NativeExecutableRunner, NativeExecutableSequenceCache,
-    NativeExecutableSequenceCacheCapacityError,
+    NATIVE_PROCESS_MEMORY_WIRE_MAGIC, NATIVE_REGION_ABI_REVISION,
+    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
+    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
+    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
+    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
+    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
+    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
+    NativeExecutableLifecycleError, NativeExecutableLoadFailure,
+    NativeExecutableLoadPhase, NativeExecutableMappingId,
+    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
+    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
+    NativeExecutableReleaseRequest, NativeExecutableRunner,
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -462,11 +462,13 @@ use execution_native::{
     NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
     NativeProcessCallRequest, NativeProcessCallResponse,
     NativeProcessCallResponseError, NativeProcessCallWireError,
-    NativeProcessSession, NativeProcessSessionConfig,
-    NativeProcessSessionError, NativeRegionBuffers, NativeRegionCallFrame,
-    NativeRegionCallFrameError, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
-    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeProcessMemoryRequest, NativeProcessMemoryResponse,
+    NativeProcessMemoryWireError, NativeProcessSession,
+    NativeProcessSessionConfig, NativeProcessSessionError, NativeRegionBuffers,
+    NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, NativeRegionStatus,
+    NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -552,8 +554,9 @@ use execution_native::{
     admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
     decode_native_process_call_request, decode_native_process_call_response,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_execution_geometry_crazy_coff,
+    decode_native_process_memory_request,
+    decode_native_process_memory_response, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -570,7 +573,8 @@ use execution_native::{
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, encode_native_process_call_request,
-    encode_native_process_call_response,
+    encode_native_process_call_response, encode_native_process_memory_request,
+    encode_native_process_memory_response,
     execute_cached_direct_fused_native_retry,
     execute_cached_direct_fused_native_retry_cycle,
     execute_cached_verified_native_sequence, execute_direct_fused_native_retry,
@@ -604,7 +608,9 @@ use execution_native::{
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
     lower_preflighted_clang_c23, native_process_call_request_byte_len,
-    native_process_call_response_byte_limit, plan_direct_fused_native_retry,
+    native_process_call_response_byte_limit,
+    native_process_memory_request_byte_len,
+    native_process_memory_response_byte_limit, plan_direct_fused_native_retry,
     rebase_direct_fused_native_retry, rebase_direct_fused_native_retry_failure,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable,
@@ -1165,6 +1171,11 @@ type RegisterMaskedObservationPair =
 
 type NativeProcessCallWireFixture =
     (NativeProcessCallRequest, ProfileMachineObservation);
+
+type NativeProcessMemoryWireFixture = (
+    NativeExecutableMappingReport,
+    Vec<NativeProcessMemoryRequest>,
+);
 
 type LeaseCacheFixture = (
     NativeExecutableSequenceLeaseCache,
@@ -38321,6 +38332,231 @@ fn native_process_session_reuses_one_child_across_exchanges()
     } else {
         Err(String::from(
             "native process session did not remain persistent",
+        ))
+    }
+}
+
+fn native_process_memory_wire_fixture()
+-> Result<NativeProcessMemoryWireFixture, String> {
+    let mapping_id = native_executable_mapping_id(71)?;
+    let base_address = native_executable_address(0x8100)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base_address,
+        64,
+        NativeExecutablePermission::ReadWrite,
+    );
+    let executable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base_address,
+        64,
+        NativeExecutablePermission::ReadExecute,
+    );
+    Ok((executable, vec![
+        NativeProcessMemoryRequest::Allocate(
+            NativeExecutableAllocationRequest::new(
+                64,
+                16,
+                NativeExecutablePermission::ReadWrite,
+            ),
+        ),
+        NativeProcessMemoryRequest::Copy {
+            code: vec![0x90, 0xcc, 0x90].into_boxed_slice(),
+            mapping: writable,
+        },
+        NativeProcessMemoryRequest::Protect(writable),
+        NativeProcessMemoryRequest::Release(
+            NativeExecutableReleaseRequest::from_mapping(executable),
+        ),
+        NativeProcessMemoryRequest::Synchronize(
+            NativeInstructionSyncRequest::new(mapping_id, base_address, 3),
+        ),
+    ]))
+}
+
+fn native_process_memory_success_response(
+    request: &NativeProcessMemoryRequest,
+    executable: NativeExecutableMappingReport,
+) -> NativeProcessMemoryResponse {
+    match request {
+        NativeProcessMemoryRequest::Allocate(_) => {
+            NativeProcessMemoryResponse::Allocate(
+                NativeExecutableMappingReport::new(
+                    executable.mapping_id(),
+                    executable.base_address(),
+                    executable.mapped_len(),
+                    NativeExecutablePermission::ReadWrite,
+                ),
+            )
+        },
+        NativeProcessMemoryRequest::Copy { code, mapping } => {
+            NativeProcessMemoryResponse::Copy(
+                NativeExecutableCodeCopyReport::new(
+                    mapping.mapping_id(),
+                    mapping.base_address(),
+                    code.to_vec(),
+                ),
+            )
+        },
+        NativeProcessMemoryRequest::Protect(_) => {
+            NativeProcessMemoryResponse::Protect(executable)
+        },
+        NativeProcessMemoryRequest::Release(_) => {
+            NativeProcessMemoryResponse::Release
+        },
+        NativeProcessMemoryRequest::Synchronize(sync_request) => {
+            NativeProcessMemoryResponse::Synchronize(
+                NativeInstructionSyncReport::new(
+                    sync_request.mapping_id(),
+                    sync_request.start_address(),
+                    sync_request.byte_len(),
+                ),
+            )
+        },
+    }
+}
+
+#[test]
+fn native_process_memory_wire_round_trips_every_command() -> Result<(), String>
+{
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    for request in requests {
+        let request_bytes = encode_native_process_memory_request(&request)
+            .map_err(|error| error.to_string())?;
+        let request_len = native_process_memory_request_byte_len(&request)
+            .map_err(|error| error.to_string())?;
+        let decoded_request =
+            decode_native_process_memory_request(&request_bytes)
+                .map_err(|error| error.to_string())?;
+        if request_bytes.get(..NATIVE_PROCESS_MEMORY_WIRE_MAGIC.len())
+            != Some(NATIVE_PROCESS_MEMORY_WIRE_MAGIC.as_slice())
+            || request_bytes.len() != request_len
+            || decoded_request != request
+        {
+            return Err(String::from(
+                "process memory request round trip drifted",
+            ));
+        }
+        let response =
+            native_process_memory_success_response(&request, executable);
+        let response_bytes =
+            encode_native_process_memory_response(&request, &response)
+                .map_err(|error| error.to_string())?;
+        let response_limit =
+            native_process_memory_response_byte_limit(&request)
+                .map_err(|error| error.to_string())?;
+        let decoded_response =
+            decode_native_process_memory_response(&response_bytes, &request)
+                .map_err(|error| error.to_string())?;
+        if response_bytes.len() > response_limit || decoded_response != response
+        {
+            return Err(String::from(
+                "process memory response round trip drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_memory_wire_bounds_copy_response_from_request()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let request = requests
+        .iter()
+        .find(|request| {
+            matches!(request, NativeProcessMemoryRequest::Copy { .. })
+        })
+        .ok_or_else(|| String::from("process memory copy fixture missing"))?;
+    let response = native_process_memory_success_response(request, executable);
+    let mut bytes = encode_native_process_memory_response(request, &response)
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_memory_response_byte_limit(request)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() != limit {
+        return Err(String::from("process memory copy response limit drifted"));
+    }
+    bytes.push(0);
+    if decode_native_process_memory_response(&bytes, request)
+        == Err(NativeProcessMemoryWireError::TrailingBytes)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "process memory admitted oversized copy evidence",
+        ))
+    }
+}
+
+#[test]
+fn native_process_memory_wire_round_trips_failure() -> Result<(), String> {
+    let (_executable, requests) = native_process_memory_wire_fixture()?;
+    for request in requests {
+        let response = NativeProcessMemoryResponse::Failure(0x1020_3040);
+        let bytes = encode_native_process_memory_response(&request, &response)
+            .map_err(|error| error.to_string())?;
+        if bytes.len()
+            > native_process_memory_response_byte_limit(&request)
+                .map_err(|error| error.to_string())?
+            || decode_native_process_memory_response(&bytes, &request)
+                .map_err(|error| error.to_string())?
+                != response
+        {
+            return Err(String::from(
+                "process memory failure round trip drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_memory_wire_rejects_malformed_evidence() -> Result<(), String>
+{
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let allocate = requests.first().ok_or_else(|| {
+        String::from("process memory allocate fixture missing")
+    })?;
+    let mut invalid_permission = encode_native_process_memory_request(allocate)
+        .map_err(|error| error.to_string())?;
+    let permission = invalid_permission.get_mut(25).ok_or_else(|| {
+        String::from("process memory permission field missing")
+    })?;
+    *permission = 9;
+    if decode_native_process_memory_request(&invalid_permission)
+        != Err(NativeProcessMemoryWireError::PermissionTag(9))
+    {
+        return Err(String::from("process memory admitted invalid permission"));
+    }
+    let protect = requests.get(2).ok_or_else(|| {
+        String::from("process memory protect fixture missing")
+    })?;
+    let mut zero_mapping = encode_native_process_memory_request(protect)
+        .map_err(|error| error.to_string())?;
+    zero_mapping
+        .get_mut(9..17)
+        .ok_or_else(|| String::from("process memory mapping field missing"))?
+        .fill(0);
+    if decode_native_process_memory_request(&zero_mapping)
+        != Err(NativeProcessMemoryWireError::MappingIdentity)
+    {
+        return Err(String::from("process memory admitted zero mapping"));
+    }
+    let response = native_process_memory_success_response(allocate, executable);
+    let mut wrong_command =
+        encode_native_process_memory_response(allocate, &response)
+            .map_err(|error| error.to_string())?;
+    let command = wrong_command.get_mut(8).ok_or_else(|| {
+        String::from("process memory response command missing")
+    })?;
+    *command = 2;
+    if decode_native_process_memory_response(&wrong_command, allocate)
+        == Err(NativeProcessMemoryWireError::ResponseCommand)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "process memory admitted response command drift",
         ))
     }
 }

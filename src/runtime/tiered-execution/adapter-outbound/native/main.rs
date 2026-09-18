@@ -78,6 +78,7 @@ mod loader;
 mod platform;
 mod process_call;
 mod process_call_wire;
+mod process_memory_wire;
 mod process_session;
 mod profile_metadata;
 mod register_masked_lease_cache;
@@ -588,6 +589,16 @@ pub use process_call_wire::{
     decode_native_process_call_response, encode_native_process_call_request,
     encode_native_process_call_response, native_process_call_request_byte_len,
     native_process_call_response_byte_limit,
+};
+pub use process_memory_wire::{
+    NATIVE_PROCESS_MEMORY_WIRE_MAGIC, NativeProcessMemoryRequest,
+    NativeProcessMemoryResponse, NativeProcessMemoryWireError,
+    decode_native_process_memory_request,
+    decode_native_process_memory_response,
+    encode_native_process_memory_request,
+    encode_native_process_memory_response,
+    native_process_memory_request_byte_len,
+    native_process_memory_response_byte_limit,
 };
 pub use process_session::{
     NativeProcessSession, NativeProcessSessionConfig, NativeProcessSessionError,
