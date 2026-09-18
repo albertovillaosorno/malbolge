@@ -1884,7 +1884,7 @@ impl FakeRegisterMaskedNoOperationNativeRunner {
         }
     }
 
-    fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+    const fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
         Self {
             behavior: FakeNativeRunnerBehavior::GuardMiss,
             behaviors,
@@ -11049,8 +11049,7 @@ fn register_masked_v6_no_operation_sequence_runner_failure_reuses_mapping()
     let state = direct_no_operation_pair_sequence_state()?;
     let mut memory = state.memory().to_vec();
     let entry_memory = memory.clone();
-    let input = [];
-    let mut output = [];
+    let (input, mut output) = ([], []);
     let mut failing = FakeRegisterMaskedNoOperationNativeRunner::new(
         FakeNativeRunnerBehavior::FailureAfterMutation,
     );
@@ -11066,19 +11065,15 @@ fn register_masked_v6_no_operation_sequence_runner_failure_reuses_mapping()
             "v6 no-op sequence runner failure was ignored",
         ));
     };
-    if failure.completed_steps() != 0
-        || failure.step_index() != 0
-        || failure.resume_index() != 0
-        || failure.observation() != plan.entry()
-        || !matches!(
-            failure.execution_failure(),
-            RegisterMaskedNoOperationNativeOwnerExecutionFailure::Execution(_)
-        )
-        || memory != entry_memory
-        || adapter.operations != loaded_operations
-    {
-        return Err(String::from("v6 no-op sequence runner rollback drifted"));
-    }
+    assert_no_operation_sequence_runner_failure(
+        failure.as_ref(),
+        0,
+        plan.entry(),
+        (
+            memory == entry_memory,
+            adapter.operations == loaded_operations,
+        ),
+    )?;
     let mut succeeding = FakeRegisterMaskedNoOperationNativeRunner::new(
         FakeNativeRunnerBehavior::Applied,
     );
@@ -11148,20 +11143,18 @@ fn register_masked_v6_no_operation_sequence_late_failure_keeps_prefix()
             "v6 no-op sequence ignored late runner failure",
         ));
     };
-    if failure.completed_steps() != 1
-        || failure.step_index() != 1
-        || failure.resume_index() != 1
-        || failure.observation() != first_observation
-        || !matches!(
-            failure.execution_failure(),
-            RegisterMaskedNoOperationNativeOwnerExecutionFailure::Execution(_)
-        )
-        || memory != expected_memory
-        || runner.calls != 2
-        || adapter.operations != loaded_operations
-    {
+    assert_no_operation_sequence_runner_failure(
+        failure.as_ref(),
+        1,
+        first_observation,
+        (
+            memory == expected_memory,
+            adapter.operations == loaded_operations,
+        ),
+    )?;
+    if runner.calls != 2 {
         return Err(String::from(
-            "v6 no-op sequence committed-prefix evidence drifted",
+            "v6 no-op sequence committed-prefix call count drifted",
         ));
     }
     loaded
@@ -11274,6 +11267,32 @@ fn register_masked_v6_non_graphical_sequence_plan_rejects_identity_drift()
         Err(String::from(
             "v6 non-graphical sequence ignored artifact identity drift",
         ))
+    }
+}
+
+fn assert_no_operation_sequence_runner_failure(
+    failure: &en::RegisterMaskedNoOperationNativeSequenceExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+    completed_steps: usize,
+    observation: ProfileMachineObservation,
+    state_ok: (bool, bool),
+) -> TieredTestResult {
+    let (memory_ok, residency_ok) = state_ok;
+    if failure.completed_steps() == completed_steps
+        && failure.step_index() == completed_steps
+        && failure.resume_index() == completed_steps
+        && failure.observation() == observation
+        && matches!(
+            failure.execution_failure(),
+            RegisterMaskedNoOperationNativeOwnerExecutionFailure::Execution(_)
+        )
+        && memory_ok
+        && residency_ok
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 no-op sequence runner rollback drifted"))
     }
 }
 
