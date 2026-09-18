@@ -968,9 +968,11 @@ rebasing, validates exact completion, and binds only to the identical ready
 image. A dedicated no-operation runner consumes only that bound view, admits
 exact Applied/GuardMiss outcomes, and restores the rebased snapshot after
 runner or completion failure. One-shot orchestration composes exact
-load/call/release with cleanup and committed release-retry evidence.
+load/call/release with cleanup and committed release-retry evidence. A reusable
+owner retains the exact no-operation mapping across rebased calls and runner
+failure without remapping.
 
-Owner and cache authority remain separate.
+Cache authority remains separate.
 
 The tracked `tests/execution/native_no_operation_posix.c` harness
 executes the frozen x86-64 `.text` after RW staging, same-mapping RX sealing,
