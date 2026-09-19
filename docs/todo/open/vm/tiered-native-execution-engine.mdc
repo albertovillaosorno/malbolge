@@ -696,10 +696,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   Halt-fetch is still the only template admitted by this generic v6 sequence
   type, so current valid sequences are one terminal step and a second halt is
   rejected rather than batched.
-- V6 no-operation semantic admission is now the first non-terminal mask-aware
-  expansion beyond the terminal object families. Native object/lifecycle support
-  for that shape and wider mask-aware instruction coverage remain open; v6-to-
-  v3/v4 projection remains forbidden.
+- V6 no-operation is now the first non-terminal mask-aware native path beyond
+  the terminal object families. A distinct verified object, relocation-free
+  load image, W^X lifecycle, prepared/bound call, runner, one-shot transaction,
+  reusable owner, resident cache, loaded sequence, weighted sequence cache, and
+  sequence lease cache preserve the exact v6 identity without projecting to
+  v3/v4. Wider mask-aware instruction coverage remains open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained
@@ -711,7 +713,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   and AArch64 COFF objects using the
   same MBNPM1/MBNPC1 protocol and Windows executable-memory/cache-sync APIs.
   Host-real AArch64 and Windows worker execution remain open.
-- Remaining fused-region emission plus cache-aware AOT/JIT policy beyond
-  verified direct process-local reuse, durable cache serialization/storage/
-  eviction, broader platform execution evidence, and end-to-end tier
-  performance remain unimplemented.
+- Cache-aware AOT/JIT policy beyond verified direct process-local reuse,
+  durable cache serialization/storage/eviction, broader platform execution
+  evidence, and broader end-to-end tier performance policy remain
+  unimplemented.

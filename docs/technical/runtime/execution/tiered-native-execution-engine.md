@@ -2079,18 +2079,25 @@ Loaded sequence execution carries the actual rebased observation forward,
 returns exact Applied or GuardMiss progress, and preserves current-step rollback
 on hard failure. Explicit reverse release attempts every mapping and retains
 failed ready executables only for retry. Halt-fetch remains the sole admitted v6
-semantic template, so every currently valid sequence is one terminal step and a
-second halt is rejected as `TerminationBeforeEnd`; this boundary does not claim
-multistep guest execution before a nonterminal v6 template exists.
+semantic template for this generic sequence type, so a second halt is rejected
+as `TerminationBeforeEnd`.
+
+A separate register-masked no-operation path now owns the first nonterminal v6
+native template. It has its own verified object, relocation-free load image,
+W^X lifecycle, prepared and bound call, runner, one-shot transaction, reusable
+owner, resident cache, and loaded sequence execution. Weighted sequence caches
+and immutable sequence leases reuse exact loaded chains under explicit
+entry/mapping/byte limits and transactional reconfiguration; v6 identity never
+projects into legacy direct-artifact authority.
 
 Broader register-masked template coverage remains open; unsupported v6
 execution remains fail-closed.
 
-Combined-region emission, native-retry orchestration beyond bounded
-process-local cached cycles, asynchronous/product scheduling, host-real AArch64
-and Windows native-worker execution, durable cache serialization/storage and
-cross-process leasing, cache-aware AOT/JIT policy beyond verified direct
-process-local reuse, and performance policy remain open.
+Native-retry orchestration beyond bounded process-local cached cycles,
+asynchronous/product scheduling, host-real AArch64 and Windows native-worker
+execution, durable cache serialization/storage and cross-process leasing,
+cache-aware AOT/JIT policy beyond verified direct process-local reuse, and
+broader performance policy remain open.
 The
 interpreter remains the only normative execution authority and the guaranteed
 fallback.
