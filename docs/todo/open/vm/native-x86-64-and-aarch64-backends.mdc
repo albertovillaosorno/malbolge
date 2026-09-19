@@ -106,8 +106,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   family on x86-64 and AArch64. It guards only live C/D state, exact memory
   extent, both code/data live-ins, and prior live termination while committing
   the reviewed data/code writes plus A/C/D results. Dead A and I/O history still
-  change the complete v6 key without changing machine text. Load-image,
-  executable-lifecycle, and invocation authority remain open for rotate.
+  change the complete v6 key without changing machine text.
+
+  A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
+  typestates now preserve exact key/target identity and mapping evidence.
+  Platform loading and invocation authority remain open for rotate.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

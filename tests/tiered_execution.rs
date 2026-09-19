@@ -542,17 +542,19 @@ use execution_native::{
     StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectFusedLoadImage,
-    VerifiedDirectInvocationError, VerifiedDirectLoadError,
-    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
-    VerifiedExecutionGeometryNativeCache,
+    StagedRegisterMaskedRotateNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectFusedLoadImage, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+    VerifiedRegisterMaskedRotateLoadImage,
+    VerifiedRegisterMaskedRotateNativeObjectArtifact,
     acquire_direct_fused_native_sequence,
     acquire_direct_fused_native_sequence_transactionally,
     admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
@@ -3934,6 +3936,19 @@ fn verified_register_masked_no_operation(
         .map_err(|error| format!("v6 {isa:?} no-op verify failed: {error}"))
 }
 
+fn verified_register_masked_rotate(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedRotateNativeObjectArtifact, String> {
+    let artifact = emit_direct_register_masked_rotate_coff(
+        program,
+        register_masked_rotate_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} rotate emit failed: {error}"))?;
+    verify_direct_register_masked_rotate(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} rotate verify failed: {error}"))
+}
+
 fn verified_register_masked_non_graphical(
     program: &RegisterMaskedRegionEffectProgram,
     isa: HostIsa,
@@ -5402,6 +5417,234 @@ fn register_masked_v6_rotate_verifier_rejects_drift() -> TieredTestResult {
     ) != Err(DirectRegisterMaskedRotateError::ProgramShape)
     {
         return Err(String::from("v6 rotate backend admitted no-operation"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_load_image_is_relocation_free() -> TieredTestResult
+{
+    let program = canonical_register_masked_rotate_program()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = emit_direct_register_masked_rotate_coff(
+            &program,
+            register_masked_rotate_target(isa),
+        )
+        .and_then(|candidate| {
+            verify_direct_register_masked_rotate(&candidate, &program)
+        })
+        .map_err(|error| format!("v6 {isa:?} rotate verify failed: {error}"))?;
+        let image = VerifiedRegisterMaskedRotateLoadImage::new(&artifact)
+            .map_err(|error| {
+                format!("v6 {isa:?} rotate load image failed: {error}")
+            })?;
+        let expected_alignment = match isa {
+            HostIsa::AArch64 => 4,
+            HostIsa::X86_64 => 1,
+        };
+        let policy = image.policy();
+        if image.code() != direct_object_text(artifact.object())?
+            || image.entry_code() != image.code()
+            || image.entry_offset() != 0
+            || image.allocation_len() != image.code().len()
+            || image.host_isa() != isa
+            || image.key() != artifact.key()
+            || image.minimum_instruction_alignment() != expected_alignment
+            || image.target() != artifact.key().target()
+            || image.target_triple() != artifact.target_triple()
+            || policy.initial_permissions()
+                != NativeExecutablePermission::ReadWrite
+            || policy.final_permissions()
+                != NativeExecutablePermission::ReadExecute
+            || !policy.requires_instruction_sync()
+        {
+            return Err(format!(
+                "v6 {isa:?} rotate load-image contract drifted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_load_image_rejects_relocs() -> TieredTestResult {
+    const TEXT_HEADER: usize = 20;
+    const RELOCATION_START_OFFSET: usize = 24;
+    const RELOCATION_COUNT_OFFSET: usize = 32;
+    let program = canonical_register_masked_rotate_program()?;
+    let candidate = emit_direct_register_masked_rotate_coff(
+        &program,
+        register_masked_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 rotate candidate failed: {error}"))?;
+    let artifact =
+        verify_direct_register_masked_rotate(&candidate, &program)
+            .map_err(|error| format!("v6 rotate verify failed: {error}"))?;
+    let mut object = artifact.object().to_vec();
+    let relocation_start = u32::try_from(object.len())
+        .map_err(|error| format!("v6 rotate relocation offset: {error}"))?;
+    object.extend_from_slice(&[0u8; 10]);
+    let start_offset = TEXT_HEADER
+        .checked_add(RELOCATION_START_OFFSET)
+        .ok_or_else(|| String::from("v6 rotate relocation start overflow"))?;
+    let count_offset = TEXT_HEADER
+        .checked_add(RELOCATION_COUNT_OFFSET)
+        .ok_or_else(|| String::from("v6 rotate relocation count overflow"))?;
+    write_fixture_u32(&mut object, start_offset, relocation_start)?;
+    write_fixture_u16(&mut object, count_offset, 1)?;
+    if VerifiedRegisterMaskedRotateLoadImage::from_object_for_test(
+        &artifact, &object,
+    ) != Err(VerifiedDirectLoadError::Relocations)
+    {
+        return Err(String::from("v6 rotate load image admitted relocations"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_rotate_lifecycle(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let artifact = verified_register_masked_rotate(program, isa)?;
+    let image = VerifiedRegisterMaskedRotateLoadImage::new(&artifact).map_err(
+        |error| format!("v6 {isa:?} rotate lifecycle image: {error}"),
+    )?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = StagedRegisterMaskedRotateNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} rotate lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} rotate lifecycle seal: {error}")
+        })?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} rotate lifecycle sync: {error}")
+        })?;
+    let release = ready.release_request();
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.target_triple() != artifact.target_triple()
+        || release.mapping_id() != mapping_id
+        || release.base_address() != base
+        || release.mapped_len() != image.allocation_len()
+    {
+        return Err(format!("v6 {isa:?} rotate lifecycle identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_lifecycle_retains_exact_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    assert_register_masked_rotate_lifecycle(
+        &program,
+        HostIsa::X86_64,
+        160,
+        0x16000,
+    )?;
+    assert_register_masked_rotate_lifecycle(
+        &program,
+        HostIsa::AArch64,
+        161,
+        0x17000,
+    )
+}
+
+fn assert_register_masked_rotate_code_drift(
+    image: &VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> TieredTestResult {
+    let mut changed = image.code().to_vec();
+    let first = changed.first_mut().ok_or_else(|| {
+        String::from("v6 rotate lifecycle code unexpectedly empty")
+    })?;
+    *first ^= 1;
+    if StagedRegisterMaskedRotateNativeExecutable::stage(
+        image, mapping, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("v6 rotate lifecycle admitted code drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_lifecycle_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedRotateLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 rotate lifecycle drift image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(162)?;
+    let base = native_executable_address(0x18000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    assert_register_masked_rotate_code_drift(&image, writable)?;
+    let staged = StagedRegisterMaskedRotateNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 rotate lifecycle drift stage: {error}"))?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(163)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from("v6 rotate lifecycle admitted mapping drift"));
+    }
+    let sealed = StagedRegisterMaskedRotateNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 rotate lifecycle sync stage: {error}"))?
+    .admit_read_execute(NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    ))
+    .map_err(|error| format!("v6 rotate lifecycle drift seal: {error}"))?;
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        mapping_id,
+        base,
+        image.allocation_len().saturating_sub(1),
+    )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        return Err(String::from("v6 rotate lifecycle admitted short sync"));
     }
     Ok(())
 }

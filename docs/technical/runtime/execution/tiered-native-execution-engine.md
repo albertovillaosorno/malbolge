@@ -2092,8 +2092,11 @@ projects into legacy direct-artifact authority.
 
 Register-masked rotate now has a distinct verified x86-64/AArch64 object family
 with exact C/D guards and the reviewed A/C/D plus memory commits. Dead A and I/O
-history remain key-bound but absent from machine text. Rotate load-image,
-executable-lifecycle, and invocation authority remain open.
+history remain key-bound but absent from machine text.
+
+A separate relocation-free load image and rotate-specific RW-to-RX/full-sync
+typestates preserve that exact identity. Platform loading and invocation
+authority remain open.
 Broader register-masked template coverage remains open; unsupported v6
 execution remains fail-closed.
 

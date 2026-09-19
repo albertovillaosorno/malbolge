@@ -42,6 +42,7 @@ use super::loader::{
     VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
+    VerifiedRegisterMaskedRotateLoadImage,
 };
 use crate::execution_cache::{NativeArtifactKey, NativeTargetIdentity};
 
@@ -207,6 +208,28 @@ pub struct SealedRegisterMaskedNoOperationNativeExecutable {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StagedRegisterMaskedNoOperationNativeExecutable {
     image: VerifiedRegisterMaskedNoOperationLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Exact RX mapping for one register-masked v6 rotate image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyRegisterMaskedRotateNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// V6 rotate mapping admitted after its RW-to-RX transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedRegisterMaskedRotateNativeExecutable {
+    image: VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified v6 rotate bytes admitted in writable staging memory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedRegisterMaskedRotateNativeExecutable {
+    image: VerifiedRegisterMaskedRotateLoadImage,
     mapping: NativeExecutableMappingReport,
 }
 
@@ -966,6 +989,154 @@ impl StagedRegisterMaskedNoOperationNativeExecutable {
     }
 }
 
+impl ReadyRegisterMaskedRotateNativeExecutable {
+    /// Returns the non-zero rotate v6 native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified v6 rotate load image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedRotateLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns exact cleanup evidence for this mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns exact target assumptions retained by this lifecycle state.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedRegisterMaskedRotateNativeExecutable {
+    /// Admits synchronization of the complete v6 rotate code range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> Result<
+        ReadyRegisterMaskedRotateNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address =
+            register_masked_rotate_entry_address(&self.image, self.mapping)?;
+        Ok(ReadyRegisterMaskedRotateNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 rotate image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedRotateLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedRegisterMaskedRotateNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or
+    /// final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<
+        SealedRegisterMaskedRotateNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedRegisterMaskedRotateNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 rotate image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedRotateLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits copied v6 rotate code in one writable mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedRegisterMaskedRotateLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_register_masked_rotate_writable_mapping(image, mapping)?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
+        })
+    }
+}
+
 impl ReadyRegisterMaskedNonGraphicalNativeExecutable {
     /// Returns the non-zero non-graphical v6 native entrypoint address.
     #[must_use]
@@ -1283,6 +1454,26 @@ fn register_masked_no_operation_entry_address(
     NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
 }
 
+fn register_masked_rotate_entry_address(
+    image: &VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
 fn register_masked_non_graphical_entry_address(
     image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -1456,6 +1647,25 @@ pub(super) fn validate_register_masked_no_operation_writable_mapping(
     validate_register_masked_no_operation_mapping_ranges(image, mapping)
 }
 
+pub(super) fn validate_register_masked_rotate_writable_mapping(
+    image: &VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_register_masked_rotate_mapping_ranges(image, mapping)
+}
+
 pub(super) fn validate_register_masked_non_graphical_writable_mapping(
     image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -1573,6 +1783,27 @@ fn validate_register_masked_no_operation_mapping_ranges(
         return Err(NativeExecutableLifecycleError::MappingCapacity);
     }
     let _entry = register_masked_no_operation_entry_address(image, mapping)?;
+    Ok(())
+}
+
+fn validate_register_masked_rotate_mapping_ranges(
+    image: &VerifiedRegisterMaskedRotateLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = register_masked_rotate_entry_address(image, mapping)?;
     Ok(())
 }
 

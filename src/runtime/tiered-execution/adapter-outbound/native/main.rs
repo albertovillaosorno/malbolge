@@ -529,14 +529,17 @@ pub use lifecycle::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedRotateNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedNativeExecutable,
     SealedRegisterMaskedNoOperationNativeExecutable,
     SealedRegisterMaskedNonGraphicalNativeExecutable,
+    SealedRegisterMaskedRotateNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
+    StagedRegisterMaskedRotateNativeExecutable,
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
@@ -545,6 +548,7 @@ pub use loader::{
     VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
+    VerifiedRegisterMaskedRotateLoadImage,
 };
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
