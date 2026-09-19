@@ -449,6 +449,71 @@ pub type RegisterMaskedNoOperationNativeResidentReleaseResult<MemoryError> =
         >,
     >;
 
+/// Whether one rotate lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedRotateNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact rotate resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedRotateNativeResidentCacheAcquireFailure<MemoryError> {
+    /// A different exact rotate identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedRotateNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the rotate resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedRotateNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact rotate resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedRotateNativeResidentLease {
+    resident: Arc<RegisterMaskedRotateNativeExecutableOwner>,
+}
+
+/// Lease plus whether the rotate resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedRotateNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedRotateNativeResidentCacheDisposition,
+    lease: RegisterMaskedRotateNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable rotate v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedRotateNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedRotateNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact rotate resident lease.
+pub type RegisterMaskedRotateNativeResidentCacheAcquireResult<MemoryError> =
+    Result<
+        RegisterMaskedRotateNativeResidentCacheAcquisition,
+        Box<RegisterMaskedRotateNativeResidentCacheAcquireFailure<MemoryError>>,
+    >;
+
+/// Result of releasing the rotate resident after leases are gone.
+pub type RegisterMaskedRotateNativeResidentCacheReleaseResult<MemoryError> =
+    Result<
+        RegisterMaskedRotateNativeResidentCacheRelease,
+        Box<RegisterMaskedRotateNativeExecutableReleaseFailure<MemoryError>>,
+    >;
+
 /// Whether one non-graphical lease acquisition loaded or reused the resident.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RegisterMaskedNonGraphicalNativeResidentCacheDisposition {
@@ -526,6 +591,10 @@ type NoOperationCacheAcquireFailure<MemoryError> =
     RegisterMaskedNoOperationNativeResidentCacheAcquireFailure<MemoryError>;
 type NoOperationCacheDisposition =
     RegisterMaskedNoOperationNativeResidentCacheDisposition;
+type RotateCacheAcquireFailure<MemoryError> =
+    RegisterMaskedRotateNativeResidentCacheAcquireFailure<MemoryError>;
+type RotateCacheDisposition =
+    RegisterMaskedRotateNativeResidentCacheDisposition;
 type NonGraphicalCacheAcquireFailure<MemoryError> =
     RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<MemoryError>;
 type NonGraphicalCacheDisposition =
@@ -691,6 +760,19 @@ impl<MemoryError: Display> Display
             Self::IdentityOccupied => f.write_str(
                 "different no-operation v6 identity already resident",
             ),
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedRotateNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => {
+                f.write_str("different rotate v6 identity already resident")
+            },
             Self::Load(error) => Display::fmt(error, f),
         }
     }
@@ -1579,6 +1661,175 @@ impl RegisterMaskedNoOperationNativeResidentLeaseCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         use RegisterMaskedNoOperationNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+
+impl RegisterMaskedRotateNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedRotateNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedRotateNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(&self) -> &RegisterMaskedRotateNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedRotateNativeResidentLease {
+    /// Executes through the resident rotate mapping without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedRotateNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedRotateNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident rotate v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedRotateNativeResidentLeaseCache {
+    /// Loads or reuses one exact rotate v6 resident as an immutable lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedRotateNativeObjectArtifact,
+    ) -> RegisterMaskedRotateNativeResidentCacheAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    RotateCacheAcquireFailure::IdentityOccupied,
+                ));
+            }
+            return Ok(RegisterMaskedRotateNativeResidentCacheAcquisition {
+                disposition: RotateCacheDisposition::Hit,
+                lease: RegisterMaskedRotateNativeResidentLease {
+                    resident: Arc::clone(resident),
+                },
+            });
+        }
+        let loaded = RegisterMaskedRotateNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| Box::new(RotateCacheAcquireFailure::Load(error)))?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedRotateNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedRotateNativeResidentCacheAcquisition {
+            disposition: RotateCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact rotate mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident rotate lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact rotate cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedRotateNativeResidentCacheReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedRotateNativeResidentCacheRelease as Release;
 
         let Some(resident) = self.resident.take() else {
             return Ok(Release::Missing);

@@ -251,7 +251,11 @@ load/call/release with cleanup and committed release-retry evidence.
 
 A reusable rotate owner retains one exact synchronized mapping across rebased
 calls, reports platform mapping weight, and remains reusable after runner
-failure. Resident lease caches and higher lifecycle reuse remain open.
+failure. A single-resident rotate lease cache admits only exact
+program/artifact hits, returns immutable shared leases without adapter work, and
+blocks release while leases remain live. Failed loads publish no resident, and
+release failure transfers exact retry ownership. Rotate sequence and multi-entry
+cache policy remain open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

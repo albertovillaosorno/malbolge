@@ -280,7 +280,11 @@ evidence.
 
 A reusable rotate owner retains one exact synchronized mapping across rebased
 calls, reports platform mapping weight, and remains reusable after runner
-failure. Lease-cache and sequence policy remain separate.
+failure. A single-resident rotate lease cache admits only exact
+program/artifact hits, returns immutable shared leases without adapter work, and
+blocks release while leases remain live. Failed loads publish no resident, and
+release failure transfers exact retry ownership. Sequence and multi-entry cache
+policy remain separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

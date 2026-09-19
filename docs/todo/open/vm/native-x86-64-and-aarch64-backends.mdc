@@ -126,7 +126,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   A reusable rotate owner now retains one exact synchronized mapping across
   rebased calls, reports platform mapping weight, and remains reusable after
-  runner failure. Resident lease caches and higher lifecycle reuse remain open.
+  runner failure. A single-resident rotate lease cache admits only exact
+  program/artifact hits without adapter work and blocks release while leases
+  remain live.
+
+  Failed loads publish no resident, and release failure transfers exact retry
+  ownership. Rotate sequence and multi-entry cache policy remain open.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

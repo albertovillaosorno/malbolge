@@ -789,6 +789,14 @@ pub use register_masked_resident::{
     RegisterMaskedRotateNativeOwnerLoadFailure,
     RegisterMaskedRotateNativeOwnerLoadResult,
     RegisterMaskedRotateNativeOwnerReleaseResult,
+    RegisterMaskedRotateNativeResidentCacheAcquireFailure,
+    RegisterMaskedRotateNativeResidentCacheAcquireResult,
+    RegisterMaskedRotateNativeResidentCacheAcquisition,
+    RegisterMaskedRotateNativeResidentCacheDisposition,
+    RegisterMaskedRotateNativeResidentCacheRelease,
+    RegisterMaskedRotateNativeResidentCacheReleaseResult,
+    RegisterMaskedRotateNativeResidentLease,
+    RegisterMaskedRotateNativeResidentLeaseCache,
 };
 pub use register_masked_sequence::{
     LoadedRegisterMaskedNativeSequence,

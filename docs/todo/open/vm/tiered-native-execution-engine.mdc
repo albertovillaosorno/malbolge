@@ -718,8 +718,13 @@ baseline; native tiers are accelerators of identical observable behavior.
 
   A reusable rotate owner now retains one exact synchronized mapping across
   rebased calls, reports platform mapping weight, and remains reusable after
-  runner failure. Resident lease-cache and sequence policy plus wider mask-aware
-  instruction coverage remain open.
+  runner failure. A single-resident rotate lease cache admits exact identity
+  hits without adapter work, blocks release while leases remain live, and keeps
+  failed loads atomic.
+
+  Release failure transfers exact retry ownership. Rotate sequence and
+  multi-entry cache policy plus wider mask-aware instruction coverage remain
+  open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

@@ -2110,9 +2110,11 @@ load/call/release with cleanup and committed release-retry evidence.
 
 A reusable rotate owner retains one exact synchronized mapping across rebased
 calls, reports platform mapping weight, and remains reusable after runner
-failure. Resident lease-cache and sequence policy remain open. Broader
-register-masked template coverage remains open; unsupported v6 execution remains
-fail-closed.
+failure. A single-resident rotate lease cache admits exact identity hits without
+adapter work, blocks release while leases remain live, and keeps failed loads
+atomic. Release failure transfers exact retry ownership. Rotate sequence and
+multi-entry cache policy remain open; broader register-masked template coverage
+remains open and unsupported v6 execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker
