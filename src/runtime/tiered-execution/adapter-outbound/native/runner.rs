@@ -2477,6 +2477,82 @@ where
     release_committed(memory_adapter, executable, release_request, outcome)
 }
 
+/// Loads, calls, admits, and releases one fused whole-region call through one
+/// stateful native host.
+///
+/// This is the ownership-safe fused counterpart to
+/// `execute_verified_native_with_host`. A single mutable host therefore spans
+/// executable-memory lifecycle and the MBNPC1 call exchange.
+///
+/// # Errors
+///
+/// Returns phase-specific load, call, or release evidence when the fused
+/// native transaction cannot complete cleanly.
+pub fn execute_verified_direct_fused_native_with_host<Host>(
+    host: &mut Host,
+    prepared: PreparedDirectFusedInvocation<'_, '_>,
+) -> DirectFusedNativeAdapterExecutionResult<Host, Host>
+where
+    Host: NativeExecutableMemoryAdapter + DirectFusedNativeRunner,
+{
+    let executable = match load_direct_fused_native_executable(
+        host,
+        prepared.load_image(),
+    ) {
+        Ok(executable) => executable,
+        Err(load_error) => {
+            prepared.abort();
+            return Err(Box::new(direct_fused_load_failure(load_error)));
+        },
+    };
+    let release_request = executable.release_request();
+    let outcome = match run_direct_fused_prepared(host, &executable, prepared) {
+        Ok(outcome) => outcome,
+        Err(call_failure) => {
+            let phase = call_failure.phase();
+            let release_failure = release_direct_fused_native_executable(
+                host,
+                executable,
+            )
+            .err()
+            .map(Box::new);
+            return Err(Box::new(DirectFusedNativeExecutionFailure {
+                cause: match call_failure {
+                    DirectFusedNativeCallFailure::Binding(binding_error) => {
+                        DirectFusedNativeExecutionFailureCause::Binding(
+                            binding_error,
+                        )
+                    },
+                    DirectFusedNativeCallFailure::Runner(runner_error) => {
+                        DirectFusedNativeExecutionFailureCause::Runner(
+                            runner_error,
+                        )
+                    },
+                    DirectFusedNativeCallFailure::Completion(
+                        completion_error,
+                    ) => {
+                        DirectFusedNativeExecutionFailureCause::Completion(
+                            completion_error,
+                        )
+                    },
+                },
+                phase,
+                release_failure,
+                release_request: Some(release_request),
+            }));
+        },
+    };
+    match release_direct_fused_native_executable(host, executable) {
+        Ok(()) => Ok(outcome),
+        Err(release_failure) => Err(Box::new(DirectFusedNativeExecutionFailure {
+            cause: DirectFusedNativeExecutionFailureCause::Release(outcome),
+            phase: NativeExecutableExecutionPhase::Release,
+            release_failure: Some(Box::new(release_failure)),
+            release_request: Some(release_request),
+        })),
+    }
+}
+
 /// Loads, calls, admits, and releases through one stateful native host.
 ///
 /// This is the ownership-safe orchestration seam for adapters whose executable

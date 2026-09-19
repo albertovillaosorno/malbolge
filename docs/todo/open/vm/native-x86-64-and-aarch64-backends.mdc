@@ -1253,9 +1253,9 @@ input/jump-code, input/jump-data, input/no-operation,
 
   host-real AArch64 and non-POSIX call paths remain open.
   The reviewed forty-nine-shape fused two-step emission matrix is complete.
-  Concrete Linux x86-64 executable-memory, instruction-cache, and foreign-call
-  integration now exists through the process worker; broader host coverage and
-  fused-object execution remain pending for this TODO.
+  Concrete Linux x86-64 executable-memory, instruction-cache, foreign-call,
+  and fused whole-region integration now exists through the process worker.
+  Broader host coverage remains pending for this TODO.
 - Tracked x86-64 development execution now binds the frozen
   `direct-initial-halt` COFF fixture to a POSIX W^X harness. The harness stages
   exact `.text` bytes RW, seals the same mapping RX, synchronizes instructions,

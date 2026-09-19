@@ -81,6 +81,13 @@ therefore spans allocation through release, allowing the persistent process host
 to keep mapping identity valid through the call without `Arc<Mutex<_>>` or
 other aliasing indirection. Existing rollback and cleanup semantics are reused.
 
+execute_verified_direct_fused_native_with_host provides the same single-owner
+boundary for one verified fused whole-region call. The persistent process host
+uses the existing MBNPC1 transfer with the exact fused mapping and prepared
+whole-region buffers, so fused execution no longer needs two mutable aliases to
+the host. The same load, semantic completion, and release evidence remains in
+force.
+
 `process_session.rs` provides the persistent child transport needed by that
 single-owner path. Exchanges use an outer little-endian `u64` length frame,
 check the announced response length against the caller bound before allocation,

@@ -593,7 +593,8 @@ use execution_native::{
     execute_loaded_verified_register_masked_non_graphical_native,
     execute_selected_cached_direct_fused_native_retry,
     execute_transactional_cached_direct_fused_native_retry,
-    execute_verified_direct_fused_native, execute_verified_native,
+    execute_verified_direct_fused_native,
+    execute_verified_direct_fused_native_with_host, execute_verified_native,
     execute_verified_native_sequence, execute_verified_native_with_host,
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
@@ -38752,6 +38753,42 @@ fn native_process_host_executes_real_posix_loaded_sequence()
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_executes_real_posix_fused_object() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("native POSIX fused prepare: {error}"))?;
+    let expected = prepared.expected_observation();
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("fused_execution")?;
+    let execution =
+        execute_verified_direct_fused_native_with_host(&mut host, prepared)
+            .map_err(|error| error.to_string());
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    let outcome = execution?;
+    cleanup?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || session_poisoned
+    {
+        return Err(String::from(
+            "native POSIX fused worker execution or lifecycle drifted",
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn native_process_host_reports_remote_memory_failure() -> Result<(), String> {
     let mut host =
@@ -38840,7 +38877,8 @@ fn native_process_host_rejects_call_mapping_drift_before_mutation()
         NativeRegionBuffers::new(&mut memory, &input, &mut output),
     )?;
     let request = invocation.process_request();
-    let Err(error) = host.run(&mut invocation) else {
+    let Err(error) = NativeExecutableRunner::run(&mut host, &mut invocation)
+    else {
         return Err(String::from("native process host admitted mapping drift"));
     };
     if error.call_response_error()
