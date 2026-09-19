@@ -714,8 +714,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   runner or completion failure.
 
   A one-shot rotate transaction now composes exact load/call/release with
-  cleanup and committed release-retry evidence. Reusable lifecycle policy and
-  wider mask-aware instruction coverage remain open.
+  cleanup and committed release-retry evidence.
+
+  A reusable rotate owner now retains one exact synchronized mapping across
+  rebased calls, reports platform mapping weight, and remains reusable after
+  runner failure. Resident lease-cache and sequence policy plus wider mask-aware
+  instruction coverage remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

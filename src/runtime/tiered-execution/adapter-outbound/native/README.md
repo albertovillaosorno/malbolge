@@ -276,7 +276,11 @@ validates exact completion, and binds only to the identical ready image. A
 dedicated loaded runner consumes only that bound view and restores the entry
 snapshot after runner or completion failure. A one-shot rotate transaction now
 composes exact load/call/release with cleanup and committed release-retry
-evidence. Reusable ownership and cache/sequence policy remain separate.
+evidence.
+
+A reusable rotate owner retains one exact synchronized mapping across rebased
+calls, reports platform mapping weight, and remains reusable after runner
+failure. Lease-cache and sequence policy remain separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

@@ -122,8 +122,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   and restores the entry snapshot after runner or completion failure.
 
   A one-shot rotate transaction now composes exact load/call/release with
-  cleanup and committed release-retry evidence. Reusable ownership and higher
-  lifecycle reuse remain open.
+  cleanup and committed release-retry evidence.
+
+  A reusable rotate owner now retains one exact synchronized mapping across
+  rebased calls, reports platform mapping weight, and remains reusable after
+  runner failure. Resident lease caches and higher lifecycle reuse remain open.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

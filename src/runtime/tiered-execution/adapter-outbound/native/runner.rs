@@ -2003,6 +2003,25 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedRotateLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 rotate failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedRotateNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedRotateNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedRotateNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for NativeLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {

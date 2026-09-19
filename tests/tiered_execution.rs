@@ -541,6 +541,8 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequenceOutcome,
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
+    RegisterMaskedRotateNativeExecutableOwner,
+    RegisterMaskedRotateNativeOwnerExecutionFailure,
     RegisterMaskedRotateNativeRunner, StagedDirectFusedNativeExecutable,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
@@ -1698,6 +1700,13 @@ struct RegisterMaskedOwnerFixture {
 struct RegisterMaskedNoOperationOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNoOperationNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedRotateOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    owner: RegisterMaskedRotateNativeExecutableOwner,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -4248,6 +4257,25 @@ fn register_masked_no_operation_owner_fixture(
     Ok(RegisterMaskedNoOperationOwnerFixture { adapter, owner, program })
 }
 
+fn register_masked_rotate_owner_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedRotateOwnerFixture, String> {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedRotateNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 rotate owner fixture load failed: {error}"))?;
+    Ok(RegisterMaskedRotateOwnerFixture { adapter, owner, program })
+}
+
 fn register_masked_non_graphical_owner_fixture(
     mapping_id_value: u64,
     base_address: usize,
@@ -4448,6 +4476,68 @@ fn assert_no_operation_owner_run_failure(
         ) => Err(String::from(
             "v6 no-op owner runner failure became preparation",
         )),
+    }
+}
+
+fn execute_register_masked_rotate_owner_applied(
+    owner: &RegisterMaskedRotateNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedRotateNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let (_source, source_expected) =
+        register_masked_rotate_rebased_observations(program)?;
+    let expected = ProfileMachineObservation {
+        registers: source_expected.registers,
+        input_consumed: entry.input_consumed,
+        output_len: entry.output_len,
+        ..source_expected
+    };
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_rotate_expected_memory(
+        program,
+        &mut expected_memory,
+    )?;
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 rotate owner execution failed: {error}")
+        })?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate owner rebased execution drifted"))
+    }
+}
+
+fn assert_rotate_owner_run_failure(
+    error: &RegisterMaskedRotateNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> Result<(), String> {
+    match error {
+        RegisterMaskedRotateNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run =>
+        {
+            Ok(())
+        },
+        RegisterMaskedRotateNativeOwnerExecutionFailure::Execution(_) => Err(
+            String::from("v6 rotate owner runner failure lost run phase"),
+        ),
+        RegisterMaskedRotateNativeOwnerExecutionFailure::Preparation(_) => Err(
+            String::from("v6 rotate owner runner failure became preparation"),
+        ),
     }
 }
 
@@ -10289,6 +10379,146 @@ fn register_masked_v6_no_operation_owner_recovers_after_runner_failure()
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 no-op owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let RegisterMaskedRotateOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_rotate_owner_fixture(191, 0x34000)?;
+    let loaded_operations = adapter.operations.clone();
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 rotate owner weight or identity drifted"));
+    }
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 rotate owner effect missing"))?
+        .before;
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (accumulator, input_consumed, output_len) in [(11, 1, 1), (31, 2, 2)] {
+        let mut entry = source_entry;
+        entry.registers.accumulator = accumulator;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_register_masked_rotate_owner_applied(
+            &owner,
+            &mut runner,
+            &program,
+            entry,
+        )?;
+    }
+    let mapping_id = owner.executable().mapping().mapping_id();
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 rotate owner remapped or changed mapping identity",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate owner release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate owner release was not explicit"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(192)?,
+        native_executable_address(0x35000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedRotateNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 rotate weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 rotate owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate weighted owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_owner_recovers_after_runner_failure()
+-> TieredTestResult {
+    let RegisterMaskedRotateOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_rotate_owner_fixture(193, 0x36000)?;
+    let loaded_operations = adapter.operations.clone();
+    let (entry, _expected) =
+        register_masked_rotate_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 rotate owner runner failure was ignored"));
+    };
+    assert_rotate_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 rotate owner failure changed residency or caller state",
+        ));
+    }
+    let mut succeeding = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_register_masked_rotate_owner_applied(
+        &owner,
+        &mut succeeding,
+        &program,
+        entry,
+    )?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 rotate owner remapped after runner failure",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 rotate owner release: {release}"))
 }
 
 #[test]
