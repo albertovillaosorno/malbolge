@@ -102,9 +102,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   x86-64/AArch64 templates, and every memory-backed template guards the exact
   key-bound IR footprint.
 
-  Register-masked v6 semantic admission now also accepts traced rotate with
-  exact C/D read and A/C/D write masks while reusing the reviewed rotate
-  transition. This grants no v6 rotate object, load, or invocation authority.
+  Register-masked v6 rotate now also has a distinct revision-1 verified object
+  family on x86-64 and AArch64. It guards only live C/D state, exact memory
+  extent, both code/data live-ins, and prior live termination while committing
+  the reviewed data/code writes plus A/C/D results. Dead A and I/O history still
+  change the complete v6 key without changing machine text. Load-image,
+  executable-lifecycle, and invocation authority remain open for rotate.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

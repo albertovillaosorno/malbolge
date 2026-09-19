@@ -68,10 +68,11 @@ use super::{
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
-    DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
-    DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyError,
-    DirectCrazyProgram, DirectDeoptError, DirectExecutionGeometryCrazyError,
-    DirectExecutionGeometryInitialHaltError,
+    DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION, DIRECT_ROTATE_BACKEND_ID,
+    DIRECT_ROTATE_BACKEND_REVISION, DirectCodeWriteCommit, DirectCrazyCommit,
+    DirectCrazyError, DirectCrazyProgram, DirectDeoptError,
+    DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
     DirectExecutionGeometryInitialJumpDataError,
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpCodeError,
     DirectExecutionGeometryJumpDataError,
@@ -85,8 +86,8 @@ use super::{
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRotateCommit,
-    DirectRotateError, DirectRotateProgram,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
+    DirectRotateCommit, DirectRotateError, DirectRotateProgram,
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
     EffectOp, ExecutionGeometryRegionEffectProgram, HostOperatingSystem,
     MemoryLiveIn, NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
@@ -1251,6 +1252,25 @@ pub(super) fn validate_register_masked_no_operation_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedNoOperationError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_rotate_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedRotateError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedRotateError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedRotateError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedRotateError::TargetFeatures);
     }
     Ok(())
 }

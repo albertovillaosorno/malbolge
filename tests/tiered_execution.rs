@@ -378,9 +378,11 @@ use execution_native::{
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
-    DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
-    DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
-    DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
+    DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION, DIRECT_ROTATE_BACKEND_ID,
+    DIRECT_ROTATE_BACKEND_REVISION, DirectCacheDisposition, DirectCrazyError,
+    DirectDeoptError, DirectExecutionGeometryCrazyError,
+    DirectExecutionGeometryInitialHaltError,
     DirectExecutionGeometryInitialJumpDataError,
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
@@ -429,8 +431,8 @@ use execution_native::{
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
+    DirectRotateError, DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -573,7 +575,8 @@ use execution_native::{
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_no_operation_coff,
-    emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
+    emit_direct_register_masked_non_graphical_coff,
+    emit_direct_register_masked_rotate_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, encode_native_process_call_request,
     encode_native_process_call_response, encode_native_process_memory_request,
     encode_native_process_memory_response,
@@ -647,7 +650,8 @@ use execution_native::{
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_no_operation,
-    verify_direct_register_masked_non_graphical, verify_direct_rotate,
+    verify_direct_register_masked_non_graphical,
+    verify_direct_register_masked_rotate, verify_direct_rotate,
     verify_fused_direct_sequence,
 };
 use file_blob_pair_store::{
@@ -3748,21 +3752,30 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
-fn canonical_register_masked_rotate_program()
--> Result<RegisterMaskedRegionEffectProgram, String> {
+fn canonical_register_masked_rotate_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_rotate_pair_sequence_state()?;
     let mut machine = ProfileMachine::from_snapshot(state);
-    let mut recorded = None;
+    let mut traces = Vec::new();
     let outcome = machine
-        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
-        .map_err(|error| format!("v6 rotate fixture step failed: {error}"))?;
-    if outcome != StepOutcome::Continued {
-        return Err(String::from("v6 rotate fixture did not continue"));
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 rotate fixture run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 rotate fixture did not run two steps"));
     }
-    let trace =
-        recorded.ok_or_else(|| String::from("v6 rotate trace missing"))?;
-    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("v6 rotate projection failed: {error:?}"))
+}
+
+fn canonical_register_masked_rotate_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    canonical_register_masked_rotate_programs()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| String::from("v6 rotate trace missing"))
 }
 
 fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
@@ -3782,6 +3795,17 @@ fn register_masked_no_operation_target(isa: HostIsa) -> NativeTargetIdentity {
             DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
         ),
         backend_revision: DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn register_masked_rotate_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID),
+        backend_revision: DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -5268,6 +5292,116 @@ fn register_masked_v6_no_operation_verifier_rejects_drift() -> TieredTestResult
     ) != Err(DirectRegisterMaskedNoOperationError::ProgramShape)
     {
         return Err(String::from("v6 no-op backend admitted graphical halt"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_rotate_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    dead_state_variant: &RegisterMaskedRegionEffectProgram,
+    live_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_rotate_target(isa);
+    let artifact =
+        emit_direct_register_masked_rotate_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} rotate emit failed: {error}")
+            })?;
+    let dead = emit_direct_register_masked_rotate_coff(
+        dead_state_variant,
+        target.clone(),
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} rotate dead-state emit failed: {error}")
+    })?;
+    let live = emit_direct_register_masked_rotate_coff(live_variant, target)
+        .map_err(|error| {
+            format!("v6 {isa:?} rotate live-state emit failed: {error}")
+        })?;
+    let text = direct_object_text(artifact.object())?;
+    if artifact.key() == dead.key()
+        || text != direct_object_text(dead.object())?
+        || text == direct_object_text(live.object())?
+    {
+        return Err(format!("v6 {isa:?} rotate guard surface drifted"));
+    }
+    if !artifact
+        .object()
+        .windows(6)
+        .any(|window| window == b"MBPF ")
+    {
+        return Err(format!("v6 {isa:?} rotate lost MBPF v6 marker"));
+    }
+    let verified = verify_direct_register_masked_rotate(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} rotate verify failed: {error}"))?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} rotate verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_objects_honor_reduced_guard_surface()
+-> TieredTestResult {
+    let programs = canonical_register_masked_rotate_programs()?;
+    let [program, live_variant] = programs.as_slice() else {
+        return Err(String::from("v6 rotate pair fixture length drifted"));
+    };
+    let mut dead_state_variant = program.clone();
+    let dead_effect = dead_state_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 rotate dead-state effect missing"))?;
+    dead_effect.before.registers.accumulator ^= 1;
+    dead_effect.before.input_consumed = 3;
+    dead_effect.after.input_consumed = 3;
+    dead_effect.before.output_len = 4;
+    dead_effect.after.output_len = 4;
+
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_rotate_object(
+            program,
+            &dead_state_variant,
+            live_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_verifier_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = emit_direct_register_masked_rotate_coff(
+        &program,
+        register_masked_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 rotate baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_rotate(&tampered, &program)
+        != Err(DirectRegisterMaskedRotateError::ObjectBytes)
+    {
+        return Err(String::from("v6 rotate verifier admitted byte drift"));
+    }
+
+    if emit_direct_register_masked_rotate_coff(
+        &program,
+        register_masked_no_operation_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedRotateError::TargetBackend)
+    {
+        return Err(String::from("v6 rotate crossed no-op backend identity"));
+    }
+    let no_operation = canonical_register_masked_no_operation_program()?;
+    if emit_direct_register_masked_rotate_coff(
+        &no_operation,
+        register_masked_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedRotateError::ProgramShape)
+    {
+        return Err(String::from("v6 rotate backend admitted no-operation"));
     }
     Ok(())
 }

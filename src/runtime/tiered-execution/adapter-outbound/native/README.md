@@ -262,8 +262,12 @@ fetch, no-operation, and rotate semantics.
 
 No-operation admission requires trace-derived C/D reads and writes while A
 remains dead. Rotate admission requires trace-derived C/D reads and A/C/D
-writes, then reuses the reviewed rotate transition. The admission certificate
-itself grants no target, object, load, or invocation authority.
+writes, then reuses the reviewed rotate transition.
+
+A distinct revision-1 rotate object now preserves full v6 identity while
+guarding only C/D, both memory live-ins, capacity, and prior termination on
+x86-64/AArch64. Dead A/I/O history does not change machine text. Rotate loading
+and invocation remain separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

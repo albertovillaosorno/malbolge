@@ -701,8 +701,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   load image, W^X lifecycle, prepared/bound call, runner, one-shot transaction,
   reusable owner, resident cache, loaded sequence, weighted sequence cache, and
   sequence lease cache preserve the exact v6 identity without projecting to
-  v3/v4. Rotate now has semantic admission only; its object/lifecycle path and
-  wider mask-aware instruction coverage remain open.
+  v3/v4. Rotate now also has a distinct verified x86-64/AArch64 object with
+  exact C/D guards while dead A/I/O history stays out of machine text. Its
+  load-image/lifecycle/invocation path and wider mask-aware instruction coverage
+  remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

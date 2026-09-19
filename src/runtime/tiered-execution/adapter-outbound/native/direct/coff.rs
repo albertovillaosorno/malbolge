@@ -51,7 +51,8 @@ use super::{
     DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNoOperationGuard,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedTerminalGuard,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
+    DirectRegisterMaskedRotateGuard, DirectRegisterMaskedTerminalGuard,
     DirectRotateError, DirectRotateGuard, DirectRotateProgram, HostIsa,
     IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT,
     IMAGE_SCN_PROFILE_METADATA, IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL,
@@ -471,6 +472,30 @@ pub(super) fn register_masked_no_operation_coff(
     .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)
+}
+
+pub(super) fn register_masked_rotate_coff(
+    key: &NativeArtifactKey,
+    selected: DirectRotateProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedRotateError> {
+    let guard = DirectRegisterMaskedRotateGuard {
+        code_live_in: selected.code_live_in.value,
+        code_pointer: selected.observation.registers.code_pointer,
+        data_live_in: selected.data_live_in.value,
+        data_pointer: selected.observation.registers.data_pointer,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_rotate_code(guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_rotate_code(guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedRotateError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedRotateError::ObjectBytes)
 }
 
 pub(super) fn register_masked_non_graphical_coff(

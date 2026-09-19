@@ -224,12 +224,14 @@ transition, and full-range synchronization.
 
 Host-independent v6 semantic admission also recognizes traced no-operation and
 rotate shapes. No-operation reads/writes C/D while A remains dead; rotate reads
-C/D and writes A/C/D. Both reuse their reviewed transition semantics, while the
-admission certificate itself grants no host-code authority. A distinct
-revision-1 object family now emits the no-operation shape for both ISAs with
-guards over
-C/D, exact memory extent, `memory[C]`, and prior live termination; A and I/O
-history remains unguarded.
+C/D and writes A/C/D. Distinct revision-1 object families now emit both shapes
+for x86-64 and AArch64.
+
+Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
+termination before committing the reviewed data/code writes and A/C/D results.
+Dead A and I/O history remain bound in the full v6 key without changing rotate
+machine text. Rotate load-image and invocation authority remain outside this
+object-only boundary.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

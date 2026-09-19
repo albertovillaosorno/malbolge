@@ -48,8 +48,8 @@ use super::direct::{
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
     DirectJumpDataGuard, DirectOutputCommit,
-    DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedTerminalGuard,
-    DirectRotateCommit, DirectRotateGuard,
+    DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedRotateGuard,
+    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -232,6 +232,90 @@ pub(super) fn register_masked_no_operation_code(
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
     Some(encode_words(&words))
+}
+
+/// Encodes v6 rotate using only declared C/D dependencies.
+#[must_use]
+pub(super) fn register_masked_rotate_code(
+    guard: DirectRegisterMaskedRotateGuard,
+    commit: DirectRotateCommit,
+) -> Option<Vec<u8>> {
+    if commit.encrypted_address != guard.code_pointer
+        || commit.data_address != guard.data_pointer
+    {
+        return None;
+    }
+    let mut words = Vec::with_capacity(72);
+    let mut guard_branches = Vec::with_capacity(9);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4408,
+        guard.code_pointer,
+    );
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4808,
+        guard.data_pointer,
+    );
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, guard.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        guard.code_pointer,
+        guard.code_live_in,
+    );
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        guard.data_pointer,
+        guard.data_live_in,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_register_masked_rotate_commit(&mut words, commit);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_register_masked_rotate_commit(
+    words: &mut Vec<u32>,
+    commit: DirectRotateCommit,
+) {
+    words.extend_from_slice(&[
+        movz_w10(commit.data_address),
+        movk_w10_high(commit.data_address),
+        0x8b0a_090a,
+        movz_w9(commit.data_value),
+        movk_w9_high(commit.data_value),
+        0xb900_0149,
+        movz_w10(commit.encrypted_address),
+        movk_w10_high(commit.encrypted_address),
+        0x8b0a_090a,
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.accumulator),
+        movk_w9_high(commit.accumulator),
+        0xb900_4009,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
 }
 
 /// Encodes v6 non-graphical fetch using only declared C dependency.
