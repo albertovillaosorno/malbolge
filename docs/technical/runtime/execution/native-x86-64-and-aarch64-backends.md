@@ -246,7 +246,9 @@ synchronized rotate image and restores the entry snapshot on identity drift.
 
 A dedicated loaded rotate runner consumes only that bound view, admits exact
 Applied/GuardMiss outcomes, and restores the entry snapshot after runner or
-completion failure. One-shot ownership and higher lifecycle reuse remain open.
+completion failure. A one-shot rotate transaction now composes exact
+load/call/release with cleanup and committed release-retry evidence. Reusable
+ownership and higher lifecycle reuse remain open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

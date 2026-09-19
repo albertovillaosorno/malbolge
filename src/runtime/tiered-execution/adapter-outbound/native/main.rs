@@ -818,6 +818,8 @@ pub use runner::{
     RegisterMaskedNonGraphicalNativeRunner,
     RegisterMaskedRotateLoadedExecutionFailure,
     RegisterMaskedRotateLoadedExecutionResult,
+    RegisterMaskedRotateNativeExecutionFailure,
+    RegisterMaskedRotateNativeExecutionResult,
     RegisterMaskedRotateNativeRunner,
     execute_loaded_verified_direct_fused_native,
     execute_loaded_verified_execution_geometry_native,
@@ -831,6 +833,7 @@ pub use runner::{
     execute_verified_native_with_host, execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
+    execute_verified_register_masked_rotate_native,
 };
 pub use sequence_continuation::{
     NativeInterpreterContinuation, NativeInterpreterContinuationError,

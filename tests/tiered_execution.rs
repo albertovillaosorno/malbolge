@@ -609,6 +609,7 @@ use execution_native::{
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
+    execute_verified_register_masked_rotate_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
     load_direct_fused_native_sequence,
@@ -6794,6 +6795,238 @@ fn register_masked_v6_rotate_loaded_runner_completion_drift_rolls_back()
         .map_err(|release_error| {
             format!("v6 rotate completion release: {release_error}")
         })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_transaction_applies_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_rotate_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_rotate_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate transaction preparation: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(187)?,
+        native_executable_address(0x30000)?,
+    );
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_rotate_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 rotate transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 rotate transaction success drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("v6 rotate transaction load effect missing")
+        })?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 rotate transaction load preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(188)?,
+        native_executable_address(0x31000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_rotate_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 rotate transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 rotate transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let (entry, _expected) =
+        register_masked_rotate_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 rotate transaction runner preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(189)?,
+        native_executable_address(0x32000)?,
+    );
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_rotate_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 rotate transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 rotate transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_rotate_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_rotate_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 rotate transaction release preparation: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(190)?,
+        native_executable_address(0x33000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_rotate_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 rotate transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 rotate transaction release drifted"));
+    }
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 rotate transaction retryable release missing")
+    })?;
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("v6 rotate transaction retry: {retry}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 rotate transaction retry count drifted"));
+    }
     Ok(())
 }
 

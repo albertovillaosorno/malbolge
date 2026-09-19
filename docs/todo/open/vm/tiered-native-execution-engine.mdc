@@ -711,8 +711,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   requires live C/D, permits dead A/I/O rebasing, and admits only exact
   Applied/GuardMiss completion. Exact binding now requires the identical ready
   rotate image, and a dedicated loaded runner restores the entry snapshot on
-  runner or completion failure. One-shot ownership, reusable lifecycle policy,
-  and wider mask-aware instruction coverage remain open.
+  runner or completion failure.
+
+  A one-shot rotate transaction now composes exact load/call/release with
+  cleanup and committed release-retry evidence. Reusable lifecycle policy and
+  wider mask-aware instruction coverage remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

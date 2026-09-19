@@ -66,14 +66,17 @@ use super::platform::{
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNoOperationNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
+    RegisterMaskedRotateNativeExecutableReleaseFailure as RotateReleaseFailure,
     load_direct_fused_native_executable, load_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
+    load_register_masked_rotate_native_executable,
     release_direct_fused_native_executable, release_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
+    release_register_masked_rotate_native_executable,
 };
 
 /// Ordered phase whose native execution transaction failed.
@@ -326,6 +329,43 @@ type NoOperationNativeAdapterExecutionResult<MemoryAdapter, Runner> =
     RegisterMaskedNoOperationNativeExecutionResult<
         <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
         <Runner as RegisterMaskedNoOperationNativeRunner>::Error,
+    >;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RotateNativeExecutionFailureCause<MemoryError, RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    Release(NativeRegionInvocationOutcome),
+    Runner(Box<RunnerError>),
+}
+
+/// Phase-tagged v6 rotate transaction failure with cleanup evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedRotateNativeExecutionFailure<MemoryError, RunnerError>
+{
+    cause: RotateNativeExecutionFailureCause<MemoryError, RunnerError>,
+    phase: NativeExecutableExecutionPhase,
+    release_failure: Option<Box<RotateReleaseFailure<MemoryError>>>,
+    release_request: Option<NativeExecutableReleaseRequest>,
+}
+
+/// Result of one complete v6 rotate load/call/release transaction.
+pub type RegisterMaskedRotateNativeExecutionResult<MemoryError, RunnerError> =
+    Result<
+        NativeRegionInvocationOutcome,
+        Box<
+            RegisterMaskedRotateNativeExecutionFailure<
+                MemoryError,
+                RunnerError,
+            >,
+        >,
+    >;
+
+type RotateNativeAdapterExecutionResult<MemoryAdapter, Runner> =
+    RegisterMaskedRotateNativeExecutionResult<
+        <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as RegisterMaskedRotateNativeRunner>::Error,
     >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -1094,6 +1134,32 @@ impl<RunnerError> RegisterMaskedNoOperationNativeCallFailure<RunnerError> {
     }
 }
 
+impl<RunnerError> RegisterMaskedRotateNativeCallFailure<RunnerError> {
+    fn into_cause<MemoryError>(
+        self,
+    ) -> RotateNativeExecutionFailureCause<MemoryError, RunnerError> {
+        match self {
+            Self::Binding(error) => {
+                RotateNativeExecutionFailureCause::Binding(error)
+            },
+            Self::Completion(error) => {
+                RotateNativeExecutionFailureCause::Completion(error)
+            },
+            Self::Runner(error) => {
+                RotateNativeExecutionFailureCause::Runner(error)
+            },
+        }
+    }
+
+    const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match self {
+            Self::Binding(_) => NativeExecutableExecutionPhase::Bind,
+            Self::Completion(_) => NativeExecutableExecutionPhase::Complete,
+            Self::Runner(_) => NativeExecutableExecutionPhase::Run,
+        }
+    }
+}
+
 impl<RunnerError> RegisterMaskedNonGraphicalNativeCallFailure<RunnerError> {
     fn into_cause<MemoryError>(
         self,
@@ -1370,6 +1436,115 @@ impl<MemoryError, RunnerError>
             | NoOperationNativeExecutionFailureCause::Completion(_)
             | NoOperationNativeExecutionFailureCause::Load(_)
             | NoOperationNativeExecutionFailureCause::Release(_) => None,
+        }
+    }
+}
+
+impl<MemoryError, RunnerError>
+    RegisterMaskedRotateNativeExecutionFailure<MemoryError, RunnerError>
+{
+    /// Returns ready-image binding failure, when exact v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Binding(error) => Some(*error),
+            RotateNativeExecutionFailureCause::Completion(_)
+            | RotateNativeExecutionFailureCause::Load(_)
+            | RotateNativeExecutionFailureCause::Release(_)
+            | RotateNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the outcome committed before final release failed.
+    #[must_use]
+    pub const fn committed_outcome(
+        &self,
+    ) -> Option<NativeRegionInvocationOutcome> {
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Release(outcome) => {
+                Some(*outcome)
+            },
+            RotateNativeExecutionFailureCause::Binding(_)
+            | RotateNativeExecutionFailureCause::Completion(_)
+            | RotateNativeExecutionFailureCause::Load(_)
+            | RotateNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns result-admission failure, when native state drifted.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Completion(error) => {
+                Some(*error)
+            },
+            RotateNativeExecutionFailureCause::Binding(_)
+            | RotateNativeExecutionFailureCause::Load(_)
+            | RotateNativeExecutionFailureCause::Release(_)
+            | RotateNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Consumes this failure and returns retryable mapping cleanup.
+    #[must_use]
+    pub fn into_release_failure(
+        self,
+    ) -> Option<RotateReleaseFailure<MemoryError>> {
+        self.release_failure.map(|failure| *failure)
+    }
+
+    /// Returns executable loading failure, when no ready image was produced.
+    #[must_use]
+    pub const fn load_failure(
+        &self,
+    ) -> Option<&NativeExecutableLoadFailure<MemoryError>> {
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Load(error) => Some(error),
+            RotateNativeExecutionFailureCause::Binding(_)
+            | RotateNativeExecutionFailureCause::Completion(_)
+            | RotateNativeExecutionFailureCause::Release(_)
+            | RotateNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact transaction phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        self.phase
+    }
+
+    /// Returns failed cleanup with the ready executable retained for retry.
+    #[must_use]
+    pub const fn release_failure(
+        &self,
+    ) -> Option<&RotateReleaseFailure<MemoryError>> {
+        match &self.release_failure {
+            Some(error) => Some(error),
+            None => None,
+        }
+    }
+
+    /// Returns the exact mapping release request attempted after loading.
+    #[must_use]
+    pub const fn release_request(
+        &self,
+    ) -> Option<NativeExecutableReleaseRequest> {
+        self.release_request
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Runner(error) => Some(error),
+            RotateNativeExecutionFailureCause::Binding(_)
+            | RotateNativeExecutionFailureCause::Completion(_)
+            | RotateNativeExecutionFailureCause::Load(_)
+            | RotateNativeExecutionFailureCause::Release(_) => None,
         }
     }
 }
@@ -1899,6 +2074,39 @@ impl<MemoryError: Display, RunnerError: Display> Display
 }
 
 impl<MemoryError: Display, RunnerError: Display> Display
+    for RegisterMaskedRotateNativeExecutionFailure<MemoryError, RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "v6 rotate failed during {}: ", self.phase)?;
+        match &self.cause {
+            RotateNativeExecutionFailureCause::Binding(error) => {
+                write!(f, "binding: {error}")?;
+            },
+            RotateNativeExecutionFailureCause::Completion(error) => {
+                write!(f, "completion: {error}")?;
+            },
+            RotateNativeExecutionFailureCause::Load(error) => {
+                write!(f, "loading: {error}")?;
+            },
+            RotateNativeExecutionFailureCause::Release(outcome) => {
+                let label = match outcome {
+                    NativeRegionInvocationOutcome::Applied(_) => "applied",
+                    NativeRegionInvocationOutcome::GuardMiss => "guard-miss",
+                };
+                write!(f, "committed {label} outcome could not release")?;
+            },
+            RotateNativeExecutionFailureCause::Runner(error) => {
+                write!(f, "runner: {error}")?;
+            },
+        }
+        if let Some(release_failure) = &self.release_failure {
+            write!(f, "; {release_failure}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<MemoryError: Display, RunnerError: Display> Display
     for RegisterMaskedNativeExecutionFailure<MemoryError, RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -2138,6 +2346,18 @@ fn no_operation_load_failure<MemoryError, RunnerError>(
     }
 }
 
+fn rotate_load_failure<MemoryError, RunnerError>(
+    error: NativeExecutableLoadFailure<MemoryError>,
+) -> RegisterMaskedRotateNativeExecutionFailure<MemoryError, RunnerError> {
+    let release_request = error.release_request();
+    RegisterMaskedRotateNativeExecutionFailure {
+        cause: RotateNativeExecutionFailureCause::Load(Box::new(error)),
+        phase: NativeExecutableExecutionPhase::Load,
+        release_failure: None,
+        release_request,
+    }
+}
+
 fn non_graphical_load_failure<MemoryError, RunnerError>(
     error: NativeExecutableLoadFailure<MemoryError>,
 ) -> RegisterMaskedNonGraphicalNativeExecutionFailure<MemoryError, RunnerError>
@@ -2291,6 +2511,75 @@ where
         Err(release_failure) => {
             Err(Box::new(RegisterMaskedNoOperationNativeExecutionFailure {
                 cause: NoOperationNativeExecutionFailureCause::Release(outcome),
+                phase: NativeExecutableExecutionPhase::Release,
+                release_failure: Some(Box::new(release_failure)),
+                release_request: Some(release_request),
+            }))
+        },
+    }
+}
+
+/// Loads, binds, runs, admits, and releases one v6 rotate call.
+///
+/// Load/call failures restore the prepared rebased snapshot and attempt exact
+/// mapping cleanup. A release failure after a committed result retains both the
+/// outcome and exact ready executable for retry.
+///
+/// # Errors
+///
+/// Returns the rotate transaction failure with phase-specific primary and
+/// cleanup evidence.
+pub fn execute_verified_register_masked_rotate_native<MemoryAdapter, Runner>(
+    memory_adapter: &mut MemoryAdapter,
+    runner: &mut Runner,
+    prepared: PreparedRegisterMaskedRotateInvocation<'_, '_>,
+) -> RotateNativeAdapterExecutionResult<MemoryAdapter, Runner>
+where
+    MemoryAdapter: NativeExecutableMemoryAdapter,
+    Runner: RegisterMaskedRotateNativeRunner,
+{
+    let executable = match load_register_masked_rotate_native_executable(
+        memory_adapter,
+        prepared.load_image(),
+    ) {
+        Ok(executable) => executable,
+        Err(error) => {
+            prepared.abort();
+            return Err(Box::new(rotate_load_failure(error)));
+        },
+    };
+    let release_request = executable.release_request();
+    let outcome = match run_register_masked_rotate_prepared(
+        runner,
+        &executable,
+        prepared,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let phase = error.phase();
+            let release_failure =
+                release_register_masked_rotate_native_executable(
+                    memory_adapter,
+                    executable,
+                )
+                .err()
+                .map(Box::new);
+            return Err(Box::new(RegisterMaskedRotateNativeExecutionFailure {
+                cause: error.into_cause(),
+                phase,
+                release_failure,
+                release_request: Some(release_request),
+            }));
+        },
+    };
+    match release_register_masked_rotate_native_executable(
+        memory_adapter,
+        executable,
+    ) {
+        Ok(()) => Ok(outcome),
+        Err(release_failure) => {
+            Err(Box::new(RegisterMaskedRotateNativeExecutionFailure {
+                cause: RotateNativeExecutionFailureCause::Release(outcome),
                 phase: NativeExecutableExecutionPhase::Release,
                 release_failure: Some(Box::new(release_failure)),
                 release_request: Some(release_request),

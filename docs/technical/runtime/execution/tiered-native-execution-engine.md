@@ -2105,9 +2105,10 @@ and restores entry state on identity drift.
 
 A dedicated loaded runner consumes only that bound view, admits exact
 Applied/GuardMiss outcomes, and restores the entry snapshot after runner or
-completion failure. One-shot ownership and reusable lifecycle policy remain
-open. Broader register-masked template coverage remains open; unsupported v6
-execution remains fail-closed.
+completion failure. A one-shot rotate transaction now composes exact
+load/call/release with cleanup and committed release-retry evidence. Reusable
+lifecycle policy remains open. Broader register-masked template coverage remains
+open; unsupported v6 execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker
