@@ -272,8 +272,10 @@ releases the ready mapping transactionally with exact cleanup and release-retry
 ownership.
 
 A prepared rotate call requires exact live C/D, permits dead A/I/O rebasing,
-validates exact completion, and binds only to the identical ready image. Runner
-authority remains separate.
+validates exact completion, and binds only to the identical ready image. A
+dedicated loaded runner consumes only that bound view and restores the entry
+snapshot after runner or completion failure. One-shot ownership and reusable
+lifecycle policy remain separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

@@ -117,8 +117,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A/I/O rebasing, and
   validates exact Applied/GuardMiss completion with snapshot rollback. The
   prepared call now binds only to the identical synchronized rotate image,
-  restoring its entry snapshot on identity drift. Runner execution and higher
-  lifecycle ownership remain open.
+  restoring its entry snapshot on identity drift. A dedicated loaded rotate
+  runner consumes only that bound view, admits exact Applied/GuardMiss outcomes,
+  and restores the entry snapshot after runner or completion failure. One-shot
+  ownership and higher lifecycle reuse remain open.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

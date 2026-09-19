@@ -2101,9 +2101,13 @@ transactional load/release, post-allocation cleanup, and exact release retry.
 A prepared rotate invocation now enforces live C/D while allowing dead A/I/O
 rebasing, then admits only exact Applied/GuardMiss completion with rollback.
 Exact executable binding now requires the identical synchronized rotate image
-and restores entry state on identity drift. Runner authority remains open.
-Broader register-masked template coverage remains open; unsupported v6 execution
-remains fail-closed.
+and restores entry state on identity drift.
+
+A dedicated loaded runner consumes only that bound view, admits exact
+Applied/GuardMiss outcomes, and restores the entry snapshot after runner or
+completion failure. One-shot ownership and reusable lifecycle policy remain
+open. Broader register-masked template coverage remains open; unsupported v6
+execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker

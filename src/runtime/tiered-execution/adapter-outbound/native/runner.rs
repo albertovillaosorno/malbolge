@@ -46,6 +46,8 @@ use super::invocation::{
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
+    PreparedRegisterMaskedRotateInvocation,
+    PreparedRegisterMaskedRotateNativeInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedRegisterMaskedInvocationError,
@@ -56,6 +58,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedRotateNativeExecutable,
 };
 use super::platform::{
     DirectFusedNativeExecutableReleaseFailure, NativeExecutableLoadFailure,
@@ -210,6 +213,25 @@ pub type RegisterMaskedNoOperationLoadedExecutionResult<RunnerError> = Result<
 >;
 
 #[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedRotateNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 rotate call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedRotateLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedRotateNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 rotate call.
+pub type RegisterMaskedRotateLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedRotateLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
 enum RegisterMaskedNonGraphicalNativeCallFailure<RunnerError> {
     Binding(NativeExecutableInvocationBindingError),
     Completion(VerifiedRegisterMaskedInvocationError),
@@ -357,6 +379,13 @@ type RegisterMaskedNoOperationNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedNoOperationNativeCallFailure<
         <Runner as RegisterMaskedNoOperationNativeRunner>::Error,
+    >,
+>;
+
+type RegisterMaskedRotateNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedRotateNativeCallFailure<
+        <Runner as RegisterMaskedRotateNativeRunner>::Error,
     >,
 >;
 
@@ -540,6 +569,29 @@ pub trait RegisterMaskedNoOperationNativeRunner {
             '_,
             '_,
         >,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 rotate call.
+///
+/// This port receives only a view constructed after exact rotate v6
+/// image/executable identity binding.
+pub trait RegisterMaskedRotateNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 rotate executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedRotateNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -799,6 +851,62 @@ impl<RunnerError> RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError> {
             },
             RegisterMaskedNoOperationNativeCallFailure::Binding(_)
             | RegisterMaskedNoOperationNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedRotateLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedRotateNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedRotateNativeCallFailure::Completion(_)
+            | RegisterMaskedRotateNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 rotate result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedRotateNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedRotateNativeCallFailure::Binding(_)
+            | RegisterMaskedRotateNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedRotateNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedRotateNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedRotateNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedRotateNativeCallFailure::Runner(error) => Some(error),
+            RegisterMaskedRotateNativeCallFailure::Binding(_)
+            | RegisterMaskedRotateNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -1947,6 +2055,29 @@ where
         })
 }
 
+/// Binds, runs, and admits one v6 rotate call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns the rotate loaded-execution failure for binding, runner, or
+/// completion failure.
+pub fn execute_loaded_verified_register_masked_rotate_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedRotateNativeExecutable,
+    prepared: PreparedRegisterMaskedRotateInvocation<'_, '_>,
+) -> RegisterMaskedRotateLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedRotateNativeRunner,
+{
+    run_register_masked_rotate_prepared(runner, executable, prepared).map_err(
+        |cause| Box::new(RegisterMaskedRotateLoadedExecutionFailure { cause }),
+    )
+}
+
 /// Binds, runs, and admits one non-graphical v6 call against a loaded mapping.
 ///
 /// Runner failure restores the complete rebased entry snapshot. Completion
@@ -2364,6 +2495,31 @@ where
     bound
         .complete(raw_status)
         .map_err(RegisterMaskedNoOperationNativeCallFailure::Completion)
+}
+
+fn run_register_masked_rotate_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedRotateNativeExecutable,
+    prepared: PreparedRegisterMaskedRotateInvocation<'_, '_>,
+) -> RegisterMaskedRotateNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedRotateNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedRotateNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedRotateNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedRotateNativeCallFailure::Completion)
 }
 
 fn run_register_masked_non_graphical_prepared<Runner>(
