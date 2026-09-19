@@ -630,6 +630,7 @@ use execution_native::{
     load_register_masked_non_graphical_native_executable,
     load_register_masked_non_graphical_native_sequence,
     load_register_masked_rotate_native_executable,
+    load_register_masked_rotate_native_sequence,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
     lower_preflighted_clang_c23, native_process_call_request_byte_len,
@@ -13285,6 +13286,140 @@ fn register_masked_v6_rotate_sequence_plan_rejects_identity_drift()
     } else {
         Err(String::from(
             "v6 rotate sequence ignored artifact identity drift",
+        ))
+    }
+}
+
+fn register_masked_rotate_loaded_sequence_fixture()
+-> Result<RegisterMaskedRotateNativeSequencePlan, String> {
+    let programs = canonical_register_masked_rotate_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedRotateNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 rotate loaded plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_loaded_sequence_loads_and_releases()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(198)?,
+        native_executable_address(0x3b000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate sequence load: {error}"))?;
+    if loaded.len() != 2
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_lengths.iter().sum())
+        || loaded.plan() != &plan
+    {
+        return Err(String::from(
+            "v6 rotate loaded sequence ownership drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate sequence release: {error}"))?;
+    if adapter.release_attempts == 2
+        && adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate loaded sequence did not release"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_loaded_sequence_load_failure_is_atomic()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(199)?,
+        native_executable_address(0x3c000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 2);
+    let Err(error) =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from(
+            "v6 rotate sequence ignored late load failure",
+        ));
+    };
+    if error.index() != 1
+        || error.loaded_count() != 1
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            RegisterMaskedRotateNativeOwnerLoadFailure::Load(_)
+        )
+        || adapter.release_attempts != 2
+        || !adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Copy,
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        return Err(String::from(
+            "v6 rotate sequence late-load cleanup evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_loaded_sequence_release_failure_retries()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let expected_keys = plan
+        .artifacts()
+        .iter()
+        .rev()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(200)?,
+        native_executable_address(0x3d000)?,
+    )
+    .with_release_failure_at(1);
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v6 rotate sequence ignored release failure"));
+    };
+    if failure.attempted_count() != 2
+        || failure.released_count() != 1
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != expected_keys.first()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 rotate sequence release evidence drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 rotate sequence release retry: {error}")
+    })?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 rotate sequence release retry count drifted",
         ))
     }
 }

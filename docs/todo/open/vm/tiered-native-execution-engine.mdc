@@ -727,8 +727,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   Exact rotate sequence planning now admits continuous ordered v6
   program/artifact topology and preserves host-target-sensitive ordered
   identity without granting mapping or runner authority. Loaded rotate sequence
-  ownership/execution and multi-entry sequence-cache policy plus wider
-  mask-aware instruction coverage remain open.
+  ownership now maps every admitted step before publication, reports aggregate
+  mapped weight, releases in reverse semantic order, cleans complete loaded
+  prefixes on later load failure, and retains failed releases only for explicit
+  retry.
+
+  Indexed loaded-sequence execution and multi-entry sequence-cache policy plus
+  wider mask-aware instruction coverage remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

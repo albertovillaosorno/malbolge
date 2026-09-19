@@ -258,8 +258,11 @@ release failure transfers exact retry ownership.
 
 Exact rotate sequence planning now admits continuous ordered v6 program/artifact
 topology and preserves host-target-sensitive ordered identity without granting
-mapping or runner authority. Loaded rotate sequence ownership/execution and
-multi-entry sequence-cache policy remain open.
+mapping or runner authority. Loaded rotate sequence ownership now maps every
+admitted step before publication, reports aggregate mapped weight, releases in
+reverse semantic order, cleans complete loaded prefixes on later load failure,
+and retains failed releases only for explicit retry. Indexed loaded-sequence
+execution and multi-entry sequence-cache policy remain open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle
