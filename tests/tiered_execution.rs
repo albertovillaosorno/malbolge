@@ -14336,6 +14336,122 @@ fn register_masked_v6_rotate_sequence_lease_cache_blocks_limit_shrink()
 }
 
 #[test]
+fn register_masked_v6_rotate_sequence_lease_cache_retries_releases()
+-> TieredTestResult {
+    let first = register_masked_rotate_single_sequence_plan()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedRotateNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 rotate lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(390)?,
+        native_executable_address(0x49000)?,
+    );
+    let first_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    let _first = cache
+        .invalidate_plan(&mut adapter, &first)
+        .map_err(|failure| failure.to_string())?;
+    let _second = cache
+        .invalidate_plan(&mut adapter, &second)
+        .map_err(|failure| failure.to_string())?;
+    drop(first_lease);
+    drop(second_lease);
+    adapter.release_failures_remaining = 2;
+    let Err(failure) = cache.reconcile_retired(&mut adapter) else {
+        return Err(String::from("v6 rotate reconciliation failure ignored"));
+    };
+    let failed_keys = failure
+        .failures()
+        .iter()
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<_>>();
+    if failed_keys != [first_key.clone(), second_key.clone()]
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 rotate reconciliation evidence drifted"));
+    }
+    let report = failure
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate reconciliation retry drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_retries_eviction()
+-> TieredTestResult {
+    let first = register_masked_rotate_single_sequence_plan()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedRotateNativeSequenceLeaseCache::new(
+        nonzero_test_limit(1, "v6 rotate lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(392)?,
+        native_executable_address(0x49200)?,
+    );
+    drop(register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?);
+    adapter.release_failures_remaining = 2;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 rotate leased eviction failure ignored"));
+    };
+    if error.requested_key() != &second_key
+        || error.evicted_keys() != [first_key.clone()]
+        || !error.retired_keys().is_empty()
+        || error.release_failure().is_none()
+        || error.candidate_cleanup_failure().is_none()
+        || error.block().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 rotate leased eviction evidence drifted"));
+    }
+    let report = error
+        .into_release_failures()
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate leased eviction retry drifted"))
+    }
+}
+
+#[test]
 fn register_masked_v6_no_operation_sequence_plan_admits_step()
 -> TieredTestResult {
     let program = canonical_register_masked_no_operation_program()?;
