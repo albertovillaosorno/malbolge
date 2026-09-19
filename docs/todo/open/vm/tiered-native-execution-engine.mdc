@@ -722,9 +722,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   hits without adapter work, blocks release while leases remain live, and keeps
   failed loads atomic.
 
-  Release failure transfers exact retry ownership. Rotate sequence and
-  multi-entry cache policy plus wider mask-aware instruction coverage remain
-  open.
+  Release failure transfers exact retry ownership.
+
+  Exact rotate sequence planning now admits continuous ordered v6
+  program/artifact topology and preserves host-target-sensitive ordered
+  identity without granting mapping or runner authority. Loaded rotate sequence
+  ownership/execution and multi-entry sequence-cache policy plus wider
+  mask-aware instruction coverage remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

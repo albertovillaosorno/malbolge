@@ -254,8 +254,12 @@ calls, reports platform mapping weight, and remains reusable after runner
 failure. A single-resident rotate lease cache admits only exact
 program/artifact hits, returns immutable shared leases without adapter work, and
 blocks release while leases remain live. Failed loads publish no resident, and
-release failure transfers exact retry ownership. Rotate sequence and multi-entry
-cache policy remain open.
+release failure transfers exact retry ownership.
+
+Exact rotate sequence planning now admits continuous ordered v6 program/artifact
+topology and preserves host-target-sensitive ordered identity without granting
+mapping or runner authority. Loaded rotate sequence ownership/execution and
+multi-entry sequence-cache policy remain open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

@@ -549,9 +549,11 @@ use execution_native::{
     RegisterMaskedRotateNativeResidentCacheRelease,
     RegisterMaskedRotateNativeResidentLease,
     RegisterMaskedRotateNativeResidentLeaseCache,
-    RegisterMaskedRotateNativeRunner, StagedDirectFusedNativeExecutable,
-    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    StagedRegisterMaskedNativeExecutable,
+    RegisterMaskedRotateNativeRunner, RegisterMaskedRotateNativeSequenceKey,
+    RegisterMaskedRotateNativeSequencePlan,
+    RegisterMaskedRotateNativeSequencePlanError,
+    StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     StagedRegisterMaskedRotateNativeExecutable, UntrustedNativeObjectArtifact,
@@ -13100,6 +13102,190 @@ fn register_masked_v6_multi_cache_reconfiguration_skips_retired()
         Ok(())
     } else {
         Err(String::from("v6 explicit retired reclaim drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_plan_admits_pair() -> TieredTestResult {
+    let programs = canonical_register_masked_rotate_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let plan =
+        RegisterMaskedRotateNativeSequencePlan::new(&programs, &artifacts)
+            .map_err(|error| format!("v6 rotate sequence plan: {error}"))?;
+    let entry = programs
+        .first()
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 rotate sequence entry missing"))?;
+    let exit = programs
+        .last()
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.after)
+        .ok_or_else(|| String::from("v6 rotate sequence exit missing"))?;
+    if plan.len() == 2
+        && !plan.is_empty()
+        && plan.entry() == entry
+        && plan.exit() == exit
+        && plan.programs() == programs
+        && plan.artifacts() == artifacts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_key_preserves_identity()
+-> TieredTestResult {
+    let programs = canonical_register_masked_rotate_programs()?;
+    let x86_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let x86_plan =
+        RegisterMaskedRotateNativeSequencePlan::new(&programs, &x86_artifacts)
+            .map_err(|error| format!("v6 rotate x86 key plan: {error}"))?;
+    let x86_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&x86_plan);
+    let expected = x86_artifacts
+        .iter()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let arm_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::AArch64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let arm_plan =
+        RegisterMaskedRotateNativeSequencePlan::new(&programs, &arm_artifacts)
+            .map_err(|error| format!("v6 rotate AArch64 key plan: {error}"))?;
+    let arm_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&arm_plan);
+    if x86_key.len() == 2
+        && !x86_key.is_empty()
+        && x86_key.artifact_keys() == expected
+        && x86_key != arm_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate sequence key identity drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedRotateNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedRotateNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 rotate sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_rotate_program()?;
+    let count =
+        RegisterMaskedRotateNativeSequencePlan::new(from_ref(&program), &[]);
+    if count
+        == Err(RegisterMaskedRotateNativeSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 rotate sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_plan_rejects_chain_drift()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_rotate_programs()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 rotate sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let result =
+        RegisterMaskedRotateNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedRotateNativeSequencePlanError::ObservationChain {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 rotate sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_plan_rejects_target_drift()
+-> TieredTestResult {
+    let programs = canonical_register_masked_rotate_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(String::from("v6 rotate target pair length drifted"));
+    };
+    let first =
+        verified_register_masked_rotate(first_program, HostIsa::X86_64)?;
+    let second =
+        verified_register_masked_rotate(second_program, HostIsa::AArch64)?;
+    let result = RegisterMaskedRotateNativeSequencePlan::new(&programs, &[
+        first, second,
+    ]);
+    if result
+        == Err(
+            RegisterMaskedRotateNativeSequencePlanError::TargetMismatch {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate sequence ignored target drift"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let variant = register_masked_rotate_dead_state_variant(&program)?;
+    let result = RegisterMaskedRotateNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(
+            RegisterMaskedRotateNativeSequencePlanError::ArtifactIdentity {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 rotate sequence ignored artifact identity drift",
+        ))
     }
 }
 

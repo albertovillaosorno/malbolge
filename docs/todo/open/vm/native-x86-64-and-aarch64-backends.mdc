@@ -131,7 +131,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   remain live.
 
   Failed loads publish no resident, and release failure transfers exact retry
-  ownership. Rotate sequence and multi-entry cache policy remain open.
+  ownership.
+
+  Exact rotate sequence planning now admits continuous ordered v6
+  program/artifact topology and preserves host-target-sensitive ordered
+  identity without granting mapping or runner authority. Loaded rotate sequence
+  ownership/execution and multi-entry sequence-cache policy remain open.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

@@ -93,6 +93,7 @@ mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
 mod register_masked_non_graphical_sequence_execution;
 mod register_masked_resident;
+mod register_masked_rotate_sequence;
 mod register_masked_sequence;
 mod runner;
 mod sequence_continuation;
@@ -797,6 +798,11 @@ pub use register_masked_resident::{
     RegisterMaskedRotateNativeResidentCacheReleaseResult,
     RegisterMaskedRotateNativeResidentLease,
     RegisterMaskedRotateNativeResidentLeaseCache,
+};
+pub use register_masked_rotate_sequence::{
+    RegisterMaskedRotateNativeSequenceKey,
+    RegisterMaskedRotateNativeSequencePlan,
+    RegisterMaskedRotateNativeSequencePlanError,
 };
 pub use register_masked_sequence::{
     LoadedRegisterMaskedNativeSequence,
