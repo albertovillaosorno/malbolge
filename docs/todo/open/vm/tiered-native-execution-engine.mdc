@@ -709,8 +709,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   A dedicated platform path adds transactional load/release, cleanup, and exact
   release-retry ownership. Rotate now also has a prepared semantic call that
   requires live C/D, permits dead A/I/O rebasing, and admits only exact
-  Applied/GuardMiss completion; executable binding/runner authority and wider
-  mask-aware instruction coverage remain open.
+  Applied/GuardMiss completion. Exact binding now requires the identical ready
+  rotate image; runner authority and wider mask-aware instruction coverage
+  remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

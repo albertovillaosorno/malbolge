@@ -269,9 +269,11 @@ guarding only C/D, both memory live-ins, capacity, and prior termination on
 x86-64/AArch64. A relocation-free image and rotate-specific RW-to-RX/full-sync
 typestates retain that exact identity. A dedicated platform path now loads and
 releases the ready mapping transactionally with exact cleanup and release-retry
-ownership. A prepared rotate call requires exact live C/D, permits dead A/I/O
-rebasing, and validates exact completion; executable binding and runner
-authority remain separate.
+ownership.
+
+A prepared rotate call requires exact live C/D, permits dead A/I/O rebasing,
+validates exact completion, and binds only to the identical ready image. Runner
+authority remains separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

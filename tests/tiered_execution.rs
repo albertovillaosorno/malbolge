@@ -6413,6 +6413,104 @@ fn register_masked_v6_rotate_invocation_rejects_data_pointer_drift()
 }
 
 #[test]
+fn register_masked_v6_rotate_binding_retains_exact_ready() -> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedRotateLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 rotate binding image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(176)?,
+        native_executable_address(0x25000)?,
+    );
+    let ready =
+        load_register_masked_rotate_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 rotate binding load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 rotate binding effect missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate binding prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v6 rotate binding failed: {error}"))?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 rotate bound identity drifted"));
+    }
+    drop(bound);
+    release_register_masked_rotate_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 rotate binding release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_binding_rejects_ready_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let mut variant = program.clone();
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 rotate binding variant effect missing")
+    })?;
+    effect.before.registers.accumulator ^= 1;
+    let variant_artifact =
+        verified_register_masked_rotate(&variant, HostIsa::X86_64)?;
+    let variant_image =
+        VerifiedRegisterMaskedRotateLoadImage::new(&variant_artifact)
+            .map_err(|error| format!("v6 rotate variant image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(177)?,
+        native_executable_address(0x26000)?,
+    );
+    let ready = load_register_masked_rotate_native_executable(
+        &mut adapter,
+        &variant_image,
+    )
+    .map_err(|error| format!("v6 rotate variant load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|source| source.before)
+        .ok_or_else(|| String::from("v6 rotate binding source missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate drift prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let result = prepared.bind_executable(&ready);
+    if !matches!(
+        result,
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 rotate ready drift was admitted"));
+    }
+    release_register_masked_rotate_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 rotate variant release: {error}"))?;
+    Ok(())
+}
+
+#[test]
 fn register_masked_v6_rotate_platform_loads_and_releases() -> TieredTestResult {
     let program = canonical_register_masked_rotate_program()?;
     let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;

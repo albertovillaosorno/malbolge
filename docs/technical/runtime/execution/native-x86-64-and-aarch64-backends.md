@@ -241,8 +241,9 @@ A dedicated rotate platform path now loads/releases the ready mapping
 transactionally with post-allocation cleanup and exact release-retry ownership.
 A distinct prepared rotate invocation requires exact live C/D, permits dead
 A/I/O rebasing, and admits only exact Applied/GuardMiss completion with complete
-snapshot rollback on rejection. Executable binding and runner authority remain
-open.
+snapshot rollback on rejection. Binding now accepts only the identical
+synchronized rotate image and restores the entry snapshot on identity drift.
+Runner authority remains open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

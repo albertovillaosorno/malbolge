@@ -67,6 +67,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedRotateNativeExecutable,
 };
 use super::loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
@@ -383,6 +384,16 @@ pub struct PreparedRegisterMaskedNoOperationNativeInvocation<
     'executable,
 > {
     executable: &'executable ReadyRegisterMaskedNoOperationNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact v6 rotate call and synchronized mapping.
+///
+/// No runner consumes this type yet. It proves only exact rotate image identity
+/// plus one borrow-scoped ABI call contract.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedRotateNativeInvocation<'buffers, 'executable> {
+    executable: &'executable ReadyRegisterMaskedRotateNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -970,6 +981,31 @@ impl<'artifact, 'buffers>
         &self,
     ) -> &VerifiedRegisterMaskedRotateNativeObjectArtifact {
         self.artifact
+    }
+
+    /// Binds this call to one synchronized v6 rotate executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns a binding error when executable image identity differs. Failure
+    /// restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedRotateNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedRotateNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedRotateNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
     }
 
     /// Admits one raw status through the rebased rotate contract.
@@ -1596,6 +1632,43 @@ impl<'buffers, 'executable>
         value: u32,
     ) -> bool {
         self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedRotateNativeInvocation<'buffers, 'executable>
+{
+    /// Returns the synchronized non-zero rotate v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedRotateNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyRegisterMaskedRotateNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer retained by this bound call.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
     }
 }
 
