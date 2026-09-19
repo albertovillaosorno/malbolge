@@ -95,6 +95,7 @@ mod register_masked_non_graphical_sequence_execution;
 mod register_masked_resident;
 mod register_masked_rotate_loaded_sequence;
 mod register_masked_rotate_sequence;
+mod register_masked_rotate_sequence_cache;
 mod register_masked_rotate_sequence_execution;
 mod register_masked_sequence;
 mod runner;
@@ -813,6 +814,24 @@ pub use register_masked_rotate_sequence::{
     RegisterMaskedRotateNativeSequenceKey,
     RegisterMaskedRotateNativeSequencePlan,
     RegisterMaskedRotateNativeSequencePlanError,
+};
+pub use register_masked_rotate_sequence_cache::{
+    RegisterMaskedRotateNativeSequenceCache,
+    RegisterMaskedRotateNativeSequenceCacheCapacityError,
+    RegisterMaskedRotateNativeSequenceCacheDisposition,
+    RegisterMaskedRotateNativeSequenceCacheEntry,
+    RegisterMaskedRotateNativeSequenceCacheInvalidationResult,
+    RegisterMaskedRotateNativeSequenceCacheInvariantError,
+    RegisterMaskedRotateNativeSequenceCacheLimits,
+    RegisterMaskedRotateNativeSequenceCacheLoadFailure,
+    RegisterMaskedRotateNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedRotateNativeSequenceCacheLoadResult,
+    RegisterMaskedRotateNativeSequenceCacheReconfiguration,
+    RegisterMaskedRotateNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedRotateNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedRotateNativeSequenceCacheReleaseFailure,
+    RegisterMaskedRotateNativeSequenceCacheReleaseResult,
+    RegisterMaskedRotateNativeSequenceCacheUsage,
 };
 pub use register_masked_rotate_sequence_execution::{
     RegisterMaskedRotateNativeSequenceExecutionFailure,

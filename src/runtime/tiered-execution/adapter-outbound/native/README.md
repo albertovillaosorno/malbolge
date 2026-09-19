@@ -295,7 +295,16 @@ and retains failed releases only for explicit retry.
 Indexed loaded-sequence execution now advances exact observations through
 retained rotate owners without adapter work, returns exact guard-miss resume
 boundaries, and preserves committed-prefix evidence on later runner failure.
-Multi-entry rotate sequence-cache policy remains separate.
+
+A rotate-specific weighted FIFO now reuses exact ordered artifact-key chains.
+Hits preserve insertion age and perform no adapter work; misses load completely
+before entry/mapping/mapped-byte admission and evict oldest entries until every
+limit fits. Oversize candidates and failed eviction retain exact cleanup retry
+ownership without publishing the candidate. Explicit limit reconfiguration
+expands without adapter work and shrinks through FIFO release while prior limits
+remain published on failure.
+
+External lease ownership remains separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

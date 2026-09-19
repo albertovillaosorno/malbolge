@@ -735,8 +735,16 @@ baseline; native tiers are accelerators of identical observable behavior.
   Indexed loaded-sequence execution now advances exact observations through
   retained rotate owners without adapter work, returns exact guard-miss resume
   boundaries, and preserves committed-prefix evidence on later runner failure.
-  Multi-entry rotate sequence-cache policy plus wider mask-aware instruction
-  coverage remain open.
+
+  A rotate-specific weighted FIFO now reuses exact ordered artifact-key chains.
+  Hits preserve insertion age and perform no adapter work; misses load fully
+  before entry/mapping/mapped-byte admission and evict oldest entries until all
+  limits fit. Oversize candidates and failed eviction retain exact cleanup retry
+  ownership without candidate publication. Explicit limit changes expand without
+  adapter work and shrink through FIFO release while prior limits survive
+  failure.
+
+  Wider mask-aware instruction coverage remains open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

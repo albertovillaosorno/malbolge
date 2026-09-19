@@ -549,7 +549,7 @@ use execution_native::{
     RegisterMaskedRotateNativeResidentCacheRelease,
     RegisterMaskedRotateNativeResidentLease,
     RegisterMaskedRotateNativeResidentLeaseCache,
-    RegisterMaskedRotateNativeRunner,
+    RegisterMaskedRotateNativeRunner, RegisterMaskedRotateNativeSequenceCache,
     RegisterMaskedRotateNativeSequenceExecutionFailure,
     RegisterMaskedRotateNativeSequenceKey,
     RegisterMaskedRotateNativeSequenceOutcome,
@@ -13692,6 +13692,334 @@ fn register_masked_v6_rotate_sequence_late_failure_keeps_prefix()
     loaded
         .release(&mut adapter)
         .map_err(|error| format!("v6 rotate late-failure release: {error}"))
+}
+
+fn register_masked_rotate_sequence_target_variant(
+    plan: &RegisterMaskedRotateNativeSequencePlan,
+    isa: HostIsa,
+) -> Result<RegisterMaskedRotateNativeSequencePlan, String> {
+    let artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| verified_register_masked_rotate(program, isa))
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedRotateNativeSequencePlan::new(plan.programs(), &artifacts)
+        .map_err(|error| format!("v6 rotate target-variant plan: {error}"))
+}
+
+fn register_masked_rotate_sequence_dead_state_variant(
+    plan: &RegisterMaskedRotateNativeSequencePlan,
+) -> Result<RegisterMaskedRotateNativeSequencePlan, String> {
+    let mut programs = plan.programs().to_vec();
+    let first = programs
+        .first_mut()
+        .ok_or_else(|| String::from("v6 rotate cache variant missing step"))?;
+    *first = register_masked_rotate_dead_state_variant(first)?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_rotate(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedRotateNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 rotate dead-state cache plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_tracks_weighted_usage()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mapped_bytes = mapped_lengths.iter().sum::<usize>();
+    let entry_limit = nonzero_test_limit(2, "v6 rotate cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(3, "v6 rotate cache mapping limit")?;
+    let byte_limit = nonzero_test_limit(40_000, "v6 rotate cache byte limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedRotateNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(360)?,
+        native_executable_address(0x46000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let inserted = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 rotate weighted insert: {error}"))?
+        .disposition()
+        .clone();
+    let usage = cache.usage();
+    let operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 rotate weighted hit: {error}"))?
+        .disposition()
+        .clone();
+    if inserted.is_hit()
+        || cache.limits() != limits
+        || usage.entries() != 1
+        || usage.mappings() != 2
+        || usage.mapped_bytes() != mapped_bytes
+        || cache.usage() != usage
+        || !hit.is_hit()
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 rotate weighted usage drifted"));
+    }
+    if !cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 rotate weighted invalidate: {error}"))?
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || cache.usage().mappings() != 0
+        || cache.usage().mapped_bytes() != 0
+    {
+        return Err(String::from("v6 rotate weighted invalidation drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_rejects_mapping_oversize()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let entry_limit = nonzero_test_limit(2, "v6 rotate cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(1, "v6 rotate cache mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedRotateNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(362)?,
+        native_executable_address(0x46200)?,
+    );
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 rotate mapping oversize was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::Mappings {
+        limit: mapping_limit,
+        required: 2,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || !error.evicted_keys().is_empty()
+        || error.eviction_failure().is_some()
+        || error.load_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 rotate mapping oversize evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_hit_keeps_fifo_age()
+-> TieredTestResult {
+    let first = register_masked_rotate_loaded_sequence_fixture()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let third = register_masked_rotate_sequence_dead_state_variant(&first)?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let third_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&third);
+    if first_key == second_key
+        || first_key == third_key
+        || second_key == third_key
+    {
+        return Err(String::from("v6 rotate cache FIFO fixture key collision"));
+    }
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 rotate cache capacity missing"))?;
+    let mut cache = RegisterMaskedRotateNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(364)?,
+        native_executable_address(0x46400)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 rotate FIFO first: {error}"))?
+        .disposition()
+        .clone();
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 rotate FIFO second: {error}"))?
+        .disposition()
+        .clone();
+    let hit_operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 rotate FIFO hit: {error}"))?
+        .disposition()
+        .clone();
+    let hit_no_adapter_work = adapter.operations == hit_operations;
+    let inserted = cache
+        .ensure_plan(&mut adapter, &third)
+        .map_err(|error| format!("v6 rotate FIFO third: {error}"))?
+        .disposition()
+        .clone();
+    let keys = cache.keys().cloned().collect::<Vec<_>>();
+    if !hit.is_hit()
+        || !hit_no_adapter_work
+        || inserted.evicted_key() != Some(&first_key)
+        || keys != [second_key, third_key]
+    {
+        return Err(String::from("v6 rotate cache hit refreshed FIFO age"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 rotate FIFO release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_executes_borrowed_chain()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 rotate cache capacity missing"))?;
+    let mut cache = RegisterMaskedRotateNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(366)?,
+        native_executable_address(0x46600)?,
+    );
+    {
+        let entry =
+            cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+                format!("v6 rotate cached execute load: {error}")
+            })?;
+        let loaded_operations = adapter.operations.clone();
+        let state = direct_rotate_pair_sequence_state()?;
+        let mut memory = state.memory().to_vec();
+        let mut expected_memory = memory.clone();
+        for program in plan.programs() {
+            apply_register_masked_rotate_expected_memory(
+                program,
+                &mut expected_memory,
+            )?;
+        }
+        let (input, mut output) = ([], []);
+        let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+            FakeNativeRunnerBehavior::Applied,
+        );
+        let outcome = execute_loaded_register_masked_rotate_native_sequence(
+            entry.sequence(),
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 rotate cached execute: {error}"))?;
+        if outcome.completed_steps() != 2
+            || outcome.observation() != plan.exit()
+            || memory != expected_memory
+            || runner.calls != 2
+            || adapter.operations != loaded_operations
+        {
+            return Err(String::from("v6 rotate cached execution drifted"));
+        }
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 rotate cached execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_eviction_failure_retries()
+-> TieredTestResult {
+    let first = register_masked_rotate_loaded_sequence_fixture()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 rotate cache capacity missing"))?;
+    let mut cache = RegisterMaskedRotateNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(368)?,
+        native_executable_address(0x46800)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 rotate cache failure fixture: {error}"))?;
+    adapter.release_failure_at = Some(1);
+    let Err(failure) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 rotate cache ignored eviction failure"));
+    };
+    if failure.evicted_key() != Some(&first_key)
+        || failure.requested_key() != &second_key
+        || failure
+            .eviction_failure()
+            .is_none_or(|item| item.failed_count() != 1)
+        || failure.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || adapter.release_attempts != 4
+    {
+        return Err(String::from("v6 rotate cache eviction failure drifted"));
+    }
+    let pending = failure.into_release_failures();
+    if pending.eviction_failure().is_none()
+        || pending.candidate_failure().is_some()
+    {
+        return Err(String::from("v6 rotate cache retry ownership drifted"));
+    }
+    pending
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 rotate cache eviction retry: {error}"))?;
+    if adapter.release_attempts == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate cache eviction retry count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_cache_reconfigures_fifo_limits()
+-> TieredTestResult {
+    let first = register_masked_rotate_loaded_sequence_fixture()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let old_limit = nonzero_test_limit(2, "v6 rotate old cache limit")?;
+    let new_limit = nonzero_test_limit(1, "v6 rotate new cache limit")?;
+    let mut cache = RegisterMaskedRotateNativeSequenceCache::new(old_limit);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(370)?,
+        native_executable_address(0x47000)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 rotate reconfigure first: {error}"))?;
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 rotate reconfigure second: {error}"))?;
+    let requested = NativeExecutableSequenceCacheLimits::new(new_limit);
+    let change = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 rotate reconfigure: {error}"))?;
+    if change.evicted_keys() != from_ref(&first_key)
+        || change.limit_transition()
+            != (
+                NativeExecutableSequenceCacheLimits::new(old_limit),
+                requested,
+            )
+        || cache.capacity() != new_limit
+        || cache.len() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 rotate cache reconfiguration drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 rotate reconfigure release: {error}"))
 }
 
 #[test]

@@ -144,7 +144,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Indexed loaded-sequence execution now advances exact observations through
   retained rotate owners without adapter work, returns exact guard-miss resume
   boundaries, and preserves committed-prefix evidence on later runner failure.
-  Multi-entry rotate sequence-cache policy remains open.
+
+  A rotate-specific weighted FIFO now reuses exact ordered artifact-key chains.
+  Hits preserve insertion age and perform no adapter work; misses load fully
+  before entry/mapping/mapped-byte admission and evict oldest entries until all
+  limits fit. Oversize candidates and failed eviction retain exact cleanup retry
+  ownership without candidate publication. Explicit limit changes expand without
+  adapter work and shrink through FIFO release while prior limits survive
+  failure.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

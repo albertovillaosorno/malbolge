@@ -2124,8 +2124,17 @@ and retains failed releases only for explicit retry.
 Indexed loaded-sequence execution now advances exact observations through
 retained rotate owners without adapter work, returns exact guard-miss resume
 boundaries, and preserves committed-prefix evidence on later runner failure.
-Multi-entry rotate sequence-cache policy remains open. Broader register-masked
-template coverage remains open and unsupported v6 execution remains fail-closed.
+
+A rotate-specific weighted FIFO now reuses exact ordered artifact-key chains.
+Hits preserve insertion age and perform no adapter work; misses load completely
+before entry/mapping/mapped-byte admission and evict oldest entries until every
+limit fits. Oversize candidates and failed eviction retain exact cleanup retry
+ownership without publishing the candidate. Limit expansion performs no adapter
+work; shrink releases oldest entries before publication and retains prior limits
+on failure.
+
+Broader register-masked template coverage remains open and unsupported v6
+execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker

@@ -266,7 +266,14 @@ and retains failed releases only for explicit retry.
 Indexed loaded-sequence execution now advances exact observations through
 retained rotate owners without adapter work, returns exact guard-miss resume
 boundaries, and preserves committed-prefix evidence on later runner failure.
-Multi-entry rotate sequence-cache policy remains open.
+
+A rotate-specific weighted FIFO now reuses exact ordered artifact-key chains.
+Hits preserve insertion age and perform no adapter work; misses load completely
+before entry/mapping/mapped-byte admission and evict oldest entries until every
+limit fits. Oversize candidates and failed eviction retain exact cleanup retry
+ownership without publishing the candidate. Explicit limit reconfiguration
+expands without adapter work and shrinks through the same FIFO release boundary
+while prior limits remain published on failure.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle
