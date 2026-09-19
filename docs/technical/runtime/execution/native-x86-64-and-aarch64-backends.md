@@ -225,14 +225,19 @@ transition, and full-range synchronization.
 Host-independent v6 semantic admission also recognizes traced no-operation,
 rotate, and Crazy shapes. No-operation reads/writes C/D while A remains dead;
 rotate reads C/D and writes A/C/D; Crazy reads and writes A/C/D. Mask drift
-fails closed before host-code authority. Distinct revision-1 object families
-currently emit only no-operation and rotate on x86-64 and AArch64; Crazy remains
-semantic-admission evidence only.
+fails closed before host-code authority. Distinct revision-1 object families now
+emit all three shapes on x86-64 and AArch64.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.
 Dead A and I/O history remain bound in the full v6 key without changing rotate
-machine text.
+machine text. Crazy uses the same reviewed two-write commit but additionally
+guards live A. I/O history remains key-bound but absent from Crazy machine text;
+a changed entry accumulator changes the canonical object.
+
+Independent Crazy verification structurally admits COFF and regenerates exact
+canonical bytes. Crazy remains object-only here: no v6 Crazy load image,
+executable lifecycle, or invocation authority is granted.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

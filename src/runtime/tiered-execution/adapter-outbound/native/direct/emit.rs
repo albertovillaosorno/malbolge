@@ -45,8 +45,8 @@ use super::{
     DirectInputProgram, DirectJumpCodeError, DirectJumpCodeProgram,
     DirectJumpDataError, DirectJumpDataProgram, DirectNoOperationError,
     DirectNoOperationProgram, DirectNonGraphicalError, DirectOutputError,
-    DirectOutputProgram, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNoOperationError,
+    DirectOutputProgram, DirectRegisterMaskedCrazyError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
     DirectRotateError, DirectRotateProgram,
     ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
@@ -60,9 +60,10 @@ use super::{
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, jump_code_coff, jump_data_coff,
     no_operation_coff, non_graphical_coff, output_coff,
-    register_masked_halt_fetch_coff, register_masked_no_operation_coff,
-    register_masked_non_graphical_coff, register_masked_rotate_coff,
-    rotate_coff, target_triple, validate_crazy_program, validate_crazy_target,
+    register_masked_crazy_coff, register_masked_halt_fetch_coff,
+    register_masked_no_operation_coff, register_masked_non_graphical_coff,
+    register_masked_rotate_coff, rotate_coff, target_triple,
+    validate_crazy_program, validate_crazy_target,
     validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
@@ -89,7 +90,9 @@ use super::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_output_target, validate_register_masked_crazy_program,
+    validate_register_masked_crazy_target,
+    validate_register_masked_halt_fetch_program,
     validate_register_masked_halt_fetch_target,
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
@@ -410,6 +413,27 @@ pub fn emit_direct_register_masked_no_operation_coff(
     let key = NativeArtifactKey::new_register_masked(program, target)?;
     let triple = target_triple(key.target().host_isa());
     let object = register_masked_no_operation_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+/// Emits one mask-aware v6 Crazy candidate without execution authority.
+///
+/// # Errors
+///
+/// Returns the register-masked Crazy error when shape, target, or canonical
+/// object identity cannot be represented.
+pub fn emit_direct_register_masked_crazy_coff(
+    program: &RegisterMaskedRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectRegisterMaskedCrazyError> {
+    let selected = validate_register_masked_crazy_program(program)
+        .map_err(|_error| DirectRegisterMaskedCrazyError::ProgramShape)?;
+    validate_register_masked_crazy_target(&target)?;
+    let key = NativeArtifactKey::new_register_masked(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = register_masked_crazy_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))

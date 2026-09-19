@@ -49,6 +49,7 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataGuard,
     DirectJumpDataProgram, DirectNoOperationError, DirectNoOperationProgram,
     DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
+    DirectRegisterMaskedCrazyError, DirectRegisterMaskedCrazyGuard,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
@@ -472,6 +473,31 @@ pub(super) fn register_masked_no_operation_coff(
     .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedNoOperationError::ObjectBytes)
+}
+
+pub(super) fn register_masked_crazy_coff(
+    key: &NativeArtifactKey,
+    selected: DirectCrazyProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedCrazyError> {
+    let guard = DirectRegisterMaskedCrazyGuard {
+        accumulator: selected.observation.registers.accumulator,
+        code_live_in: selected.code_live_in.value,
+        code_pointer: selected.observation.registers.code_pointer,
+        data_live_in: selected.data_live_in.value,
+        data_pointer: selected.observation.registers.data_pointer,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_crazy_code(guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_crazy_code(guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)
 }
 
 pub(super) fn register_masked_rotate_coff(

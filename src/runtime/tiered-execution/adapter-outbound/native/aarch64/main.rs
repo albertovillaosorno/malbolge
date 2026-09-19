@@ -47,7 +47,7 @@ use super::direct::{
     DirectFusedOutputPairTemplate, DirectFusedRotateNoOperationTemplate,
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectOutputCommit,
+    DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedCrazyGuard,
     DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedRotateGuard,
     DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
@@ -234,9 +234,36 @@ pub(super) fn register_masked_no_operation_code(
     Some(encode_words(&words))
 }
 
+/// Encodes v6 Crazy using its declared A/C/D dependencies.
+#[must_use]
+pub(super) fn register_masked_crazy_code(
+    guard: DirectRegisterMaskedCrazyGuard,
+    commit: DirectCrazyCommit,
+) -> Option<Vec<u8>> {
+    register_masked_data_write_code(
+        Some(guard.accumulator),
+        DirectRegisterMaskedRotateGuard {
+            code_live_in: guard.code_live_in,
+            code_pointer: guard.code_pointer,
+            data_live_in: guard.data_live_in,
+            data_pointer: guard.data_pointer,
+            required_memory_words: guard.required_memory_words,
+        },
+        commit,
+    )
+}
+
 /// Encodes v6 rotate using only declared C/D dependencies.
 #[must_use]
 pub(super) fn register_masked_rotate_code(
+    guard: DirectRegisterMaskedRotateGuard,
+    commit: DirectRotateCommit,
+) -> Option<Vec<u8>> {
+    register_masked_data_write_code(None, guard, commit)
+}
+
+fn register_masked_data_write_code(
+    accumulator: Option<u32>,
     guard: DirectRegisterMaskedRotateGuard,
     commit: DirectRotateCommit,
 ) -> Option<Vec<u8>> {
@@ -245,9 +272,12 @@ pub(super) fn register_masked_rotate_code(
     {
         return None;
     }
-    let mut words = Vec::with_capacity(72);
-    let mut guard_branches = Vec::with_capacity(9);
+    let mut words = Vec::with_capacity(80);
+    let mut guard_branches = Vec::with_capacity(10);
     push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    if let Some(value) = accumulator {
+        push_u32_guard(&mut words, &mut guard_branches, 0xb940_4008, value);
+    }
     push_u32_guard(
         &mut words,
         &mut guard_branches,

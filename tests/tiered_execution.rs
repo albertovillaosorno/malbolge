@@ -372,6 +372,8 @@ use execution_native::{
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
@@ -429,7 +431,7 @@ use execution_native::{
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError,
+    DirectNonGraphicalError, DirectOutputError, DirectRegisterMaskedCrazyError,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
     DirectRotateError, DirectSelectionError, DirectSequenceError,
@@ -596,6 +598,7 @@ use execution_native::{
     emit_direct_input_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
+    emit_direct_register_masked_crazy_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
@@ -677,7 +680,8 @@ use execution_native::{
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
-    verify_direct_output, verify_direct_register_masked_halt_fetch,
+    verify_direct_output, verify_direct_register_masked_crazy,
+    verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
     verify_direct_register_masked_rotate, verify_direct_rotate,
@@ -3900,6 +3904,36 @@ fn canonical_register_masked_crazy_program()
         .map_err(|error| format!("v6 crazy projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_crazy_accumulator_variant()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let base = direct_crazy_pair_sequence_state()?;
+    let registers = ProfileRegisters {
+        accumulator: base.registers().accumulator.saturating_add(1),
+        ..base.registers()
+    };
+    let state = ProfileMachineState::new(
+        base.profile(),
+        base.memory().to_vec(),
+        registers,
+        base.io().clone(),
+    )
+    .map_err(|error| format!("v6 Crazy accumulator state failed: {error}"))?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| {
+            format!("v6 Crazy accumulator step failed: {error}")
+        })?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 Crazy accumulator did not continue"));
+    }
+    let trace = recorded
+        .ok_or_else(|| String::from("v6 Crazy accumulator trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 Crazy accumulator projection: {error:?}"))
+}
+
 fn canonical_register_masked_rotate_programs()
 -> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_rotate_pair_sequence_state()?;
@@ -3943,6 +3977,17 @@ fn register_masked_no_operation_target(isa: HostIsa) -> NativeTargetIdentity {
             DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
         ),
         backend_revision: DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn register_masked_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID),
+        backend_revision: DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -5769,6 +5814,111 @@ fn register_masked_v6_no_operation_verifier_rejects_drift() -> TieredTestResult
     ) != Err(DirectRegisterMaskedNoOperationError::ProgramShape)
     {
         return Err(String::from("v6 no-op backend admitted graphical halt"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_crazy_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    history_variant: &RegisterMaskedRegionEffectProgram,
+    live_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_crazy_target(isa);
+    let artifact =
+        emit_direct_register_masked_crazy_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} Crazy emit failed: {error}")
+            })?;
+    let history =
+        emit_direct_register_masked_crazy_coff(history_variant, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} Crazy history emit failed: {error}")
+            })?;
+    let live = emit_direct_register_masked_crazy_coff(live_variant, target)
+        .map_err(|error| {
+            format!("v6 {isa:?} Crazy live-state emit failed: {error}")
+        })?;
+    let text = direct_object_text(artifact.object())?;
+    if artifact.key() == history.key()
+        || text != direct_object_text(history.object())?
+        || text == direct_object_text(live.object())?
+    {
+        return Err(format!("v6 {isa:?} Crazy guard surface drifted"));
+    }
+    if !artifact
+        .object()
+        .windows(6)
+        .any(|window| window == b"MBPF\x06\x00")
+    {
+        return Err(format!("v6 {isa:?} Crazy lost MBPF v6 marker"));
+    }
+    let verified = verify_direct_register_masked_crazy(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} Crazy verify failed: {error}"))?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} Crazy verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_objects_guard_live_accumulator() -> TieredTestResult
+{
+    let program = canonical_register_masked_crazy_program()?;
+    let live_variant = canonical_register_masked_crazy_accumulator_variant()?;
+    let mut history_variant = program.clone();
+    let effect = history_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 Crazy history effect missing"))?;
+    effect.before.input_consumed = 3;
+    effect.after.input_consumed = 3;
+    effect.before.output_len = 4;
+    effect.after.output_len = 4;
+
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_crazy_object(
+            &program,
+            &history_variant,
+            &live_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_verifier_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_crazy(&tampered, &program)
+        != Err(DirectRegisterMaskedCrazyError::ObjectBytes)
+    {
+        return Err(String::from("v6 Crazy verifier admitted byte drift"));
+    }
+
+    if emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedCrazyError::TargetBackend)
+    {
+        return Err(String::from("v6 Crazy crossed rotate backend identity"));
+    }
+    let no_operation = canonical_register_masked_no_operation_program()?;
+    if emit_direct_register_masked_crazy_coff(
+        &no_operation,
+        register_masked_crazy_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedCrazyError::ProgramShape)
+    {
+        return Err(String::from("v6 Crazy backend admitted no-operation"));
     }
     Ok(())
 }

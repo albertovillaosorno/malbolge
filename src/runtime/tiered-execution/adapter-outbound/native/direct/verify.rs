@@ -43,7 +43,8 @@ use super::{
     DirectHaltFetchError, DirectHaltRegistersError, DirectInitialHaltError,
     DirectInputError, DirectJumpCodeError, DirectJumpDataError,
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
     DirectRotateError, ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
     RegionEffectProgram, RegisterMaskedRegionEffectProgram,
@@ -65,6 +66,7 @@ use super::{
     VerifiedNoOperationNativeObjectArtifact,
     VerifiedNonGraphicalNativeObjectArtifact,
     VerifiedOutputNativeObjectArtifact,
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
@@ -77,10 +79,11 @@ use super::{
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, jump_code_coff, jump_data_coff,
     no_operation_coff, non_graphical_coff, output_coff,
-    register_masked_halt_fetch_coff, register_masked_no_operation_coff,
-    register_masked_non_graphical_coff, register_masked_rotate_coff,
-    rotate_coff, structurally_admit_coff, validate_crazy_program,
-    validate_crazy_target, validate_execution_geometry_crazy_program,
+    register_masked_crazy_coff, register_masked_halt_fetch_coff,
+    register_masked_no_operation_coff, register_masked_non_graphical_coff,
+    register_masked_rotate_coff, rotate_coff, structurally_admit_coff,
+    validate_crazy_program, validate_crazy_target,
+    validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
     validate_execution_geometry_initial_halt_target,
@@ -106,7 +109,9 @@ use super::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_output_target, validate_register_masked_crazy_program,
+    validate_register_masked_crazy_target,
+    validate_register_masked_halt_fetch_program,
     validate_register_masked_halt_fetch_target,
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
@@ -553,6 +558,39 @@ pub fn verify_direct_register_masked_no_operation(
     Ok(VerifiedRegisterMaskedNoOperationNativeObjectArtifact {
         artifact: admitted,
     })
+}
+
+/// Promotes only the canonical mask-aware v6 Crazy object.
+///
+/// This verifier deliberately stops before load-image or invocation authority.
+///
+/// # Errors
+///
+/// Returns the register-masked Crazy error for shape, target, identity, COFF,
+/// or canonical-byte mismatch.
+pub fn verify_direct_register_masked_crazy(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    DirectRegisterMaskedCrazyError,
+> {
+    let selected = validate_register_masked_crazy_program(program)
+        .map_err(|_error| DirectRegisterMaskedCrazyError::ProgramShape)?;
+    validate_register_masked_crazy_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRegisterMaskedCrazyError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = register_masked_crazy_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedCrazyError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedCrazyNativeObjectArtifact { artifact: admitted })
 }
 
 /// Promotes only the canonical mask-aware v6 rotate object.

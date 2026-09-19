@@ -2144,8 +2144,13 @@ limits remain published on blockage or release failure.
 Host-independent register-masked admission now also accepts traced Crazy when
 A/C/D are all live and all written. It reuses the reviewed VM-owned Crazy
 derivation after v6 geometry preflight, retains complete masked identity, and
-rejects dropped read/write masks. This grants no Crazy v6 object, load image, or
-execution authority.
+rejects dropped read/write masks. A distinct `direct-register-masked-crazy`
+revision-1 object family now emits x86-64/AArch64 COFF with exact A/C/D, memory
+extent, code/data live-in, and prior-termination guards. I/O history remains in
+the complete v6 key without entering machine text.
+
+Independent verification reconstructs the key and canonical bytes. No Crazy v6
+load-image, executable, or invocation authority exists yet.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

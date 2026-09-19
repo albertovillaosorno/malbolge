@@ -315,8 +315,13 @@ limits remain published on blockage or release failure.
 Host-independent register-masked admission now also accepts traced Crazy with
 exact A/C/D read and write masks. The semantic check reuses the reviewed Crazy
 derivation with already-admitted v6 memory geometry, keeps complete masked
-identity, and rejects mask drift. It deliberately grants no Crazy v6 object,
-load-image, or execution authority.
+identity, and rejects mask drift. `direct-register-masked-crazy` revision 1 now
+emits and independently verifies x86-64/AArch64 COFF. Its machine text guards
+live A/C/D, exact memory extent, both code/data live-ins, and prior termination;
+I/O history stays key-bound but absent from code.
+
+The verified artifact remains object-only and grants no load-image or invocation
+authority.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

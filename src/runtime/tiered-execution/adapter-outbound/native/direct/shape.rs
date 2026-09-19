@@ -62,6 +62,8 @@ use super::{
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
@@ -85,7 +87,8 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataProgram,
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
     DirectRotateCommit, DirectRotateError, DirectRotateProgram,
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
@@ -1300,6 +1303,25 @@ pub(super) fn validate_register_masked_no_operation_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedNoOperationError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_crazy_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedCrazyError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedCrazyError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedCrazyError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedCrazyError::TargetFeatures);
     }
     Ok(())
 }
