@@ -275,6 +275,14 @@ ownership without publishing the candidate. Explicit limit reconfiguration
 expands without adapter work and shrinks through the same FIFO release boundary
 while prior limits remain published on failure.
 
+A separate weighted rotate sequence lease cache now shares immutable loaded
+sequences on exact hits. Active victims with live leases retire without reducing
+their entry, mapping, or mapped-byte weight; unleased victims release
+immediately. Invalidation, full drain, explicit lease return, and retired
+reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
+shrink active FIFO authority through the same release-or-retire path while prior
+limits remain published on blockage or release failure.
+
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle
 typestates admit exact copied bytes, same-mapping RX transition, full-range

@@ -304,7 +304,13 @@ ownership without publishing the candidate. Explicit limit reconfiguration
 expands without adapter work and shrinks through FIFO release while prior limits
 remain published on failure.
 
-External lease ownership remains separate.
+A separate weighted rotate sequence lease cache now shares immutable loaded
+sequences on exact hits. Active victims with live leases retire without reducing
+their entry, mapping, or mapped-byte weight; unleased victims release
+immediately. Invalidation, full drain, explicit lease return, and retired
+reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
+shrink active FIFO authority through the same release-or-retire path while prior
+limits remain published on blockage or release failure.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

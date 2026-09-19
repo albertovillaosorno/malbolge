@@ -552,6 +552,10 @@ use execution_native::{
     RegisterMaskedRotateNativeRunner, RegisterMaskedRotateNativeSequenceCache,
     RegisterMaskedRotateNativeSequenceExecutionFailure,
     RegisterMaskedRotateNativeSequenceKey,
+    RegisterMaskedRotateNativeSequenceLease,
+    RegisterMaskedRotateNativeSequenceLeaseCache,
+    RegisterMaskedRotateNativeSequenceLeaseCacheDisposition,
+    RegisterMaskedRotateNativeSequenceLeaseCacheInvalidation,
     RegisterMaskedRotateNativeSequenceOutcome,
     RegisterMaskedRotateNativeSequencePlan,
     RegisterMaskedRotateNativeSequencePlanError,
@@ -14020,6 +14024,315 @@ fn register_masked_v6_rotate_sequence_cache_reconfigures_fifo_limits()
     cache
         .release_all(&mut adapter)
         .map_err(|error| format!("v6 rotate reconfigure release: {error}"))
+}
+
+fn register_masked_rotate_single_sequence_plan()
+-> Result<RegisterMaskedRotateNativeSequencePlan, String> {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let program = plan.programs().first().ok_or_else(|| {
+        String::from("v6 rotate single lease program missing")
+    })?;
+    let artifact = plan.artifacts().first().ok_or_else(|| {
+        String::from("v6 rotate single lease artifact missing")
+    })?;
+    RegisterMaskedRotateNativeSequencePlan::new(
+        from_ref(program),
+        from_ref(artifact),
+    )
+    .map_err(|error| format!("v6 rotate single lease plan: {error}"))
+}
+
+fn register_masked_rotate_sequence_lease_acquire(
+    cache: &mut RegisterMaskedRotateNativeSequenceLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    plan: &RegisterMaskedRotateNativeSequencePlan,
+) -> Result<RegisterMaskedRotateNativeSequenceLease, String> {
+    let acquisition = cache
+        .ensure_plan(adapter, plan)
+        .map_err(|failure| failure.to_string())?;
+    Ok(acquisition.into_lease())
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_shares_hits()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let key = RegisterMaskedRotateNativeSequenceKey::from_plan(&plan);
+    let mut cache = RegisterMaskedRotateNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 rotate lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(380)?,
+        native_executable_address(0x48000)?,
+    );
+    let first = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let operations = adapter.operations.clone();
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    if acquisition.disposition()
+        != &RegisterMaskedRotateNativeSequenceLeaseCacheDisposition::Hit
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 rotate leased exact hit remapped"));
+    }
+    let second = acquisition.into_lease();
+    if !first.shares_resident_with(&second)
+        || first.key() != &key
+        || first.strong_owner_count() != 3
+    {
+        return Err(String::from("v6 rotate shared lease identity drifted"));
+    }
+    drop(second);
+    drop(first);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [key]
+        && report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate shared lease cleanup drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_blocks_resident()
+-> TieredTestResult {
+    let first = register_masked_rotate_loaded_sequence_fixture()?;
+    let second = register_masked_rotate_single_sequence_plan()?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "v6 rotate lease entry limit",
+    )?)
+    .with_mapping_limit(nonzero_test_limit(
+        2,
+        "v6 rotate lease mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedRotateNativeSequenceLeaseCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(382)?,
+        native_executable_address(0x48200)?,
+    );
+    let lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 rotate leased resident exceeded limits"));
+    };
+    let block = error
+        .block()
+        .ok_or_else(|| String::from("v6 rotate resident block missing"))?;
+    if error.evicted_keys() != [first_key.clone()]
+        || error.retired_keys() != [first_key.clone()]
+        || block.limits() != limits
+        || block.retired_keys() != [first_key.clone()]
+        || block.usage() != cache.usage()
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 rotate resident block evidence drifted"));
+    }
+    drop(lease);
+    let report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [first_key]
+        && report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate resident reconciliation drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_invalidation_waits()
+-> TieredTestResult {
+    let plan = register_masked_rotate_single_sequence_plan()?;
+    let key = RegisterMaskedRotateNativeSequenceKey::from_plan(&plan);
+    let mut cache = RegisterMaskedRotateNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 rotate lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(384)?,
+        native_executable_address(0x48400)?,
+    );
+    let first = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &plan,
+    )?;
+    let second = first.clone();
+    let invalidation = cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    if invalidation
+        != (RegisterMaskedRotateNativeSequenceLeaseCacheInvalidation::Retired {
+            leases: 2,
+        })
+        || cache.contains_plan(&plan)
+        || cache.retired_len() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 rotate leased invalidation drifted"));
+    }
+    let first_report = cache
+        .return_lease(&mut adapter, first)
+        .map_err(|failure| failure.to_string())?;
+    if !first_report.released_keys().is_empty()
+        || first_report.retained_keys() != [key.clone()]
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from(
+            "v6 rotate first lease return released early",
+        ));
+    }
+    let final_report = cache
+        .return_lease(&mut adapter, second)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.released_keys() == [key]
+        && final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate final lease return drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_release_all_retires()
+-> TieredTestResult {
+    let first = register_masked_rotate_single_sequence_plan()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let mut cache = RegisterMaskedRotateNativeSequenceLeaseCache::new(
+        nonzero_test_limit(2, "v6 rotate lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(386)?,
+        native_executable_address(0x48600)?,
+    );
+    let first_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    drop(second_lease);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [second_key]
+        || report.retained_keys() != [first_key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 rotate lease drain evidence drifted"));
+    }
+    drop(first_lease);
+    let final_report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.released_keys() == [first_key]
+        && final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate deferred drain cleanup drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_lease_cache_blocks_limit_shrink()
+-> TieredTestResult {
+    let first = register_masked_rotate_single_sequence_plan()?;
+    let second = register_masked_rotate_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedRotateNativeSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "v6 rotate lease entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 rotate lease entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedRotateNativeSequenceLeaseCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(388)?,
+        native_executable_address(0x48800)?,
+    );
+    let first_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &first,
+    )?;
+    let second_lease = register_masked_rotate_sequence_lease_acquire(
+        &mut cache,
+        &mut adapter,
+        &second,
+    )?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from(
+            "v6 rotate live shrink unexpectedly published",
+        ));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 rotate live shrink block missing"))?;
+    if failure.evicted_keys() != [first_key.clone(), second_key.clone()]
+        || failure.retired_keys() != [first_key.clone(), second_key.clone()]
+        || failure.limit_transition() != (old_limits, new_limits)
+        || block.limits() != new_limits
+        || block.retired_keys() != [first_key, second_key]
+        || block.usage() != cache.usage()
+        || failure.release_failure().is_some()
+        || cache.limits() != old_limits
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 rotate live shrink evidence drifted"));
+    }
+    drop(first_lease);
+    drop(second_lease);
+    cache
+        .reconcile_retired(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
 }
 
 #[test]

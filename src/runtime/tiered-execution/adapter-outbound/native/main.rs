@@ -97,6 +97,7 @@ mod register_masked_rotate_loaded_sequence;
 mod register_masked_rotate_sequence;
 mod register_masked_rotate_sequence_cache;
 mod register_masked_rotate_sequence_execution;
+mod register_masked_rotate_sequence_lease_cache;
 mod register_masked_sequence;
 mod runner;
 mod sequence_continuation;
@@ -838,6 +839,28 @@ pub use register_masked_rotate_sequence_execution::{
     RegisterMaskedRotateNativeSequenceExecutionResult,
     RegisterMaskedRotateNativeSequenceOutcome,
     execute_loaded_register_masked_rotate_native_sequence,
+};
+pub use register_masked_rotate_sequence_lease_cache::{
+    RegisterMaskedRotateNativeSequenceLease,
+    RegisterMaskedRotateNativeSequenceLeaseCache,
+    RegisterMaskedRotateNativeSequenceLeaseCacheAcquisition,
+    RegisterMaskedRotateNativeSequenceLeaseCacheBlock,
+    RegisterMaskedRotateNativeSequenceLeaseCacheCapacityError,
+    RegisterMaskedRotateNativeSequenceLeaseCacheDisposition,
+    RegisterMaskedRotateNativeSequenceLeaseCacheEntryReleaseFailure,
+    RegisterMaskedRotateNativeSequenceLeaseCacheInvalidation,
+    RegisterMaskedRotateNativeSequenceLeaseCacheInvalidationResult,
+    RegisterMaskedRotateNativeSequenceLeaseCacheLimits,
+    RegisterMaskedRotateNativeSequenceLeaseCacheLoadFailure,
+    RegisterMaskedRotateNativeSequenceLeaseCacheLoadReleaseFailures,
+    RegisterMaskedRotateNativeSequenceLeaseCacheLoadResult,
+    RegisterMaskedRotateNativeSequenceLeaseCacheReconciliation,
+    RegisterMaskedRotateNativeSequenceLeaseCacheReconfiguration,
+    RegisterMaskedRotateNativeSequenceLeaseCacheReleaseFailure,
+    RegisterMaskedRotateNativeSequenceLeaseCacheUsage,
+    RegisterMaskedRotateNativeSequenceLeaseReconciliationResult,
+    RegisterMaskedRotateNativeSequenceLeaseReconfigurationFailure,
+    RegisterMaskedRotateNativeSequenceLeaseReconfigurationResult,
 };
 pub use register_masked_sequence::{
     LoadedRegisterMaskedNativeSequence,

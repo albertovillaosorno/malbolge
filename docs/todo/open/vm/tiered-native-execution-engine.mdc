@@ -744,6 +744,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   adapter work and shrink through FIFO release while prior limits survive
   failure.
 
+  A separate weighted rotate sequence lease cache now shares immutable loaded
+  sequences on exact hits. Active victims with live leases retire without
+  reducing their entry, mapping, or mapped-byte weight; unleased victims release
+  immediately. Invalidation, full drain, explicit lease return, and retired
+  reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
+  shrink active FIFO authority through the same release-or-retire path while
+  prior limits remain published on blockage or release failure.
+
   Wider mask-aware instruction coverage remains open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction

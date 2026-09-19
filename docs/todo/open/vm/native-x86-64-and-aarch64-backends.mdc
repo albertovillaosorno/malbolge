@@ -153,6 +153,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   adapter work and shrink through FIFO release while prior limits survive
   failure.
 
+  A separate weighted rotate sequence lease cache now shares immutable loaded
+  sequences on exact hits. Active victims with live leases retire without
+  reducing their entry, mapping, or mapped-byte weight; unleased victims release
+  immediately. Invalidation, full drain, explicit lease return, and retired
+  reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
+  shrink active FIFO authority through the same release-or-retire path while
+  prior limits remain published on blockage or release failure.
+
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation
   shape also has a distinct reviewed object family that guards C/D,

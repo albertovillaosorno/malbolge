@@ -2133,6 +2133,14 @@ ownership without publishing the candidate. Limit expansion performs no adapter
 work; shrink releases oldest entries before publication and retains prior limits
 on failure.
 
+A separate weighted rotate sequence lease cache now shares immutable loaded
+sequences on exact hits. Active victims with live leases retire without reducing
+their entry, mapping, or mapped-byte weight; unleased victims release
+immediately. Invalidation, full drain, explicit lease return, and retired
+reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
+shrink active FIFO authority through the same release-or-retire path while prior
+limits remain published on blockage or release failure.
+
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
 
