@@ -562,7 +562,8 @@ use execution_native::{
     RegisterMaskedRotateNativeSequencePlan,
     RegisterMaskedRotateNativeSequencePlanError,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
-    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
+    StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
+    StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     StagedRegisterMaskedRotateNativeExecutable, UntrustedNativeObjectArtifact,
@@ -6000,6 +6001,164 @@ fn register_masked_v6_crazy_load_image_rejects_relocations() -> TieredTestResult
     ) != Err(VerifiedDirectLoadError::Relocations)
     {
         return Err(String::from("v6 Crazy load image admitted relocations"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_crazy_lifecycle(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let candidate = emit_direct_register_masked_crazy_coff(
+        program,
+        register_masked_crazy_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} Crazy lifecycle emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, program)
+        .map_err(|error| {
+            format!("v6 {isa:?} Crazy lifecycle verify: {error}")
+        })?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact).map_err(
+        |error| format!("v6 {isa:?} Crazy lifecycle image: {error}"),
+    )?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = StagedRegisterMaskedCrazyNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} Crazy lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 {isa:?} Crazy lifecycle seal: {error}"))?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v6 {isa:?} Crazy lifecycle sync: {error}"))?;
+    let release = ready.release_request();
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.target_triple() != artifact.target_triple()
+        || release.mapping_id() != mapping_id
+        || release.base_address() != base
+        || release.mapped_len() != image.allocation_len()
+    {
+        return Err(format!("v6 {isa:?} Crazy lifecycle identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_lifecycle_retains_exact_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    assert_register_masked_crazy_lifecycle(
+        &program,
+        HostIsa::X86_64,
+        510,
+        0x51000,
+    )?;
+    assert_register_masked_crazy_lifecycle(
+        &program,
+        HostIsa::AArch64,
+        511,
+        0x52000,
+    )
+}
+
+fn assert_register_masked_crazy_code_drift(
+    image: &VerifiedRegisterMaskedCrazyLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> TieredTestResult {
+    let mut changed = image.code().to_vec();
+    let first = changed.first_mut().ok_or_else(|| {
+        String::from("v6 Crazy lifecycle code unexpectedly empty")
+    })?;
+    *first ^= 1;
+    if StagedRegisterMaskedCrazyNativeExecutable::stage(
+        image, mapping, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("v6 Crazy lifecycle admitted code drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_lifecycle_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy lifecycle drift emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy lifecycle drift verify: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy lifecycle drift image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(512)?;
+    let base = native_executable_address(0x53000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    assert_register_masked_crazy_code_drift(&image, writable)?;
+    let staged = StagedRegisterMaskedCrazyNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 Crazy lifecycle drift stage: {error}"))?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(513)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from("v6 Crazy lifecycle admitted mapping drift"));
+    }
+    let sealed = StagedRegisterMaskedCrazyNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 Crazy lifecycle sync stage: {error}"))?
+    .admit_read_execute(NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    ))
+    .map_err(|error| format!("v6 Crazy lifecycle drift seal: {error}"))?;
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        mapping_id,
+        base,
+        image.allocation_len().saturating_sub(1),
+    )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        return Err(String::from("v6 Crazy lifecycle admitted short sync"));
     }
     Ok(())
 }

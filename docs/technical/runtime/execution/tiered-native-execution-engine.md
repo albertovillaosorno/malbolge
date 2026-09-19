@@ -2150,9 +2150,12 @@ extent, code/data live-in, and prior-termination guards. I/O history remains in
 the complete v6 key without entering machine text.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
-Crazy v6 load image now proves relocation closure, ISA alignment, exact retained
-identity, and the strict RW-to-RX/full-sync policy. It grants no executable
-lifecycle, platform, binding, or invocation authority.
+Crazy v6 load image proves relocation closure, ISA alignment, exact retained
+identity, and the strict RW-to-RX/full-sync policy. Dedicated
+staged/sealed/ready typestates now admit exact copy and same-mapping RX
+transition, plus full-range sync and exact release evidence. No platform,
+binding, or invocation authority is
+granted yet.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
