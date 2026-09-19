@@ -312,6 +312,12 @@ reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
 shrink active FIFO authority through the same release-or-retire path while prior
 limits remain published on blockage or release failure.
 
+Host-independent register-masked admission now also accepts traced Crazy with
+exact A/C/D read and write masks. The semantic check reuses the reviewed Crazy
+derivation with already-admitted v6 memory geometry, keeps complete masked
+identity, and rejects mask drift. It deliberately grants no Crazy v6 object,
+load-image, or execution authority.
+
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the
 required memory extent, the fetched code cell, and prior termination before

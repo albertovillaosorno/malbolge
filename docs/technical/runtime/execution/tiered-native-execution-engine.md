@@ -2141,6 +2141,12 @@ reconciliation retain keyed cleanup retry ownership. Lease-aware limit changes
 shrink active FIFO authority through the same release-or-retire path while prior
 limits remain published on blockage or release failure.
 
+Host-independent register-masked admission now also accepts traced Crazy when
+A/C/D are all live and all written. It reuses the reviewed VM-owned Crazy
+derivation after v6 geometry preflight, retains complete masked identity, and
+rejects dropped read/write masks. This grants no Crazy v6 object, load image, or
+execution authority.
+
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
 

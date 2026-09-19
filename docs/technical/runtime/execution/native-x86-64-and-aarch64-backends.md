@@ -222,10 +222,12 @@ prepared-call type that validates exact `NonGraphicalCell` application or atomic
 guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
-Host-independent v6 semantic admission also recognizes traced no-operation and
-rotate shapes. No-operation reads/writes C/D while A remains dead; rotate reads
-C/D and writes A/C/D. Distinct revision-1 object families now emit both shapes
-for x86-64 and AArch64.
+Host-independent v6 semantic admission also recognizes traced no-operation,
+rotate, and Crazy shapes. No-operation reads/writes C/D while A remains dead;
+rotate reads C/D and writes A/C/D; Crazy reads and writes A/C/D. Mask drift
+fails closed before host-code authority. Distinct revision-1 object families
+currently emit only no-operation and rotate on x86-64 and AArch64; Crazy remains
+semantic-admission evidence only.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

@@ -117,7 +117,8 @@ use super::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_output_target, validate_register_masked_crazy_program,
+    validate_register_masked_halt_fetch_program,
     validate_register_masked_no_operation_program,
     validate_register_masked_non_graphical_program,
     validate_register_masked_rotate_program, validate_rotate_program,
@@ -805,6 +806,12 @@ pub fn admit_register_masked_direct_native<'requirement>(
         return Ok(VerifiedRegisterMaskedDirectAdmission::new(
             identity,
             DirectNativeKind::NoOperation,
+        ));
+    }
+    if validate_register_masked_crazy_program(program).is_ok() {
+        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
+            identity,
+            DirectNativeKind::Crazy,
         ));
     }
     if validate_register_masked_rotate_program(program).is_ok() {

@@ -108,6 +108,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   the reviewed data/code writes plus A/C/D results. Dead A and I/O history still
   change the complete v6 key without changing machine text.
 
+  Host-independent register-masked semantic admission now additionally accepts
+  traced Crazy with exact A/C/D read and write masks. It reuses VM-owned Crazy
+  semantics after v6 geometry preflight and preserves complete masked identity;
+  mask drift fails closed. No register-masked Crazy native object or execution
+  authority is introduced yet.
+
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A
   dedicated platform path loads/releases that ready mapping transactionally with

@@ -3883,6 +3883,23 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_crazy_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_crazy_pair_sequence_state()?);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 crazy fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 crazy fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 crazy trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 crazy projection failed: {error:?}"))
+}
+
 fn canonical_register_masked_rotate_programs()
 -> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_rotate_pair_sequence_state()?;
@@ -5343,6 +5360,94 @@ fn register_masked_v6_no_operation_admission_uses_normative_masks()
         return Err(String::from("v6 no-op dead state lost masked identity"));
     }
     assert_register_masked_no_operation_mask_rejections(&program)
+}
+
+fn assert_register_masked_crazy_mask_rejections(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let mut missing_read = program.clone();
+    missing_read.register_live_ins.accumulator = false;
+    if admit_register_masked_direct_native(
+        &missing_read,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(String::from("v6 crazy admitted missing accumulator read"));
+    }
+
+    let mut missing_write = program.clone();
+    let writes = missing_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 crazy write mask missing"))?;
+    writes.accumulator = false;
+    if admit_register_masked_direct_native(
+        &missing_write,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(String::from(
+            "v6 crazy admitted missing accumulator write",
+        ));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_crazy_history_identity(
+    program: &RegisterMaskedRegionEffectProgram,
+    identity: &RegionEffectIdentity,
+) -> TieredTestResult {
+    let mut variant_program = program.clone();
+    let effect = variant_program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 crazy effect missing"))?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    let variant = admit_register_masked_direct_native(
+        &variant_program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 crazy history variant rejected: {error}"))?;
+    if variant.kind() == DirectNativeKind::Crazy
+        && variant.identity() != identity
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 crazy history lost complete identity"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_admission_tracks_masks() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let expected = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if program.register_live_ins != expected
+        || program.register_writes.as_slice() != [expected]
+    {
+        return Err(String::from("v6 crazy trace masks drifted"));
+    }
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 crazy admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 crazy identity failed: {error:?}"))?;
+    if admission.kind() != DirectNativeKind::Crazy
+        || admission.identity() != &identity
+    {
+        return Err(String::from("v6 crazy admission lost semantic identity"));
+    }
+    assert_register_masked_crazy_history_identity(&program, &identity)?;
+    assert_register_masked_crazy_mask_rejections(&program)
 }
 
 fn assert_register_masked_rotate_mask_rejections(

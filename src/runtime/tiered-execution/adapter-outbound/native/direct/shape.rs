@@ -125,6 +125,12 @@ type ExecutionGeometryRotateShapeResult =
     Result<DirectRotateProgram, DirectExecutionGeometryRotateError>;
 
 #[derive(Clone, Copy)]
+struct DirectCrazySemantics {
+    memory_words: u32,
+    word_trits: u8,
+}
+
+#[derive(Clone, Copy)]
 struct DirectInputSemantics {
     eof_word: u32,
     input_instruction: u8,
@@ -1200,6 +1206,48 @@ pub(super) fn validate_register_masked_rotate_program(
     .ok_or(DirectRotateError::ProgramShape)
 }
 
+fn register_masked_crazy_masks_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let expected = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied() == Some(expected)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_crazy_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectCrazyProgram, DirectCrazyError> {
+    if !register_masked_crazy_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectCrazyError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectCrazyError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectCrazyError::ProgramShape)?;
+    derive_crazy_program_with_memory_words(
+        &program.program,
+        effect,
+        memory_words,
+    )
+    .ok_or(DirectCrazyError::ProgramShape)
+}
+
 pub(super) fn validate_halt_fetch_target(
     target: &NativeTargetIdentity,
 ) -> Result<(), DirectHaltFetchError> {
@@ -1603,9 +1651,26 @@ pub(super) fn derive_crazy_program(
     program: &RegionEffectProgram,
     effect: EffectOp,
 ) -> Option<DirectCrazyProgram> {
+    let memory_words = direct_memory_words(program)?;
+    derive_crazy_program_with_memory_words(program, effect, memory_words)
+}
+
+fn derive_crazy_program_with_memory_words(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    memory_words: u32,
+) -> Option<DirectCrazyProgram> {
     let before = effect.before;
     let (code_live_in, data_live_in) = rotate_live_ins(program, before)?;
-    let commit = crazy_commit(program, before, code_live_in, data_live_in)?;
+    let commit = crazy_commit_with_semantics(
+        DirectCrazySemantics {
+            memory_words,
+            word_trits: program.profile_requirement.word_trits,
+        },
+        before,
+        code_live_in,
+        data_live_in,
+    )?;
     let expected_after = ProfileMachineObservation {
         registers: ProfileRegisters {
             accumulator: commit.accumulator,
@@ -1630,12 +1695,13 @@ pub(super) fn derive_crazy_program(
     })
 }
 
-pub(super) fn crazy_commit(
-    program: &RegionEffectProgram,
+fn crazy_commit_with_semantics(
+    semantics: DirectCrazySemantics,
     before: ProfileMachineObservation,
     code_live_in: MemoryLiveIn,
     data_live_in: MemoryLiveIn,
 ) -> Option<DirectCrazyCommit> {
+    let memory_words = semantics.memory_words;
     let code_pointer = before.registers.code_pointer;
     let data_pointer = before.registers.data_pointer;
     if decode_profile_instruction(code_live_in.value, code_pointer)
@@ -1643,7 +1709,6 @@ pub(super) fn crazy_commit(
     {
         return None;
     }
-    let memory_words = direct_memory_words(program)?;
     if data_live_in.value >= memory_words
         || before.registers.accumulator >= memory_words
     {
@@ -1652,7 +1717,7 @@ pub(super) fn crazy_commit(
     let value = profile_crazy(
         data_live_in.value,
         before.registers.accumulator,
-        program.profile_requirement.word_trits,
+        semantics.word_trits,
     );
     Some(DirectCrazyCommit {
         accumulator: value,
