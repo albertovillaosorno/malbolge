@@ -38852,6 +38852,60 @@ fn native_process_host_runs_complete_memory_lifecycle() -> Result<(), String> {
 }
 
 #[test]
+fn native_process_host_rejects_fused_mapping_drift_before_mutation()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let FusedDirectNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = fused_direct_native_fixture(HostIsa::X86_64, 793, 0x1d_0000)?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let mut memory = fixture.initial_memory.clone();
+    let entry_memory = memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let entry_output = output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused process mapping prepare: {error}"))?;
+    let mut invocation = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("fused process mapping bind: {error}"))?;
+    let request = invocation.process_request();
+    let Err(error) = DirectFusedNativeRunner::run(&mut host, &mut invocation)
+    else {
+        invocation.abort();
+        return Err(String::from(
+            "native process host admitted fused mapping drift",
+        ));
+    };
+    if error.call_response_error()
+        != Some(NativeProcessCallResponseError::MappingIdentity)
+        || invocation.process_request() != request
+        || host.session_poisoned()
+    {
+        invocation.abort();
+        return Err(String::from(
+            "native process host fused mapping rejection drifted",
+        ));
+    }
+    invocation.abort();
+    release_direct_fused_native_executable(&mut adapter, ready).map_err(
+        |release| format!("fused process mapping release: {release}"),
+    )?;
+    if memory == entry_memory && output == entry_output {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native process host fused mapping drift mutated buffers",
+        ))
+    }
+}
+
+#[test]
 fn native_process_host_rejects_call_mapping_drift_before_mutation()
 -> Result<(), String> {
     let program = native_verified_output_program()?;

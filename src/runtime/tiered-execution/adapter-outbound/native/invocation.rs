@@ -1334,8 +1334,7 @@ impl<'buffers, 'executable>
         response: &NativeProcessCallResponse,
     ) -> Result<i32, NativeProcessCallResponseError> {
         let mapping_id = self.mapping_id();
-        self.invocation
-            .apply_process_response(mapping_id, response)
+        self.invocation.apply_process_response(mapping_id, response)
     }
 
     /// Admits one raw status through the bound whole-region call contract.

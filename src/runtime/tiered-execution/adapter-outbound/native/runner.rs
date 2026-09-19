@@ -2510,12 +2510,10 @@ where
         Ok(outcome) => outcome,
         Err(call_failure) => {
             let phase = call_failure.phase();
-            let release_failure = release_direct_fused_native_executable(
-                host,
-                executable,
-            )
-            .err()
-            .map(Box::new);
+            let release_failure =
+                release_direct_fused_native_executable(host, executable)
+                    .err()
+                    .map(Box::new);
             return Err(Box::new(DirectFusedNativeExecutionFailure {
                 cause: match call_failure {
                     DirectFusedNativeCallFailure::Binding(binding_error) => {
@@ -2530,11 +2528,9 @@ where
                     },
                     DirectFusedNativeCallFailure::Completion(
                         completion_error,
-                    ) => {
-                        DirectFusedNativeExecutionFailureCause::Completion(
-                            completion_error,
-                        )
-                    },
+                    ) => DirectFusedNativeExecutionFailureCause::Completion(
+                        completion_error,
+                    ),
                 },
                 phase,
                 release_failure,
@@ -2544,12 +2540,14 @@ where
     };
     match release_direct_fused_native_executable(host, executable) {
         Ok(()) => Ok(outcome),
-        Err(release_failure) => Err(Box::new(DirectFusedNativeExecutionFailure {
-            cause: DirectFusedNativeExecutionFailureCause::Release(outcome),
-            phase: NativeExecutableExecutionPhase::Release,
-            release_failure: Some(Box::new(release_failure)),
-            release_request: Some(release_request),
-        })),
+        Err(release_failure) => {
+            Err(Box::new(DirectFusedNativeExecutionFailure {
+                cause: DirectFusedNativeExecutionFailureCause::Release(outcome),
+                phase: NativeExecutableExecutionPhase::Release,
+                release_failure: Some(Box::new(release_failure)),
+                release_request: Some(release_request),
+            }))
+        },
     }
 }
 
