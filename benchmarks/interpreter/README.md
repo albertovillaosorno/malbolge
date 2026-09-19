@@ -55,3 +55,35 @@ target encoding generated and verified on the benchmark host; it is not executed
 when the host is x86-64. Host-specific retained measurements belong under
 `evidence/` with exact source, workload, toolchain, hardware, operating-system,
 resource-budget, raw-sample, and statistical provenance.
+
+## Native process execution benchmark
+
+`native_process_execution` measures host-real fused execution through the
+tracked POSIX process worker on Linux x86-64. The workload is a normative
+two-step rotate/output trace; setup derives and independently verifies one fused
+artifact, then retains only the exact required caller-memory prefix for timed
+process transfers.
+
+Run it from the repository root with:
+
+```sh
+cargo bench --bench native_process_execution
+```
+
+The benchmark retains 15 samples at call-count scales 1, 2, and 4 for two modes.
+`one-shot-lifecycle` performs verified load, process call, semantic
+admission, and release for every call. `resident-call` loads one exact
+fused mapping before the timer, performs only repeated verified process calls
+inside the timer, and releases the mapping after the timer. Both modes use the
+same persistent child, fresh caller buffers per call, one untimed warmup per
+scale/mode, and alternating mode order across retained samples.
+
+Resident rows also report the exact retained executable mapping bytes. One-shot
+rows retain no mapping between calls.
+
+These measurements are Linux x86-64 host evidence only. They do not execute
+AArch64 or Windows code, and they do not include fused selection/emission/object
+verification in the timed interval; the separate backend-pipeline benchmark owns
+that preparation cost. Retained measurements belong under `evidence/`
+with source/toolchain/worker hashes, host identity, raw samples, resource
+budgets, failure counts, dispersion, and uncertainty.
