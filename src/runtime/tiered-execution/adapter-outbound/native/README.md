@@ -381,7 +381,7 @@ slot with immutable `Arc` leases. Exact hits do not remap, a different identity
 cannot replace the resident implicitly, live leases block release, and cleanup
 failure transfers the exact ready executable for retry.
 
-`RegisterMaskedNativeLeaseCache` adds fixed-limit multi-entry v6 residency
+`RegisterMaskedNativeLeaseCache` adds weighted multi-entry v6 residency
 without weakening that exact ownership. Active lookup is FIFO and exact hits
 preserve age without adapter work. Entry, mapping, and mapped-byte limits use
 admitted mapping reports; oldest unleased residents release immediately, while

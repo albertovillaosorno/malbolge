@@ -11157,6 +11157,52 @@ fn register_masked_v6_multi_cache_reconfiguration_transfers_release_retry()
 }
 
 #[test]
+fn register_masked_v6_multi_cache_reconfiguration_skips_retired()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(20)?;
+    let key = artifact.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_multi_cache_fixture(168, 0x16800)?;
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 retired seed failed: {error}"))?
+        .into_lease();
+    let invalidated = cache
+        .invalidate_key(&mut adapter, &key)
+        .map_err(|error| format!("v6 retired invalidate failed: {error:?}"))?;
+    if invalidated
+        != (RegisterMaskedNativeLeaseCacheInvalidation::Retired { leases: 1 })
+    {
+        return Err(String::from("v6 retired seed did not retire"));
+    }
+    drop(lease);
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(3)
+            .ok_or_else(|| String::from("zero retired expansion"))?,
+    );
+    let operations = adapter.operations.clone();
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 retired expansion failed: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 reconfigure reclaimed retired resident"));
+    }
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("v6 retired reconcile failed: {error}"))?;
+    if reconciled.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 explicit retired reclaim drifted"))
+    }
+}
+
+#[test]
 fn register_masked_v6_no_operation_sequence_plan_admits_step()
 -> TieredTestResult {
     let program = canonical_register_masked_no_operation_program()?;

@@ -294,7 +294,7 @@ A distinct single-resident lease cache shares that owner on exact hits, blocks
 release while leased, rejects different identity, and transfers cleanup retry
 ownership.
 
-A separate fixed-limit multi-entry cache preserves exact-hit FIFO age and
+A separate weighted multi-entry cache preserves exact-hit FIFO age and
 processes active misses oldest-first. Unleased victims release immediately while
 live victims retire and remain charged until explicit lease return or
 reconciliation; invalidation and full release use the same ownership boundary.

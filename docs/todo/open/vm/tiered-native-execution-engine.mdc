@@ -675,13 +675,18 @@ baseline; native tiers are accelerators of identical observable behavior.
   with immutable `Arc` leases. Exact hits do not remap, different identity
   cannot replace implicitly, live leases block release, and cleanup failure
   transfers exact ready-executable retry ownership.
-- `RegisterMaskedNativeLeaseCache` adds fixed weighted multi-entry v6 residency.
+- `RegisterMaskedNativeLeaseCache` adds weighted multi-entry v6 residency.
   Exact hits preserve FIFO age without adapter work; misses load before capacity
   processing, unleased oldest residents release, and leased victims retire while
   retaining exact entry/mapping/byte usage. Blocked candidates clean up, exact
   invalidation/full drain preserve live leases, and reconciliation or keyed
-  retry owns every deferred/failed release. Dynamic limit reconfiguration,
-  durable storage, and cross-process leasing remain outside this slice.
+  retry owns every deferred/failed release.
+
+  Explicit limit reconfiguration expands without adapter work and shrinks active
+  FIFO authority while prior retired entries remain untouched until explicit
+  reconciliation. Blockage or release failure preserves the previous limits and
+  exact retry evidence; durable storage and cross-process leasing remain outside
+  this slice.
 - `RegisterMaskedNativeSequencePlan` now validates the complete ordered v6 chain
   before mapping: count/shape, canonical profile, observation continuity,
   common target, exact artifact identity, and no terminal prefix. Full load

@@ -212,7 +212,7 @@ pub struct RegisterMaskedNativeLeaseCacheLoadReleaseFailures<E> {
     eviction: Option<RegisterMaskedNativeLeaseCacheEntryReleaseFailure<E>>,
 }
 
-/// Fixed weighted capacity limits for the multi-entry v6 resident cache.
+/// Caller-selected weighted limits for the multi-entry v6 resident cache.
 pub type RegisterMaskedNativeLeaseCacheLimits =
     NativeExecutableSequenceCacheLimits;
 
@@ -346,7 +346,7 @@ impl RegisterMaskedNativeLeaseCacheAcquisition {
 }
 
 impl RegisterMaskedNativeLeaseCacheBlock {
-    /// Returns fixed resident limits that could not admit the candidate.
+    /// Returns resident limits that could not admit the candidate.
     #[must_use]
     pub const fn limits(&self) -> RegisterMaskedNativeLeaseCacheLimits {
         self.limits
@@ -861,7 +861,7 @@ impl RegisterMaskedNativeLeaseCache {
         self.active.iter().map(|entry| &entry.key)
     }
 
-    /// Returns every caller-selected fixed resident capacity limit.
+    /// Returns the currently published caller-selected resident limits.
     #[must_use]
     pub const fn limits(&self) -> RegisterMaskedNativeLeaseCacheLimits {
         self.limits

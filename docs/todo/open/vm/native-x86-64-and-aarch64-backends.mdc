@@ -174,7 +174,7 @@ A distinct single-resident lease cache
   and runner failure. A distinct single-resident lease cache preserves exact
   identity, no-I/O hits, live-lease blocking, and cleanup retry ownership.
 
-  A separate fixed-limit multi-entry cache keeps exact-hit FIFO age and handles
+  A separate weighted multi-entry cache keeps exact-hit FIFO age and handles
   active misses oldest-first without widening halt cache types. Unleased victims
   release while live victims retire with exact weight charged until explicit
   return or reconciliation; invalidation and full drain preserve that boundary.
