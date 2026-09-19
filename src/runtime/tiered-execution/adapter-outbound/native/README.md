@@ -267,8 +267,9 @@ writes, then reuses the reviewed rotate transition.
 A distinct revision-1 rotate object now preserves full v6 identity while
 guarding only C/D, both memory live-ins, capacity, and prior termination on
 x86-64/AArch64. A relocation-free image and rotate-specific RW-to-RX/full-sync
-typestates retain that exact identity. Platform loading and invocation remain
-separate.
+typestates retain that exact identity. A dedicated platform path now loads and
+releases the ready mapping transactionally with exact cleanup and release-retry
+ownership. Invocation remains separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

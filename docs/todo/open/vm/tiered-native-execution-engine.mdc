@@ -704,8 +704,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   v3/v4. Rotate now also has a distinct verified x86-64/AArch64 object with
   exact C/D guards while dead A/I/O history stays out of machine text. Its
   relocation-free image and RW-to-RX/full-sync typestates now preserve exact
-  identity; platform loading/invocation and wider mask-aware instruction
-  coverage remain open.
+  identity.
+
+  A dedicated platform path adds transactional load/release, cleanup, and exact
+  release-retry ownership; invocation and wider mask-aware instruction coverage
+  remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

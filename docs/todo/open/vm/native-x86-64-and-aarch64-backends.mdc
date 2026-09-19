@@ -109,8 +109,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   change the complete v6 key without changing machine text.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
-  typestates now preserve exact key/target identity and mapping evidence.
-  Platform loading and invocation authority remain open for rotate.
+  typestates now preserve exact key/target identity and mapping evidence. A
+  dedicated platform path loads/releases that ready mapping transactionally with
+  post-allocation cleanup and exact release-retry ownership. Invocation remains
+  open for rotate.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

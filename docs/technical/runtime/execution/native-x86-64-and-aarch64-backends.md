@@ -235,9 +235,11 @@ machine text.
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates
 admit exact copied bytes, same-mapping RX transition, full-range
-synchronization,
-and exact release evidence. Platform loading and invocation authority remain
-open.
+synchronization, and exact release evidence.
+
+A dedicated rotate platform path now loads/releases the ready mapping
+transactionally with post-allocation cleanup and exact release-retry ownership.
+Invocation authority remains open.
 
 A separate relocation-free load-image type retains exact key/target identity,
 ISA alignment, and the strict RW-to-RX/full-sync policy. Dedicated lifecycle

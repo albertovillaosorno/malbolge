@@ -2095,8 +2095,9 @@ with exact C/D guards and the reviewed A/C/D plus memory commits. Dead A and I/O
 history remain key-bound but absent from machine text.
 
 A separate relocation-free load image and rotate-specific RW-to-RX/full-sync
-typestates preserve that exact identity. Platform loading and invocation
-authority remain open.
+typestates preserve that exact identity. A dedicated platform path now owns
+transactional load/release, post-allocation cleanup, and exact release retry.
+Invocation authority remains open.
 Broader register-masked template coverage remains open; unsupported v6
 execution remains fail-closed.
 
