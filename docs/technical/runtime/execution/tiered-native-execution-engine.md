@@ -246,8 +246,12 @@ copy report, and the invocation verifier continues to own semantic acceptance.
 A host-real regression drives an admitted direct-output artifact through the
 full `NativeProcessHost` transaction.
 
-AArch64 host-real execution and non-POSIX
-workers remain open rather than being inferred from this x86-64 evidence.
+A separate tracked Windows C23 worker now owns the corresponding
+`VirtualAlloc`/copy/`VirtualProtect`/`FlushInstructionCache`/call/`VirtualFree`
+boundary and cross-compiles warning-clean for both x86-64 and AArch64 Windows
+targets. That is object-level portability evidence only: host-real AArch64 and
+Windows worker execution remain open rather than being inferred from
+cross-compilation.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output
@@ -2080,7 +2084,7 @@ remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, host-real AArch64
-and non-POSIX native workers, durable cache serialization/storage and
+and Windows native-worker execution, durable cache serialization/storage and
 cross-process leasing, cache-aware AOT/JIT policy beyond verified direct
 process-local reuse, and performance policy remain open.
 The

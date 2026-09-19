@@ -700,8 +700,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   synchronization, Windows-x64 ABI invocation, and release inside the retained
   child process. A host-real Rust regression drives an admitted direct-output
   artifact through that full transaction while existing lifecycle and semantic
-  verification remain authoritative. Host-real AArch64 and non-POSIX workers
-  remain open.
+  verification remain authoritative.
+
+  A separate tracked Windows C23 worker cross-compiles warning-clean into x86-64
+  and AArch64 COFF objects using the
+  same MBNPM1/MBNPC1 protocol and Windows executable-memory/cache-sync APIs.
+  Host-real AArch64 and Windows worker execution remain open.
 - Remaining fused-region emission plus cache-aware AOT/JIT policy beyond
   verified direct process-local reuse, durable cache serialization/storage/
   eviction, broader platform execution evidence, and end-to-end tier

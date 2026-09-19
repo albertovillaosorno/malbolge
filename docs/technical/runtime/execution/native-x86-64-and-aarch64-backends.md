@@ -441,14 +441,20 @@ direct-output artifact through the complete process host; the exact
 `memory[5]:94->57`, output append `0xa8`, and `C/D:5/7->6/8` transition is
 accepted before release.
 
-The source includes an AArch64 call/cache-sync path,
-but host-real AArch64 execution and non-POSIX workers remain pending.
+The source includes an AArch64 call/cache-sync path. A separate tracked
+`native_process_worker_windows.c` now mirrors the same MBNPM1/MBNPC1 lifecycle
+through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
+`FlushInstructionCache`, native Windows calling conventions, and `VirtualFree`.
+Pinned Clang cross-compiles that source warning-clean into x86-64 and AArch64
+Windows COFF worker objects, and the regression checks both COFF machine IDs.
+Host-real AArch64 and Windows execution remain pending; cross-compilation is not
+treated as execution evidence.
 
 `native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
 magic, command/outcome tags, fixed sizes, field offsets, and little-endian
 scalar helpers for C23 workers. A strict pinned-Clang conformance harness checks
-those declarations independently. The concrete POSIX child consumes this header
-rather than duplicating wire literals.
+those declarations independently. Both concrete child sources consume this
+header rather than duplicating wire literals.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
@@ -1435,7 +1441,7 @@ sampling and finish failure; one host-real case records an `Instant` sample into
 the existing histogram as a separate caller step.
 
 Merge backoff/cancellation/fairness policy, native object fusion, host-real
-AArch64 and non-POSIX invocation, asynchronous timing, reclamation scheduling/
+AArch64 and Windows invocation, asynchronous timing, reclamation scheduling/
 automatic durable retention policy, and general N-object transactions remain
 open.
 

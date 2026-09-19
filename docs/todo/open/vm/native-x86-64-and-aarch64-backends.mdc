@@ -257,8 +257,14 @@ A distinct single-resident lease cache
   host-real Rust regression compiles it with pinned Clang and executes the
   admitted direct-output artifact through the complete `NativeProcessHost`,
   proving exact state/memory/output completion and release. The source includes
-  an AArch64 cache-sync/call path, but host-real AArch64 execution and non-POSIX
-  platform workers remain pending.
+  an AArch64 cache-sync/call path.
+
+  A separate tracked Windows C23 worker now owns the same process protocol over
+  `VirtualAlloc`, exact copy, RW-to-RX `VirtualProtect`,
+  `FlushInstructionCache`, native Windows invocation, and `VirtualFree`. Pinned
+  Clang cross-compiles it warning-clean into both x86-64 and AArch64 Windows
+  COFF objects, and the Rust regression verifies the expected machine IDs.
+  Host-real AArch64 and Windows execution remain pending.
 
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
@@ -292,15 +298,19 @@ A distinct single-resident lease cache
   retry. Deterministic evidence covers all 24 images and adversarial
   operation/report
 
-  paths. The tracked process-backed POSIX worker now supplies concrete Linux
-  x86-64 operations; Windows and host-real AArch64 remain pending.
+  paths. The tracked process-backed POSIX worker supplies concrete Linux
+  x86-64 operations, while the tracked Windows worker supplies cross-compiled
+  x86-64/AArch64 platform code. Host-real Windows and AArch64 execution remain
+  pending.
+
   `NativeExecutableRunner` now receives only the exact bound call. Safe
   orchestration composes load, bind, run, admission, and release; runner or
   completion failure restores entry state, cleanup failure retains retry state,
   and final-release failure preserves the committed outcome. Six deterministic
 
-  runner cases pass. The POSIX worker supplies the concrete x86-64 call bridge;
-  host-real AArch64 and non-POSIX call paths remain pending.
+  runner cases pass. The POSIX worker supplies the host-real Linux x86-64 call
+  bridge; the Windows worker cross-compiles native call paths for both supported
+  ISAs. Host-real AArch64 and Windows calls remain pending.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
@@ -1251,7 +1261,7 @@ input/jump-code, input/jump-data, input/no-operation,
   shrink, live entry/byte blockage, post-return publication, and release-failure
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
-  host-real AArch64 and non-POSIX call paths remain open.
+  host-real AArch64 and Windows call paths remain open.
   The reviewed forty-nine-shape fused two-step emission matrix is complete.
   Concrete Linux x86-64 executable-memory, instruction-cache, foreign-call,
   and fused whole-region integration now exists through the process worker.

@@ -116,15 +116,18 @@ Rust lifecycle and semantic verifier. The tracked end-to-end Rust regression
 compiles this worker with pinned Clang, then executes an admitted direct-output
 artifact through real mmap/mprotect/cache-sync/call/munmap operations.
 
-The source
-also contains the AArch64 cache-sync and native-call path, but AArch64 host-real
-execution evidence and non-POSIX workers remain open.
+The source also contains the AArch64 cache-sync and native-call path.
+`native_process_worker_windows.c` owns the corresponding Windows platform
+boundary with `VirtualAlloc`, `VirtualProtect`, `FlushInstructionCache`, native
+Windows invocation, and `VirtualFree`. Pinned Clang cross-compiles that worker
+warning-clean into x86-64 and AArch64 COFF objects, while the Rust regression
+checks both machine IDs. Host-real AArch64 and Windows execution remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance
 harness checks exact fixed sizes, tags, magic bytes, and call-field offsets. The
-header performs no process, memory, or call operation; the tracked POSIX worker
-consumes it instead of re-declaring protocol literals independently.
+header performs no process, memory, or call operation; both tracked platform
+workers consume it instead of re-declaring protocol literals independently.
 
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
@@ -165,9 +168,10 @@ inspectable. Explicit release consumes a ready executable only on success and
 retains it for exact retry on failure. The retained fake adapter covers all 24
 direct images, every operation failure, report drift, cleanup failure, and
 
-retry. The process-backed POSIX worker now supplies the first concrete Linux
-implementation; Windows and host-real AArch64 execution remain outside this
-platform layer.
+retry. The process-backed POSIX worker supplies host-real Linux x86-64
+execution, while the Windows worker supplies cross-compiled x86-64/AArch64
+platform implementations. Host-real Windows and AArch64 execution remain
+outside the current evidence.
 
 `runner.rs` defines `NativeExecutableRunner` around the already bound
 `PreparedNativeExecutableInvocation`; implementations never receive unrelated

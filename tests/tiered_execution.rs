@@ -974,8 +974,7 @@ use retry_turn::{
 const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
 const FIXTURE_PROFILE_VERSION: &str = "2026.3";
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const NATIVE_PROCESS_POSIX_WORKER_CLANG_ARGS: [&str; 20] = [
+const NATIVE_PROCESS_WORKER_CLANG_ARGS: [&str; 20] = [
     "-std=c23",
     "-Wall",
     "-Wextra",
@@ -38551,6 +38550,92 @@ fn native_process_host_python(
     native_process_session_python(script).map(NativeProcessHost::new)
 }
 
+fn check_native_process_windows_worker_compile(
+    clang: &Path,
+    directory: &Path,
+    target: &str,
+    expected_machine: [u8; 2],
+) -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = root.join(concat!(
+        "src/runtime/tiered-execution/adapter-outbound/native/",
+        "native_process_worker_windows.c",
+    ));
+    let include =
+        root.join("src/runtime/tiered-execution/adapter-outbound/native");
+    let object = directory.join("native-process-worker-windows.obj");
+    let output = Command::new(clang)
+        .current_dir(root)
+        .args(NATIVE_PROCESS_WORKER_CLANG_ARGS)
+        .arg("-target")
+        .arg(target)
+        .arg(format!("-I{}", include.display()))
+        .arg("-c")
+        .arg(&source)
+        .arg("-o")
+        .arg(&object)
+        .output()
+        .map_err(|error| {
+            format!("cannot cross-compile native Windows worker: {error}")
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "native Windows worker {target} compilation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let bytes = fs::read(&object).map_err(|error| {
+        format!("cannot read native Windows worker object: {error}")
+    })?;
+    if bytes.get(..2) == Some(expected_machine.as_slice()) {
+        Ok(())
+    } else {
+        Err(format!(
+            "native Windows worker {target} COFF machine drifted"
+        ))
+    }
+}
+
+#[test]
+fn native_process_windows_worker_cross_compiles_for_both_isas()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");
+    if !clang.is_file() {
+        return Err(format!("pinned Clang missing: {}", clang.display()));
+    }
+    let directory = root
+        .join(".temp/tiered_execution_native_process_windows_worker")
+        .join(process_id().to_string());
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => {
+            return Err(format!(
+                "cannot clear native Windows worker fixture: {error}"
+            ));
+        },
+    }
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("cannot create native Windows worker fixture: {error}")
+    })?;
+    let result = [
+        ("x86_64-pc-windows-msvc", [0x64u8, 0x86u8]),
+        ("aarch64-pc-windows-msvc", [0x64u8, 0xaau8]),
+    ]
+    .into_iter()
+    .try_for_each(|(target, machine)| {
+        check_native_process_windows_worker_compile(
+            &clang, &directory, target, machine,
+        )
+    });
+    let cleanup = fs::remove_dir_all(&directory).map_err(|error| {
+        format!("cannot remove native Windows worker fixture: {error}")
+    });
+    result?;
+    cleanup
+}
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn native_process_posix_worker_fixture(
     case_name: &str,
@@ -38586,7 +38671,7 @@ fn native_process_posix_worker_fixture(
     }
     let output = Command::new(&clang)
         .current_dir(root)
-        .args(NATIVE_PROCESS_POSIX_WORKER_CLANG_ARGS)
+        .args(NATIVE_PROCESS_WORKER_CLANG_ARGS)
         .arg(format!("-I{}", include.display()))
         .arg(&source)
         .arg("-o")
