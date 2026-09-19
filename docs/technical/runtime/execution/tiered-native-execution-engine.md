@@ -2097,9 +2097,11 @@ history remain key-bound but absent from machine text.
 A separate relocation-free load image and rotate-specific RW-to-RX/full-sync
 typestates preserve that exact identity. A dedicated platform path now owns
 transactional load/release, post-allocation cleanup, and exact release retry.
-Invocation authority remains open.
-Broader register-masked template coverage remains open; unsupported v6
-execution remains fail-closed.
+
+A prepared rotate invocation now enforces live C/D while allowing dead A/I/O
+rebasing, then admits only exact Applied/GuardMiss completion with rollback.
+Executable binding and runner authority remain open. Broader register-masked
+template coverage remains open; unsupported v6 execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker

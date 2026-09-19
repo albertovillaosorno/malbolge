@@ -483,7 +483,7 @@ use execution_native::{
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
-    PreparedVerifiedDirectInvocation,
+    PreparedRegisterMaskedRotateInvocation, PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyDirectFusedNativeExecutable, ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
@@ -6318,6 +6318,97 @@ fn register_masked_v6_no_operation_loaded_runner_completion_drift_rolls_back()
     }
     release_register_masked_no_operation_native_executable(&mut adapter, ready)
         .map_err(|release| format!("v6 no-op completion release: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_invocation_rebases_dead_state() -> TieredTestResult
+{
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 rotate invocation effect missing")
+        })?;
+    let mut entry = source.before;
+    entry.registers.accumulator = 0x1122_3344;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = source.after;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    for write in [source.memory_delta.data, source.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 rotate write address: {error}"))?;
+        let cell = expected_memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 rotate invocation write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from("v6 rotate expected observation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 rotate completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 rotate rebased application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_invocation_rejects_data_pointer_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let artifact = verified_register_masked_rotate(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 rotate data-drift effect missing")
+        })?;
+    let mut entry = source.before;
+    let expected = entry.registers.data_pointer;
+    entry.registers.data_pointer = expected.saturating_add(1);
+    let observed = entry.registers.data_pointer;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let result = PreparedRegisterMaskedRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected: value,
+            observed: seen,
+        }) if value == expected && seen == observed
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 rotate data-pointer rejection drifted"));
+    }
     Ok(())
 }
 
