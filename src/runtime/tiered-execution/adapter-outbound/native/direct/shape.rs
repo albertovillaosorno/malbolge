@@ -1152,6 +1152,53 @@ pub(super) fn validate_register_masked_no_operation_program(
         .ok_or(DirectNoOperationError::ProgramShape)
 }
 
+fn register_masked_rotate_masks_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let expected_reads = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    let expected_writes = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected_reads
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied() == Some(expected_writes)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_rotate_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectRotateProgram, DirectRotateError> {
+    if !register_masked_rotate_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectRotateError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectRotateError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectRotateError::ProgramShape)?;
+    derive_rotate_program_with_memory_words(
+        &program.program,
+        effect,
+        memory_words,
+    )
+    .ok_or(DirectRotateError::ProgramShape)
+}
+
 pub(super) fn validate_halt_fetch_target(
     target: &NativeTargetIdentity,
 ) -> Result<(), DirectHaltFetchError> {
@@ -1907,9 +1954,19 @@ pub(super) fn derive_rotate_program(
     program: &RegionEffectProgram,
     effect: EffectOp,
 ) -> Option<DirectRotateProgram> {
+    let memory_words = direct_memory_words(program)?;
+    derive_rotate_program_with_memory_words(program, effect, memory_words)
+}
+
+fn derive_rotate_program_with_memory_words(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    memory_words: u32,
+) -> Option<DirectRotateProgram> {
     let before = effect.before;
     let (code_live_in, data_live_in) = rotate_live_ins(program, before)?;
-    let commit = rotate_commit(program, before, code_live_in, data_live_in)?;
+    let commit =
+        rotate_commit(before, code_live_in, data_live_in, memory_words)?;
     let expected_after = ProfileMachineObservation {
         registers: ProfileRegisters {
             accumulator: commit.accumulator,
@@ -1957,10 +2014,10 @@ pub(super) fn rotate_live_ins(
 }
 
 pub(super) fn rotate_commit(
-    program: &RegionEffectProgram,
     before: ProfileMachineObservation,
     code_live_in: MemoryLiveIn,
     data_live_in: MemoryLiveIn,
+    memory_words: u32,
 ) -> Option<DirectRotateCommit> {
     let code_pointer = before.registers.code_pointer;
     let data_pointer = before.registers.data_pointer;
@@ -1969,7 +2026,6 @@ pub(super) fn rotate_commit(
     {
         return None;
     }
-    let memory_words = direct_memory_words(program)?;
     if data_live_in.value >= memory_words {
         return None;
     }

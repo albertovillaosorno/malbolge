@@ -636,10 +636,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   construction, and keeps cache invalidation mask-exact.
 - `admit_register_masked_direct_native()` applies canonical-profile and
   `002`/`001` preflight before shape admission. It recognizes C-only/no-write
-  halt-fetch and non-graphical terminals plus traced no-operation semantics with
-  C/D live-ins and C/D writes while A remains dead. Mask drift fails as
-  unsupported while mask cardinality fails identity; no-operation admission
-  grants no v6 object or execution authority.
+  halt-fetch and non-graphical terminals, traced no-operation with C/D reads
+  and writes, and traced rotate with C/D reads plus A/C/D writes. Mask drift
+  fails as unsupported while mask cardinality fails identity; semantic
+  admission alone grants no v6 object or execution authority.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code
@@ -701,7 +701,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   load image, W^X lifecycle, prepared/bound call, runner, one-shot transaction,
   reusable owner, resident cache, loaded sequence, weighted sequence cache, and
   sequence lease cache preserve the exact v6 identity without projecting to
-  v3/v4. Wider mask-aware instruction coverage remains open.
+  v3/v4. Rotate now has semantic admission only; its object/lifecycle path and
+  wider mask-aware instruction coverage remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

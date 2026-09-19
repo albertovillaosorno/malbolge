@@ -2090,6 +2090,8 @@ and immutable sequence leases reuse exact loaded chains under explicit
 entry/mapping/byte limits and transactional reconfiguration; v6 identity never
 projects into legacy direct-artifact authority.
 
+Register-masked rotate now has host-independent semantic admission with exact
+C/D read and A/C/D write masks, but no v6 rotate object/lifecycle authority.
 Broader register-masked template coverage remains open; unsupported v6
 execution remains fail-closed.
 

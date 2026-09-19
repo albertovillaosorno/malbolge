@@ -222,10 +222,12 @@ prepared-call type that validates exact `NonGraphicalCell` application or atomic
 guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
-Host-independent v6 semantic admission also recognizes one traced no-operation
-shape. Its normative masks read C/D and write C/D while A remains dead, and the
-validator reuses the reviewed decode/encryption/successor transition. A distinct
-revision-1 object family now emits this shape for both ISAs with guards over
+Host-independent v6 semantic admission also recognizes traced no-operation and
+rotate shapes. No-operation reads/writes C/D while A remains dead; rotate reads
+C/D and writes A/C/D. Both reuse their reviewed transition semantics, while the
+admission certificate itself grants no host-code authority. A distinct
+revision-1 object family now emits the no-operation shape for both ISAs with
+guards over
 C/D, exact memory extent, `memory[C]`, and prior live termination; A and I/O
 history remains unguarded.
 

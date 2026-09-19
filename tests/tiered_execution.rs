@@ -3748,6 +3748,23 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_rotate_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let state = direct_rotate_pair_sequence_state()?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 rotate fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 rotate fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 rotate trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 rotate projection failed: {error:?}"))
+}
+
 fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID),
@@ -4930,6 +4947,92 @@ fn register_masked_v6_no_operation_admission_uses_normative_masks()
         return Err(String::from("v6 no-op dead state lost masked identity"));
     }
     assert_register_masked_no_operation_mask_rejections(&program)
+}
+
+fn assert_register_masked_rotate_mask_rejections(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let mut invented_read = program.clone();
+    invented_read.register_live_ins.accumulator = true;
+    if admit_register_masked_direct_native(
+        &invented_read,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(String::from(
+            "v6 rotate admitted invented accumulator read",
+        ));
+    }
+
+    let mut missing_write = program.clone();
+    let writes = missing_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 rotate write mask missing"))?;
+    writes.accumulator = false;
+    if admit_register_masked_direct_native(
+        &missing_write,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(String::from(
+            "v6 rotate admitted missing accumulator write",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_rotate_admission_tracks_masks() -> TieredTestResult {
+    let program = canonical_register_masked_rotate_program()?;
+    let expected_reads = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    let expected_writes = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if program.register_live_ins != expected_reads
+        || program.register_writes.as_slice() != [expected_writes]
+    {
+        return Err(String::from("v6 rotate trace masks drifted"));
+    }
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 rotate admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 rotate identity failed: {error:?}"))?;
+    if admission.kind() != DirectNativeKind::Rotate
+        || admission.identity() != &identity
+    {
+        return Err(String::from("v6 rotate admission lost semantic identity"));
+    }
+
+    let mut dead_accumulator = program.clone();
+    let effect = dead_accumulator
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 rotate effect missing"))?;
+    effect.before.registers.accumulator ^= 1;
+    let variant = admit_register_masked_direct_native(
+        &dead_accumulator,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 rotate dead accumulator rejected: {error}"))?;
+    if variant.kind() != DirectNativeKind::Rotate
+        || variant.identity() == admission.identity()
+    {
+        return Err(String::from("v6 rotate dead state lost masked identity"));
+    }
+
+    assert_register_masked_rotate_mask_rejections(&program)
 }
 
 #[test]

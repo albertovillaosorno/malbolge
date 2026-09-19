@@ -145,7 +145,8 @@ use shape::{
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
-    validate_register_masked_non_graphical_target, validate_rotate_program,
+    validate_register_masked_non_graphical_target,
+    validate_register_masked_rotate_program, validate_rotate_program,
     validate_rotate_target, validate_target,
 };
 pub use verify::{
