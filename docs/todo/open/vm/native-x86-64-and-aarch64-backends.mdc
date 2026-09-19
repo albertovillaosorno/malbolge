@@ -1289,8 +1289,7 @@ input/jump-code, input/jump-data, input/no-operation,
   usage, success/failure counts, retain-all outlier policy, observed-range
   uncertainty, and scaling statistics are retained.
   Generated code is not loaded or executed in this benchmark, so end-to-end
-  native execution performance evidence remains pending despite the concrete
-  process-backed memory and call path.
+  native execution performance evidence remained pending at this stage.
 - A second retained phase-attribution bundle under
   `2026-09-16-native-backend-phases-linux-x86_64/` instruments the same
   workload and sample matrix. Across both target ISAs and scales, selection is
@@ -1319,3 +1318,12 @@ input/jump-code, input/jump-data, input/no-operation,
   faster by median and total preparation improves 1.267-1.407x. Admission
   cold-over-warm ratios stay between 0.984x and 1.018x. Further preparation-only
   workload widening is not required before executable native integration.
+- Host-real process-execution evidence is retained under
+  `2026-09-18-native-process-execution-linux-x86_64/`.
+  On Linux x86-64, 15 samples per mode/scale execute the normative fused
+  rotate/output object through the tracked process worker; all 90 samples
+  complete exact semantic checks with an unpoisoned persistent session.
+  Lifecycle-to-resident median ratios are 3.431x, 3.815x, and 4.070x at scales
+  1, 2, and 4 respectively, with every raw observation retained.
+  Interpreter comparison and host-real AArch64/Windows performance evidence
+  remain open, so these measurements do not establish cross-host native speedup.

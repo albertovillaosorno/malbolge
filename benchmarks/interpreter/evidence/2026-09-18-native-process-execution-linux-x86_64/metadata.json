@@ -1,0 +1,126 @@
+{
+  "benchmark_scope": "native-fused-process-execution-lifecycle-vs-resident",
+  "command": "cargo bench --bench native_process_execution",
+  "producer_commit": "dba5fd50a3d198539624f28c543ca2629cc5aeb9",
+  "workload": "current-profile rotate/output two-step normative VM trace",
+  "host_class": "secondary-linux-x86_64",
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "sockets": 1,
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Fedora Linux 44 (Workstation Edition)",
+  "kernel": "7.2.5-200.fc44.x86_64",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "clang": "clang 22.1.8",
+  "modes": [
+    "one-shot-lifecycle",
+    "resident-call"
+  ],
+  "successful_retained_samples": 90,
+  "failed_retained_samples": 0,
+  "machine_code_execution_included": true,
+  "selection_authority": false,
+  "measurement_policy": {
+    "warmup_policy": "one untimed execution per scale and mode",
+    "retained_samples_per_mode_scale": 15,
+    "scales": [
+      1,
+      2,
+      4
+    ],
+    "ordering": "alternating lifecycle/resident order by retained sample parity",
+    "lifecycle_timer": "verified load + process call + semantic admission + release",
+    "resident_timer": "repeated verified process calls only; load/release outside timer",
+    "caller_buffers": "fresh exact required-memory/output buffers per call",
+    "stopping_rule": "exactly 15 retained samples per mode and scale",
+    "outlier_policy": "retain-all"
+  },
+  "statistics_policy": {
+    "center": "median",
+    "dispersion": [
+      "min-max"
+    ],
+    "uncertainty": "observed-range",
+    "comparison": "lifecycle median divided by resident median within identical scale"
+  },
+  "resource_usage": {
+    "accelerator": "none",
+    "scope": "enclosing cargo bench invocation, including compilation",
+    "wall_seconds": 13.09,
+    "user_seconds": 40.87,
+    "system_seconds": 2.58,
+    "max_rss_kib": 629136,
+    "process_exit_status": 0
+  },
+  "execution_invariants": {
+    "object_bytes": 754,
+    "resident_mapped_bytes": 311,
+    "completed_calls_equal_requested_calls": true,
+    "session_poisoned": false,
+    "semantic_completion_checked_each_call": true
+  },
+  "summary": [
+    {
+      "scale": 1,
+      "samples_per_mode": 15,
+      "lifecycle_median_ns": 79718,
+      "lifecycle_min_ns": 66884,
+      "lifecycle_max_ns": 95950,
+      "resident_median_ns": 23233,
+      "resident_min_ns": 20111,
+      "resident_max_ns": 36080,
+      "lifecycle_over_resident_ratio": 3.4312400464856023,
+      "lifecycle_median_ns_per_call": 79718.0,
+      "resident_median_ns_per_call": 23233.0
+    },
+    {
+      "scale": 2,
+      "samples_per_mode": 15,
+      "lifecycle_median_ns": 152607,
+      "lifecycle_min_ns": 129766,
+      "lifecycle_max_ns": 213164,
+      "resident_median_ns": 40000,
+      "resident_min_ns": 38628,
+      "resident_max_ns": 77285,
+      "lifecycle_over_resident_ratio": 3.815175,
+      "lifecycle_median_ns_per_call": 76303.5,
+      "resident_median_ns_per_call": 20000.0
+    },
+    {
+      "scale": 4,
+      "samples_per_mode": 15,
+      "lifecycle_median_ns": 427110,
+      "lifecycle_min_ns": 376029,
+      "lifecycle_max_ns": 2950216,
+      "resident_median_ns": 104934,
+      "resident_min_ns": 85599,
+      "resident_max_ns": 156249,
+      "lifecycle_over_resident_ratio": 4.070272742866945,
+      "lifecycle_median_ns_per_call": 106777.5,
+      "resident_median_ns_per_call": 26233.5
+    }
+  ],
+  "benchmark_source": {
+    "sha256": "6fda9fadd415b06ace97c6afaa0f786db84580ef3e0eaace669b3186bf15be28"
+  },
+  "worker_source": {
+    "sha256": "c2473d074bdadae2bdd1ed87d6349302a7f4120c7c2d950d8596dcf589c6940f"
+  },
+  "protocol_source": {
+    "sha256": "b65742b99e7a5e15e2882248df8b9c09263c94601fb7e24b83ebf4ff4e847749"
+  },
+  "raw": {
+    "sha256": "7d4e6b6db0986bf5e59bf20040086b1b87382fb86099190fbb5a280ea6b501b0"
+  },
+  "instrumentation": {
+    "timer": "std::time::Instant around each retained mode interval",
+    "scope": "host-real Linux x86-64 process execution only",
+    "excluded": "worker compilation/spawn, fused select/admit/emit/verify, warmup, resident load/release"
+  },
+  "limitations": [
+    "No interpreter comparison or interpreter-to-native speedup claim.",
+    "No host-real AArch64 or Windows execution.",
+    "Observed ranges are descriptive and not confidence intervals."
+  ]
+}

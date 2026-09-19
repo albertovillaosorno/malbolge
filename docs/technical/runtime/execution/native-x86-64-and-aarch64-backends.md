@@ -1581,8 +1581,7 @@ deterministically without changing guest-visible state silently.
   toolchain identity, process resource usage, success/failure counts, the
   retain-all outlier policy, observed-range uncertainty, and scaling
   statistics. Because this benchmark does not load or execute generated code,
-  end-to-end native execution performance remains pending even though the
-  process worker now provides concrete executable-memory and call integration.
+  end-to-end native execution performance remained pending at this stage.
 - A second retained phase-attribution run uses the same workload and sample
   matrix: selection accounts for about 37-38% of summed phase medians across
   both target ISAs and scales, semantic verification about 27-28%, COFF
@@ -1608,6 +1607,18 @@ deterministically without changing guest-visible state silently.
   2.516-2.881x faster by median and total preparation improves 1.267-1.407x.
   Admission cold-over-warm ratios stay between 0.984x and 1.018x. Further
   preparation-only workload widening is deferred until native execution exists.
+
+- Initial host-real process-execution evidence is retained under
+  `benchmarks/interpreter/evidence/` in
+  `2026-09-18-native-process-execution-linux-x86_64/` from source
+  commit `dba5fd50a3d198539624f28c543ca2629cc5aeb9`.
+  The Linux x86-64 benchmark executes the normative fused rotate/output object
+  through the tracked process worker with 15 samples per mode at scales 1, 2,
+  and 4; all 90 retained samples complete exact semantic admission.
+  Lifecycle medians are 79,718/152,607/427,110 ns while resident-call medians
+  are 23,233/40,000/104,934 ns, yielding 3.431x/3.815x/4.070x ratios.
+  This is concrete Linux x86-64 process evidence only; it does not compare
+  interpreter throughput, and host-real AArch64/Windows execution remains open.
 
 ## References
 
