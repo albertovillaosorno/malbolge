@@ -9,28 +9,28 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Linux x86-64 process-backed fused native execution timing samples.
+//   - Linux x86-64 interpreter and process-backed native timing samples.
 // - Must-Not:
-//   - Generalize host results to Windows/AArch64 or bypass semantic admission.
+//   - Generalize host results or bypass normative/native semantic admission.
 // - Allows:
 //   - Inputs: one normative VM-derived two-step rotate/output workload.
-//   - Outputs: raw lifecycle/resident nanoseconds and completed-call counters.
+//   - Outputs: raw interpreter/lifecycle/resident timing and call counters.
 //   - Side effects: compile/spawn a temporary tracked POSIX worker and stdout.
 // - Split-When:
 //   - Another host/ISA gains independently executable benchmark evidence.
 // - Merge-When:
 //   - One portable host-real benchmark owns equivalent process-call evidence.
 // - Summary:
-//   - Measures concrete process-backed fused execution on Linux x86-64.
+//   - Measures normative interpretation beside concrete process execution.
 // - Description:
-//   - Compares remap-per-call lifecycle with one retained executable mapping.
+//   - Compares interpretation, remap-per-call, and resident native execution.
 // - Usage:
 //   - Run on an identified Linux x86-64 host and retain stdout as raw evidence.
 // - Defaults:
 //   - Uses 15 samples, one warmup per mode, alternation, and scales 1/2/4.
 //
 
-//! Raw host-real fused native process execution measurements.
+//! Raw interpreter and host-real fused process execution measurements.
 
 #[path = "../../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
@@ -89,6 +89,7 @@ const SCALES: [u8; 3] = [1, 2, 4];
 
 #[derive(Clone, Copy)]
 enum ExecutionMode {
+    Interpreter,
     Lifecycle,
     Resident,
 }
@@ -100,6 +101,13 @@ struct ExecutionFixture {
     initial_memory: Vec<u32>,
     initial_output: Vec<u8>,
     input: Vec<u8>,
+    interpreter_entry: ProfileMachineState,
+    interpreter_exit: ProfileMachineState,
+}
+
+struct NativeCallBuffers {
+    memory: Vec<u32>,
+    output: Vec<u8>,
 }
 
 struct ExecutionSample {
@@ -222,6 +230,7 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
     let state = workload_state()?;
     let full_initial_memory = state.memory().to_vec();
     let input = state.io().input().to_vec();
+    let interpreter_entry = state.clone();
     let mut machine = ProfileMachine::from_snapshot(state);
     let mut traces = Vec::new();
     let outcome = machine
@@ -258,6 +267,7 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
             IoError::other("native execution final memory too short")
         })?
         .to_vec();
+    let interpreter_exit = machine.snapshot_state();
     let output_capacity = machine.output().len().max(1);
     let initial_output = vec![0u8; output_capacity];
     let mut final_output = initial_output.clone();
@@ -274,6 +284,8 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
         initial_memory,
         initial_output,
         input,
+        interpreter_entry,
+        interpreter_exit,
     })
 }
 
@@ -316,16 +328,74 @@ fn execute_resident(
     fixture: &ExecutionFixture,
     host: &mut NativeProcessHost,
     owner: &DirectFusedNativeExecutableOwner,
-) -> IoResult<()> {
-    let mut memory = fixture.initial_memory.clone();
-    let mut output = fixture.initial_output.clone();
-    let outcome = owner
+    buffers: &mut NativeCallBuffers,
+) -> IoResult<NativeRegionInvocationOutcome> {
+    owner
         .execute(
             host,
-            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+            NativeRegionBuffers::new(
+                &mut buffers.memory,
+                &fixture.input,
+                &mut buffers.output,
+            ),
         )
-        .map_err(|error| io_error("native execution resident call", error))?;
-    validate_result(fixture, outcome, &memory, &output)
+        .map_err(|error| io_error("native execution resident call", error))
+}
+
+fn native_call_buffers(fixture: &ExecutionFixture) -> NativeCallBuffers {
+    NativeCallBuffers {
+        memory: fixture.initial_memory.clone(),
+        output: fixture.initial_output.clone(),
+    }
+}
+
+fn validate_interpreter(
+    fixture: &ExecutionFixture,
+    machine: &ProfileMachine,
+) -> IoResult<()> {
+    let expected = &fixture.interpreter_exit;
+    let expected_io = expected.io();
+    if machine.input() == expected_io.input()
+        && machine.input_consumed() == expected_io.input_consumed()
+        && machine.memory() == expected.memory()
+        && machine.output() == expected_io.output()
+        && machine.registers() == expected.registers()
+        && machine.termination() == expected_io.termination()
+    {
+        Ok(())
+    } else {
+        Err(IoError::other(
+            "native execution interpreter completion drifted",
+        ))
+    }
+}
+
+fn measure_interpreter(
+    fixture: &ExecutionFixture,
+    scale: u8,
+) -> IoResult<(u128, usize)> {
+    let mut machines = Vec::with_capacity(usize::from(scale));
+    for _index in 0..scale {
+        machines.push(ProfileMachine::from_snapshot(
+            fixture.interpreter_entry.clone(),
+        ));
+    }
+    let start = Instant::now();
+    for machine in &mut machines {
+        let outcome = machine
+            .run(2)
+            .map_err(|error| io_error("native execution interpreter", error))?;
+        if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+            return Err(IoError::other(
+                "native execution interpreter outcome drifted",
+            ));
+        }
+    }
+    let nanoseconds = start.elapsed().as_nanos();
+    for machine in &machines {
+        validate_interpreter(fixture, machine)?;
+    }
+    Ok((nanoseconds, 0))
 }
 
 fn measure_lifecycle(
@@ -350,16 +420,32 @@ fn measure_resident(
     let owner = DirectFusedNativeExecutableOwner::load(host, &fixture.artifact)
         .map_err(|error| io_error("native execution resident load", error))?;
     let mapped_bytes = owner.resident_weight().mapped_bytes();
+    let mut buffers = Vec::with_capacity(usize::from(scale));
+    for _index in 0..scale {
+        buffers.push(native_call_buffers(fixture));
+    }
+    let mut outcomes = Vec::with_capacity(usize::from(scale));
     let start = Instant::now();
     let result = (|| -> IoResult<()> {
-        let mut call = 0u8;
-        while call < scale {
-            execute_resident(black_box(fixture), host, &owner)?;
-            call = call.saturating_add(1);
+        for call_buffers in &mut buffers {
+            outcomes.push(execute_resident(
+                black_box(fixture),
+                host,
+                &owner,
+                call_buffers,
+            )?);
         }
         Ok(())
     })();
     let nanoseconds = start.elapsed().as_nanos();
+    for (outcome, call_buffers) in outcomes.into_iter().zip(&buffers) {
+        validate_result(
+            fixture,
+            outcome,
+            &call_buffers.memory,
+            &call_buffers.output,
+        )?;
+    }
     let release = owner
         .release(host)
         .map_err(|error| io_error("native execution resident release", error));
@@ -375,6 +461,7 @@ fn measure(
     scale: u8,
 ) -> IoResult<(u128, usize)> {
     match mode {
+        ExecutionMode::Interpreter => measure_interpreter(fixture, scale),
         ExecutionMode::Lifecycle => measure_lifecycle(fixture, host, scale),
         ExecutionMode::Resident => measure_resident(fixture, host, scale),
     }
@@ -382,6 +469,7 @@ fn measure(
 
 const fn mode_label(mode: ExecutionMode) -> &'static str {
     match mode {
+        ExecutionMode::Interpreter => "interpreter",
         ExecutionMode::Lifecycle => "one-shot-lifecycle",
         ExecutionMode::Resident => "resident-call",
     }
@@ -410,7 +498,11 @@ fn warm_up(
     host: &mut NativeProcessHost,
     scale: u8,
 ) -> IoResult<()> {
-    for mode in [ExecutionMode::Lifecycle, ExecutionMode::Resident] {
+    for mode in [
+        ExecutionMode::Interpreter,
+        ExecutionMode::Lifecycle,
+        ExecutionMode::Resident,
+    ] {
         let _measurement = measure(fixture, host, mode, scale)?;
     }
     Ok(())
@@ -425,9 +517,17 @@ fn emit_scale_samples(
     let mut sample = 0u8;
     while sample < SAMPLE_COUNT {
         let order = if sample.rem_euclid(2) == 0 {
-            [ExecutionMode::Lifecycle, ExecutionMode::Resident]
+            [
+                ExecutionMode::Interpreter,
+                ExecutionMode::Lifecycle,
+                ExecutionMode::Resident,
+            ]
         } else {
-            [ExecutionMode::Resident, ExecutionMode::Lifecycle]
+            [
+                ExecutionMode::Resident,
+                ExecutionMode::Lifecycle,
+                ExecutionMode::Interpreter,
+            ]
         };
         for mode in order {
             let (nanoseconds, retained_mapped_bytes) =

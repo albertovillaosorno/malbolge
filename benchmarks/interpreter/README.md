@@ -70,20 +70,27 @@ Run it from the repository root with:
 cargo bench --bench native_process_execution
 ```
 
-The benchmark retains 15 samples at call-count scales 1, 2, and 4 for two modes.
-`one-shot-lifecycle` performs verified load, process call, semantic
-admission, and release for every call. `resident-call` loads one exact
-fused mapping before the timer, performs only repeated verified process calls
-inside the timer, and releases the mapping after the timer. Both modes use the
-same persistent child, fresh caller buffers per call, one untimed warmup per
-scale/mode, and alternating mode order across retained samples.
+The benchmark retains 15 samples at call-count scales 1, 2, and 4 for three
+modes. `interpreter` prebuilds complete normative `ProfileMachine` instances
+outside the timer, then times only their exact two-step `run(2)` execution.
+`one-shot-lifecycle` performs verified load, process call, semantic admission,
+and release for every call. `resident-call` loads one exact fused mapping before
+the timer, performs only repeated verified process calls inside the timer, and
+releases the mapping after the timer.
 
-Resident rows also report the exact retained executable mapping bytes. One-shot
-rows retain no mapping between calls.
+Interpreter checkpoint cloning and native worker/fused-artifact setup stay
+outside timed intervals. Resident caller buffers are also prepared before its
+timer, while one-shot lifecycle deliberately retains its complete per-call
+transaction. All modes validate exact semantic completion after timing; process
+modes use one persistent child, one untimed warmup per scale/mode, and
+alternating mode order across retained samples. Resident rows report exact
+retained executable mapping bytes; other modes retain none.
 
 These measurements are Linux x86-64 host evidence only. They do not execute
-AArch64 or Windows code, and they do not include fused selection/emission/object
-verification in the timed interval; the separate backend-pipeline benchmark owns
-that preparation cost. Retained measurements belong under `evidence/`
-with source/toolchain/worker hashes, host identity, raw samples, resource
-budgets, failure counts, dispersion, and uncertainty.
+AArch64 or Windows code, and native timed intervals exclude fused
+selection/emission/object verification; the separate backend-pipeline benchmark
+owns that preparation cost. Interpreter/native ratios therefore describe this
+exact two-step workload and timing boundary, not a general VM speedup claim.
+Retained measurements belong under `evidence/` with source/toolchain/worker
+hashes, host identity, raw samples, resource budgets, failure counts,
+dispersion, and uncertainty.
