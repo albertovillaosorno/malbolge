@@ -290,8 +290,12 @@ topology and preserves host-target-sensitive ordered identity without granting
 mapping or runner authority. Loaded rotate sequence ownership now maps every
 admitted step before publication, reports aggregate mapped weight, releases in
 reverse semantic order, cleans complete loaded prefixes on later load failure,
-and retains failed releases only for explicit retry. Indexed loaded-sequence
-execution and multi-entry sequence-cache policy remain separate.
+and retains failed releases only for explicit retry.
+
+Indexed loaded-sequence execution now advances exact observations through
+retained rotate owners without adapter work, returns exact guard-miss resume
+boundaries, and preserves committed-prefix evidence on later runner failure.
+Multi-entry rotate sequence-cache policy remains separate.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

@@ -2119,10 +2119,13 @@ topology and preserves host-target-sensitive ordered identity without granting
 mapping or runner authority. Loaded rotate sequence ownership now maps every
 admitted step before publication, reports aggregate mapped weight, releases in
 reverse semantic order, cleans complete loaded prefixes on later load failure,
-and retains failed releases only for explicit retry. Indexed loaded-sequence
-execution and multi-entry sequence-cache policy remain open. Broader
-register-masked template coverage remains open and unsupported v6 execution
-remains fail-closed.
+and retains failed releases only for explicit retry.
+
+Indexed loaded-sequence execution now advances exact observations through
+retained rotate owners without adapter work, returns exact guard-miss resume
+boundaries, and preserves committed-prefix evidence on later runner failure.
+Multi-entry rotate sequence-cache policy remains open. Broader register-masked
+template coverage remains open and unsupported v6 execution remains fail-closed.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker

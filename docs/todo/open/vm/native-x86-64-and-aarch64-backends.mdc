@@ -141,8 +141,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   prefixes on later load failure, and retains failed releases only for explicit
   retry.
 
-  Indexed loaded-sequence execution and multi-entry sequence-cache policy remain
-  open.
+  Indexed loaded-sequence execution now advances exact observations through
+  retained rotate owners without adapter work, returns exact guard-miss resume
+  boundaries, and preserves committed-prefix evidence on later runner failure.
+  Multi-entry rotate sequence-cache policy remains open.
 
   Register-masked v6 has reviewed graphical halt and non-graphical terminal
   objects on both ISAs with reduced C/live-in guards. The traced no-operation

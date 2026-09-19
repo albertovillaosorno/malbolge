@@ -549,7 +549,10 @@ use execution_native::{
     RegisterMaskedRotateNativeResidentCacheRelease,
     RegisterMaskedRotateNativeResidentLease,
     RegisterMaskedRotateNativeResidentLeaseCache,
-    RegisterMaskedRotateNativeRunner, RegisterMaskedRotateNativeSequenceKey,
+    RegisterMaskedRotateNativeRunner,
+    RegisterMaskedRotateNativeSequenceExecutionFailure,
+    RegisterMaskedRotateNativeSequenceKey,
+    RegisterMaskedRotateNativeSequenceOutcome,
     RegisterMaskedRotateNativeSequencePlan,
     RegisterMaskedRotateNativeSequencePlanError,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
@@ -603,6 +606,7 @@ use execution_native::{
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
+    execute_loaded_register_masked_rotate_native_sequence,
     execute_loaded_verified_direct_fused_native,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
@@ -1631,6 +1635,7 @@ struct FakeRegisterMaskedNoOperationNativeRunner {
 #[derive(Debug)]
 struct FakeRegisterMaskedRotateNativeRunner {
     behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
     calls: usize,
     entry_addresses: Vec<NonZeroUsize>,
     mapping_ids: Vec<NativeExecutableMappingId>,
@@ -2339,6 +2344,18 @@ impl FakeRegisterMaskedRotateNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
             behavior,
+            behaviors: Vec::new(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+
+    const fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+        Self {
+            behavior: FakeNativeRunnerBehavior::GuardMiss,
+            behaviors,
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -3004,7 +3021,12 @@ impl RegisterMaskedRotateNativeRunner for FakeRegisterMaskedRotateNativeRunner {
         self.mapping_ids.push(invocation.mapping_id());
         self.state_pointers_non_null
             .push(!invocation.state_mut_ptr().is_null());
-        match self.behavior {
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
             FakeNativeRunnerBehavior::Applied => {
                 invocation.apply_expected_for_test();
                 Ok(NativeRegionStatus::Applied.code())
@@ -13290,6 +13312,32 @@ fn register_masked_v6_rotate_sequence_plan_rejects_identity_drift()
     }
 }
 
+fn assert_rotate_sequence_runner_failure(
+    failure: &RegisterMaskedRotateNativeSequenceExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+    completed_steps: usize,
+    observation: ProfileMachineObservation,
+    state_ok: (bool, bool),
+) -> TieredTestResult {
+    let (memory_ok, residency_ok) = state_ok;
+    if failure.completed_steps() == completed_steps
+        && failure.step_index() == completed_steps
+        && failure.resume_index() == completed_steps
+        && failure.observation() == observation
+        && matches!(
+            failure.execution_failure(),
+            RegisterMaskedRotateNativeOwnerExecutionFailure::Execution(_)
+        )
+        && memory_ok
+        && residency_ok
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 rotate sequence runner rollback drifted"))
+    }
+}
+
 fn register_masked_rotate_loaded_sequence_fixture()
 -> Result<RegisterMaskedRotateNativeSequencePlan, String> {
     let programs = canonical_register_masked_rotate_programs()?;
@@ -13422,6 +13470,228 @@ fn register_masked_v6_rotate_loaded_sequence_release_failure_retries()
             "v6 rotate sequence release retry count drifted",
         ))
     }
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_executes_pair() -> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(201)?,
+        native_executable_address(0x3e000)?,
+    );
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_rotate_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    for program in plan.programs() {
+        apply_register_masked_rotate_expected_memory(
+            program,
+            &mut expected_memory,
+        )?;
+    }
+    let input = [];
+    let mut output = [];
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_rotate_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate sequence execute: {error}"))?;
+    let expected = RegisterMaskedRotateNativeSequenceOutcome::Applied {
+        observation: plan.exit(),
+        steps: 2,
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || memory != expected_memory
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 rotate sequence applied outcome drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_guard_miss_is_atomic() -> TieredTestResult
+{
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(202)?,
+        native_executable_address(0x3f000)?,
+    );
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_rotate_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_register_masked_rotate_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate guard execute: {error}"))?;
+    let expected = RegisterMaskedRotateNativeSequenceOutcome::GuardMiss {
+        index: 0,
+        observation: plan.entry(),
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 rotate sequence guard-miss boundary drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_runner_failure_reuses_mapping()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(203)?,
+        native_executable_address(0x40000)?,
+    );
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate reusable load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_rotate_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let (input, mut output) = ([], []);
+    let mut failing = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = execute_loaded_register_masked_rotate_native_sequence(
+        &loaded,
+        &mut failing,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v6 rotate sequence runner failure was ignored",
+        ));
+    };
+    assert_rotate_sequence_runner_failure(
+        failure.as_ref(),
+        0,
+        plan.entry(),
+        (
+            memory == entry_memory,
+            adapter.operations == loaded_operations,
+        ),
+    )?;
+    let mut succeeding = FakeRegisterMaskedRotateNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_rotate_native_sequence(
+        &loaded,
+        &mut succeeding,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rotate reusable execute: {error}"))?;
+    if !matches!(
+        outcome,
+        RegisterMaskedRotateNativeSequenceOutcome::Applied { .. }
+    ) || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 rotate sequence remapped after runner failure",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate reusable release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_rotate_sequence_late_failure_keeps_prefix()
+-> TieredTestResult {
+    let plan = register_masked_rotate_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(204)?,
+        native_executable_address(0x41000)?,
+    );
+    let loaded =
+        load_register_masked_rotate_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 rotate late-failure load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_rotate_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let first_program = plan
+        .programs()
+        .first()
+        .ok_or_else(|| String::from("v6 rotate sequence first step missing"))?;
+    apply_register_masked_rotate_expected_memory(
+        first_program,
+        &mut expected_memory,
+    )?;
+    let first_observation = first_program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 rotate sequence first effect missing"))?
+        .after;
+    let (input, mut output) = ([], []);
+    let mut runner = FakeRegisterMaskedRotateNativeRunner::scripted(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = execute_loaded_register_masked_rotate_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v6 rotate sequence ignored late runner failure",
+        ));
+    };
+    assert_rotate_sequence_runner_failure(
+        failure.as_ref(),
+        1,
+        first_observation,
+        (
+            memory == expected_memory,
+            adapter.operations == loaded_operations,
+        ),
+    )?;
+    if runner.calls != 2 {
+        return Err(String::from(
+            "v6 rotate sequence committed-prefix call count drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 rotate late-failure release: {error}"))
 }
 
 #[test]
