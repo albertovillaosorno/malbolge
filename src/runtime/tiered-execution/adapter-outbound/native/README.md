@@ -116,12 +116,14 @@ Rust lifecycle and semantic verifier. The tracked end-to-end Rust regression
 compiles this worker with pinned Clang, then executes an admitted direct-output
 artifact through real mmap/mprotect/cache-sync/call/munmap operations.
 
-The source also contains the AArch64 cache-sync and native-call path.
+The source also contains the AArch64 cache-sync and native-call path;
 `native_process_worker_windows.c` owns the corresponding Windows platform
 boundary with `VirtualAlloc`, `VirtualProtect`, `FlushInstructionCache`, native
 Windows invocation, and `VirtualFree`. Pinned Clang cross-compiles that worker
-warning-clean into x86-64 and AArch64 COFF objects, while the Rust regression
-checks both machine IDs. Host-real AArch64 and Windows execution remain open.
+warning-clean into x86-64 and AArch64 COFF objects. The Rust regression checks
+both machine IDs and parses each COFF symbol table, requiring the exact same 13
+Win32 imports with no compiler runtime or CRT dependency. Host-real AArch64 and
+Windows execution remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance

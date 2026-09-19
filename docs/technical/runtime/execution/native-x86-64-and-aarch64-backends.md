@@ -441,14 +441,16 @@ direct-output artifact through the complete process host; the exact
 `memory[5]:94->57`, output append `0xa8`, and `C/D:5/7->6/8` transition is
 accepted before release.
 
-The source includes an AArch64 call/cache-sync path. A separate tracked
-`native_process_worker_windows.c` now mirrors the same MBNPM1/MBNPC1 lifecycle
+The source includes an AArch64 call/cache-sync path; a separate tracked
+`native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
 `FlushInstructionCache`, native Windows calling conventions, and `VirtualFree`.
 Pinned Clang cross-compiles that source warning-clean into x86-64 and AArch64
-Windows COFF worker objects, and the regression checks both COFF machine IDs.
-Host-real AArch64 and Windows execution remain pending; cross-compilation is not
-treated as execution evidence.
+Windows COFF worker objects. The regression checks both COFF machine IDs and
+requires the exact 13-symbol Win32 undefined-import set on each target while
+rejecting accidental compiler-runtime or CRT dependencies. Host-real AArch64
+and Windows execution remain pending; cross-compilation is not treated as
+execution evidence.
 
 `native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
 magic, command/outcome tags, fixed sizes, field offsets, and little-endian

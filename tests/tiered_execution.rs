@@ -997,6 +997,22 @@ const NATIVE_PROCESS_WORKER_CLANG_ARGS: [&str; 20] = [
     "-Werror",
 ];
 
+const NATIVE_PROCESS_WINDOWS_IMPORTS: [&str; 13] = [
+    "__imp_FlushInstructionCache",
+    "__imp_GetCurrentProcess",
+    "__imp_GetLastError",
+    "__imp_GetProcessHeap",
+    "__imp_GetStdHandle",
+    "__imp_HeapAlloc",
+    "__imp_HeapFree",
+    "__imp_HeapReAlloc",
+    "__imp_ReadFile",
+    "__imp_VirtualAlloc",
+    "__imp_VirtualFree",
+    "__imp_VirtualProtect",
+    "__imp_WriteFile",
+];
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -38550,6 +38566,177 @@ fn native_process_host_python(
     native_process_session_python(script).map(NativeProcessHost::new)
 }
 
+fn native_process_test_read_u32(
+    bytes: &[u8],
+    offset: usize,
+) -> Result<u32, String> {
+    let end = offset.checked_add(4).ok_or_else(|| {
+        String::from("native Windows COFF u32 offset overflow")
+    })?;
+    let raw: [u8; 4] = bytes
+        .get(offset..end)
+        .ok_or_else(|| String::from("native Windows COFF u32 out of bounds"))?
+        .try_into()
+        .map_err(|_error| {
+            String::from("native Windows COFF u32 width drift")
+        })?;
+    Ok(u32::from_le_bytes(raw))
+}
+
+fn native_process_windows_coff_symbol_name(
+    bytes: &[u8],
+    symbol_offset: usize,
+    string_start: usize,
+    string_len: usize,
+) -> Result<String, String> {
+    let name_end = symbol_offset
+        .checked_add(8)
+        .ok_or_else(|| String::from("native Windows COFF name overflow"))?;
+    let raw = bytes.get(symbol_offset..name_end).ok_or_else(|| {
+        String::from("native Windows COFF name out of bounds")
+    })?;
+    let name_bytes = if raw.get(..4) == Some([0u8; 4].as_slice()) {
+        let string_offset = usize::try_from(native_process_test_read_u32(
+            bytes,
+            symbol_offset.saturating_add(4),
+        )?)
+        .map_err(|error| {
+            format!("native Windows COFF string offset: {error}")
+        })?;
+        let start =
+            string_start.checked_add(string_offset).ok_or_else(|| {
+                String::from("native Windows COFF string overflow")
+            })?;
+        let end = string_start.checked_add(string_len).ok_or_else(|| {
+            String::from("native Windows COFF table overflow")
+        })?;
+        let strings = bytes
+            .get(start..end)
+            .ok_or_else(|| String::from("native Windows COFF string bounds"))?;
+        let length =
+            strings.iter().position(|byte| *byte == 0).ok_or_else(|| {
+                String::from("native Windows COFF string terminator")
+            })?;
+        strings
+            .get(..length)
+            .ok_or_else(|| String::from("native Windows COFF string length"))?
+    } else {
+        let length =
+            raw.iter().position(|byte| *byte == 0).unwrap_or(raw.len());
+        raw.get(..length)
+            .ok_or_else(|| String::from("native Windows COFF short name"))?
+    };
+    String::from_utf8(name_bytes.to_vec())
+        .map_err(|error| format!("native Windows COFF symbol UTF-8: {error}"))
+}
+
+fn native_process_windows_coff_aux_count(
+    bytes: &[u8],
+    symbol_offset: usize,
+) -> Result<usize, String> {
+    bytes
+        .get(symbol_offset.saturating_add(17))
+        .copied()
+        .map(usize::from)
+        .ok_or_else(|| String::from("native Windows COFF aux count"))
+}
+
+fn native_process_windows_coff_import(
+    bytes: &[u8],
+    symbol_offset: usize,
+    string_start: usize,
+    string_len: usize,
+) -> Result<Option<String>, String> {
+    const EXTERNAL_STORAGE_CLASS: u8 = 2;
+
+    let section_end = symbol_offset.saturating_add(14);
+    let section_raw: [u8; 2] = bytes
+        .get(symbol_offset.saturating_add(12)..section_end)
+        .ok_or_else(|| String::from("native Windows COFF section bounds"))?
+        .try_into()
+        .map_err(|_error| String::from("native Windows COFF section width"))?;
+    let storage_class = *bytes
+        .get(symbol_offset.saturating_add(16))
+        .ok_or_else(|| String::from("native Windows COFF storage class"))?;
+    if i16::from_le_bytes(section_raw) == 0
+        && storage_class == EXTERNAL_STORAGE_CLASS
+    {
+        native_process_windows_coff_symbol_name(
+            bytes,
+            symbol_offset,
+            string_start,
+            string_len,
+        )
+        .map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn native_process_windows_coff_imports(
+    bytes: &[u8],
+) -> Result<Vec<String>, String> {
+    const COFF_SYMBOL_BYTES: usize = 18;
+
+    let symbol_start = usize::try_from(native_process_test_read_u32(bytes, 8)?)
+        .map_err(|error| {
+            format!("native Windows COFF symbol offset: {error}")
+        })?;
+    let symbol_count = usize::try_from(native_process_test_read_u32(
+        bytes, 12,
+    )?)
+    .map_err(|error| format!("native Windows COFF symbol count: {error}"))?;
+    let symbol_bytes =
+        symbol_count.checked_mul(COFF_SYMBOL_BYTES).ok_or_else(|| {
+            String::from("native Windows COFF symbol size overflow")
+        })?;
+    let string_start =
+        symbol_start.checked_add(symbol_bytes).ok_or_else(|| {
+            String::from("native Windows COFF string start overflow")
+        })?;
+    let string_len =
+        usize::try_from(native_process_test_read_u32(bytes, string_start)?)
+            .map_err(|error| {
+                format!("native Windows COFF string size: {error}")
+            })?;
+    let string_end = string_start.checked_add(string_len).ok_or_else(|| {
+        String::from("native Windows COFF string end overflow")
+    })?;
+    if bytes.get(string_start..string_end).is_none() {
+        return Err(String::from("native Windows COFF string table bounds"));
+    }
+
+    let mut imports = Vec::new();
+    let mut raw_index = 0usize;
+    while raw_index < symbol_count {
+        let symbol_offset = symbol_start
+            .checked_add(raw_index.saturating_mul(COFF_SYMBOL_BYTES))
+            .ok_or_else(|| {
+                String::from("native Windows COFF symbol overflow")
+            })?;
+        let aux_count =
+            native_process_windows_coff_aux_count(bytes, symbol_offset)?;
+        if let Some(import_name) = native_process_windows_coff_import(
+            bytes,
+            symbol_offset,
+            string_start,
+            string_len,
+        )? {
+            imports.push(import_name);
+        }
+        raw_index = raw_index
+            .checked_add(aux_count.saturating_add(1))
+            .ok_or_else(|| {
+                String::from("native Windows COFF symbol index overflow")
+            })?;
+        if raw_index > symbol_count {
+            return Err(String::from("native Windows COFF aux symbol bounds"));
+        }
+    }
+    imports.sort();
+    Ok(imports)
+}
+
 fn check_native_process_windows_worker_compile(
     clang: &Path,
     directory: &Path,
@@ -38587,17 +38774,27 @@ fn check_native_process_windows_worker_compile(
     let bytes = fs::read(&object).map_err(|error| {
         format!("cannot read native Windows worker object: {error}")
     })?;
-    if bytes.get(..2) == Some(expected_machine.as_slice()) {
+    if bytes.get(..2) != Some(expected_machine.as_slice()) {
+        return Err(format!(
+            "native Windows worker {target} COFF machine drifted"
+        ));
+    }
+    let imports = native_process_windows_coff_imports(&bytes)?;
+    if imports
+        .iter()
+        .map(String::as_str)
+        .eq(NATIVE_PROCESS_WINDOWS_IMPORTS)
+    {
         Ok(())
     } else {
         Err(format!(
-            "native Windows worker {target} COFF machine drifted"
+            "native Windows worker {target} imports drifted: {imports:?}"
         ))
     }
 }
 
 #[test]
-fn native_process_windows_worker_cross_compiles_for_both_isas()
+fn native_process_windows_worker_cross_compiles_without_crt_for_both_isas()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");

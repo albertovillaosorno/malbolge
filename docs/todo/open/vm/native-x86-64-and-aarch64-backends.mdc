@@ -263,8 +263,10 @@ A distinct single-resident lease cache
   `VirtualAlloc`, exact copy, RW-to-RX `VirtualProtect`,
   `FlushInstructionCache`, native Windows invocation, and `VirtualFree`. Pinned
   Clang cross-compiles it warning-clean into both x86-64 and AArch64 Windows
-  COFF objects, and the Rust regression verifies the expected machine IDs.
-  Host-real AArch64 and Windows execution remain pending.
+  COFF objects. The Rust regression verifies the expected machine IDs and exact
+  13-symbol Win32 undefined-import set on both targets, rejecting accidental
+  compiler-runtime or CRT dependencies. Host-real AArch64 and Windows execution
+  remain pending.
 
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
