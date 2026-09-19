@@ -320,8 +320,10 @@ emits and independently verifies x86-64/AArch64 COFF. Its machine text guards
 live A/C/D, exact memory extent, both code/data live-ins, and prior termination;
 I/O history stays key-bound but absent from code.
 
-The verified artifact remains object-only and grants no load-image or invocation
-authority.
+A dedicated Crazy load-image type now extracts only relocation-free,
+ISA-aligned code while retaining the exact v6 key/triple and strict RW-to-RX
+plus instruction-sync policy. No lifecycle, platform, binding, or invocation
+authority accepts that image yet.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

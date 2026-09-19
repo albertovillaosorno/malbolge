@@ -236,8 +236,10 @@ guards live A. I/O history remains key-bound but absent from Crazy machine text;
 a changed entry accumulator changes the canonical object.
 
 Independent Crazy verification structurally admits COFF and regenerates exact
-canonical bytes. Crazy remains object-only here: no v6 Crazy load image,
-executable lifecycle, or invocation authority is granted.
+canonical bytes. A Crazy-specific relocation-free image now retains exact
+key/target identity, ISA alignment, and strict RW-to-RX/full-sync policy. It
+rejects relocation-bearing objects before any mapping authority exists. No v6
+Crazy executable lifecycle or invocation authority is granted yet.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

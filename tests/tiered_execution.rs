@@ -570,6 +570,7 @@ use execution_native::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
     VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    VerifiedRegisterMaskedCrazyLoadImage,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
@@ -5919,6 +5920,86 @@ fn register_masked_v6_crazy_verifier_rejects_drift() -> TieredTestResult {
     ) != Err(DirectRegisterMaskedCrazyError::ProgramShape)
     {
         return Err(String::from("v6 Crazy backend admitted no-operation"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_load_image_is_relocation_free() -> TieredTestResult
+{
+    let program = canonical_register_masked_crazy_program()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = emit_direct_register_masked_crazy_coff(
+            &program,
+            register_masked_crazy_target(isa),
+        )
+        .and_then(|candidate| {
+            verify_direct_register_masked_crazy(&candidate, &program)
+        })
+        .map_err(|error| format!("v6 {isa:?} Crazy verify failed: {error}"))?;
+        let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+            .map_err(|error| {
+                format!("v6 {isa:?} Crazy load image failed: {error}")
+            })?;
+        let expected_alignment = match isa {
+            HostIsa::AArch64 => 4,
+            HostIsa::X86_64 => 1,
+        };
+        let policy = image.policy();
+        if image.code() != direct_object_text(artifact.object())?
+            || image.entry_code() != image.code()
+            || image.entry_offset() != 0
+            || image.allocation_len() != image.code().len()
+            || image.host_isa() != isa
+            || image.key() != artifact.key()
+            || image.minimum_instruction_alignment() != expected_alignment
+            || image.target() != artifact.key().target()
+            || image.target_triple() != artifact.target_triple()
+            || policy.initial_permissions()
+                != NativeExecutablePermission::ReadWrite
+            || policy.final_permissions()
+                != NativeExecutablePermission::ReadExecute
+            || !policy.requires_instruction_sync()
+        {
+            return Err(format!(
+                "v6 {isa:?} Crazy load-image contract drifted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_load_image_rejects_relocations() -> TieredTestResult
+{
+    const TEXT_HEADER: usize = 20;
+    const RELOCATION_START_OFFSET: usize = 24;
+    const RELOCATION_COUNT_OFFSET: usize = 32;
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy candidate failed: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy verify failed: {error}"))?;
+    let mut object = artifact.object().to_vec();
+    let relocation_start = u32::try_from(object.len())
+        .map_err(|error| format!("v6 Crazy relocation offset: {error}"))?;
+    object.extend_from_slice(&[0u8; 10]);
+    let start_offset = TEXT_HEADER
+        .checked_add(RELOCATION_START_OFFSET)
+        .ok_or_else(|| String::from("v6 Crazy relocation start overflow"))?;
+    let count_offset = TEXT_HEADER
+        .checked_add(RELOCATION_COUNT_OFFSET)
+        .ok_or_else(|| String::from("v6 Crazy relocation count overflow"))?;
+    write_fixture_u32(&mut object, start_offset, relocation_start)?;
+    write_fixture_u16(&mut object, count_offset, 1)?;
+    if VerifiedRegisterMaskedCrazyLoadImage::from_object_for_test(
+        &artifact, &object,
+    ) != Err(VerifiedDirectLoadError::Relocations)
+    {
+        return Err(String::from("v6 Crazy load image admitted relocations"));
     }
     Ok(())
 }

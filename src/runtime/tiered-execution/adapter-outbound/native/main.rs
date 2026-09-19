@@ -558,7 +558,7 @@ pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
-    VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,

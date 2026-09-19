@@ -645,7 +645,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   It guards live A/C/D, required memory, both code/data live-ins, and prior
   termination before the reviewed Crazy commit. I/O history remains out of
-  `.text`; changed live A changes canonical bytes. Load/execution authority is
+  `.text`; changed live A changes canonical bytes.
+- `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
+  relocation-free and ISA-aligned while retaining exact identity and the strict
+  RW-to-RX/full-sync policy. Lifecycle, platform, and invocation authority are
   still absent.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.

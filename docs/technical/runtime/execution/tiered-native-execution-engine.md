@@ -2149,8 +2149,10 @@ revision-1 object family now emits x86-64/AArch64 COFF with exact A/C/D, memory
 extent, code/data live-in, and prior-termination guards. I/O history remains in
 the complete v6 key without entering machine text.
 
-Independent verification reconstructs the key and canonical bytes. No Crazy v6
-load-image, executable, or invocation authority exists yet.
+Independent verification reconstructs the key and canonical bytes. A distinct
+Crazy v6 load image now proves relocation closure, ISA alignment, exact retained
+identity, and the strict RW-to-RX/full-sync policy. It grants no executable
+lifecycle, platform, binding, or invocation authority.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
