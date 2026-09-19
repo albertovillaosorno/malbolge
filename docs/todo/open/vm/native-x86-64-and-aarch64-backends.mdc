@@ -1325,5 +1325,16 @@ input/jump-code, input/jump-data, input/no-operation,
   complete exact semantic checks with an unpoisoned persistent session.
   Lifecycle-to-resident median ratios are 3.431x, 3.815x, and 4.070x at scales
   1, 2, and 4 respectively, with every raw observation retained.
-  Interpreter comparison and host-real AArch64/Windows performance evidence
-  remain open, so these measurements do not establish cross-host native speedup.
+  At this stage interpreter comparison and host-real AArch64/Windows performance
+  evidence remained open, so these measurements established no cross-host
+  native speedup.
+- Equivalent interpreter/process-native evidence is retained under
+  `2026-09-18-native-process-vs-interpreter-linux-x86_64/` from
+  source commit `ee5b3e88b72c8cee437ed7f022bf59825975f276`.
+  The same normative rotate/output two-step workload completes all 135
+  retained samples across interpreter, resident native, and one-shot native
+  lifecycle modes with exact state checks and no process-session poisoning.
+  Resident/native median time is 14.219x, 17.559x, and 26.492x the direct
+  interpreter median at scales 1, 2, and 4, so this current process boundary
+  is slower for the measured micro-workload. Larger regions, in-process call
+  designs, AOT/JIT policy, and host-real AArch64/Windows remain open.

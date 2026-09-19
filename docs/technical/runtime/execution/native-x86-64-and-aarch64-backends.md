@@ -1617,8 +1617,23 @@ deterministically without changing guest-visible state silently.
   and 4; all 90 retained samples complete exact semantic admission.
   Lifecycle medians are 79,718/152,607/427,110 ns while resident-call medians
   are 23,233/40,000/104,934 ns, yielding 3.431x/3.815x/4.070x ratios.
-  This is concrete Linux x86-64 process evidence only; it does not compare
-  interpreter throughput, and host-real AArch64/Windows execution remains open.
+  This is concrete Linux x86-64 process evidence only and at this stage did not
+  compare interpreter throughput; host-real AArch64/Windows execution remained
+  open.
+
+- Equivalent-workload interpreter comparison is retained under
+  `benchmarks/interpreter/evidence/` in
+  `2026-09-18-native-process-vs-interpreter-linux-x86_64/` from
+  source
+  commit `ee5b3e88b72c8cee437ed7f022bf59825975f276`.
+  The same normative two-step rotate/output workload completes 135/135
+  retained samples across interpreter, resident process-native, and one-shot
+  lifecycle modes with exact semantic checks.
+  Resident/native median time is 14.219x, 17.559x, and 26.492x the direct
+  interpreter median at scales 1, 2, and 4; ratios above one therefore mean
+  the current process-native boundary is slower for this micro-workload.
+  This negative result is not generalized to larger regions, in-process calls,
+  future JIT/AOT policy, AArch64, or Windows.
 
 ## References
 

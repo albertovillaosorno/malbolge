@@ -1,0 +1,145 @@
+{
+  "benchmark_scope": "native-fused-process-vs-normative-interpreter",
+  "command": "cargo bench --bench native_process_execution",
+  "producer_commit": "ee5b3e88b72c8cee437ed7f022bf59825975f276",
+  "workload": "current-profile rotate/output two-step normative VM trace",
+  "host_class": "secondary-linux-x86_64",
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "sockets": 1,
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Fedora Linux 44 (Workstation Edition)",
+  "kernel": "7.2.5-200.fc44.x86_64",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "clang": "clang 22.1.8",
+  "modes": [
+    "interpreter",
+    "one-shot-lifecycle",
+    "resident-call"
+  ],
+  "successful_retained_samples": 135,
+  "failed_retained_samples": 0,
+  "machine_code_execution_included": true,
+  "selection_authority": false,
+  "measurement_policy": {
+    "warmup_policy": "one untimed execution per scale and mode",
+    "retained_samples_per_mode_scale": 15,
+    "scales": [
+      1,
+      2,
+      4
+    ],
+    "ordering": "forward/reverse three-mode order by retained sample parity",
+    "interpreter_timer": "two-step ProfileMachine run only",
+    "interpreter_setup": "complete entry checkpoints cloned before timer",
+    "resident_timer": "repeated verified process calls only",
+    "resident_setup": "mapping load and caller-buffer preparation before timer; release after timer",
+    "lifecycle_timer": "caller-buffer preparation + verified load + process call + semantic admission + release",
+    "semantic_validation": "exact final state checked for every retained execution",
+    "stopping_rule": "exactly 15 retained samples per mode and scale",
+    "outlier_policy": "retain-all"
+  },
+  "statistics_policy": {
+    "center": "median",
+    "dispersion": [
+      "min-max"
+    ],
+    "uncertainty": "observed-range",
+    "primary_comparison": "resident median divided by interpreter median within identical scale",
+    "secondary_comparison": "one-shot lifecycle median divided by interpreter median within identical scale"
+  },
+  "resource_usage": {
+    "accelerator": "none",
+    "scope": "enclosing warmed cargo bench invocation",
+    "release_build_state": "already built; Cargo reported 0.03 s finish time",
+    "wall_seconds": 6.85,
+    "user_seconds": 3.74,
+    "system_seconds": 3.06,
+    "max_rss_kib": 338788,
+    "process_exit_status": 0
+  },
+  "execution_invariants": {
+    "object_bytes": 754,
+    "resident_mapped_bytes": 311,
+    "completed_calls_equal_requested_calls": true,
+    "session_poisoned": false,
+    "interpreter_full_state_checked": true,
+    "native_semantic_completion_checked": true
+  },
+  "summary": [
+    {
+      "scale": 1,
+      "samples_per_mode": 15,
+      "interpreter_median_ns": 2188,
+      "interpreter_min_ns": 1929,
+      "interpreter_max_ns": 2976,
+      "resident_median_ns": 31111,
+      "resident_min_ns": 22037,
+      "resident_max_ns": 38223,
+      "lifecycle_median_ns": 166536,
+      "lifecycle_min_ns": 80851,
+      "lifecycle_max_ns": 206537,
+      "resident_over_interpreter_ratio": 14.218921389396709,
+      "lifecycle_over_interpreter_ratio": 76.11334552102376,
+      "interpreter_median_ns_per_call": 2188.0,
+      "resident_median_ns_per_call": 31111.0,
+      "lifecycle_median_ns_per_call": 166536.0
+    },
+    {
+      "scale": 2,
+      "samples_per_mode": 15,
+      "interpreter_median_ns": 3003,
+      "interpreter_min_ns": 2523,
+      "interpreter_max_ns": 3918,
+      "resident_median_ns": 52730,
+      "resident_min_ns": 42231,
+      "resident_max_ns": 58003,
+      "lifecycle_median_ns": 241335,
+      "lifecycle_min_ns": 153151,
+      "lifecycle_max_ns": 292989,
+      "resident_over_interpreter_ratio": 17.55910755910756,
+      "lifecycle_over_interpreter_ratio": 80.36463536463536,
+      "interpreter_median_ns_per_call": 1501.5,
+      "resident_median_ns_per_call": 26365.0,
+      "lifecycle_median_ns_per_call": 120667.5
+    },
+    {
+      "scale": 4,
+      "samples_per_mode": 15,
+      "interpreter_median_ns": 3819,
+      "interpreter_min_ns": 3182,
+      "interpreter_max_ns": 9527,
+      "resident_median_ns": 101172,
+      "resident_min_ns": 75261,
+      "resident_max_ns": 129672,
+      "lifecycle_median_ns": 461741,
+      "lifecycle_min_ns": 392490,
+      "lifecycle_max_ns": 574300,
+      "resident_over_interpreter_ratio": 26.491751767478398,
+      "lifecycle_over_interpreter_ratio": 120.90625818277036,
+      "interpreter_median_ns_per_call": 954.75,
+      "resident_median_ns_per_call": 25293.0,
+      "lifecycle_median_ns_per_call": 115435.25
+    }
+  ],
+  "benchmark_source": {
+    "sha256": "908a133f10005b464bc92929ff8fd7eaaa33847aa2f75514e7f7f2fd2018570d"
+  },
+  "worker_source": {
+    "sha256": "c2473d074bdadae2bdd1ed87d6349302a7f4120c7c2d950d8596dcf589c6940f"
+  },
+  "protocol_source": {
+    "sha256": "b65742b99e7a5e15e2882248df8b9c09263c94601fb7e24b83ebf4ff4e847749"
+  },
+  "raw": {
+    "sha256": "911c09163b521073851f2b6dcebd6b9408c4f3bef92706e914b229232be55588"
+  },
+  "limitations": [
+    "Ratios apply only to this two-step rotate/output micro-workload and timing boundary.",
+    "No host-real AArch64 or Windows execution.",
+    "Observed ranges are descriptive and not confidence intervals.",
+    "Resident process-native execution includes IPC and native semantic admission.",
+    "This evidence does not define cache-aware AOT/JIT policy."
+  ]
+}
