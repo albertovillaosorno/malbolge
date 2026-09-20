@@ -329,7 +329,12 @@ release evidence.
 A Crazy-specific platform path now owns transactional allocate/copy/protect/sync
 and explicit release through the caller-owned adapter. Post-allocation failures
 attempt exact cleanup, while release failure retains the identical ready
-executable for retry. Binding and invocation authority remain absent.
+executable for retry.
+
+A distinct prepared Crazy call requires exact A/C/D and permits I/O-history
+rebasing only. It admits exact Applied/GuardMiss completion and binds only to
+the identical synchronized Crazy image, restoring the entry snapshot on
+mismatch. No runner or foreign-call authority consumes that bound view yet.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

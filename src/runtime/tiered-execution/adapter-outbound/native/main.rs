@@ -521,6 +521,8 @@ pub use invocation::{
     PreparedDirectFusedInvocation, PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedRegisterMaskedCrazyInvocation,
+    PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,

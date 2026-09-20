@@ -479,6 +479,7 @@ use execution_native::{
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedRegisterMaskedCrazyInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
@@ -7170,6 +7171,236 @@ fn register_masked_v6_no_operation_loaded_runner_completion_drift_rolls_back()
     }
     release_register_masked_no_operation_native_executable(&mut adapter, ready)
         .map_err(|release| format!("v6 no-op completion release: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_invocation_rebases_io_history() -> TieredTestResult
+{
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy invocation emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy invocation verify: {error}"))?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 Crazy invocation effect missing")
+        })?;
+    let mut entry = source.before;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = source.after;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    for write in [source.memory_delta.data, source.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 Crazy write address: {error}"))?;
+        let cell = expected_memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 Crazy invocation write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from("v6 Crazy expected observation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 Crazy completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 Crazy rebased application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_invocation_rejects_accumulator_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy A-drift emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy A-drift verify: {error}"))?;
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 Crazy A-drift effect missing"))?;
+    let mut entry = source.before;
+    let expected = entry.registers.accumulator;
+    entry.registers.accumulator ^= 1;
+    let observed = entry.registers.accumulator;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let result = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryAccumulator {
+            expected: value,
+            observed: seen,
+        }) if value == expected && seen == observed
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 Crazy accumulator rejection drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_binding_retains_exact_ready() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy binding emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy binding verify: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy binding image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(517)?,
+        native_executable_address(0x57000)?,
+    );
+    let ready =
+        load_register_masked_crazy_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 Crazy binding load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 Crazy binding effect missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy binding prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v6 Crazy binding failed: {error}"))?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 Crazy bound identity drifted"));
+    }
+    drop(bound);
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Crazy binding release: {error}"))?;
+    Ok(())
+}
+
+fn register_masked_crazy_history_variant(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut variant = program.clone();
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 Crazy binding variant effect missing")
+    })?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    Ok(variant)
+}
+
+#[test]
+fn register_masked_v6_crazy_binding_rejects_ready_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy binding baseline emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| {
+            format!("v6 Crazy binding baseline verify: {error}")
+        })?;
+    let variant = register_masked_crazy_history_variant(&program)?;
+    let variant_candidate = emit_direct_register_masked_crazy_coff(
+        &variant,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy variant emit: {error}"))?;
+    let variant_artifact =
+        verify_direct_register_masked_crazy(&variant_candidate, &variant)
+            .map_err(|error| format!("v6 Crazy variant verify: {error}"))?;
+    let variant_image =
+        VerifiedRegisterMaskedCrazyLoadImage::new(&variant_artifact)
+            .map_err(|error| format!("v6 Crazy variant image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(518)?,
+        native_executable_address(0x58000)?,
+    );
+    let ready = load_register_masked_crazy_native_executable(
+        &mut adapter,
+        &variant_image,
+    )
+    .map_err(|error| format!("v6 Crazy variant load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|source| source.before)
+        .ok_or_else(|| String::from("v6 Crazy binding source missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy drift prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let result = prepared.bind_executable(&ready);
+    if !matches!(
+        result,
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 Crazy ready drift was admitted"));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Crazy variant release: {error}"))?;
     Ok(())
 }
 

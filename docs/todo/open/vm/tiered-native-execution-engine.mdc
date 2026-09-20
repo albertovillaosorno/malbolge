@@ -654,7 +654,11 @@ baseline; native tiers are accelerators of identical observable behavior.
 - A Crazy-specific platform path owns transactional allocate/copy/protect/sync
   plus explicit release through the caller-owned adapter. Post-allocation
   failures attempt exact cleanup; release failure retains the identical ready
-  executable for retry. Binding and invocation authority remain absent.
+  executable for retry.
+- A distinct prepared Crazy call requires exact live A/C/D while permitting only
+  I/O-history rebasing and exact Applied/GuardMiss completion. Binding requires
+  the identical synchronized Crazy image and restores the entry snapshot on
+  mismatch. No runner or foreign-call authority consumes the bound view yet.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code

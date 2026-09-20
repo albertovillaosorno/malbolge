@@ -2159,7 +2159,11 @@ A Crazy-specific platform path now performs caller-owned allocate/copy/protect/
 sync and explicit release transactionally. Post-allocation failure attempts
 exact cleanup, and release failure retains the identical ready executable for
 retry.
-No binding or invocation authority is granted yet.
+
+A distinct prepared Crazy call requires exact A/C/D live-ins while allowing I/O
+history to rebase. It admits exact Applied/GuardMiss completion and binds only
+to the identical synchronized Crazy image, restoring the entry snapshot on
+identity drift. No runner or foreign-call authority consumes that bound view.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

@@ -53,6 +53,7 @@ use super::direct::{
     DirectNativeKind, ExecutionGeometryDirectNativeKind,
     VerifiedDirectFusedSequenceObjectArtifact, VerifiedDirectNativeArtifact,
     VerifiedExecutionGeometryNativeArtifact,
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
@@ -64,6 +65,7 @@ use super::fused_sequence::{
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
@@ -72,7 +74,7 @@ use super::lifecycle::{
 use super::loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
-    VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
@@ -256,6 +258,13 @@ pub enum VerifiedExecutionGeometryInvocationError {
 pub enum VerifiedRegisterMaskedInvocationError {
     /// The verified artifact key differs from the exact requested v6 program.
     ArtifactIdentity,
+    /// The runtime A value differs from a required register live-in.
+    EntryAccumulator {
+        /// Accumulator retained by the verified v6 program.
+        expected: u32,
+        /// Accumulator supplied by the rebased runtime observation.
+        observed: u32,
+    },
     /// The runtime C value differs from the only register live-in.
     EntryCodePointer {
         /// Code pointer retained by the verified v6 program.
@@ -310,6 +319,17 @@ pub struct PreparedRegisterMaskedHaltFetchInvocation<'artifact, 'buffers> {
     artifact: &'artifact VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedLoadImage,
+}
+
+/// One verified v6 Crazy artifact bound to a rebased ABI transition.
+///
+/// A/C/D remain exact live-ins while I/O history may rebase. This value proves
+/// exact preparation/completion and grants no runner authority by itself.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedCrazyInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedCrazyLoadImage,
 }
 
 /// One verified v6 no-operation artifact bound to a rebased ABI transition.
@@ -374,6 +394,16 @@ pub struct PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNativeInvocation<'buffers, 'executable> {
     executable: &'executable ReadyRegisterMaskedNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact v6 Crazy call and synchronized mapping.
+///
+/// No runner consumes this type yet. It proves exact Crazy image identity plus
+/// one borrow-scoped ABI call contract.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedCrazyNativeInvocation<'buffers, 'executable> {
+    executable: &'executable ReadyRegisterMaskedCrazyNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -512,6 +542,9 @@ impl VerifiedRegisterMaskedInvocationError {
         match self {
             Self::ArtifactIdentity => {
                 "verified v6 artifact differs from requested program"
+            },
+            Self::EntryAccumulator { .. } => {
+                "rebased v6 entry changed the required accumulator"
             },
             Self::EntryCodePointer { .. } => {
                 "rebased v6 entry changed the required code pointer"
@@ -812,6 +845,144 @@ impl<'artifact, 'buffers>
             invocation,
             load_image,
         })
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedRegisterMaskedCrazyInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete rebased entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed Crazy transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified v6 Crazy artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedCrazyNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Binds this call to one synchronized v6 Crazy executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns a binding error when executable image identity differs. Failure
+    /// restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedCrazyNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedCrazyNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedCrazyNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
+    /// Admits one raw status through the rebased Crazy contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error when exact application or atomic
+    /// guard-miss requirements are violated.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful observation derived from the rebased entry.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free v6 Crazy image.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedRegisterMaskedCrazyLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified Crazy call over a mask-preserving entry.
+    ///
+    /// A, C, and D must match their source live-ins. I/O cursors may rebase
+    /// because Crazy neither reads nor writes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error for identity, live register, buffer,
+    /// memory, or load-image disagreement.
+    pub fn new(
+        artifact: &'artifact VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_crazy_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image = VerifiedRegisterMaskedCrazyLoadImage::new(artifact)
+            .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::new_register_masked_crazy(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the prepared v6 artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared v6 call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
     }
 }
 
@@ -1559,6 +1730,43 @@ impl<'buffers, 'executable>
         value: u32,
     ) -> bool {
         self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedCrazyNativeInvocation<'buffers, 'executable>
+{
+    /// Returns the synchronized non-zero Crazy v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedCrazyNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyRegisterMaskedCrazyNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer retained by this bound call.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
     }
 }
 
@@ -2706,6 +2914,36 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    fn new_register_masked_crazy(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [source] = program.effects.as_slice() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if program.step_budget != 1
+            || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+            || source.before.termination.is_some()
+            || source.after.termination.is_some()
+            || source.input.is_some()
+            || source.output.is_some()
+            || program.memory_live_ins.len() != 2
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let mut effect = *source;
+        effect.before = entry;
+        effect.after.input_consumed = entry.input_consumed;
+        effect.after.output_len = entry.output_len;
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            buffers,
+        )
+    }
+
     fn new_register_masked_no_operation(
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
@@ -2879,6 +3117,37 @@ const fn validate_process_response_state(
     }
     if observed.output_capacity() != expected.output_capacity() {
         return Err(NativeProcessCallResponseError::StateOutputCapacity);
+    }
+    Ok(())
+}
+
+fn validate_register_masked_crazy_rebased_entry(
+    artifact_key: &NativeArtifactKey,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), VerifiedRegisterMaskedInvocationError> {
+    validate_register_masked_rebased_entry(artifact_key, program, entry)?;
+    let source_entry =
+        program.effects.first().map(|effect| effect.before).ok_or(
+            VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::ProgramShape,
+            ),
+        )?;
+    let expected_accumulator = source_entry.registers.accumulator;
+    let observed_accumulator = entry.registers.accumulator;
+    if observed_accumulator != expected_accumulator {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryAccumulator {
+            expected: expected_accumulator,
+            observed: observed_accumulator,
+        });
+    }
+    let expected_data_pointer = source_entry.registers.data_pointer;
+    let observed_data_pointer = entry.registers.data_pointer;
+    if observed_data_pointer != expected_data_pointer {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected: expected_data_pointer,
+            observed: observed_data_pointer,
+        });
     }
     Ok(())
 }

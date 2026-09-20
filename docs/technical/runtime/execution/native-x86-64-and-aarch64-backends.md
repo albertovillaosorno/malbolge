@@ -243,7 +243,12 @@ transition, full-range synchronization, and exact release evidence.
 
 A dedicated Crazy platform path now loads/releases that ready mapping
 transactionally with post-allocation cleanup and exact release-retry ownership.
-Binding and invocation authority remain absent.
+A distinct prepared Crazy call requires exact live A/C/D while permitting only
+I/O-history rebasing, and it admits exact Applied/GuardMiss completion.
+
+The prepared call binds only to the identical synchronized Crazy image and
+restores its entry snapshot on identity drift. No runner or foreign-call
+authority consumes that bound view yet.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates
