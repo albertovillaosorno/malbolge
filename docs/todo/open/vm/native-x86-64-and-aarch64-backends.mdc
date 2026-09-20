@@ -134,7 +134,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   The loaded boundary performs no adapter work. A one-shot Crazy transaction
   now composes exact load/call/release with cleanup after load or call failure.
   Release failure retains committed outcome plus the exact ready mapping for
-  retry. Reusable Crazy residency remains open.
+  retry. A reusable Crazy owner now retains the exact synchronized mapping
+  across rebased calls and runner failure without remapping, reports platform
+  mapping weight, and transfers retryable release ownership.
+
+  Single-resident Crazy cache authority remains open.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A

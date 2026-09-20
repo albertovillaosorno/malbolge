@@ -254,7 +254,9 @@ restores the entry snapshot after runner or completion failure.
 The loaded boundary performs no adapter work. A one-shot Crazy transaction now
 composes exact load/call/release, restores the prepared snapshot on load or call
 failure, and retains committed outcome plus exact ready mapping on release
-failure. Reusable Crazy residency remains open.
+failure. A reusable Crazy owner now retains that exact synchronized mapping
+across rebased calls and runner failure without remapping, and reports platform
+mapping weight. Single-resident cache authority remains open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

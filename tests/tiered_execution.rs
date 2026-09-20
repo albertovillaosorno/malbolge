@@ -497,8 +497,10 @@ use execution_native::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
-    ReadyRegisterMaskedRotateNativeExecutable, RegisterMaskedCrazyNativeRunner,
-    RegisterMaskedDirectAdmissionErrorKind,
+    ReadyRegisterMaskedRotateNativeExecutable,
+    RegisterMaskedCrazyNativeExecutableOwner,
+    RegisterMaskedCrazyNativeOwnerExecutionFailure,
+    RegisterMaskedCrazyNativeRunner, RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
     RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
@@ -1741,6 +1743,13 @@ struct RegisterMaskedNonGraphicalNativeFixture {
 struct RegisterMaskedOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedCrazyOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    owner: RegisterMaskedCrazyNativeExecutableOwner,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -4512,6 +4521,25 @@ fn register_masked_owner_fixture(
     Ok(RegisterMaskedOwnerFixture { adapter, owner, program })
 }
 
+fn register_masked_crazy_owner_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedCrazyOwnerFixture, String> {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedCrazyNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 Crazy owner fixture load failed: {error}"))?;
+    Ok(RegisterMaskedCrazyOwnerFixture { adapter, owner, program })
+}
+
 fn register_masked_no_operation_owner_fixture(
     mapping_id_value: u64,
     base_address: usize,
@@ -4690,6 +4718,63 @@ fn execute_register_masked_owner_applied(
         Ok(())
     } else {
         Err(String::from("v6 owner rebased execution drifted"))
+    }
+}
+
+fn execute_register_masked_crazy_owner_applied(
+    owner: &RegisterMaskedCrazyNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedCrazyNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 Crazy owner effect missing"))?;
+    let mut expected = effect.after;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_crazy_expected_memory(program, &mut expected_memory)?;
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 Crazy owner execution failed: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy owner rebased execution drifted"))
+    }
+}
+
+fn assert_crazy_owner_run_failure(
+    error: &RegisterMaskedCrazyNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> Result<(), String> {
+    match error {
+        RegisterMaskedCrazyNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run =>
+        {
+            Ok(())
+        },
+        RegisterMaskedCrazyNativeOwnerExecutionFailure::Execution(_) => {
+            Err(String::from("v6 Crazy owner runner failure lost run phase"))
+        },
+        RegisterMaskedCrazyNativeOwnerExecutionFailure::Preparation(_) => Err(
+            String::from("v6 Crazy owner runner failure became preparation"),
+        ),
     }
 }
 
@@ -11857,6 +11942,145 @@ fn register_masked_v6_transaction_release_failure_retains_commit_and_retry()
         return Err(String::from("v6 committed release retry count drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let RegisterMaskedCrazyOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_crazy_owner_fixture(528, 0x62000)?;
+    let loaded_operations = adapter.operations.clone();
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 Crazy owner weight or identity drifted"));
+    }
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 Crazy owner effect missing"))?
+        .before;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (input_consumed, output_len) in [(1, 1), (2, 2)] {
+        let mut entry = source_entry;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_register_masked_crazy_owner_applied(
+            &owner,
+            &mut runner,
+            &program,
+            entry,
+        )?;
+    }
+    let mapping_id = owner.executable().mapping().mapping_id();
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 Crazy owner remapped or changed mapping identity",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Crazy owner release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy owner release was not explicit"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(529)?,
+        native_executable_address(0x63000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedCrazyNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 Crazy weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 Crazy owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Crazy weighted owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_crazy_owner_recovers_after_runner_failure()
+-> TieredTestResult {
+    let RegisterMaskedCrazyOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_crazy_owner_fixture(530, 0x64000)?;
+    let loaded_operations = adapter.operations.clone();
+    let (entry, _expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 Crazy owner runner failure was ignored"));
+    };
+    assert_crazy_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 Crazy owner failure changed residency or caller state",
+        ));
+    }
+    let mut succeeding = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_register_masked_crazy_owner_applied(
+        &owner,
+        &mut succeeding,
+        &program,
+        entry,
+    )?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 Crazy owner remapped after runner failure",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 Crazy owner release: {release}"))
 }
 
 #[test]

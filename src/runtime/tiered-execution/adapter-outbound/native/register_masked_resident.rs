@@ -44,6 +44,7 @@ use std::sync::Arc;
 use malbolge::{ProfileMachineObservation, RegisterMaskedRegionEffectProgram};
 
 use super::direct::{
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
@@ -51,6 +52,7 @@ use super::direct::{
 };
 use super::invocation::{
     NativeRegionBuffers, NativeRegionInvocationOutcome,
+    PreparedRegisterMaskedCrazyInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
@@ -58,33 +60,39 @@ use super::invocation::{
     VerifiedRegisterMaskedInvocationError,
 };
 use super::lifecycle::{
+    ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
 };
 use super::loader::{
-    VerifiedDirectLoadError, VerifiedRegisterMaskedLoadImage,
+    VerifiedDirectLoadError, VerifiedRegisterMaskedCrazyLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
 };
 use super::platform::{
     NativeExecutableLoadFailure, NativeExecutableMemoryAdapter,
+    RegisterMaskedCrazyNativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNoOperationNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
     RegisterMaskedRotateNativeExecutableReleaseFailure,
+    load_register_masked_crazy_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
     load_register_masked_rotate_native_executable,
+    release_register_masked_crazy_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
     release_register_masked_rotate_native_executable,
 };
 use super::runner::{
+    RegisterMaskedCrazyLoadedExecutionFailure, RegisterMaskedCrazyNativeRunner,
     RegisterMaskedLoadedExecutionFailure, RegisterMaskedNativeRunner,
     RegisterMaskedNoOperationLoadedExecutionFailure,
     RegisterMaskedNoOperationNativeRunner,
@@ -92,6 +100,7 @@ use super::runner::{
     RegisterMaskedNonGraphicalNativeRunner,
     RegisterMaskedRotateLoadedExecutionFailure,
     RegisterMaskedRotateNativeRunner,
+    execute_loaded_verified_register_masked_crazy_native,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
@@ -117,6 +126,28 @@ pub enum RegisterMaskedNativeOwnerLoadFailure<MemoryError> {
 pub enum RegisterMaskedNativeOwnerExecutionFailure<RunnerError> {
     /// Bound runner or completion admission failed.
     Execution(Box<RegisterMaskedLoadedExecutionFailure<RunnerError>>),
+    /// Rebased caller state failed exact v6 invocation preparation.
+    Preparation(VerifiedRegisterMaskedInvocationError),
+}
+
+/// Failure while loading one reusable v6 Crazy mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError> {
+    /// Verified artifact identity differs from the requested v6 program.
+    ArtifactIdentity,
+    /// Exact v6 native identity could not be reconstructed.
+    Identity(Box<NativeIdentityError>),
+    /// Verified object could not become one relocation-free load image.
+    Image(Box<VerifiedDirectLoadError>),
+    /// Platform mapping/lifecycle admission failed.
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+}
+
+/// Failure while executing through one retained v6 Crazy mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedCrazyNativeOwnerExecutionFailure<RunnerError> {
+    /// Bound runner or completion admission failed.
+    Execution(Box<RegisterMaskedCrazyLoadedExecutionFailure<RunnerError>>),
     /// Rebased caller state failed exact v6 invocation preparation.
     Preparation(VerifiedRegisterMaskedInvocationError),
 }
@@ -206,6 +237,14 @@ pub struct RegisterMaskedNativeExecutableOwner {
     program: RegisterMaskedRegionEffectProgram,
 }
 
+/// One reusable verified v6 Crazy artifact beside its ready mapping.
+#[derive(Debug)]
+pub struct RegisterMaskedCrazyNativeExecutableOwner {
+    artifact: VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    executable: ReadyRegisterMaskedCrazyNativeExecutable,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
 /// One reusable verified v6 no-operation artifact beside its ready mapping.
 #[derive(Debug)]
 pub struct RegisterMaskedNoOperationNativeExecutableOwner {
@@ -245,6 +284,24 @@ pub type RegisterMaskedNativeOwnerExecutionResult<RunnerError> = Result<
 /// Result of releasing one reusable register-masked mapping.
 pub type RegisterMaskedNativeOwnerReleaseResult<MemoryError> =
     Result<(), Box<RegisterMaskedNativeExecutableReleaseFailure<MemoryError>>>;
+
+/// Result of loading one reusable v6 Crazy mapping.
+pub type RegisterMaskedCrazyNativeOwnerLoadResult<MemoryError> = Result<
+    RegisterMaskedCrazyNativeExecutableOwner,
+    Box<RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError>>,
+>;
+
+/// Result of one call through a reusable v6 Crazy mapping.
+pub type RegisterMaskedCrazyNativeOwnerExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedCrazyNativeOwnerExecutionFailure<RunnerError>>,
+>;
+
+/// Result of releasing one reusable v6 Crazy mapping.
+pub type RegisterMaskedCrazyNativeOwnerReleaseResult<MemoryError> = Result<
+    (),
+    Box<RegisterMaskedCrazyNativeExecutableReleaseFailure<MemoryError>>,
+>;
 
 /// Result of loading one reusable v6 no-operation mapping.
 pub type RegisterMaskedNoOperationNativeOwnerLoadResult<MemoryError> = Result<
@@ -636,6 +693,38 @@ impl<RunnerError: Display> Display
 }
 
 impl<MemoryError: Display> Display
+    for RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::ArtifactIdentity => {
+                f.write_str("v6 Crazy resident artifact identity differs")
+            },
+            Self::Identity(_error) => {
+                f.write_str("v6 Crazy resident identity reconstruction failed")
+            },
+            Self::Image(error) => Display::fmt(error, f),
+            Self::Load(error) => {
+                write!(f, "v6 Crazy resident load failed: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for RegisterMaskedCrazyNativeOwnerExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Preparation(error) => {
+                write!(f, "v6 Crazy resident preparation failed: {error}")
+            },
+            Self::Execution(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
     for RegisterMaskedNoOperationNativeOwnerLoadFailure<MemoryError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -936,6 +1025,135 @@ impl RegisterMaskedNativeExecutableOwner {
     {
         release_register_masked_native_executable(adapter, self.executable)
             .map_err(Box::new)
+    }
+
+    /// Returns exact synchronized mapping weight reported by the adapter.
+    #[must_use]
+    pub const fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        RegisterMaskedNativeResidentWeight {
+            mapped_bytes: self.executable.mapping().mapped_len(),
+            mappings: 1,
+        }
+    }
+}
+
+impl RegisterMaskedCrazyNativeExecutableOwner {
+    /// Returns the exact verified v6 Crazy artifact retained beside the
+    /// mapping.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedCrazyNativeObjectArtifact {
+        &self.artifact
+    }
+
+    /// Returns the retained synchronized v6 Crazy executable mapping.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedCrazyNativeExecutable {
+        &self.executable
+    }
+
+    /// Executes one newly rebased caller observation without remapping code.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, binding, runner, or completion failure while
+    /// retaining this reusable mapping.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedCrazyNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedCrazyNativeRunner,
+    {
+        use RegisterMaskedCrazyNativeOwnerExecutionFailure as Failure;
+
+        let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+            &self.artifact,
+            &self.program,
+            entry,
+            buffers,
+        )
+        .map_err(|error| Box::new(Failure::Preparation(error)))?;
+        execute_loaded_verified_register_masked_crazy_native(
+            runner,
+            &self.executable,
+            prepared,
+        )
+        .map_err(|error| Box::new(Failure::Execution(error)))
+    }
+
+    /// Returns the exact complete v6 native key retained by this owner.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.executable.key()
+    }
+
+    /// Loads one reusable synchronized mapping after exact program/key
+    /// admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity, image, or platform load failure without publishing a
+    /// partial owner.
+    pub fn load<Adapter>(
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    ) -> RegisterMaskedCrazyNativeOwnerLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedCrazyNativeOwnerLoadFailure as Failure;
+
+        let expected_key = NativeArtifactKey::new_register_masked(
+            program,
+            artifact.key().target().clone(),
+        )
+        .map_err(|error| Box::new(Failure::Identity(Box::new(error))))?;
+        if artifact.key() != &expected_key {
+            return Err(Box::new(Failure::ArtifactIdentity));
+        }
+        let image = VerifiedRegisterMaskedCrazyLoadImage::new(artifact)
+            .map_err(|error| Box::new(Failure::Image(Box::new(error))))?;
+        let executable =
+            load_register_masked_crazy_native_executable(adapter, &image)
+                .map_err(|error| Box::new(Failure::Load(Box::new(error))))?;
+        Ok(Self {
+            artifact: artifact.clone(),
+            executable,
+            program: program.clone(),
+        })
+    }
+
+    /// Returns the exact register-masked program retained by this owner.
+    #[must_use]
+    pub const fn program(&self) -> &RegisterMaskedRegionEffectProgram {
+        &self.program
+    }
+
+    /// Releases the exact retained ready mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns retryable ready-executable ownership when platform release
+    /// fails.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedCrazyNativeOwnerReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        release_register_masked_crazy_native_executable(
+            adapter,
+            self.executable,
+        )
+        .map_err(Box::new)
     }
 
     /// Returns exact synchronized mapping weight reported by the adapter.

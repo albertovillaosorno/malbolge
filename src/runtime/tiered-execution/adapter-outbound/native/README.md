@@ -343,7 +343,10 @@ restores the complete rebased snapshot after runner or completion failure.
 `execute_verified_register_masked_crazy_native()` now composes exact
 load/call/release. Load or call failure restores the prepared snapshot and
 attempts cleanup; release failure retains committed outcome plus exact ready
-mapping ownership for retry. Reusable Crazy residency remains open.
+mapping ownership for retry. `RegisterMaskedCrazyNativeExecutableOwner` now
+retains that exact synchronized mapping across rebased calls and runner failure
+without remapping, reports platform mapping weight, and transfers retryable
+release ownership. Single-resident Crazy cache authority remains open.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

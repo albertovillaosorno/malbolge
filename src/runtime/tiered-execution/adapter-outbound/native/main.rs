@@ -763,6 +763,12 @@ pub use register_masked_non_graphical_sequence_execution::{
     execute_loaded_register_masked_non_graphical_native_sequence,
 };
 pub use register_masked_resident::{
+    RegisterMaskedCrazyNativeExecutableOwner,
+    RegisterMaskedCrazyNativeOwnerExecutionFailure,
+    RegisterMaskedCrazyNativeOwnerExecutionResult,
+    RegisterMaskedCrazyNativeOwnerLoadFailure,
+    RegisterMaskedCrazyNativeOwnerLoadResult,
+    RegisterMaskedCrazyNativeOwnerReleaseResult,
     RegisterMaskedNativeExecutableOwner,
     RegisterMaskedNativeOwnerExecutionFailure,
     RegisterMaskedNativeOwnerExecutionResult,

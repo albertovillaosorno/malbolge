@@ -2172,7 +2172,11 @@ completion failure restores the complete rebased entry snapshot.
 A one-shot Crazy transaction now composes exact load/call/release. Load or call
 failure restores the prepared snapshot and attempts exact cleanup; release
 failure retains both the committed outcome and exact ready executable for retry.
-Reusable Crazy residency remains open.
+A reusable Crazy owner now retains one exact synchronized mapping across
+rebased calls and runner failure without remapping. It reports adapter mapping
+weight and transfers retryable ready ownership on explicit release.
+
+Single-resident Crazy cache authority remains open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
