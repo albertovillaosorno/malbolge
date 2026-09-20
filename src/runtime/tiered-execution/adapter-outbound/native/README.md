@@ -339,7 +339,11 @@ mismatch.
 `RegisterMaskedCrazyNativeRunner` receives only that bound view. Loaded
 execution performs no adapter work, admits exact Applied/GuardMiss results, and
 restores the complete rebased snapshot after runner or completion failure.
-One-shot orchestration and reusable Crazy residency remain separate boundaries.
+
+`execute_verified_register_masked_crazy_native()` now composes exact
+load/call/release. Load or call failure restores the prepared snapshot and
+attempts cleanup; release failure retains committed outcome plus exact ready
+mapping ownership for retry. Reusable Crazy residency remains open.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

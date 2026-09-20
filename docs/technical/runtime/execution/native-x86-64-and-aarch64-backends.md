@@ -251,8 +251,10 @@ restores its entry snapshot on identity drift. A dedicated loaded Crazy runner
 now consumes only that bound view, admits exact Applied/GuardMiss outcomes, and
 restores the entry snapshot after runner or completion failure.
 
-The loaded boundary performs no adapter work. One-shot load/call/release and
-reusable residency remain outside this Crazy runner slice.
+The loaded boundary performs no adapter work. A one-shot Crazy transaction now
+composes exact load/call/release, restores the prepared snapshot on load or call
+failure, and retains committed outcome plus exact ready mapping on release
+failure. Reusable Crazy residency remains open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

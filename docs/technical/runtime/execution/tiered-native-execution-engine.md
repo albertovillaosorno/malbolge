@@ -2167,8 +2167,12 @@ identity drift.
 
 A dedicated loaded Crazy runner consumes only that bound view and performs no
 memory-adapter work. Exact Applied/GuardMiss results are admitted; runner or
-completion failure restores the complete rebased entry snapshot. One-shot
-load/call/release and reusable Crazy residency remain open.
+completion failure restores the complete rebased entry snapshot.
+
+A one-shot Crazy transaction now composes exact load/call/release. Load or call
+failure restores the prepared snapshot and attempts exact cleanup; release
+failure retains both the committed outcome and exact ready executable for retry.
+Reusable Crazy residency remains open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

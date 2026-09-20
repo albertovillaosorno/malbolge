@@ -634,6 +634,7 @@ use execution_native::{
     execute_verified_direct_fused_native,
     execute_verified_direct_fused_native_with_host, execute_verified_native,
     execute_verified_native_sequence, execute_verified_native_with_host,
+    execute_verified_register_masked_crazy_native,
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
@@ -4286,6 +4287,19 @@ fn register_masked_non_graphical_dead_state_variant(
     effect.before.registers.accumulator ^= 1;
     effect.after.registers.accumulator ^= 1;
     Ok(variant)
+}
+
+fn verified_register_masked_crazy(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedCrazyNativeObjectArtifact, String> {
+    let candidate = emit_direct_register_masked_crazy_coff(
+        program,
+        register_masked_crazy_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} Crazy helper emit: {error}"))?;
+    verify_direct_register_masked_crazy(&candidate, program)
+        .map_err(|error| format!("v6 {isa:?} Crazy helper verify: {error}"))
 }
 
 fn register_masked_crazy_native_fixture(
@@ -8136,6 +8150,234 @@ fn register_masked_v6_rotate_loaded_runner_completion_drift_rolls_back()
         .map_err(|release_error| {
             format!("v6 rotate completion release: {release_error}")
         })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_transaction_applies_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_crazy_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy transaction preparation: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(524)?,
+        native_executable_address(0x5e000)?,
+    );
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_crazy_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Crazy transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 Crazy transaction success drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("v6 Crazy transaction load effect missing")
+        })?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy transaction load prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(525)?,
+        native_executable_address(0x5f000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_crazy_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Crazy transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 Crazy transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let (entry, _expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy transaction runner prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(526)?,
+        native_executable_address(0x60000)?,
+    );
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_crazy_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 Crazy transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 Crazy transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_crazy_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 Crazy transaction release prepare: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(527)?,
+        native_executable_address(0x61000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_crazy_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 Crazy transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 Crazy transaction release drifted"));
+    }
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 Crazy transaction retryable release missing")
+    })?;
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("v6 Crazy transaction retry: {retry}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 Crazy transaction retry count drifted"));
+    }
     Ok(())
 }
 
