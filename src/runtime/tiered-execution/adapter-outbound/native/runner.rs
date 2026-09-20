@@ -39,7 +39,8 @@ use super::invocation::{
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     PreparedDirectFusedInvocation, PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
-    PreparedNativeExecutableInvocation,
+    PreparedNativeExecutableInvocation, PreparedRegisterMaskedCrazyInvocation,
+    PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
@@ -55,6 +56,7 @@ use super::invocation::{
 use super::lifecycle::{
     NativeExecutableReleaseRequest, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
@@ -194,6 +196,25 @@ pub struct RegisterMaskedLoadedExecutionFailure<RunnerError> {
 pub type RegisterMaskedLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedCrazyNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 Crazy call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedCrazyNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 Crazy call.
+pub type RegisterMaskedCrazyLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedCrazyLoadedExecutionFailure<RunnerError>>,
 >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -415,6 +436,13 @@ type NonGraphicalNativeAdapterExecutionResult<MemoryAdapter, Runner> =
         <Runner as RegisterMaskedNonGraphicalNativeRunner>::Error,
     >;
 
+type RegisterMaskedCrazyNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedCrazyNativeCallFailure<
+        <Runner as RegisterMaskedCrazyNativeRunner>::Error,
+    >,
+>;
+
 type RegisterMaskedNoOperationNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedNoOperationNativeCallFailure<
@@ -583,6 +611,29 @@ pub trait RegisterMaskedNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 Crazy call.
+///
+/// This port receives only a view constructed after exact Crazy v6
+/// image/executable identity binding.
+pub trait RegisterMaskedCrazyNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 Crazy executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedCrazyNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -833,6 +884,62 @@ impl<RunnerError> RegisterMaskedLoadedExecutionFailure<RunnerError> {
             RegisterMaskedNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedNativeCallFailure::Binding(_)
             | RegisterMaskedNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedCrazyNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedCrazyNativeCallFailure::Completion(_)
+            | RegisterMaskedCrazyNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 Crazy result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedCrazyNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedCrazyNativeCallFailure::Binding(_)
+            | RegisterMaskedCrazyNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedCrazyNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedCrazyNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedCrazyNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedCrazyNativeCallFailure::Runner(error) => Some(error),
+            RegisterMaskedCrazyNativeCallFailure::Binding(_)
+            | RegisterMaskedCrazyNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -1984,6 +2091,25 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedCrazyLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 Crazy failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedCrazyNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedCrazyNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedCrazyNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -2256,6 +2382,29 @@ where
             cause: ExecutionGeometryNativeCallFailure::Completion(error),
         })
     })
+}
+
+/// Binds, runs, and admits one v6 Crazy call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedCrazyLoadedExecutionFailure`] for binding, runner,
+/// or completion failure.
+pub fn execute_loaded_verified_register_masked_crazy_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedCrazyNativeExecutable,
+    prepared: PreparedRegisterMaskedCrazyInvocation<'_, '_>,
+) -> RegisterMaskedCrazyLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedCrazyNativeRunner,
+{
+    run_register_masked_crazy_prepared(runner, executable, prepared).map_err(
+        |cause| Box::new(RegisterMaskedCrazyLoadedExecutionFailure { cause }),
+    )
 }
 
 /// Binds, runs, and admits one v6 no-operation call against a loaded mapping.
@@ -2778,6 +2927,31 @@ where
     bound
         .complete(raw_status)
         .map_err(DirectFusedNativeCallFailure::Completion)
+}
+
+fn run_register_masked_crazy_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedCrazyNativeExecutable,
+    prepared: PreparedRegisterMaskedCrazyInvocation<'_, '_>,
+) -> RegisterMaskedCrazyNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedCrazyNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedCrazyNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedCrazyNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedCrazyNativeCallFailure::Completion)
 }
 
 fn run_register_masked_no_operation_prepared<Runner>(

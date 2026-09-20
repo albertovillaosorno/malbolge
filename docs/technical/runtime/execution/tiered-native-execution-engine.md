@@ -2163,7 +2163,12 @@ retry.
 A distinct prepared Crazy call requires exact A/C/D live-ins while allowing I/O
 history to rebase. It admits exact Applied/GuardMiss completion and binds only
 to the identical synchronized Crazy image, restoring the entry snapshot on
-identity drift. No runner or foreign-call authority consumes that bound view.
+identity drift.
+
+A dedicated loaded Crazy runner consumes only that bound view and performs no
+memory-adapter work. Exact Applied/GuardMiss results are admitted; runner or
+completion failure restores the complete rebased entry snapshot. One-shot
+load/call/release and reusable Crazy residency remain open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

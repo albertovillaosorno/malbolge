@@ -247,8 +247,12 @@ A distinct prepared Crazy call requires exact live A/C/D while permitting only
 I/O-history rebasing, and it admits exact Applied/GuardMiss completion.
 
 The prepared call binds only to the identical synchronized Crazy image and
-restores its entry snapshot on identity drift. No runner or foreign-call
-authority consumes that bound view yet.
+restores its entry snapshot on identity drift. A dedicated loaded Crazy runner
+now consumes only that bound view, admits exact Applied/GuardMiss outcomes, and
+restores the entry snapshot after runner or completion failure.
+
+The loaded boundary performs no adapter work. One-shot load/call/release and
+reusable residency remain outside this Crazy runner slice.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

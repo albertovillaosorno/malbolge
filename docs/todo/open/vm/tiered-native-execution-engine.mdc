@@ -658,7 +658,11 @@ baseline; native tiers are accelerators of identical observable behavior.
 - A distinct prepared Crazy call requires exact live A/C/D while permitting only
   I/O-history rebasing and exact Applied/GuardMiss completion. Binding requires
   the identical synchronized Crazy image and restores the entry snapshot on
-  mismatch. No runner or foreign-call authority consumes the bound view yet.
+  mismatch.
+- A dedicated loaded Crazy runner consumes only the bound view and performs no
+  adapter work. Exact Applied/GuardMiss results are admitted; runner or
+  completion failure restores the complete rebased entry snapshot. One-shot
+  orchestration and reusable Crazy residency remain open.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code

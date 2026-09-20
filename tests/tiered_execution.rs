@@ -480,6 +480,7 @@ use execution_native::{
     PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedCrazyInvocation,
+    PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
@@ -492,10 +493,11 @@ use execution_native::{
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyDirectFusedNativeExecutable, ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
-    ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
+    ReadyNativeExecutableSequence, ReadyRegisterMaskedCrazyNativeExecutable,
+    ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
-    ReadyRegisterMaskedRotateNativeExecutable,
+    ReadyRegisterMaskedRotateNativeExecutable, RegisterMaskedCrazyNativeRunner,
     RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
@@ -573,6 +575,7 @@ use execution_native::{
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
     VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedCrazyLoadImage,
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
@@ -621,6 +624,7 @@ use execution_native::{
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence,
+    execute_loaded_verified_register_masked_crazy_native,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
@@ -1636,6 +1640,15 @@ struct FakeRegisterMaskedNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedCrazyNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeRegisterMaskedNoOperationNativeRunner {
     behavior: FakeNativeRunnerBehavior,
     behaviors: Vec<FakeNativeRunnerBehavior>,
@@ -1693,6 +1706,13 @@ struct RegisterMaskedNativeFixture {
     adapter: FakeNativeExecutableAdapter,
     artifact: VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     ready: ReadyRegisterMaskedNativeExecutable,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedCrazyNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    ready: ReadyRegisterMaskedCrazyNativeExecutable,
 }
 
 #[derive(Debug)]
@@ -2342,6 +2362,18 @@ impl FakeRegisterMaskedNativeRunner {
     }
 }
 
+impl FakeRegisterMaskedCrazyNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
 impl FakeRegisterMaskedNoOperationNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
@@ -2959,6 +2991,42 @@ impl RegisterMaskedNativeRunner for FakeRegisterMaskedNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl RegisterMaskedCrazyNativeRunner for FakeRegisterMaskedCrazyNativeRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedCrazyNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -4220,6 +4288,33 @@ fn register_masked_non_graphical_dead_state_variant(
     Ok(variant)
 }
 
+fn register_masked_crazy_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedCrazyNativeFixture, String> {
+    let candidate = emit_direct_register_masked_crazy_coff(
+        program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy fixture emit failed: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, program)
+        .map_err(|error| format!("v6 Crazy fixture verify failed: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy fixture image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(mapping_id_value)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(base_address)?,
+    );
+    let ready =
+        load_register_masked_crazy_native_executable(&mut adapter, &image)
+            .map_err(|error| {
+                format!("v6 Crazy fixture platform load failed: {error}")
+            })?;
+    Ok(RegisterMaskedCrazyNativeFixture { adapter, artifact, ready })
+}
+
 fn register_masked_no_operation_native_fixture(
     program: &RegisterMaskedRegionEffectProgram,
     mapping_id_value: u64,
@@ -4276,6 +4371,45 @@ fn register_masked_rotate_dead_state_variant(
         .ok_or_else(|| String::from("v6 rotate effect missing"))?;
     effect.before.registers.accumulator ^= 1;
     Ok(variant)
+}
+
+fn register_masked_crazy_rebased_observations(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedObservationPair, String> {
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 Crazy runner effect missing"))?;
+    let mut entry = source.before;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = source.after;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    Ok((entry, expected))
+}
+
+fn apply_register_masked_crazy_expected_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 Crazy runner effect missing"))?;
+    for write in [effect.memory_delta.data, effect.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 Crazy runner address: {error}"))?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 Crazy runner write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    Ok(())
 }
 
 fn register_masked_rotate_rebased_observations(
@@ -7492,6 +7626,262 @@ fn register_masked_v6_rotate_invocation_rejects_data_pointer_drift()
     {
         return Err(String::from("v6 rotate data-pointer rejection drifted"));
     }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_loaded_runner_rejects_ready_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy loaded baseline emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy loaded baseline verify: {error}"))?;
+    let variant = register_masked_crazy_history_variant(&program)?;
+    let RegisterMaskedCrazyNativeFixture {
+        mut adapter,
+        artifact: _variant_artifact,
+        ready,
+    } = register_masked_crazy_native_fixture(&variant, 519, 0x59000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 Crazy loaded drift source missing"))?;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy loaded drift prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_crazy_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Crazy loaded ready drift was invoked"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Bind
+        || error.binding_error()
+            != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || runner.calls != 0
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 Crazy loaded bind rejection drifted"));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Crazy loaded drift release: {release_error}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_loaded_runner_applies_rebased_state()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let RegisterMaskedCrazyNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_crazy_native_fixture(&program, 520, 0x5a000)?;
+    let (entry, expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_crazy_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy loaded preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_verified_register_masked_crazy_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Crazy loaded execution: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 Crazy loaded runner semantics drifted"));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Crazy loaded release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_loaded_runner_guard_miss_is_atomic()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let RegisterMaskedCrazyNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_crazy_native_fixture(&program, 521, 0x5b000)?;
+    let (entry, _expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy guard preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_verified_register_masked_crazy_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Crazy guard miss: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::GuardMiss
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 Crazy guard miss changed snapshot"));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Crazy guard release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_loaded_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let RegisterMaskedCrazyNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_crazy_native_fixture(&program, 522, 0x5c000)?;
+    let (entry, _expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy rollback preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_crazy_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Crazy runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 Crazy runner failure did not roll back"));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Crazy rollback release: {release_error}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_loaded_runner_completion_drift_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let RegisterMaskedCrazyNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_crazy_native_fixture(&program, 523, 0x5d000)?;
+    let (entry, _expected) =
+        register_masked_crazy_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedCrazyInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Crazy completion preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_crazy_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Crazy completion drift was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Complete
+        || !matches!(
+            error.completion_error(),
+            Some(VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { .. },
+            ))
+        )
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from(
+            "v6 Crazy completion drift did not roll back",
+        ));
+    }
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Crazy completion release: {release_error}")
+        })?;
     Ok(())
 }
 

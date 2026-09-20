@@ -127,8 +127,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   I/O-history rebasing, and admits exact Applied/GuardMiss completion.
 
   Exact ready-image equality now binds that call to one synchronized Crazy
-  mapping and restores the entry snapshot on mismatch. Runner and foreign-call
-  execution authority remain open.
+  mapping and restores the entry snapshot on mismatch. A dedicated loaded Crazy
+  runner consumes only the bound view, admits exact Applied/GuardMiss results,
+  and restores the entry snapshot after runner or completion failure.
+
+  The loaded boundary performs no adapter work. One-shot load/call/release and
+  reusable Crazy residency remain open.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A

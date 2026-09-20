@@ -334,7 +334,12 @@ executable for retry.
 A distinct prepared Crazy call requires exact A/C/D and permits I/O-history
 rebasing only. It admits exact Applied/GuardMiss completion and binds only to
 the identical synchronized Crazy image, restoring the entry snapshot on
-mismatch. No runner or foreign-call authority consumes that bound view yet.
+mismatch.
+
+`RegisterMaskedCrazyNativeRunner` receives only that bound view. Loaded
+execution performs no adapter work, admits exact Applied/GuardMiss results, and
+restores the complete rebased snapshot after runner or completion failure.
+One-shot orchestration and reusable Crazy residency remain separate boundaries.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the
