@@ -324,7 +324,12 @@ A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus
 instruction-sync policy. Crazy-specific staged/sealed/ready typestates now
 admit exact copied bytes, same-mapping RX transition, full-range sync, and exact
-release evidence. Platform, binding, and invocation authority remain absent.
+release evidence.
+
+A Crazy-specific platform path now owns transactional allocate/copy/protect/sync
+and explicit release through the caller-owned adapter. Post-allocation failures
+attempt exact cleanup, while release failure retains the identical ready
+executable for retry. Binding and invocation authority remain absent.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

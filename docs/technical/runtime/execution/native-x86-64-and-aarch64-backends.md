@@ -239,8 +239,11 @@ Independent Crazy verification structurally admits COFF and regenerates exact
 canonical bytes. A Crazy-specific relocation-free image retains exact
 key/target identity, ISA alignment, and strict RW-to-RX/full-sync policy.
 Dedicated Crazy typestates now admit exact copied bytes, same-mapping RX
-transition, full-range synchronization, and exact release evidence. Platform
-allocation/release and invocation authority remain absent.
+transition, full-range synchronization, and exact release evidence.
+
+A dedicated Crazy platform path now loads/releases that ready mapping
+transactionally with post-allocation cleanup and exact release-retry ownership.
+Binding and invocation authority remain absent.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

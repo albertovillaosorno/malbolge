@@ -120,7 +120,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   identity, ISA alignment, and strict RW-to-RX/full-sync policy while rejecting
   relocations. Dedicated Crazy lifecycle typestates admit exact code copy,
   same-mapping RX transition, full-range sync, and exact release evidence.
-  Platform loading and execution authority remain open.
+
+  A dedicated Crazy platform path now loads/releases the ready mapping
+  transactionally with post-allocation cleanup and exact release-retry
+  ownership. Binding and execution authority remain open.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A

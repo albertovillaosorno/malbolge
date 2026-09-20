@@ -650,8 +650,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now
   admit exact copy, same-mapping RX transition, full-range sync, and exact
-  release evidence. Platform, binding, and invocation authority are still
-  absent.
+  release evidence.
+- A Crazy-specific platform path owns transactional allocate/copy/protect/sync
+  plus explicit release through the caller-owned adapter. Post-allocation
+  failures attempt exact cleanup; release failure retains the identical ready
+  executable for retry. Binding and invocation authority remain absent.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code

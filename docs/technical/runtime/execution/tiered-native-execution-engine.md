@@ -2153,9 +2153,13 @@ Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
 identity, and the strict RW-to-RX/full-sync policy. Dedicated
 staged/sealed/ready typestates now admit exact copy and same-mapping RX
-transition, plus full-range sync and exact release evidence. No platform,
-binding, or invocation authority is
-granted yet.
+transition, plus full-range sync and exact release evidence.
+
+A Crazy-specific platform path now performs caller-owned allocate/copy/protect/
+sync and explicit release transactionally. Post-allocation failure attempts
+exact cleanup, and release failure retains the identical ready executable for
+retry.
+No binding or invocation authority is granted yet.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

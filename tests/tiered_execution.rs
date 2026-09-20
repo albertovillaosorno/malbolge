@@ -637,6 +637,7 @@ use execution_native::{
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
     load_direct_fused_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
+    load_register_masked_crazy_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_no_operation_native_sequence as load_noop_sequence,
@@ -655,6 +656,7 @@ use execution_native::{
     release_execution_geometry_native_executable,
     release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
+    release_register_masked_crazy_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
@@ -7843,6 +7845,132 @@ fn register_masked_v6_rotate_binding_rejects_ready_identity_drift()
     }
     release_register_masked_rotate_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v6 rotate variant release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_platform_loads_and_releases() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy platform emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy platform verify: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy platform image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(514)?,
+        native_executable_address(0x54000)?,
+    );
+    let ready =
+        load_register_masked_crazy_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 Crazy platform load: {error}"))?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v6 Crazy platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    release_register_masked_crazy_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Crazy platform release: {error}"))?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from("v6 Crazy platform release evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_platform_cleans_copy_failure() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy cleanup emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy cleanup verify: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy cleanup image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(515)?,
+        native_executable_address(0x55000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) =
+        load_register_masked_crazy_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("v6 Crazy copy failure was ignored"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error().is_some()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 Crazy copy cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_release_failure_retries_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let candidate = emit_direct_register_masked_crazy_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 Crazy retry emit: {error}"))?;
+    let artifact = verify_direct_register_masked_crazy(&candidate, &program)
+        .map_err(|error| format!("v6 Crazy retry verify: {error}"))?;
+    let image = VerifiedRegisterMaskedCrazyLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Crazy retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(516)?,
+        native_executable_address(0x56000)?,
+    )
+    .with_release_failures(1);
+    let ready =
+        load_register_masked_crazy_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 Crazy retry load: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        release_register_masked_crazy_native_executable(&mut adapter, ready)
+    else {
+        return Err(String::from("v6 Crazy release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "v6 Crazy release failure lost ready identity",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 Crazy release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 Crazy release retry count drifted"));
+    }
     Ok(())
 }
 
