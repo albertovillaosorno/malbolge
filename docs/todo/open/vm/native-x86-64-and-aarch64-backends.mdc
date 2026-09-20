@@ -138,7 +138,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   across rebased calls and runner failure without remapping, reports platform
   mapping weight, and transfers retryable release ownership.
 
-  Single-resident Crazy cache authority remains open.
+  A single-resident Crazy lease cache now reuses the exact owner without
+  adapter work, rejects different identity while occupied, blocks release under
+  live leases, and transfers retryable cleanup ownership. Sequence and
+  multi-resident Crazy caching remain open.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A

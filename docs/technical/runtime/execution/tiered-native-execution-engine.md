@@ -2176,7 +2176,10 @@ A reusable Crazy owner now retains one exact synchronized mapping across
 rebased calls and runner failure without remapping. It reports adapter mapping
 weight and transfers retryable ready ownership on explicit release.
 
-Single-resident Crazy cache authority remains open.
+A single-resident Crazy lease cache now reuses the exact owner without adapter
+work, rejects different identity while occupied, blocks release under live
+leases, and transfers retryable cleanup ownership. Sequence and multi-resident
+Crazy caching remain open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

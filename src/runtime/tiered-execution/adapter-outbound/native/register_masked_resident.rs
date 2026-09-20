@@ -432,6 +432,69 @@ pub type RegisterMaskedNativeResidentCacheReleaseResult<MemoryError> = Result<
     Box<RegisterMaskedNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
+/// Whether one Crazy lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedCrazyNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact Crazy resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedCrazyNativeResidentCacheAcquireFailure<MemoryError> {
+    /// A different exact Crazy identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the Crazy resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedCrazyNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact Crazy resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedCrazyNativeResidentLease {
+    resident: Arc<RegisterMaskedCrazyNativeExecutableOwner>,
+}
+
+/// Lease plus whether the Crazy resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedCrazyNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedCrazyNativeResidentCacheDisposition,
+    lease: RegisterMaskedCrazyNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable Crazy v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedCrazyNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedCrazyNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact Crazy resident lease.
+pub type RegisterMaskedCrazyNativeResidentAcquireResult<MemoryError> = Result<
+    RegisterMaskedCrazyNativeResidentCacheAcquisition,
+    Box<RegisterMaskedCrazyNativeResidentCacheAcquireFailure<MemoryError>>,
+>;
+
+/// Result of releasing the Crazy resident after leases are gone.
+pub type RegisterMaskedCrazyNativeResidentReleaseResult<MemoryError> = Result<
+    RegisterMaskedCrazyNativeResidentCacheRelease,
+    Box<RegisterMaskedCrazyNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
 /// Whether one no-operation lease acquisition loaded or reused the resident.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RegisterMaskedNoOperationNativeResidentCacheDisposition {
@@ -836,6 +899,19 @@ impl<MemoryError: Display> Display
             Self::IdentityOccupied => f.write_str(
                 "different register-masked identity already resident",
             ),
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedCrazyNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => {
+                f.write_str("different Crazy v6 identity already resident")
+            },
             Self::Load(error) => Display::fmt(error, f),
         }
     }
@@ -1734,6 +1810,184 @@ impl RegisterMaskedNativeResidentLeaseCache {
             .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
     }
 }
+impl RegisterMaskedCrazyNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedCrazyNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedCrazyNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(&self) -> &RegisterMaskedCrazyNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedCrazyNativeResidentLease {
+    /// Executes through the resident Crazy mapping without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedCrazyNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedCrazyNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident Crazy v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedCrazyNativeResidentLeaseCache {
+    /// Loads or reuses one exact Crazy v6 resident as an immutable lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    ) -> RegisterMaskedCrazyNativeResidentAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
+                        IdentityOccupied,
+                ));
+            }
+            return Ok(RegisterMaskedCrazyNativeResidentCacheAcquisition {
+                disposition:
+                    RegisterMaskedCrazyNativeResidentCacheDisposition::Hit,
+                lease: RegisterMaskedCrazyNativeResidentLease {
+                    resident: Arc::clone(resident),
+                },
+            });
+        }
+        let loaded = RegisterMaskedCrazyNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| {
+            Box::new(
+                RegisterMaskedCrazyNativeResidentCacheAcquireFailure::Load(
+                    error,
+                ),
+            )
+        })?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedCrazyNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedCrazyNativeResidentCacheAcquisition {
+            disposition:
+                RegisterMaskedCrazyNativeResidentCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact Crazy mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident Crazy lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact Crazy cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedCrazyNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedCrazyNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+
 impl RegisterMaskedNoOperationNativeResidentCacheAcquisition {
     /// Returns whether this acquisition loaded or reused the resident mapping.
     #[must_use]

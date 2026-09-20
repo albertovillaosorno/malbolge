@@ -346,7 +346,12 @@ attempts cleanup; release failure retains committed outcome plus exact ready
 mapping ownership for retry. `RegisterMaskedCrazyNativeExecutableOwner` now
 retains that exact synchronized mapping across rebased calls and runner failure
 without remapping, reports platform mapping weight, and transfers retryable
-release ownership. Single-resident Crazy cache authority remains open.
+release ownership.
+
+`RegisterMaskedCrazyNativeResidentLeaseCache` now reuses the exact owner without
+adapter work, rejects different identity while occupied, blocks release under
+live leases, and transfers retryable cleanup ownership. Sequence and
+multi-resident Crazy caching remain separate boundaries.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

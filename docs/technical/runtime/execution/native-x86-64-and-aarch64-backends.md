@@ -256,7 +256,12 @@ composes exact load/call/release, restores the prepared snapshot on load or call
 failure, and retains committed outcome plus exact ready mapping on release
 failure. A reusable Crazy owner now retains that exact synchronized mapping
 across rebased calls and runner failure without remapping, and reports platform
-mapping weight. Single-resident cache authority remains open.
+mapping weight.
+
+A single-resident Crazy lease cache now reuses that exact owner without adapter
+work, rejects different identity while occupied, blocks release under live
+leases, and transfers retryable cleanup ownership. Sequence and multi-resident
+Crazy caching remain open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

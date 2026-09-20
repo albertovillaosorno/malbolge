@@ -500,6 +500,12 @@ use execution_native::{
     ReadyRegisterMaskedRotateNativeExecutable,
     RegisterMaskedCrazyNativeExecutableOwner,
     RegisterMaskedCrazyNativeOwnerExecutionFailure,
+    RegisterMaskedCrazyNativeOwnerLoadFailure,
+    RegisterMaskedCrazyNativeResidentCacheAcquireFailure,
+    RegisterMaskedCrazyNativeResidentCacheDisposition,
+    RegisterMaskedCrazyNativeResidentCacheRelease,
+    RegisterMaskedCrazyNativeResidentLease,
+    RegisterMaskedCrazyNativeResidentLeaseCache,
     RegisterMaskedCrazyNativeRunner, RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
@@ -4993,6 +4999,72 @@ fn release_non_graphical_resident_after_leases(
         Err(String::from(
             "v6 non-graphical unleased resident did not release",
         ))
+    }
+}
+
+fn release_crazy_resident_after_leases(
+    cache: &mut RegisterMaskedCrazyNativeResidentLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    loaded_operations: &[FakeNativeAdapterOperation],
+    leases: (
+        RegisterMaskedCrazyNativeResidentLease,
+        RegisterMaskedCrazyNativeResidentLease,
+    ),
+) -> Result<(), String> {
+    if cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("v6 Crazy leased release: {error}"))?
+        != (RegisterMaskedCrazyNativeResidentCacheRelease::Leased { leases: 2 })
+        || adapter.operations.as_slice() != loaded_operations
+    {
+        return Err(String::from("v6 Crazy live leases did not block release"));
+    }
+    drop(leases);
+    let released = cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("v6 Crazy resident release: {error}"))?;
+    if released == RegisterMaskedCrazyNativeResidentCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy unleased resident did not release"))
+    }
+}
+
+fn execute_register_masked_crazy_lease_applied(
+    lease: &RegisterMaskedCrazyNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<usize, String> {
+    let (entry, expected) =
+        register_masked_crazy_rebased_observations(program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_crazy_expected_memory(program, &mut expected_memory)?;
+    let mut runner = FakeRegisterMaskedCrazyNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 Crazy resident lease execution: {error}")
+        })?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(runner.mapping_ids.len())
+    } else {
+        Err(String::from("v6 Crazy resident lease execution drifted"))
     }
 }
 
@@ -12839,6 +12911,183 @@ fn register_masked_v6_rotate_resident_load_failure_is_atomic()
     {
         return Err(String::from(
             "v6 rotate failed load published partial residency",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_resident_cache_hits_without_adapter_work()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(531)?,
+        native_executable_address(0x65000)?,
+    );
+    let mut cache = RegisterMaskedCrazyNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy resident insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let mapping_count =
+        execute_register_masked_crazy_lease_applied(&first_lease, &program)?;
+    if first_disposition
+        != RegisterMaskedCrazyNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != RegisterMaskedCrazyNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || mapping_count != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 Crazy resident hit or execution drifted"));
+    }
+    release_crazy_resident_after_leases(
+        &mut cache,
+        &mut adapter,
+        &loaded_operations,
+        (first_lease, second_lease),
+    )
+}
+
+#[test]
+fn register_masked_v6_crazy_resident_cache_rejects_different_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let variant = register_masked_crazy_history_variant(&program)?;
+    let variant_artifact =
+        verified_register_masked_crazy(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(532)?,
+        native_executable_address(0x66000)?,
+    );
+    let mut cache = RegisterMaskedCrazyNativeResidentLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy resident seed: {error}"))?
+        .into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from(
+            "v6 Crazy resident replaced a different identity",
+        ));
+    };
+    if error.as_ref()
+        != &RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
+            IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from(
+            "v6 Crazy resident identity rejection drifted",
+        ));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release_error| {
+            format!("v6 Crazy identity cleanup: {release_error}")
+        })?
+        != RegisterMaskedCrazyNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 Crazy identity cleanup did not release"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_resident_cache_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(533)?,
+        native_executable_address(0x67000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = RegisterMaskedCrazyNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy resident retry seed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v6 Crazy resident release failure was ignored",
+        ));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 Crazy resident release lost retry ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 Crazy resident release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from(
+            "v6 Crazy resident release retry count drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_resident_load_failure_atomic() -> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(534)?,
+        native_executable_address(0x68000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = RegisterMaskedCrazyNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 Crazy resident ignored load failure"));
+    };
+    match error.as_ref() {
+        RegisterMaskedCrazyNativeResidentCacheAcquireFailure::Load(
+            owner_error,
+        ) => {
+            if !matches!(
+                owner_error.as_ref(),
+                RegisterMaskedCrazyNativeOwnerLoadFailure::Load(_)
+            ) {
+                return Err(String::from(
+                    "v6 Crazy resident load failure lost cause",
+                ));
+            }
+        },
+        RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
+            IdentityOccupied => {
+            return Err(String::from(
+                "v6 Crazy load failure became identity occupancy",
+            ));
+        },
+    }
+    if cache.has_resident()
+        || cache.resident_lease_count() != 0
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 Crazy failed load published partial residency",
         ));
     }
     Ok(())
