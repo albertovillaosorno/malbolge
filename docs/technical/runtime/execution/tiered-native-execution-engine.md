@@ -2183,8 +2183,11 @@ leases, and transfers retryable cleanup ownership.
 Exact Crazy sequence planning now admits non-empty
 continuous same-profile/same-target one-step chains, preserves ordered artifact
 identity, and rejects terminated prefixes or identity drift before mapping.
-Loaded Crazy sequence ownership/execution and multi-resident caching remain
-open.
+
+Loaded Crazy sequence ownership now publishes only fully loaded plans, cleans a
+ready prefix in reverse after late load failure, and retains exact failed
+executable ownership for release retry. Sequence execution, sequence caching,
+and multi-resident Crazy caching remain open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

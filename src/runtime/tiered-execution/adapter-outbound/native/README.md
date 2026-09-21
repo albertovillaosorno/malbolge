@@ -355,8 +355,11 @@ live leases, and transfers retryable cleanup ownership.
 Exact Crazy sequence planning now admits non-empty continuous
 same-profile/same-target one-step chains, preserves ordered artifact-key
 identity, and rejects terminated prefixes or identity drift before mapping.
-Loaded Crazy sequence ownership/execution and multi-resident caching remain
-separate boundaries.
+
+Loaded Crazy sequence ownership now publishes only fully loaded plans, cleans a
+ready prefix in reverse after late load failure, and retains exact failed
+executable ownership for release retry. Sequence execution, sequence caching,
+and multi-resident Crazy caching remain open.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

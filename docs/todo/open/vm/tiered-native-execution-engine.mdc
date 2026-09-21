@@ -675,8 +675,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   Exact Crazy sequence planning now admits
   non-empty continuous same-profile/same-target one-step chains, preserves
   ordered artifact identity, and rejects terminated prefixes or identity drift
-  before mapping. Loaded Crazy sequence ownership/execution and multi-resident
-  caching remain open.
+  before mapping.
+
+  Loaded Crazy sequence ownership now publishes only fully loaded plans,
+  cleans a ready prefix in reverse after late load failure, and retains exact
+  failed executable ownership for release retry. Sequence execution, sequence
+  caching, and multi-resident Crazy caching remain open.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code

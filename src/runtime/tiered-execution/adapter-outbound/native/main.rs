@@ -82,6 +82,7 @@ mod process_host;
 mod process_memory_wire;
 mod process_session;
 mod profile_metadata;
+mod register_masked_crazy_loaded_sequence;
 mod register_masked_crazy_sequence;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -642,6 +643,14 @@ pub use process_memory_wire::{
 };
 pub use process_session::{
     NativeProcessSession, NativeProcessSessionConfig, NativeProcessSessionError,
+};
+pub use register_masked_crazy_loaded_sequence::{
+    LoadedRegisterMaskedCrazyNativeSequence,
+    RegisterMaskedCrazyNativeSequenceLoadFailure,
+    RegisterMaskedCrazyNativeSequenceLoadResult,
+    RegisterMaskedCrazyNativeSequenceReleaseFailure,
+    RegisterMaskedCrazyNativeSequenceReleaseResult,
+    load_register_masked_crazy_native_sequence,
 };
 pub use register_masked_crazy_sequence::{
     RegisterMaskedCrazyNativeSequenceKey,

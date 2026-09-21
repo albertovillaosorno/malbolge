@@ -265,8 +265,12 @@ leases, and transfers retryable cleanup ownership.
 An exact Crazy sequence planner now admits
 non-empty continuous same-profile/same-target one-step chains, preserves ordered
 artifact-key identity, and rejects terminated prefixes or identity drift before
-any mapping. Loaded Crazy sequence ownership/execution and multi-resident
-caching remain open.
+any mapping.
+
+Loaded Crazy sequence ownership now publishes only fully loaded plans, cleans a
+ready prefix in reverse after late load failure, and retains exact failed
+executable ownership for release retry. Sequence execution, sequence caching,
+and multi-resident Crazy caching remain open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates
