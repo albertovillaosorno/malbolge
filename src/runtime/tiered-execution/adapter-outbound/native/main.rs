@@ -86,6 +86,7 @@ mod register_masked_crazy_loaded_sequence;
 mod register_masked_crazy_sequence;
 mod register_masked_crazy_sequence_cache;
 mod register_masked_crazy_sequence_execution;
+mod register_masked_crazy_sequence_lease_cache;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -682,6 +683,28 @@ pub use register_masked_crazy_sequence_execution::{
     RegisterMaskedCrazyNativeSequenceExecutionResult,
     RegisterMaskedCrazyNativeSequenceOutcome,
     execute_loaded_register_masked_crazy_native_sequence,
+};
+pub use register_masked_crazy_sequence_lease_cache::{
+    RegisterMaskedCrazyNativeSequenceLease,
+    RegisterMaskedCrazyNativeSequenceLeaseCache,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheAcquisition,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheBlock,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheCapacityError,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheDisposition,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheEntryReleaseFailure,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheInvalidation,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheInvalidationResult,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheLimits,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheLoadFailure,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheLoadReleaseFailures,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheLoadResult,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheReconciliation,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheReconfiguration,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheReleaseFailure,
+    RegisterMaskedCrazyNativeSequenceLeaseCacheUsage,
+    RegisterMaskedCrazyNativeSequenceLeaseReconciliationResult,
+    RegisterMaskedCrazyNativeSequenceLeaseReconfigurationFailure,
+    RegisterMaskedCrazyNativeSequenceLeaseReconfigurationResult,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,

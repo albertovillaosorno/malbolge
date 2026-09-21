@@ -367,8 +367,13 @@ after current-step runner failure.
 A weighted FIFO Crazy sequence cache now reuses exact loaded chains without
 adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
 mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
-failures retain exact retryable cleanup ownership. External sequence leases and
-multi-resident Crazy caching remain open.
+failures retain exact retryable cleanup ownership.
+
+A Crazy sequence lease cache now shares immutable loaded chains, retires live
+leased FIFO victims without hiding their weight, blocks unsafe limit shrink,
+and reclaims retired residents only through explicit return or reconciliation.
+Release and reconfiguration failures preserve keyed retry ownership.
+Multi-resident Crazy caching remains open.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the
