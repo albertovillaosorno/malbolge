@@ -82,6 +82,7 @@ mod process_host;
 mod process_memory_wire;
 mod process_session;
 mod profile_metadata;
+mod register_masked_crazy_lease_cache;
 mod register_masked_crazy_loaded_sequence;
 mod register_masked_crazy_sequence;
 mod register_masked_crazy_sequence_cache;
@@ -646,6 +647,28 @@ pub use process_memory_wire::{
 };
 pub use process_session::{
     NativeProcessSession, NativeProcessSessionConfig, NativeProcessSessionError,
+};
+pub use register_masked_crazy_lease_cache::{
+    RegisterMaskedCrazyLease, RegisterMaskedCrazyLeaseCache,
+    RegisterMaskedCrazyLeaseCacheAcquisition,
+    RegisterMaskedCrazyLeaseCacheBlock,
+    RegisterMaskedCrazyLeaseCacheCapacityError,
+    RegisterMaskedCrazyLeaseCacheDisposition,
+    RegisterMaskedCrazyLeaseCacheEntryReleaseFailure,
+    RegisterMaskedCrazyLeaseCacheInvalidation,
+    RegisterMaskedCrazyLeaseCacheInvalidationResult,
+    RegisterMaskedCrazyLeaseCacheLimits,
+    RegisterMaskedCrazyLeaseCacheLoadFailure,
+    RegisterMaskedCrazyLeaseCacheLoadReleaseFailures,
+    RegisterMaskedCrazyLeaseCacheLoadResult,
+    RegisterMaskedCrazyLeaseCacheReconciliationResult,
+    RegisterMaskedCrazyLeaseCacheReconfiguration,
+    RegisterMaskedCrazyLeaseCacheReconfigurationFailure,
+    RegisterMaskedCrazyLeaseCacheReconfigurationResult,
+    RegisterMaskedCrazyLeaseCacheReleaseFailure,
+    RegisterMaskedCrazyLeaseCacheReleaseResult,
+    RegisterMaskedCrazyLeaseCacheReleaseSummary,
+    RegisterMaskedCrazyLeaseCacheUsage,
 };
 pub use register_masked_crazy_loaded_sequence::{
     LoadedRegisterMaskedCrazyNativeSequence,

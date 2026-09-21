@@ -284,7 +284,13 @@ A Crazy sequence lease cache now shares immutable loaded chains, retires live
 leased FIFO victims without hiding their weight, blocks unsafe limit shrink,
 and reclaims retired residents only through explicit return or reconciliation.
 Release and reconfiguration failures preserve keyed retry ownership.
-Multi-resident Crazy caching remains open.
+
+A multi-resident Crazy lease cache now reuses exact owners under weighted FIFO
+limits without refreshing hit age. Live leased victims retire without hiding
+their entry, mapping, or mapped-byte weight; unleased victims release
+immediately. Invalidation, release-all, explicit lease return, retired
+reconciliation, and limit reconfiguration preserve keyed cleanup retry
+ownership.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

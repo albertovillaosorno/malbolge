@@ -497,7 +497,10 @@ use execution_native::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
-    ReadyRegisterMaskedRotateNativeExecutable,
+    ReadyRegisterMaskedRotateNativeExecutable, RegisterMaskedCrazyLease,
+    RegisterMaskedCrazyLeaseCache, RegisterMaskedCrazyLeaseCacheAcquisition,
+    RegisterMaskedCrazyLeaseCacheEntryReleaseFailure,
+    RegisterMaskedCrazyLeaseCacheInvalidation,
     RegisterMaskedCrazyNativeExecutableOwner,
     RegisterMaskedCrazyNativeOwnerExecutionFailure,
     RegisterMaskedCrazyNativeOwnerLoadFailure,
@@ -1852,6 +1855,14 @@ type RegisterMaskedNoOperationReconfigurationFixture = (
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlan,
     RegisterMaskedNoOperationNativeSequencePlan,
+);
+
+type RegisterMaskedCrazyMultiCacheFixture =
+    (FakeNativeExecutableAdapter, RegisterMaskedCrazyLeaseCache);
+
+type RegisterMaskedCrazyVariant = (
+    RegisterMaskedRegionEffectProgram,
+    VerifiedRegisterMaskedCrazyNativeObjectArtifact,
 );
 
 type RegisterMaskedNonGraphicalMultiCacheFixture = (
@@ -4657,6 +4668,22 @@ fn register_masked_non_graphical_owner_fixture(
         format!("v6 non-graphical owner fixture load failed: {error}")
     })?;
     Ok(RegisterMaskedNonGraphicalOwnerFixture { adapter, owner, program })
+}
+
+fn register_masked_crazy_cache_variant(
+    history_delta: usize,
+) -> Result<RegisterMaskedCrazyVariant, String> {
+    let mut program = canonical_register_masked_crazy_program()?;
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 Crazy cache variant missing"))?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(history_delta);
+    effect.after.input_consumed =
+        effect.after.input_consumed.saturating_add(history_delta);
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    Ok((program, artifact))
 }
 
 fn register_masked_non_graphical_cache_variant(
@@ -13701,6 +13728,753 @@ fn register_masked_v6_resident_cache_load_failure_publishes_nothing()
         return Err(String::from("v6 failed load published partial residency"));
     }
     Ok(())
+}
+
+fn register_masked_crazy_multi_cache_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+    entry_limit: usize,
+) -> Result<RegisterMaskedCrazyMultiCacheFixture, String> {
+    let entry_capacity = NonZeroUsize::new(entry_limit)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    Ok((
+        FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_id_value)?,
+            native_executable_address(base_address)?,
+        ),
+        RegisterMaskedCrazyLeaseCache::new(entry_capacity),
+    ))
+}
+
+fn register_masked_crazy_single_entry_limits()
+-> Result<NativeExecutableSequenceCacheLimits, String> {
+    NonZeroUsize::new(1)
+        .map(NativeExecutableSequenceCacheLimits::new)
+        .ok_or_else(|| String::from("zero Crazy single-entry limit"))
+}
+
+fn seed_register_masked_crazy_multi_cache(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedCrazyLeaseCache,
+    variants: [&RegisterMaskedCrazyVariant; 2],
+) -> Result<(), String> {
+    for (program, artifact) in variants {
+        drop(cache.ensure(adapter, program, artifact).map_err(|error| {
+            format!("v6 Crazy reconfiguration seed: {error}")
+        })?);
+    }
+    Ok(())
+}
+
+fn lease_register_masked_crazy_variant(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedCrazyLeaseCache,
+    variant: &RegisterMaskedCrazyVariant,
+) -> Result<RegisterMaskedCrazyLease, String> {
+    cache
+        .ensure(adapter, &variant.0, &variant.1)
+        .map(RegisterMaskedCrazyLeaseCacheAcquisition::into_lease)
+        .map_err(|error| format!("v6 Crazy lease seed: {error}"))
+}
+
+fn return_crazy_retired_lease(
+    cache: &mut RegisterMaskedCrazyLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    lease: RegisterMaskedCrazyLease,
+    key: &NativeArtifactKey,
+) -> Result<(), String> {
+    let reconciled = cache
+        .return_lease(adapter, lease)
+        .map_err(|error| format!("v6 Crazy lease return: {error}"))?;
+    if reconciled.released_keys() == [key.clone()]
+        && reconciled.retained_keys().is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy retired lease did not reconcile"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_hits_without_remap() -> TieredTestResult
+{
+    let (program, artifact) = register_masked_crazy_cache_variant(1)?;
+    let key = artifact.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(170, 0x17000, 2)?;
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy cache insert: {error}"))?;
+    if first.disposition().is_hit() {
+        return Err(String::from("v6 Crazy first cache insert reported hit"));
+    }
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy cache hit: {error}"))?;
+    let second_is_hit = second.disposition().is_hit();
+    let second_lease = second.into_lease();
+    if !second_is_hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.active_len() != 1
+        || cache.resident_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 Crazy cache hit remapped or changed usage",
+        ));
+    }
+    let drained = cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Crazy leased drain: {error}"))?;
+    if !drained.released_keys().is_empty()
+        || drained.retained_keys() != [key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 Crazy live drain retirement drifted"));
+    }
+    drop(first_lease);
+    return_crazy_retired_lease(&mut cache, &mut adapter, second_lease, &key)?;
+    if cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy retired state drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_rejects_same_key_drift()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(10)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(561)?,
+        native_executable_address(0x75000)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let mut cache = RegisterMaskedCrazyLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 Crazy drift seed: {error}"))?,
+    );
+    let loaded_operations = adapter.operations.clone();
+    let mut drifted_program = program;
+    let effect = drifted_program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 Crazy drift effect missing"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let Err(error) = cache.ensure(&mut adapter, &drifted_program, &artifact)
+    else {
+        return Err(String::from(
+            "v6 Crazy same-key evidence drift was admitted",
+        ));
+    };
+    if !matches!(
+        error.load_failure(),
+        Some(RegisterMaskedCrazyNativeOwnerLoadFailure::ArtifactIdentity)
+    ) || cache.active_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 Crazy same-key rejection changed residency",
+        ));
+    }
+    let cleanup = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| format!("v6 Crazy drift cleanup: {failure}"))?;
+    if cleanup.retained_keys().is_empty() && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy drift cleanup retained key"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_retires_fifo() -> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_crazy_cache_variant(2)?;
+    let (program_b, artifact_b) = register_masked_crazy_cache_variant(3)?;
+    let (program_c, artifact_c) = register_masked_crazy_cache_variant(4)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let key_c = artifact_c.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(171, 0x17100, 2)?;
+    let first = cache
+        .ensure(&mut adapter, &program_a, &artifact_a)
+        .map_err(|error| format!("v6 Crazy cache A: {error}"))?;
+    let leased_a = first.into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|error| format!("v6 Crazy cache B: {error}"))?,
+    );
+    let third = cache
+        .ensure(&mut adapter, &program_c, &artifact_c)
+        .map_err(|error| format!("v6 Crazy cache C: {error}"))?;
+    if third.disposition().evicted_keys() != [key_a.clone(), key_b]
+        || third.disposition().retired_keys() != [key_a.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_c]
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
+        || cache.usage().entries() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Crazy leased FIFO retirement drifted"));
+    }
+    drop(third);
+    return_crazy_retired_lease(&mut cache, &mut adapter, leased_a, &key_a)?;
+    if cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Crazy FIFO retirement did not reconcile"));
+    }
+    let cleanup = cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Crazy FIFO cleanup: {error}"))?;
+    if cleanup.retained_keys().is_empty() && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy FIFO cleanup retained residents"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_live_lease_blocks() -> TieredTestResult
+{
+    let (program_a, artifact_a) = register_masked_crazy_cache_variant(5)?;
+    let (program_b, artifact_b) = register_masked_crazy_cache_variant(6)?;
+    let key_a = artifact_a.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(172, 0x17200, 1)?;
+    let first = cache
+        .ensure(&mut adapter, &program_a, &artifact_a)
+        .map_err(|error| format!("v6 Crazy live seed: {error}"))?;
+    let lease = first.into_lease();
+    let Err(error) = cache.ensure(&mut adapter, &program_b, &artifact_b) else {
+        return Err(String::from(
+            "v6 Crazy live lease failed to block capacity",
+        ));
+    };
+    let block = error
+        .block()
+        .ok_or_else(|| String::from("v6 Crazy block evidence missing"))?;
+    if block.retired_keys() != [key_a.clone()]
+        || block.usage().entries() != 1
+        || error.evicted_keys() != [key_a.clone()]
+        || error.retired_keys() != [key_a.clone()]
+        || error.candidate_cleanup_failure().is_some()
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Crazy live-lease blockage drifted"));
+    }
+    let reconciled =
+        cache
+            .return_lease(&mut adapter, lease)
+            .map_err(|return_error| {
+                format!("v6 Crazy block return: {return_error}")
+            })?;
+    if reconciled.released_keys() != [key_a]
+        || cache.usage().entries() != 0
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Crazy blocked resident did not reconcile",
+        ));
+    }
+    let second = cache
+        .ensure(&mut adapter, &program_b, &artifact_b)
+        .map_err(|insert_error| {
+            format!("v6 Crazy post-block insert: {insert_error}")
+        })?;
+    drop(second);
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|failure| format!("v6 Crazy block cleanup: {failure}"))
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_rejects_oversize_mapping()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(7)?;
+    let mapped_len = 4096;
+    let byte_limit = NonZeroUsize::new(1024)
+        .ok_or_else(|| String::from("zero Crazy byte limit"))?;
+    let entry_limit = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(559)?,
+        native_executable_address(0x73000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let mut cache = RegisterMaskedCrazyLeaseCache::with_limits(limits);
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 Crazy oversize mapping entered cache"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::MappedBytes {
+            required: mapped_len,
+            limit: byte_limit,
+        })
+        || error.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Crazy oversize cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_eviction_failure_retries()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_crazy_cache_variant(8)?;
+    let (program_b, artifact_b) = register_masked_crazy_cache_variant(9)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(560)?,
+        native_executable_address(0x74000)?,
+    )
+    .with_release_failures(2);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let mut cache = RegisterMaskedCrazyLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program_a, &artifact_a)
+            .map_err(|error| format!("v6 Crazy retry seed: {error}"))?,
+    );
+    let Err(error) = cache.ensure(&mut adapter, &program_b, &artifact_b) else {
+        return Err(String::from(
+            "v6 Crazy eviction release failure was ignored",
+        ));
+    };
+    if error.evicted_keys() != [key_a.clone()]
+        || !error.retired_keys().is_empty()
+        || error.release_failure().is_none()
+        || error.candidate_cleanup_failure().is_none()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Crazy eviction failure ownership drifted",
+        ));
+    }
+    let retried = error.into_release_failures().retry(&mut adapter).map_err(
+        |failure| format!("v6 Crazy eviction retry failed: {failure}"),
+    )?;
+    if retried.released_keys() == [key_a, key_b]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy eviction retry result drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_release_failure_retries()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(11)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(562)?,
+        native_executable_address(0x76000)?,
+    )
+    .with_release_failure_at(1);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let mut cache = RegisterMaskedCrazyLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 Crazy drain seed: {error}"))?,
+    );
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from("v6 Crazy release-all failure was ignored"));
+    };
+    if failure.failures().len() != 1
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 Crazy release-all failure ownership drifted",
+        ));
+    }
+    let retried = failure.retry(&mut adapter).map_err(|retry_failure| {
+        format!("v6 Crazy release retry failed: {retry_failure}")
+    })?;
+    if retried.released_keys() == [key]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy release retry result drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_invalidation_retires_lease()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(12)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(563)?,
+        native_executable_address(0x77000)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let mut cache = RegisterMaskedCrazyLeaseCache::new(capacity);
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy invalidation seed: {error}"))?;
+    let lease = acquisition.into_lease();
+    let invalidated =
+        cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+            format!("v6 Crazy invalidation: {}", error.failure())
+        })?;
+    if invalidated
+        != (RegisterMaskedCrazyLeaseCacheInvalidation::Retired { leases: 1 })
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key.clone()]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 Crazy leased invalidation drifted"));
+    }
+    if cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+        format!("v6 Crazy missing invalidation: {}", error.failure())
+    })? != RegisterMaskedCrazyLeaseCacheInvalidation::Missing
+    {
+        return Err(String::from("v6 Crazy retired identity remained active"));
+    }
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("v6 Crazy invalidation return: {error}"))?;
+    if reconciled.released_keys() == [key]
+        && cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy invalidation reconciliation drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_retries_multiple_releases()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_crazy_cache_variant(13)?;
+    let (program_b, artifact_b) = register_masked_crazy_cache_variant(14)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(564)?,
+        native_executable_address(0x78000)?,
+    )
+    .with_release_failures(2);
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero Crazy cache capacity"))?;
+    let mut cache = RegisterMaskedCrazyLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program_a, &artifact_a)
+            .map_err(|error| format!("v6 Crazy aggregate A: {error}"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|error| format!("v6 Crazy aggregate B: {error}"))?,
+    );
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from(
+            "v6 Crazy aggregate release failures were ignored",
+        ));
+    };
+    if failure.failures().len() != 2
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Crazy aggregate failure evidence drifted",
+        ));
+    }
+    let retried = failure.retry(&mut adapter).map_err(|retry_failure| {
+        format!("v6 Crazy aggregate retry failed: {retry_failure}")
+    })?;
+    if retried.released_keys() == [key_a, key_b]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy aggregate retry result drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_expands_no_io() -> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(20)?;
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(179, 0x17900, 1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 Crazy expansion seed: {error}"))?,
+    );
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2)
+            .ok_or_else(|| String::from("zero Crazy expansion"))?,
+    );
+    let operations = adapter.operations.clone();
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Crazy expansion: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || !result.evicted_keys().is_empty()
+        || !result.retired_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.operations != operations
+    {
+        return Err(String::from(
+            "v6 Crazy expansion performed unexpected work",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 Crazy expansion cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_shrinks_bytes() -> TieredTestResult {
+    let variant_a = register_masked_crazy_cache_variant(21)?;
+    let variant_b = register_masked_crazy_cache_variant(22)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (base_adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(180, 0x18000, 2)?;
+    let mut adapter = base_adapter.with_mapped_len_overrides(vec![4096, 4096]);
+    seed_register_masked_crazy_multi_cache(&mut adapter, &mut cache, [
+        &variant_a, &variant_b,
+    ])?;
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(cache.capacity())
+        .with_mapped_byte_limit(
+            NonZeroUsize::new(4096)
+                .ok_or_else(|| String::from("zero Crazy byte limit"))?,
+        );
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Crazy byte shrink: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || result.evicted_keys() != [key_a]
+        || !result.retired_keys().is_empty()
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().mapped_bytes() != 4096
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Crazy byte shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 Crazy byte cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_blocks_live_shrink() -> TieredTestResult
+{
+    let variant_a = register_masked_crazy_cache_variant(23)?;
+    let variant_b = register_masked_crazy_cache_variant(24)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(181, 0x18100, 2)?;
+    let lease_a = lease_register_masked_crazy_variant(
+        &mut adapter,
+        &mut cache,
+        &variant_a,
+    )?;
+    let lease_b = lease_register_masked_crazy_variant(
+        &mut adapter,
+        &mut cache,
+        &variant_b,
+    )?;
+    let previous = cache.limits();
+    let requested = register_masked_crazy_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v6 Crazy live shrink published"));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 Crazy live blocker missing"))?;
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone(), key_b.clone()]
+        || failure.retired_keys() != [key_a.clone(), key_b.clone()]
+        || block.retired_keys() != [key_a.clone(), key_b.clone()]
+        || cache.limits() != previous
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 Crazy live shrink drifted"));
+    }
+    drop((lease_a, lease_b));
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("v6 Crazy live reconcile: {error}"))?;
+    if reconciled.released_keys() != [key_a, key_b] {
+        return Err(String::from("v6 Crazy live reclaim drifted"));
+    }
+    let attempts = adapter.release_attempts;
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Crazy live retry: {error}"))?;
+    if result.limit_transition() == (previous, requested)
+        && cache.limits() == requested
+        && adapter.release_attempts == attempts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy live retry repeated work"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_retries_shrink_release()
+-> TieredTestResult {
+    let variant_a = register_masked_crazy_cache_variant(25)?;
+    let variant_b = register_masked_crazy_cache_variant(26)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (base_adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(182, 0x18200, 2)?;
+    let mut adapter = base_adapter.with_release_failure_at(1);
+    seed_register_masked_crazy_multi_cache(&mut adapter, &mut cache, [
+        &variant_a, &variant_b,
+    ])?;
+    let previous = cache.limits();
+    let requested = register_masked_crazy_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v6 Crazy failed shrink published"));
+    };
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone()]
+        || failure
+            .release_failure()
+            .map(RegisterMaskedCrazyLeaseCacheEntryReleaseFailure::key)
+            != Some(&key_a)
+        || cache.limits() != previous
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Crazy shrink failure drifted"));
+    }
+    let keyed = failure
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 Crazy shrink owner missing"))?;
+    let retried_key = keyed.retry(&mut adapter).map_err(|retry_failure| {
+        format!(
+            "v6 Crazy shrink retry retained key: {}",
+            retry_failure.key() == &key_a,
+        )
+    })?;
+    if retried_key != key_a {
+        return Err(String::from("v6 Crazy shrink retry key drifted"));
+    }
+    let attempts = adapter.release_attempts;
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Crazy publish retry: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || !result.evicted_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.release_attempts != attempts
+    {
+        return Err(String::from("v6 Crazy shrink retry repeated work"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 Crazy shrink cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_crazy_multi_cache_skips_retired() -> TieredTestResult {
+    let (program, artifact) = register_masked_crazy_cache_variant(27)?;
+    let key = artifact.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_crazy_multi_cache_fixture(183, 0x18300, 1)?;
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 Crazy retired seed: {error}"))?
+        .into_lease();
+    let invalidated = cache
+        .invalidate_key(&mut adapter, &key)
+        .map_err(|error| format!("v6 Crazy retired invalidate: {error:?}"))?;
+    if invalidated
+        != (RegisterMaskedCrazyLeaseCacheInvalidation::Retired { leases: 1 })
+    {
+        return Err(String::from("v6 Crazy seed did not retire"));
+    }
+    drop(lease);
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2)
+            .ok_or_else(|| String::from("zero Crazy retired expansion"))?,
+    );
+    let operations = adapter.operations.clone();
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Crazy retired expansion: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 Crazy reconfigure reclaimed retired"));
+    }
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("v6 Crazy retired reconcile: {error}"))?;
+    if reconciled.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy explicit reclaim drifted"))
+    }
 }
 
 fn register_masked_non_graphical_multi_cache_fixture(
