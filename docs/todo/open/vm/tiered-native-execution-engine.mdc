@@ -670,8 +670,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   and transfers retryable release ownership.
 - A single-resident Crazy lease cache reuses that exact owner without adapter
   work, rejects different identity while occupied, blocks release under live
-  leases, and transfers retryable cleanup ownership. Sequence and multi-resident
-  Crazy caching remain open.
+  leases, and transfers retryable cleanup ownership.
+
+  Exact Crazy sequence planning now admits
+  non-empty continuous same-profile/same-target one-step chains, preserves
+  ordered artifact identity, and rejects terminated prefixes or identity drift
+  before mapping. Loaded Crazy sequence ownership/execution and multi-resident
+  caching remain open.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code

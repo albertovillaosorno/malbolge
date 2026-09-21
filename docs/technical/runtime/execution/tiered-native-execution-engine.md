@@ -2178,8 +2178,13 @@ weight and transfers retryable ready ownership on explicit release.
 
 A single-resident Crazy lease cache now reuses the exact owner without adapter
 work, rejects different identity while occupied, blocks release under live
-leases, and transfers retryable cleanup ownership. Sequence and multi-resident
-Crazy caching remain open.
+leases, and transfers retryable cleanup ownership.
+
+Exact Crazy sequence planning now admits non-empty
+continuous same-profile/same-target one-step chains, preserves ordered artifact
+identity, and rejects terminated prefixes or identity drift before mapping.
+Loaded Crazy sequence ownership/execution and multi-resident caching remain
+open.
 
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.

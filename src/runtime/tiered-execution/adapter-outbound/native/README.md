@@ -350,8 +350,13 @@ release ownership.
 
 `RegisterMaskedCrazyNativeResidentLeaseCache` now reuses the exact owner without
 adapter work, rejects different identity while occupied, blocks release under
-live leases, and transfers retryable cleanup ownership. Sequence and
-multi-resident Crazy caching remain separate boundaries.
+live leases, and transfers retryable cleanup ownership.
+
+Exact Crazy sequence planning now admits non-empty continuous
+same-profile/same-target one-step chains, preserves ordered artifact-key
+identity, and rejects terminated prefixes or identity drift before mapping.
+Loaded Crazy sequence ownership/execution and multi-resident caching remain
+separate boundaries.
 
 `direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
 Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the

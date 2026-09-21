@@ -260,8 +260,13 @@ mapping weight.
 
 A single-resident Crazy lease cache now reuses that exact owner without adapter
 work, rejects different identity while occupied, blocks release under live
-leases, and transfers retryable cleanup ownership. Sequence and multi-resident
-Crazy caching remain open.
+leases, and transfers retryable cleanup ownership.
+
+An exact Crazy sequence planner now admits
+non-empty continuous same-profile/same-target one-step chains, preserves ordered
+artifact-key identity, and rejects terminated prefixes or identity drift before
+any mapping. Loaded Crazy sequence ownership/execution and multi-resident
+caching remain open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

@@ -506,7 +506,10 @@ use execution_native::{
     RegisterMaskedCrazyNativeResidentCacheRelease,
     RegisterMaskedCrazyNativeResidentLease,
     RegisterMaskedCrazyNativeResidentLeaseCache,
-    RegisterMaskedCrazyNativeRunner, RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedCrazyNativeRunner, RegisterMaskedCrazyNativeSequenceKey,
+    RegisterMaskedCrazyNativeSequencePlan,
+    RegisterMaskedCrazyNativeSequencePlanError,
+    RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
     RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
@@ -3976,21 +3979,30 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_crazy_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
+    let state = direct_crazy_pair_sequence_state()?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 Crazy fixture run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 Crazy fixture did not run two steps"));
+    }
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("v6 Crazy projection failed: {error:?}"))
+}
+
 fn canonical_register_masked_crazy_program()
 -> Result<RegisterMaskedRegionEffectProgram, String> {
-    let mut machine =
-        ProfileMachine::from_snapshot(direct_crazy_pair_sequence_state()?);
-    let mut recorded = None;
-    let outcome = machine
-        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
-        .map_err(|error| format!("v6 crazy fixture step failed: {error}"))?;
-    if outcome != StepOutcome::Continued {
-        return Err(String::from("v6 crazy fixture did not continue"));
-    }
-    let trace =
-        recorded.ok_or_else(|| String::from("v6 crazy trace missing"))?;
-    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
-        .map_err(|error| format!("v6 crazy projection failed: {error:?}"))
+    canonical_register_masked_crazy_programs()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| String::from("v6 Crazy trace missing"))
 }
 
 fn canonical_register_masked_crazy_accumulator_variant()
@@ -15101,6 +15113,209 @@ fn register_masked_v6_multi_cache_reconfiguration_skips_retired()
         Ok(())
     } else {
         Err(String::from("v6 explicit retired reclaim drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_plan_admits_pair() -> TieredTestResult {
+    let programs = canonical_register_masked_crazy_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_crazy(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let plan =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &artifacts)
+            .map_err(|error| format!("v6 Crazy sequence plan: {error}"))?;
+    let first = programs
+        .first()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| {
+            String::from("v6 Crazy sequence first effect missing")
+        })?;
+    let last = programs
+        .last()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| String::from("v6 Crazy sequence last effect missing"))?;
+    if plan.len() == 2
+        && !plan.is_empty()
+        && plan.entry() == first.before
+        && plan.exit() == last.after
+        && plan.programs() == programs
+        && plan.artifacts() == artifacts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_key_preserves_id() -> TieredTestResult {
+    let programs = canonical_register_masked_crazy_programs()?;
+    let x86_artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_crazy(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let x86_plan =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &x86_artifacts)
+            .map_err(|error| format!("v6 Crazy x86 key plan: {error}"))?;
+    let x86_key = RegisterMaskedCrazyNativeSequenceKey::from_plan(&x86_plan);
+    let expected = x86_artifacts
+        .iter()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let arm_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_crazy(program, HostIsa::AArch64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let arm_plan =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &arm_artifacts)
+            .map_err(|error| format!("v6 Crazy AArch64 key plan: {error}"))?;
+    let arm_key = RegisterMaskedCrazyNativeSequenceKey::from_plan(&arm_plan);
+    if x86_key.len() == 2
+        && !x86_key.is_empty()
+        && x86_key.artifact_keys() == expected
+        && x86_key != arm_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy sequence key identity drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedCrazyNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedCrazyNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 Crazy sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_crazy_program()?;
+    let count =
+        RegisterMaskedCrazyNativeSequencePlan::new(from_ref(&program), &[]);
+    if count
+        == Err(RegisterMaskedCrazyNativeSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Crazy sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_plan_rejects_chain_drift()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_crazy_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_crazy(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 Crazy sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let result =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedCrazyNativeSequencePlanError::ObservationChain {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Crazy sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_plan_rejects_target_drift()
+-> TieredTestResult {
+    let programs = canonical_register_masked_crazy_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(String::from("v6 Crazy target pair length drifted"));
+    };
+    let first = verified_register_masked_crazy(first_program, HostIsa::X86_64)?;
+    let second =
+        verified_register_masked_crazy(second_program, HostIsa::AArch64)?;
+    let result =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &[first, second]);
+    if result
+        == Err(RegisterMaskedCrazyNativeSequencePlanError::TargetMismatch {
+            index: 1,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy sequence ignored target drift"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_rejects_terminated_prefix()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_crazy_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_crazy(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .first_mut()
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 Crazy sequence prefix effect missing")
+        })?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    let result =
+        RegisterMaskedCrazyNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedCrazyNativeSequencePlanError::TerminationBeforeEnd {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Crazy sequence admitted terminated prefix"))
+    }
+}
+
+#[test]
+fn register_masked_v6_crazy_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_crazy_program()?;
+    let artifact = verified_register_masked_crazy(&program, HostIsa::X86_64)?;
+    let variant = register_masked_crazy_history_variant(&program)?;
+    let result = RegisterMaskedCrazyNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(
+            RegisterMaskedCrazyNativeSequencePlanError::ArtifactIdentity {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Crazy sequence ignored artifact identity drift",
+        ))
     }
 }
 
