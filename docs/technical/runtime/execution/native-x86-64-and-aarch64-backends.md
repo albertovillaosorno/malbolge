@@ -269,8 +269,12 @@ any mapping.
 
 Loaded Crazy sequence ownership now publishes only fully loaded plans, cleans a
 ready prefix in reverse after late load failure, and retains exact failed
-executable ownership for release retry. Sequence execution, sequence caching,
-and multi-resident Crazy caching remain open.
+executable ownership for release retry.
+
+Loaded Crazy sequence execution now preserves exact committed-prefix evidence,
+returns guard misses at the current resume boundary, and reuses loaded mappings
+after current-step runner failure. Sequence caching and multi-resident Crazy
+caching remain open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

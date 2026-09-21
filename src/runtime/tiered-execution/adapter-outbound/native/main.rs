@@ -84,6 +84,7 @@ mod process_session;
 mod profile_metadata;
 mod register_masked_crazy_loaded_sequence;
 mod register_masked_crazy_sequence;
+mod register_masked_crazy_sequence_execution;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -656,6 +657,12 @@ pub use register_masked_crazy_sequence::{
     RegisterMaskedCrazyNativeSequenceKey,
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
+};
+pub use register_masked_crazy_sequence_execution::{
+    RegisterMaskedCrazyNativeSequenceExecutionFailure,
+    RegisterMaskedCrazyNativeSequenceExecutionResult,
+    RegisterMaskedCrazyNativeSequenceOutcome,
+    execute_loaded_register_masked_crazy_native_sequence,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
