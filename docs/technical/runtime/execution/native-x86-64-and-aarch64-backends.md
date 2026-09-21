@@ -273,8 +273,13 @@ executable ownership for release retry.
 
 Loaded Crazy sequence execution now preserves exact committed-prefix evidence,
 returns guard misses at the current resume boundary, and reuses loaded mappings
-after current-step runner failure. Sequence caching and multi-resident Crazy
-caching remain open.
+after current-step runner failure.
+
+A weighted FIFO Crazy sequence cache now reuses exact loaded chains without
+adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+failures retain exact retryable cleanup ownership. External sequence leases and
+multi-resident Crazy caching remain open.
 
 A rotate-specific relocation-free image now retains exact key/target identity,
 ISA alignment, and strict RW-to-RX/full-sync policy. Dedicated rotate typestates

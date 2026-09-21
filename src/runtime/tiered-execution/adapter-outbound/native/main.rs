@@ -84,6 +84,7 @@ mod process_session;
 mod profile_metadata;
 mod register_masked_crazy_loaded_sequence;
 mod register_masked_crazy_sequence;
+mod register_masked_crazy_sequence_cache;
 mod register_masked_crazy_sequence_execution;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -657,6 +658,24 @@ pub use register_masked_crazy_sequence::{
     RegisterMaskedCrazyNativeSequenceKey,
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
+};
+pub use register_masked_crazy_sequence_cache::{
+    RegisterMaskedCrazyNativeSequenceCache,
+    RegisterMaskedCrazyNativeSequenceCacheCapacityError,
+    RegisterMaskedCrazyNativeSequenceCacheDisposition,
+    RegisterMaskedCrazyNativeSequenceCacheEntry,
+    RegisterMaskedCrazyNativeSequenceCacheInvalidationResult,
+    RegisterMaskedCrazyNativeSequenceCacheInvariantError,
+    RegisterMaskedCrazyNativeSequenceCacheLimits,
+    RegisterMaskedCrazyNativeSequenceCacheLoadFailure,
+    RegisterMaskedCrazyNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedCrazyNativeSequenceCacheLoadResult,
+    RegisterMaskedCrazyNativeSequenceCacheReconfiguration,
+    RegisterMaskedCrazyNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedCrazyNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedCrazyNativeSequenceCacheReleaseFailure,
+    RegisterMaskedCrazyNativeSequenceCacheReleaseResult,
+    RegisterMaskedCrazyNativeSequenceCacheUsage,
 };
 pub use register_masked_crazy_sequence_execution::{
     RegisterMaskedCrazyNativeSequenceExecutionFailure,

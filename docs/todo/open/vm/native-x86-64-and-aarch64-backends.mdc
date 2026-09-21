@@ -153,8 +153,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Loaded Crazy sequence execution now preserves exact committed-prefix
   evidence, returns guard misses at the current resume boundary, and reuses
-  loaded mappings after current-step runner failure. Sequence caching and
-  multi-resident Crazy caching remain open.
+  loaded mappings after current-step runner failure.
+
+  A weighted FIFO Crazy sequence cache now reuses exact loaded chains without
+  adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+  mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+  failures retain exact retryable cleanup ownership. External sequence leases
+  and multi-resident Crazy caching remain open.
 
   A distinct relocation-free load image and rotate-specific RW-to-RX/full-sync
   typestates now preserve exact key/target identity and mapping evidence. A

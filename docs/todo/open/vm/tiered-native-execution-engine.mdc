@@ -683,8 +683,13 @@ baseline; native tiers are accelerators of identical observable behavior.
 
   Loaded Crazy sequence execution now preserves exact committed-prefix
   evidence, returns guard misses at the current resume boundary, and reuses
-  loaded mappings after current-step runner failure. Sequence caching and
-  multi-resident Crazy caching remain open.
+  loaded mappings after current-step runner failure.
+
+  A weighted FIFO Crazy sequence cache now reuses exact loaded chains without
+  adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+  mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+  failures retain exact retryable cleanup ownership. External sequence leases
+  and multi-resident Crazy caching remain open.
 - `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   The code
