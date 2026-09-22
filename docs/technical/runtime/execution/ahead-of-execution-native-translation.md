@@ -33,20 +33,28 @@ This document governs the following declared TODO scope:
 ### Implemented Foundation
 
 The direct native path now supports a process-local AOT preparation boundary.
-Verified artifacts may be accumulated in the existing exact-key cache and then
-consumed into a sealed VerifiedAheadOfExecutionNativeSet. Runtime AOT lookup
-accepts only that read-only set and never emits or inserts code on a miss.
+Reachable region variants can be compiled transactionally into a private
+exact-key cache, deduplicated by complete artifact identity, and published only
+after every requested fast path has passed profile preflight, native emission,
+and semantic verification. Empty input, deoptimization-only variants,
+unsupported
+hosts, or any failed variant produce no partial AOT product.
 
-Single-region lookup distinguishes exact native hit, uncovered direct identity,
-and unsupported host format after profile preflight. Ordered direct sequences
-publish only when every exact step is already present in the sealed AOT set; a
-partial set returns no sequence plan and remains unchanged.
+The completed preparation cache is consumed into a sealed
+VerifiedAheadOfExecutionNativeSet. Runtime AOT lookup accepts only that
+read-only
+set and never emits or inserts code on a miss. Single-region lookup
+distinguishes
+exact native hit, uncovered direct identity, and unsupported host format after
+profile preflight. Ordered direct sequences publish only when every exact
+step is
+already present in the sealed AOT set; partial coverage remains unchanged.
 
 ### Remaining Scope
 
-Durable AOT artifact storage/loading, an explicit offline preparation product
-flow, verifier-proven finite state-graph materialization, native transitions
-between graph states, and collapsed multi-step native effects remain open.
+Durable AOT artifact storage/loading, verifier-proven finite state-graph
+materialization, native transitions between graph states, and collapsed
+multi-step native effects remain open.
 
 ## Invariants
 

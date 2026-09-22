@@ -272,12 +272,6 @@ impl VerifiedAheadOfExecutionNativeSet {
 }
 
 impl VerifiedDirectNativeCache {
-    /// Consumes the preparation cache into a read-only runtime AOT set.
-    #[must_use]
-    pub fn seal(self) -> VerifiedAheadOfExecutionNativeSet {
-        VerifiedAheadOfExecutionNativeSet { entries: self.entries }
-    }
-
     /// Removes every retained verified artifact.
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -332,6 +326,12 @@ impl VerifiedDirectNativeCache {
     #[must_use]
     pub const fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Consumes the preparation cache into a read-only runtime AOT set.
+    #[must_use]
+    pub fn seal(self) -> VerifiedAheadOfExecutionNativeSet {
+        VerifiedAheadOfExecutionNativeSet { entries: self.entries }
     }
 }
 
@@ -1378,7 +1378,7 @@ pub fn select_preflighted_execution_tier<'requirement>(
 ///
 /// # Errors
 ///
-/// Returns DirectSelectionError for unsupported program/profile/runtime or
+/// Returns `DirectSelectionError` for unsupported program/profile/runtime or
 /// target-identity construction failure. No native emission occurs.
 pub fn select_ahead_of_execution_preflighted_tier<'requirement>(
     program: &'requirement RegionEffectProgram,
@@ -1394,12 +1394,12 @@ pub fn select_ahead_of_execution_preflighted_tier<'requirement>(
     let prepared =
         select_direct_target(program, host.operating_system, host.isa)
             .prepare(program)?;
-    match aot.entries.get(prepared.key()) {
-        Some(artifact) => Ok(AheadOfExecutionPreflightedTier::Direct(
-            Arc::clone(artifact),
-        )),
-        None => Ok(AheadOfExecutionPreflightedTier::Uncovered),
-    }
+    Ok(aot.entries.get(prepared.key()).map_or(
+        AheadOfExecutionPreflightedTier::Uncovered,
+        |artifact| {
+            AheadOfExecutionPreflightedTier::Direct(Arc::clone(artifact))
+        },
+    ))
 }
 
 /// Selects a cache-aware profile-preflighted direct or interpreter plan.

@@ -2275,11 +2275,14 @@ ownership.
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
 
-The ordinary direct path now exposes read-only AOT-first lookup over a sealed
-verified artifact set. Exact one-step identities return retained native
-artifacts, uncovered identities remain distinguishable for later JIT policy, and
-ordered sequences require complete precompiled coverage without runtime
-emission.
+The ordinary direct path now exposes process-local transactional AOT preparation
+plus read-only lookup over a sealed verified artifact set. Preparation
+deduplicates complete artifact keys and publishes nothing unless every requested
+variant has a reviewed fast path and passes emission/verification. Exact
+one-step identities return retained native artifacts, uncovered identities
+remain
+distinguishable for later JIT policy, and ordered sequences require complete
+precompiled coverage without runtime emission.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker

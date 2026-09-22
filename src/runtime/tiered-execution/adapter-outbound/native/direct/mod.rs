@@ -41,6 +41,7 @@ mod emit;
 mod error;
 mod fused;
 mod plan;
+mod preparation;
 mod sequence;
 mod shape;
 mod verify;
@@ -116,6 +117,7 @@ pub use plan::{
     select_preflighted_execution_tier, select_verified_direct_native,
     select_verified_execution_geometry_direct_native,
 };
+pub use preparation::*;
 pub use sequence::*;
 use shape::{
     validate_crazy_program, validate_crazy_target,

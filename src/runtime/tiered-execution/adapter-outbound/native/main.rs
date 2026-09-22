@@ -138,8 +138,8 @@ pub use coff::{
 };
 pub use compiler::{BootstrapCompilerError, compile_preflighted_clang_c23};
 pub use direct::{
-    AheadOfExecutionPreflightedTier, CachedPreflightedExecutionTier,
-    CachedVerifiedDirectSequencePlan,
+    AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
+    CachedPreflightedExecutionTier, CachedVerifiedDirectSequencePlan,
     CachedVerifiedExecutionGeometryDirectSequencePlan, DIRECT_CRAZY_BACKEND_ID,
     DIRECT_CRAZY_BACKEND_REVISION, DIRECT_DEOPT_BACKEND_ID,
     DIRECT_DEOPT_BACKEND_REVISION, DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
@@ -252,7 +252,7 @@ pub use direct::{
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
     emit_direct_register_masked_rotate_coff, emit_direct_rotate_coff,
-    emit_fused_direct_sequence_coff,
+    emit_fused_direct_sequence_coff, prepare_ahead_of_execution_native_set,
     select_ahead_of_execution_preflighted_tier,
     select_ahead_of_execution_verified_direct_sequence,
     select_cached_preflighted_execution_tier,

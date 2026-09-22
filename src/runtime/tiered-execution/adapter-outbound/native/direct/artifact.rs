@@ -1027,10 +1027,10 @@ pub enum DirectCacheDisposition {
 pub enum AheadOfExecutionPreflightedTier {
     /// One exact precompiled and verified native artifact was already retained.
     Direct(Arc<VerifiedDirectNativeArtifact>),
-    /// This host supports direct artifacts but this exact identity is absent.
-    Uncovered,
     /// This host has no supported direct object format.
     Interpreter,
+    /// This host supports direct artifacts but this exact identity is absent.
+    Uncovered,
 }
 
 /// Cache-aware profile-preflighted execution-tier plan.

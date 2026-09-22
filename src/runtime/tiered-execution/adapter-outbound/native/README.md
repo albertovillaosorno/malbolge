@@ -1077,6 +1077,15 @@ eviction policy, synchronization policy, linking,
 executable memory, and the unsafe foreign-call boundary remain outside; `Arc`
 supplies ownership only, not concurrent execution.
 
+`prepare_ahead_of_execution_native_set()` owns a fresh private preparation
+cache and publishes a sealed read-only AOT set only after every
+requested region has a reviewed direct fast path and passes profile preflight,
+emission, and semantic verification. Exact duplicate keys are emitted once.
+Empty input, deoptimization-only variants, unsupported target formats, and any
+indexed preparation failure publish no partial set. This is process-local
+startup/offline preparation only; durable storage and state-graph transition
+admission remain separate boundaries.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

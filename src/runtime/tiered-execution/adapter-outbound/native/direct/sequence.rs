@@ -775,7 +775,7 @@ pub fn select_verified_direct_sequence<'requirement>(
 ///
 /// # Errors
 ///
-/// Returns DirectSequenceError under the same structural, profile, and
+/// Returns `DirectSequenceError` under the same structural, profile, and
 /// direct-target admission rules as ordinary verified sequence planning.
 pub fn select_ahead_of_execution_verified_direct_sequence<'requirement>(
     programs: &'requirement [RegionEffectProgram],
@@ -795,10 +795,11 @@ pub fn select_ahead_of_execution_verified_direct_sequence<'requirement>(
         };
         artifacts.push(Arc::clone(artifact));
     }
+    let cache_hits = artifacts.len();
     Ok(Some(CachedVerifiedDirectSequencePlan {
-        cache_hits: artifacts.len(),
-        cache_insertions: 0,
         artifacts,
+        cache_hits,
+        cache_insertions: 0,
         entry: boundary.entry,
         exit: boundary.exit,
         outcome: boundary.outcome,

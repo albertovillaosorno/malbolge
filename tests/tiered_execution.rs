@@ -339,10 +339,11 @@ use execution_cache::{
 use execution_clock::NativeContinuationSystemMonotonicClock;
 use execution_native as en;
 use execution_native::{
-    AheadOfExecutionPreflightedTier, BootstrapCompilerError,
-    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
-    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
-    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
+    BootstrapCompilerError, BootstrapProfilePreflightError,
+    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+    CachedPreflightedExecutionTier, CoffAdmissionError,
+    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
@@ -715,7 +716,8 @@ use execution_native::{
     native_process_call_response_byte_limit,
     native_process_memory_request_byte_len,
     native_process_memory_response_byte_limit, plan_direct_fused_native_retry,
-    rebase_direct_fused_native_retry, rebase_direct_fused_native_retry_failure,
+    prepare_ahead_of_execution_native_set, rebase_direct_fused_native_retry,
+    rebase_direct_fused_native_retry_failure,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable,
     release_execution_geometry_native_executable_sequence,
@@ -30056,6 +30058,117 @@ fn seed_verified_direct_cache(
 }
 
 #[test]
+fn aot_preparation_rejects_empty_variant_set() -> Result<(), String> {
+    let result = prepare_ahead_of_execution_native_set(
+        &[],
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    if result == Err(AheadOfExecutionPreparationError::Empty) {
+        Ok(())
+    } else {
+        Err(String::from("empty AOT preparation did not fail closed"))
+    }
+}
+
+#[test]
+fn aot_preparation_deduplicates_exact_verified_variants() -> Result<(), String>
+{
+    let halt = direct_initial_halt_program();
+    let output = direct_output_program();
+    let programs = [halt.clone(), output, halt];
+    let aot = prepare_ahead_of_execution_native_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    if aot.len() != 2 {
+        return Err(format!(
+            "AOT preparation retained {} artifacts",
+            aot.len()
+        ));
+    }
+    for program in programs.iter().take(2) {
+        let selected = select_ahead_of_execution_preflighted_tier(
+            program,
+            safe_rust_profiled_capability(),
+            DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+            &aot,
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(selected, AheadOfExecutionPreflightedTier::Direct(_)) {
+            return Err(String::from("prepared AOT variant was not reusable"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_preparation_rejects_deoptimization_variant() -> Result<(), String> {
+    let programs = [direct_initial_halt_program(), native_program()];
+    let result = prepare_ahead_of_execution_native_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    if result
+        == Err(AheadOfExecutionPreparationError::Deoptimization { index: 1 })
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT preparation admitted deoptimization stub"))
+    }
+}
+
+#[test]
+fn aot_preparation_reports_indexed_preflight_failure() -> Result<(), String> {
+    let first = direct_initial_halt_program();
+    let mut forged = direct_output_program();
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    let programs = [first, forged];
+    let result = prepare_ahead_of_execution_native_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    let Err(AheadOfExecutionPreparationError::Step { error, index: 1 }) =
+        result
+    else {
+        return Err(String::from("AOT preparation lost failing variant index"));
+    };
+    if *error == DirectSelectionError::ProfileRequirement {
+        Ok(())
+    } else {
+        Err(String::from("AOT preparation changed preflight error"))
+    }
+}
+
+#[test]
+fn aot_preparation_reports_unsupported_host_before_publication()
+-> Result<(), String> {
+    let programs = [direct_initial_halt_program()];
+    let result = prepare_ahead_of_execution_native_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+    );
+    let Err(AheadOfExecutionPreparationError::Step { error, index: 0 }) =
+        result
+    else {
+        return Err(String::from("AOT preparation hid unsupported host"));
+    };
+    if *error == DirectSelectionError::TargetFormat {
+        Ok(())
+    } else {
+        Err(String::from(
+            "AOT preparation changed target-format failure",
+        ))
+    }
+}
+
+#[test]
 fn aot_tier_reports_uncovered_without_emission() -> Result<(), String> {
     let aot = VerifiedDirectNativeCache::default().seal();
     let selected = select_ahead_of_execution_preflighted_tier(
@@ -50860,13 +50973,11 @@ fn verify_cached_fused_admission(isa: HostIsa) -> Result<(), String> {
 }
 
 #[test]
-fn aot_direct_sequence_requires_complete_precompiled_set() -> Result<(), String>
-{
+fn aot_direct_sequence_rejects_incomplete_set() -> Result<(), String> {
     let programs = direct_normative_sequence_programs()?;
     let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
     let runtime = safe_rust_profiled_capability();
     let empty_aot = VerifiedDirectNativeCache::default().seal();
-
     if select_ahead_of_execution_verified_direct_sequence(
         &programs, runtime, host, &empty_aot,
     )
@@ -50879,25 +50990,18 @@ fn aot_direct_sequence_requires_complete_precompiled_set() -> Result<(), String>
         ));
     }
 
-    let mut cache = VerifiedDirectNativeCache::default();
     let first_program = programs
         .first()
         .ok_or_else(|| String::from("AOT sequence fixture was empty"))?;
-    let first = select_cached_preflighted_execution_tier(
+    let mut cache = VerifiedDirectNativeCache::default();
+    let _first = select_cached_preflighted_execution_tier(
         first_program,
         runtime,
         host,
         &mut cache,
     )
     .map_err(|error| error.to_string())?;
-    if !matches!(first, CachedPreflightedExecutionTier::Direct {
-        cache: DirectCacheDisposition::Inserted,
-        ..
-    }) || cache.len() != 1
-    {
-        return Err(String::from("failed to seed partial AOT sequence"));
-    }
-    let partial_aot = cache.clone().seal();
+    let partial_aot = cache.seal();
     if select_ahead_of_execution_verified_direct_sequence(
         &programs,
         runtime,
@@ -50905,12 +51009,21 @@ fn aot_direct_sequence_requires_complete_precompiled_set() -> Result<(), String>
         &partial_aot,
     )
     .map_err(|error| error.to_string())?
-    .is_some()
-        || partial_aot.len() != 1
+    .is_none()
+        && partial_aot.len() == 1
     {
-        return Err(String::from("partial AOT set leaked a sequence plan"));
+        Ok(())
+    } else {
+        Err(String::from("partial AOT set leaked a sequence plan"))
     }
+}
 
+#[test]
+fn aot_direct_sequence_reuses_complete_precompiled_set() -> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let runtime = safe_rust_profiled_capability();
+    let mut cache = VerifiedDirectNativeCache::default();
     let seeded = select_cached_verified_direct_sequence(
         &programs, runtime, host, &mut cache,
     )
@@ -50922,7 +51035,6 @@ fn aot_direct_sequence_requires_complete_precompiled_set() -> Result<(), String>
     )
     .map_err(|error| error.to_string())?
     .ok_or_else(|| String::from("complete AOT set was not selected"))?;
-
     let same_arcs = seeded
         .artifacts()
         .iter()
