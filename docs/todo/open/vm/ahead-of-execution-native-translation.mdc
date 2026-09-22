@@ -39,6 +39,15 @@ Offline CPU, GPU, or superoptimization search may propose stronger reductions,
 but independent deterministic verification remains the only admission authority.
 Regions that cannot be proven safe fall back to ordinary VM execution.
 
+- Process-local preparation can accumulate exact verified direct artifacts and
+  seal them into a read-only VerifiedAheadOfExecutionNativeSet.
+- Runtime AOT lookup never emits on a miss and distinguishes exact hit,
+  uncovered identity, and unsupported host format after profile preflight.
+- Ordered direct sequences require every exact step to exist in the sealed set;
+  partial AOT coverage publishes no sequence plan and mutates nothing.
+- Durable artifact loading, offline preparation orchestration, finite-state
+  graph transitions, and verified collapsed multi-step effects remain open.
+
 ## Acceptance
 
 - Only regions whose code-state assumptions are explicit may be compiled before

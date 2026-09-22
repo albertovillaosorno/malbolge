@@ -30,16 +30,23 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Implemented Foundation
 
-This record defines the contract that implementation must satisfy for
-`ahead-of-execution-native-translation`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+The direct native path now supports a process-local AOT preparation boundary.
+Verified artifacts may be accumulated in the existing exact-key cache and then
+consumed into a sealed VerifiedAheadOfExecutionNativeSet. Runtime AOT lookup
+accepts only that read-only set and never emits or inserts code on a miss.
 
-### Implementation Status
+Single-region lookup distinguishes exact native hit, uncovered direct identity,
+and unsupported host format after profile preflight. Ordered direct sequences
+publish only when every exact step is already present in the sealed AOT set; a
+partial set returns no sequence plan and remains unchanged.
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Remaining Scope
+
+Durable AOT artifact storage/loading, an explicit offline preparation product
+flow, verifier-proven finite state-graph materialization, native transitions
+between graph states, and collapsed multi-step native effects remain open.
 
 ## Invariants
 

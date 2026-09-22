@@ -1018,6 +1018,21 @@ pub enum DirectCacheDisposition {
     Inserted,
 }
 
+/// Read-only AOT lookup result for one profile-preflighted direct target.
+///
+/// This result never triggers native emission. An uncovered exact identity
+/// remains distinguishable from host-format absence so higher-level policy may
+/// choose a bounded JIT attempt or interpreter fallback.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AheadOfExecutionPreflightedTier {
+    /// One exact precompiled and verified native artifact was already retained.
+    Direct(Arc<VerifiedDirectNativeArtifact>),
+    /// This host supports direct artifacts but this exact identity is absent.
+    Uncovered,
+    /// This host has no supported direct object format.
+    Interpreter,
+}
+
 /// Cache-aware profile-preflighted execution-tier plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CachedPreflightedExecutionTier {
@@ -1035,6 +1050,12 @@ pub enum CachedPreflightedExecutionTier {
 /// Caller-owned cache containing only semantically admitted direct artifacts.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VerifiedDirectNativeCache {
+    pub(super) entries: NativeArtifactCache<Arc<VerifiedDirectNativeArtifact>>,
+}
+
+/// Sealed read-only set of verified native artifacts prepared before runtime.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerifiedAheadOfExecutionNativeSet {
     pub(super) entries: NativeArtifactCache<Arc<VerifiedDirectNativeArtifact>>,
 }
 

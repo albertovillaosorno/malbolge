@@ -33,9 +33,10 @@
 //! Direct target planning and cache-aware selection.
 
 use super::{
-    Arc, CachedPreflightedExecutionTier, DIRECT_CRAZY_BACKEND_ID,
-    DIRECT_CRAZY_BACKEND_REVISION, DIRECT_DEOPT_BACKEND_ID,
-    DIRECT_DEOPT_BACKEND_REVISION, DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
+    AheadOfExecutionPreflightedTier, Arc, CachedPreflightedExecutionTier,
+    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
@@ -80,7 +81,8 @@ use super::{
     NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
     PreflightedExecutionTier, RegionEffectIdentity, RegionEffectProgram,
     RegisterMaskedDirectAdmissionError, RegisterMaskedRegionEffectProgram,
-    RuntimeCapability, TargetProfileRequirement, VerifiedDirectNativeArtifact,
+    RuntimeCapability, TargetProfileRequirement,
+    VerifiedAheadOfExecutionNativeSet, VerifiedDirectNativeArtifact,
     VerifiedDirectNativeCache, VerifiedExecutionGeometryNativeArtifact,
     VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedDirectAdmission, emit_direct_crazy_with_key,
@@ -255,7 +257,27 @@ impl VerifiedExecutionGeometryNativeCache {
     }
 }
 
+impl VerifiedAheadOfExecutionNativeSet {
+    /// Reports whether the sealed AOT set contains no verified artifacts.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Returns the number of exact verified artifacts in the sealed AOT set.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
 impl VerifiedDirectNativeCache {
+    /// Consumes the preparation cache into a read-only runtime AOT set.
+    #[must_use]
+    pub fn seal(self) -> VerifiedAheadOfExecutionNativeSet {
+        VerifiedAheadOfExecutionNativeSet { entries: self.entries }
+    }
+
     /// Removes every retained verified artifact.
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -1344,6 +1366,39 @@ pub fn select_preflighted_execution_tier<'requirement>(
             Ok(PreflightedExecutionTier::Interpreter)
         },
         Err(error) => Err(error),
+    }
+}
+
+/// Looks up an exact verified AOT artifact without compiling on a miss.
+///
+/// Profile admission and host-format selection happen before lookup. A direct
+/// host with no exact precompiled artifact returns an uncovered result without
+/// mutating the cache, allowing higher-level policy to choose JIT rescue or
+/// interpreter fallback.
+///
+/// # Errors
+///
+/// Returns DirectSelectionError for unsupported program/profile/runtime or
+/// target-identity construction failure. No native emission occurs.
+pub fn select_ahead_of_execution_preflighted_tier<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+    aot: &VerifiedAheadOfExecutionNativeSet,
+) -> Result<AheadOfExecutionPreflightedTier, DirectSelectionError<'requirement>>
+{
+    preflight_direct_selection(program, runtime)?;
+    if host.operating_system != HostOperatingSystem::Windows {
+        return Ok(AheadOfExecutionPreflightedTier::Interpreter);
+    }
+    let prepared =
+        select_direct_target(program, host.operating_system, host.isa)
+            .prepare(program)?;
+    match aot.entries.get(prepared.key()) {
+        Some(artifact) => Ok(AheadOfExecutionPreflightedTier::Direct(
+            Arc::clone(artifact),
+        )),
+        None => Ok(AheadOfExecutionPreflightedTier::Uncovered),
     }
 }
 

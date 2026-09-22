@@ -138,7 +138,8 @@ pub use coff::{
 };
 pub use compiler::{BootstrapCompilerError, compile_preflighted_clang_c23};
 pub use direct::{
-    CachedPreflightedExecutionTier, CachedVerifiedDirectSequencePlan,
+    AheadOfExecutionPreflightedTier, CachedPreflightedExecutionTier,
+    CachedVerifiedDirectSequencePlan,
     CachedVerifiedExecutionGeometryDirectSequencePlan, DIRECT_CRAZY_BACKEND_ID,
     DIRECT_CRAZY_BACKEND_REVISION, DIRECT_DEOPT_BACKEND_ID,
     DIRECT_DEOPT_BACKEND_REVISION, DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
@@ -200,7 +201,8 @@ pub use direct::{
     ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError, PreflightedExecutionTier,
     RegisterMaskedDirectAdmissionError, RegisterMaskedDirectAdmissionErrorKind,
-    VerifiedCrazyNativeObjectArtifact, VerifiedDeoptNativeObjectArtifact,
+    VerifiedAheadOfExecutionNativeSet, VerifiedCrazyNativeObjectArtifact,
+    VerifiedDeoptNativeObjectArtifact,
     VerifiedDirectFusedSequenceObjectArtifact, VerifiedDirectNativeArtifact,
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
     VerifiedExecutionGeometryCrazyNativeObjectArtifact,
@@ -250,7 +252,10 @@ pub use direct::{
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
     emit_direct_register_masked_rotate_coff, emit_direct_rotate_coff,
-    emit_fused_direct_sequence_coff, select_cached_preflighted_execution_tier,
+    emit_fused_direct_sequence_coff,
+    select_ahead_of_execution_preflighted_tier,
+    select_ahead_of_execution_verified_direct_sequence,
+    select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
     select_cached_verified_execution_geometry_direct_sequence,
     select_preflighted_execution_tier, select_verified_direct_native,

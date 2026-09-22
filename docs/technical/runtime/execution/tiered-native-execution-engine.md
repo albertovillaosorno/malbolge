@@ -2275,11 +2275,17 @@ ownership.
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
 
+The ordinary direct path now exposes read-only AOT-first lookup over a sealed
+verified artifact set. Exact one-step identities return retained native
+artifacts, uncovered identities remain distinguishable for later JIT policy, and
+ordered sequences require complete precompiled coverage without runtime
+emission.
+
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker
 execution, durable cache serialization/storage and cross-process leasing,
-AOT-first artifact selection, finite-state native transition policy, and
-latency-bounded JIT rescue beyond verified direct process-local reuse remain
+durable AOT preparation/loading, finite-state native transition policy, and
+latency-bounded JIT rescue beyond verified direct process-local lookup remain
 open, alongside broader end-to-end performance policy. The interpreter
 remains the only normative execution authority and the guaranteed fallback.
 

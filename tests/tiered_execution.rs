@@ -339,10 +339,10 @@ use execution_cache::{
 use execution_clock::NativeContinuationSystemMonotonicClock;
 use execution_native as en;
 use execution_native::{
-    BootstrapCompilerError, BootstrapProfilePreflightError,
-    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    CachedPreflightedExecutionTier, CoffAdmissionError,
-    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    AheadOfExecutionPreflightedTier, BootstrapCompilerError,
+    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
+    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
+    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
@@ -729,6 +729,8 @@ use execution_native::{
     return_direct_fused_native_retry_failure_leases,
     return_direct_fused_native_retry_leases, route_direct_fused_native_retry,
     schedule_direct_fused_native_handoff,
+    select_ahead_of_execution_preflighted_tier,
+    select_ahead_of_execution_verified_direct_sequence,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
     select_cached_verified_execution_geometry_direct_sequence,
@@ -30053,6 +30055,134 @@ fn seed_verified_direct_cache(
     }
 }
 
+#[test]
+fn aot_tier_reports_uncovered_without_emission() -> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    if selected == AheadOfExecutionPreflightedTier::Uncovered && aot.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT miss emitted or mutated native cache"))
+    }
+}
+
+#[test]
+fn aot_tier_reuses_exact_precompiled_artifact() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    let inserted = select_cached_preflighted_execution_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: inserted_artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = inserted
+    else {
+        return Err(String::from("failed to seed AOT lookup fixture"));
+    };
+
+    let aot = cache.seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let AheadOfExecutionPreflightedTier::Direct(hit) = selected else {
+        return Err(String::from("AOT exact artifact was not selected"));
+    };
+    if Arc::ptr_eq(&inserted_artifact, &hit) && aot.len() == 1 {
+        Ok(())
+    } else {
+        Err(String::from("AOT lookup cloned or mutated exact artifact"))
+    }
+}
+
+#[test]
+fn aot_tier_keeps_uncovered_identity_distinct() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let aot = cache.seal();
+    let mut variant = program.clone();
+    variant.profile_fingerprint.push('x');
+
+    let uncovered = select_ahead_of_execution_preflighted_tier(
+        &variant,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let unsupported_host = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    if uncovered == AheadOfExecutionPreflightedTier::Uncovered
+        && unsupported_host == AheadOfExecutionPreflightedTier::Interpreter
+        && aot.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT lookup conflated miss with host fallback"))
+    }
+}
+
+#[test]
+fn aot_tier_preflights_before_read_only_lookup() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let aot = cache.seal();
+
+    let mut forged = program.clone();
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    if select_ahead_of_execution_preflighted_tier(
+        &forged,
+        safe_rust_classic_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    ) != Err(DirectSelectionError::ProfileRequirement)
+    {
+        return Err(String::from("AOT lookup bypassed profile admission"));
+    }
+
+    let Err(runtime_error) = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_classic_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    ) else {
+        return Err(String::from("AOT lookup bypassed runtime preflight"));
+    };
+    let DirectSelectionError::Profile(profile) = runtime_error else {
+        return Err(String::from("AOT runtime error changed category"));
+    };
+    if profile.kind() == ProfileRequirementErrorKind::RuntimeCapabilityMissing
+        && aot.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT lookup lost profile preflight ordering"))
+    }
+}
+
 fn assert_cached_runtime_preflight(
     program: &RegionEffectProgram,
     cache: &mut VerifiedDirectNativeCache,
@@ -50725,6 +50855,91 @@ fn verify_cached_fused_admission(isa: HostIsa) -> Result<(), String> {
     } else {
         Err(String::from(
             "cached fused provenance required cache lifetime",
+        ))
+    }
+}
+
+#[test]
+fn aot_direct_sequence_requires_complete_precompiled_set() -> Result<(), String>
+{
+    let programs = direct_normative_sequence_programs()?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let runtime = safe_rust_profiled_capability();
+    let empty_aot = VerifiedDirectNativeCache::default().seal();
+
+    if select_ahead_of_execution_verified_direct_sequence(
+        &programs, runtime, host, &empty_aot,
+    )
+    .map_err(|error| error.to_string())?
+    .is_some()
+        || !empty_aot.is_empty()
+    {
+        return Err(String::from(
+            "empty AOT set unexpectedly produced sequence",
+        ));
+    }
+
+    let mut cache = VerifiedDirectNativeCache::default();
+    let first_program = programs
+        .first()
+        .ok_or_else(|| String::from("AOT sequence fixture was empty"))?;
+    let first = select_cached_preflighted_execution_tier(
+        first_program,
+        runtime,
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    if !matches!(first, CachedPreflightedExecutionTier::Direct {
+        cache: DirectCacheDisposition::Inserted,
+        ..
+    }) || cache.len() != 1
+    {
+        return Err(String::from("failed to seed partial AOT sequence"));
+    }
+    let partial_aot = cache.clone().seal();
+    if select_ahead_of_execution_verified_direct_sequence(
+        &programs,
+        runtime,
+        host,
+        &partial_aot,
+    )
+    .map_err(|error| error.to_string())?
+    .is_some()
+        || partial_aot.len() != 1
+    {
+        return Err(String::from("partial AOT set leaked a sequence plan"));
+    }
+
+    let seeded = select_cached_verified_direct_sequence(
+        &programs, runtime, host, &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_len = cache.len();
+    let full_aot = cache.seal();
+    let aot = select_ahead_of_execution_verified_direct_sequence(
+        &programs, runtime, host, &full_aot,
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| String::from("complete AOT set was not selected"))?;
+
+    let same_arcs = seeded
+        .artifacts()
+        .iter()
+        .zip(aot.artifacts())
+        .all(|(left, right)| Arc::ptr_eq(left, right));
+    if aot.cache_hits() == programs.len()
+        && aot.cache_insertions() == 0
+        && aot.entry() == seeded.entry()
+        && aot.exit() == seeded.exit()
+        && aot.outcome() == seeded.outcome()
+        && same_arcs
+        && full_aot.len() == expected_len
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "complete AOT sequence changed cached provenance",
         ))
     }
 }

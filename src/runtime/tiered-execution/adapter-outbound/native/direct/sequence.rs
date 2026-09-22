@@ -46,8 +46,8 @@ use super::{
     HostOperatingSystem, NativeArtifactKey,
     ProfileExecutionGeometryRequirement, ProfileMachineObservation,
     RegionEffectProgram, RunOutcome, RuntimeCapability,
-    VerifiedDirectNativeArtifact, VerifiedDirectNativeCache,
-    VerifiedExecutionGeometryNativeArtifact,
+    VerifiedAheadOfExecutionNativeSet, VerifiedDirectNativeArtifact,
+    VerifiedDirectNativeCache, VerifiedExecutionGeometryNativeArtifact,
     VerifiedExecutionGeometryNativeCache,
     select_verified_execution_geometry_direct_native,
 };
@@ -765,6 +765,45 @@ pub fn select_verified_direct_sequence<'requirement>(
         outcome: boundary.outcome,
         programs: programs.to_vec(),
     })
+}
+
+/// Looks up a complete precompiled direct sequence without emitting misses.
+///
+/// The sequence is published only when every exact step identity already exists
+/// in the verified cache. Any missing step returns None and leaves the cache
+/// untouched, so higher-level AOT-first policy can choose another tier.
+///
+/// # Errors
+///
+/// Returns DirectSequenceError under the same structural, profile, and
+/// direct-target admission rules as ordinary verified sequence planning.
+pub fn select_ahead_of_execution_verified_direct_sequence<'requirement>(
+    programs: &'requirement [RegionEffectProgram],
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+    aot: &VerifiedAheadOfExecutionNativeSet,
+) -> Result<
+    Option<CachedVerifiedDirectSequencePlan>,
+    DirectSequenceError<'requirement>,
+> {
+    let boundary = validate_sequence(programs)?;
+    let mut artifacts = Vec::with_capacity(programs.len());
+    for (index, program) in programs.iter().enumerate() {
+        let prepared = prepare_sequence_target(program, runtime, host, index)?;
+        let Some(artifact) = aot.entries.get(prepared.key()) else {
+            return Ok(None);
+        };
+        artifacts.push(Arc::clone(artifact));
+    }
+    Ok(Some(CachedVerifiedDirectSequencePlan {
+        cache_hits: artifacts.len(),
+        cache_insertions: 0,
+        artifacts,
+        entry: boundary.entry,
+        exit: boundary.exit,
+        outcome: boundary.outcome,
+        programs: programs.to_vec(),
+    }))
 }
 
 /// Selects one cache-aware exact direct sequence with atomic cache publication.

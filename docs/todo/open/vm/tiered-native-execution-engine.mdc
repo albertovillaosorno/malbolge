@@ -889,8 +889,11 @@ behavior.
   and AArch64 COFF objects using the
   same MBNPM1/MBNPC1 protocol and Windows executable-memory/cache-sync APIs.
   Host-real AArch64 and Windows worker execution remain open.
-- AOT-first artifact selection, finite-state native transition policy, and
-  latency-bounded JIT rescue beyond verified direct process-local reuse remain
-  unimplemented. Durable cache serialization/storage/eviction, broader platform
-  execution evidence, and broader end-to-end tier performance policy also remain
-  open.
+- Process-local AOT-first lookup now consumes a sealed verified artifact set:
+  exact direct identities reuse retained artifacts, uncovered identities remain
+  distinct, and ordered sequences require complete precompiled coverage without
+  runtime emission.
+- Durable AOT preparation/loading, finite-state native transition policy, and
+  latency-bounded JIT rescue remain unimplemented. Durable cache
+  serialization/storage/eviction, broader platform execution evidence, and
+  broader end-to-end tier performance policy also remain open.
