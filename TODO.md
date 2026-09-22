@@ -39,11 +39,21 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 
 ### TODO - Tiered native execution engine
 
-Build a tiered execution engine instead of choosing between interpretation, AOT,
-and JIT.
+Build an AOT-first tiered execution engine where verified precompiled native
+state variants are primary, the JIT covers only uncached mutable states, and the
+interpreter remains the normative fallback.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/vm/tiered-native-execution-engine.mdc](docs/todo/open/vm/tiered-native-execution-engine.mdc)
+
+### TODO - Ahead-of-execution native translation
+
+Compile verified reachable code-state regions before guest execution, including
+finite closed self-modification graphs represented as precompiled native state
+variants.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/ahead-of-execution-native-translation.mdc](docs/todo/open/vm/ahead-of-execution-native-translation.mdc)
 
 ### TODO - Compact guest bytecode strategy
 
@@ -120,14 +130,6 @@ compatible source input.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/tools/source-bound-diff-generator.mdc](docs/todo/open/tools/source-bound-diff-generator.mdc)
 
-### TODO - Ahead-of-execution native translation
-
-Translate reachable stable Malbolge regions into native code in memory before
-guest execution begins.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/ahead-of-execution-native-translation.mdc](docs/todo/open/vm/ahead-of-execution-native-translation.mdc)
-
 ### TODO - C-level source mapping and debugging
 
 Generate source maps from Malbolge addresses through lowered IR back to C source
@@ -181,7 +183,8 @@ tiers and native-code cache reuse.
 
 ### TODO - Guarded self-modification JIT
 
-Compile hot mutable regions after observing their concrete code-state versions.
+Use a latency-bounded JIT only for hot mutable code-state versions that were not
+covered by verified AOT artifacts, with deterministic interpreter fallback.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/vm/guarded-self-modification-jit.mdc](docs/todo/open/vm/guarded-self-modification-jit.mdc)

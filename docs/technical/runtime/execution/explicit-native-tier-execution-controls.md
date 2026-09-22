@@ -8,11 +8,12 @@ Proposed
 
 Expose independent `--no-jit` and `--no-aot` runtime controls plus an
 `--interpreter-only` shorthand equivalent to disabling both native compilation
-tiers and native-code cache reuse. Default execution may use AOT, JIT, graph
-optimization, and interpreter fallback, but interpreter-only mode must execute
-the Malbolge machine directly without generating host machine code. Use these
-modes for differential correctness checks and honest measurements of pure VM,
-AOT-only, JIT-only, and fully tiered execution.
+tiers and native-code cache reuse. Default native policy is AOT-first, then a
+latency-bounded JIT only for uncovered mutable states, then interpreter
+fallback.
+Interpreter-only mode executes the Malbolge machine directly without generating
+host machine code. Use these modes for differential correctness checks and
+honest measurements of pure VM, AOT-only, JIT-only, and fully tiered execution.
 
 ## Scope
 

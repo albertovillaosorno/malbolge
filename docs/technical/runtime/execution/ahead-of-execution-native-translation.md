@@ -6,11 +6,18 @@ Proposed
 
 ## Purpose
 
-Translate reachable stable Malbolge regions into native code in memory before
-guest execution begins. Use a compact portable micro-IR between Malbolge decode
-and architecture-specific code generation, cache verified compiled regions by
-program identity, target profile, architecture, and code-state assumptions, and
-fall back to ordinary VM execution for regions that cannot yet be proven stable.
+Make verified ahead-of-execution translation the primary native execution
+path. Use the portable execution IR between Malbolge decode and
+architecture-specific code generation, then build or load exact native artifacts
+before guest execution from reachable code-state evidence. When verification
+proves a finite closed self-modification graph, materialize its reachable
+code-state variants as native blocks and lower
+runtime self-modification to guarded transitions among those precompiled
+variants.
+
+Offline CPU, GPU, or superoptimization search may propose stronger reductions,
+but independent deterministic verification remains the only admission authority.
+Unproven regions fall back to ordinary VM execution.
 
 ## Scope
 
@@ -39,6 +46,16 @@ Not implemented. This proposed contract does not claim executable support yet.
 - Only regions whose code-state assumptions are explicit may be compiled before
   execution, and cache keys include every assumption required for safe native
   reuse.
+- A verifier-proven finite closed state graph may be materialized as precompiled
+  native code-state variants with explicit transitions. A runtime state absent
+  from that admitted graph cannot silently reuse one of those variants.
+- A native transition may collapse multiple guest steps only when
+  deterministic verification proves the complete net effect on registers,
+  memory, I/O, termination, and every retained code-state dependency.
+- Offline optimizer, CPU, or GPU output is untrusted proposal material until
+  deterministic verification proves its exact state effect and native identity.
+- Ahead-of-execution work has no frame-critical latency budget, but its
+  preparation time and resource use remain benchmarked separately from runtime.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample

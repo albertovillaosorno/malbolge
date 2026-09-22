@@ -1,7 +1,7 @@
 ---
 id: "guarded-self-modification-jit"
 status: "pending"
-lane: "11"
+lane: "12"
 priority: "p3"
 area: "vm"
 task: "TODO - Guarded self-modification JIT"
@@ -9,6 +9,7 @@ contract: "docs/technical/runtime/execution/guarded-self-modification-jit.md"
 depends_on:
   - "tiered-native-execution-engine"
   - "native-x86-64-and-aarch64-backends"
+  - "ahead-of-execution-native-translation"
   - "self-modification-state-graph-optimizer"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -27,17 +28,28 @@ validation:
 
 ## Objective
 
-Compile hot mutable regions after observing their concrete code-state versions.
-Attach explicit guards to assumptions about self-modifying cells, code/data
-aliasing, addressing, and control flow. A failed guard deoptimizes to the
-interpreter, updates the observed state graph, and may create a new
-specialization without changing observable Malbolge behavior.
+Use JIT compilation as a latency-bounded rescue tier for hot mutable code-state
+versions that were not covered by verified AOT artifacts. Exact AOT/native-cache
+hits always take precedence. Attach explicit guards to assumptions about
+self-modifying cells, code/data aliasing, addressing, and control flow.
+
+A failed guard or exhausted compilation budget deoptimizes to the interpreter.
+Observed
+new states may become candidates for later specialization or a future AOT build,
+but discovery never changes observable Malbolge behavior by itself.
 
 ## Acceptance
 
 - Every speculative native specialization has explicit code-state guards and a
   tested deoptimization path that reconstructs an equivalent interpreter state
   on guard failure.
+- An exact admitted AOT/native-cache hit prevents duplicate JIT compilation for
+  the same semantic and code-state identity.
+- Synchronous JIT work has an explicit resource/time budget. Budget exhaustion,
+  cancellation, or unsupported specialization returns to the interpreter rather
+  than extending guest critical-path latency without bound.
+- Benchmarks report tail latency and compile/admission cost separately from
+  steady-state execution; no fixed speedup is assumed by this TODO.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -57,8 +69,9 @@ specialization without changing observable Malbolge behavior.
   implementations; the original C source is compared only where its behavior is
   defined and reproducible.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
-
-ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
+  `native-x86-64-and-aarch64-backends`,
+  `ahead-of-execution-native-translation`,
+  `self-modification-state-graph-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

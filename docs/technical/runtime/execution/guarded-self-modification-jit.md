@@ -6,11 +6,15 @@ Proposed
 
 ## Purpose
 
-Compile hot mutable regions after observing their concrete code-state versions.
-Attach explicit guards to assumptions about self-modifying cells, code/data
-aliasing, addressing, and control flow. A failed guard deoptimizes to the
-interpreter, updates the observed state graph, and may create a new
-specialization without changing observable Malbolge behavior.
+Use JIT compilation as a latency-bounded rescue tier for hot mutable code-state
+versions absent from verified AOT artifacts. Exact AOT/native-cache hits always
+take precedence. Attach explicit guards to assumptions about self-modifying
+cells, code/data aliasing, addressing, and control flow.
+
+A failed guard or exhausted compilation budget deoptimizes to the interpreter.
+Newly observed
+states may become candidates for later specialization or a future AOT build, but
+observation alone never grants native execution authority.
 
 ## Scope
 
@@ -39,6 +43,12 @@ Not implemented. This proposed contract does not claim executable support yet.
 - Every speculative native specialization has explicit code-state guards and a
   tested deoptimization path that reconstructs an equivalent interpreter state
   on guard failure.
+- Exact admitted AOT/native-cache hits suppress duplicate JIT compilation
+  for the same semantic and code-state identity.
+- Synchronous compilation has an explicit resource/time budget. Exhaustion,
+  cancellation, or unsupported specialization falls back to the interpreter.
+- Tail latency, compilation/admission cost, and steady-state execution are
+  measured separately; no fixed speedup is assumed by this contract.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -59,8 +69,9 @@ deterministically without changing guest-visible state silently.
   implementations; the original C source is compared only where its behavior is
   defined and reproducible.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
-
-ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
+  `native-x86-64-and-aarch64-backends`,
+  `ahead-of-execution-native-translation`,
+  `self-modification-state-graph-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

@@ -2,7 +2,7 @@
 id: "ahead-of-execution-native-translation"
 status: "pending"
 lane: "11"
-priority: "p3"
+priority: "p2"
 area: "vm"
 task: "TODO - Ahead-of-execution native translation"
 contract: "docs/technical/runtime/execution/ahead-of-execution-native-translation.md"
@@ -27,17 +27,34 @@ validation:
 
 ## Objective
 
-Translate reachable stable Malbolge regions into native code in memory before
-guest execution begins. Use a compact portable micro-IR between Malbolge decode
-and architecture-specific code generation, cache verified compiled regions by
-program identity, target profile, architecture, and code-state assumptions, and
-fall back to ordinary VM execution for regions that cannot yet be proven stable.
+Make verified ahead-of-execution translation the primary native path. Use
+the portable execution IR between Malbolge decode and architecture-specific code
+generation, then build or load exact native artifacts before guest execution
+from reachable code-state evidence. When verification proves a finite closed
+self-modification graph, compile its reachable code-state variants ahead of time
+and lower runtime self-modification to guarded transitions among those already
+compiled variants.
+
+Offline CPU, GPU, or superoptimization search may propose stronger reductions,
+but independent deterministic verification remains the only admission authority.
+Regions that cannot be proven safe fall back to ordinary VM execution.
 
 ## Acceptance
 
 - Only regions whose code-state assumptions are explicit may be compiled before
   execution, and cache keys include every assumption required for safe native
   reuse.
+- A verifier-proven finite closed state graph may be materialized as precompiled
+  native code-state variants with explicit transitions; no runtime mutation may
+  silently select a variant absent from the admitted graph.
+- A native transition may collapse multiple guest steps only when
+  deterministic verification proves the complete net effect on registers,
+  memory, I/O, termination, and every retained code-state dependency.
+- Offline CPU/GPU/superoptimization output is untrusted proposal material until
+  deterministic verification proves the claimed state effect and cache identity.
+- No fixed speedup is an acceptance criterion. Benchmarks must separate offline
+  preparation cost, artifact load cost, transition overhead, and steady-state
+  execution from interpreter and JIT baselines.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample

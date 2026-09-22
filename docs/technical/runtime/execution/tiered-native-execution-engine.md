@@ -6,13 +6,17 @@ Active implementation
 
 ## Purpose
 
-Build a tiered execution engine instead of choosing between interpretation, AOT,
-and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
-verified state-graph mathematics, compile demonstrably stable regions to native
-machine code before execution, specialize hot or mutation-sensitive regions at
-runtime, and deoptimize safely to the interpreter whenever a code-version guard
-or speculative assumption fails. The normative VM contract remains the semantic
-baseline; native tiers are accelerators of identical observable behavior.
+Build an AOT-first tiered execution engine over one exact VM contract. Decode
+Malbolge into compact execution IR, simplify it through verified state-graph
+mathematics, and compile every provably reachable stable region or finite
+code-state variant before guest execution when practical. Runtime dispatch
+prefers exact AOT/native-cache artifacts.
+
+A latency-bounded JIT is only a rescue tier for hot mutable states absent from
+that admitted AOT set. Any guard miss or
+exhausted JIT budget deoptimizes safely to the interpreter. The normative VM
+remains the semantic baseline; native tiers accelerate identical observable
+behavior.
 
 ## Scope
 
@@ -2274,16 +2278,21 @@ execution remains fail-closed.
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker
 execution, durable cache serialization/storage and cross-process leasing,
-cache-aware AOT/JIT policy beyond verified direct process-local reuse, and
-broader performance policy remain open.
-The
-interpreter remains the only normative execution authority and the guaranteed
-fallback.
+AOT-first artifact selection, finite-state native transition policy, and
+latency-bounded JIT rescue beyond verified direct process-local reuse remain
+open, alongside broader end-to-end performance policy. The interpreter
+remains the only normative execution authority and the guaranteed fallback.
 
 ## Invariants
 
 - Interpreter, AOT, JIT, native cache, and deoptimization share one observable
   VM contract; disabling every native tier produces the same guest behavior.
+- Tier selection is AOT-first for exact admitted code-state identity. JIT
+  compilation is reserved for uncovered mutable states and must have a bounded
+  synchronous resource/time budget before interpreter fallback.
+- A verifier-proven finite closed self-modification graph may execute as an
+  automaton of precompiled native code-state variants, but a state outside that
+  graph fails closed to lower tiers rather than guessing a transition.
 - Durable cache, AOT, and JIT admission must reuse the completed
   required-profile diagnostic contract: canonical profile identity, then
   `MALBOLGE-PROFILE-002`, then `MALBOLGE-PROFILE-001`, before artifact lookup,
