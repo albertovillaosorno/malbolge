@@ -2157,6 +2157,12 @@ x86-64/AArch64 COFF. Its reduced guard surface keeps A/C/D, output length, code
 live-in, memory extent, prior termination, and output capacity while omitting
 dead input history from machine text.
 
+A distinct Output v6 load image proves relocation closure, ISA alignment, exact
+retained identity, and strict RW-to-RX/full-sync policy. Dedicated Output
+staged/sealed/ready typestates admit exact copy, same-mapping RX transition,
+full-range instruction sync, and exact release evidence. Platform allocation,
+invocation, and runner authority remain separate.
+
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
 identity, and the strict RW-to-RX/full-sync policy. Dedicated

@@ -556,18 +556,21 @@ pub use lifecycle::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedCrazyNativeExecutable,
     SealedRegisterMaskedNativeExecutable,
     SealedRegisterMaskedNoOperationNativeExecutable,
     SealedRegisterMaskedNonGraphicalNativeExecutable,
+    SealedRegisterMaskedOutputNativeExecutable,
     SealedRegisterMaskedRotateNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
+    StagedRegisterMaskedOutputNativeExecutable,
     StagedRegisterMaskedRotateNativeExecutable,
 };
 pub use loader::{
@@ -577,6 +580,7 @@ pub use loader::{
     VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
+    VerifiedRegisterMaskedOutputLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
 };
 use malbolge::{

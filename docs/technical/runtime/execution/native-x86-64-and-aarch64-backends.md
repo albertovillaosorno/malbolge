@@ -233,6 +233,11 @@ and output on x86-64 and AArch64. Output guards A/C/D, output length, code
 live-in, memory extent, prior termination, and output capacity. Input history
 remains key-bound without entering machine text.
 
+Output v6 now also has a distinct relocation-free load image and dedicated
+staged/sealed/ready lifecycle typestates. They retain exact identity, ISA
+alignment, strict RW-to-RX/full-sync policy, and exact release evidence without
+granting platform allocation, invocation, or runner authority.
+
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.
 Dead A and I/O history remain bound in the full v6 key without changing rotate

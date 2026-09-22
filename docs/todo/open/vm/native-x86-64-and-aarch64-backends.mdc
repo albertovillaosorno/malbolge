@@ -120,6 +120,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   extent, prior termination, and output capacity. Input history remains bound
   into the complete v6 key without entering machine text.
 
+  A distinct relocation-free Output v6 load image now retains exact key/target
+  identity, ISA alignment, and strict RW-to-RX/full-sync policy while rejecting
+  relocations. Dedicated Output lifecycle typestates admit exact code copy,
+  same-mapping RX transition, full-range sync, and exact release evidence.
+  Platform allocation, invocation, and runner authority remain separate.
+
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine
   text. A distinct relocation-free Crazy load image retains exact key/target

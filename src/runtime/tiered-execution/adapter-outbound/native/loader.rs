@@ -56,6 +56,7 @@ use super::direct::{
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+    VerifiedRegisterMaskedOutputNativeObjectArtifact,
     VerifiedRegisterMaskedRotateNativeObjectArtifact,
 };
 use crate::execution_cache::{
@@ -135,6 +136,19 @@ pub struct VerifiedRegisterMaskedNoOperationLoadImage {
 /// proves only relocation closure, ISA alignment, and strict W^X policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRegisterMaskedCrazyLoadImage {
+    code: Box<[u8]>,
+    entry_offset: usize,
+    key: NativeArtifactKey,
+    policy: NativeExecutableLoadPolicy,
+    target_triple: &'static str,
+}
+
+/// Relocation-free image for one verified register-masked v6 output object.
+///
+/// This type grants no lifecycle, platform, binding, or runner authority. It
+/// proves only relocation closure, ISA alignment, and strict W^X policy.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedOutputLoadImage {
     code: Box<[u8]>,
     entry_offset: usize,
     key: NativeArtifactKey,
@@ -763,6 +777,108 @@ impl VerifiedRegisterMaskedCrazyLoadImage {
     /// target instruction alignment is invalid.
     pub fn new(
         artifact: &VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_object(artifact, artifact.object())
+    }
+
+    /// Returns the mandatory W^X and instruction-sync policy evidence.
+    #[must_use]
+    pub const fn policy(&self) -> NativeExecutableLoadPolicy {
+        self.policy
+    }
+
+    /// Returns exact target assumptions retained by this v6 image.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.key.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.target_triple
+    }
+}
+
+impl VerifiedRegisterMaskedOutputLoadImage {
+    /// Returns the exact number of admitted v6 output code bytes.
+    #[must_use]
+    pub const fn allocation_len(&self) -> usize {
+        self.code.len()
+    }
+
+    /// Returns the complete relocation-free v6 instruction stream.
+    #[must_use]
+    pub const fn code(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Returns code beginning at the required native entrypoint.
+    #[must_use]
+    pub fn entry_code(&self) -> &[u8] {
+        self.code.get(self.entry_offset..).unwrap_or_default()
+    }
+
+    /// Returns the entrypoint byte offset inside [`Self::code`].
+    #[must_use]
+    pub const fn entry_offset(&self) -> usize {
+        self.entry_offset
+    }
+
+    fn from_object(
+        artifact: &VerifiedRegisterMaskedOutputNativeObjectArtifact,
+        object: &[u8],
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        let parts = verified_load_image_parts(
+            artifact.key(),
+            object,
+            artifact.target_triple(),
+        )?;
+        Ok(Self {
+            code: parts.code,
+            entry_offset: parts.entry_offset,
+            key: parts.key,
+            policy: parts.policy,
+            target_triple: parts.target_triple,
+        })
+    }
+
+    /// Extracts a supplied object under verified v6 output identity.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn from_object_for_test(
+        artifact: &VerifiedRegisterMaskedOutputNativeObjectArtifact,
+        object: &[u8],
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_object(artifact, object)
+    }
+
+    /// Returns the exact ISA retained by the complete v6 artifact key.
+    #[must_use]
+    pub const fn host_isa(&self) -> HostIsa {
+        self.key.target().host_isa()
+    }
+
+    /// Returns the complete retained v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        &self.key
+    }
+
+    /// Returns minimum instruction alignment required by the target ISA.
+    #[must_use]
+    pub const fn minimum_instruction_alignment(&self) -> usize {
+        minimum_instruction_alignment(self.host_isa())
+    }
+
+    /// Extracts relocation-free bytes from verified v6 output code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn new(
+        artifact: &VerifiedRegisterMaskedOutputNativeObjectArtifact,
     ) -> Result<Self, VerifiedDirectLoadError> {
         Self::from_object(artifact, artifact.object())
     }
