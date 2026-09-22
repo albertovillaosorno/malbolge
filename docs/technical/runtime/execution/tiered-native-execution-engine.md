@@ -2160,8 +2160,10 @@ dead input history from machine text.
 A distinct Output v6 load image proves relocation closure, ISA alignment, exact
 retained identity, and strict RW-to-RX/full-sync policy. Dedicated Output
 staged/sealed/ready typestates admit exact copy, same-mapping RX transition,
-full-range instruction sync, and exact release evidence. Platform allocation,
-invocation, and runner authority remain separate.
+full-range instruction sync, and exact release evidence. A dedicated Output
+platform path now performs transactional load/release with cleanup after every
+post-allocation failure and exact retry ownership after release failure.
+Invocation and runner authority remain separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained

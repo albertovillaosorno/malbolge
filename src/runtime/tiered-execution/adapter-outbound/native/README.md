@@ -331,7 +331,10 @@ A dedicated Output v6 load-image type now extracts only relocation-free,
 ISA-aligned code while retaining exact key/triple identity and strict RW-to-RX
 plus instruction-sync policy. Output-specific staged/sealed/ready typestates
 admit exact copy, same-mapping RX transition, full-range sync, and exact release
-evidence. Platform allocation, invocation, and runner authority remain separate.
+evidence. A dedicated platform path now loads and releases Output mappings
+transactionally, cleaning post-allocation failures and retaining exact ready
+ownership when release must be retried. Invocation and runner authority remain
+separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

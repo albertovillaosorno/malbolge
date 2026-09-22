@@ -613,6 +613,9 @@ pub use platform::{
     RegisterMaskedNonGraphicalNativeExecutableLoadResult,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseResult,
+    RegisterMaskedOutputNativeExecutableLoadResult,
+    RegisterMaskedOutputNativeExecutableReleaseFailure,
+    RegisterMaskedOutputNativeExecutableReleaseResult,
     RegisterMaskedRotateNativeExecutableLoadResult,
     RegisterMaskedRotateNativeExecutableReleaseFailure,
     RegisterMaskedRotateNativeExecutableReleaseResult,
@@ -622,6 +625,7 @@ pub use platform::{
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
+    load_register_masked_output_native_executable,
     load_register_masked_rotate_native_executable,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
@@ -629,6 +633,7 @@ pub use platform::{
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
+    release_register_masked_output_native_executable,
     release_register_masked_rotate_native_executable,
 };
 pub use process_call::{

@@ -235,8 +235,10 @@ remains key-bound without entering machine text.
 
 Output v6 now also has a distinct relocation-free load image and dedicated
 staged/sealed/ready lifecycle typestates. They retain exact identity, ISA
-alignment, strict RW-to-RX/full-sync policy, and exact release evidence without
-granting platform allocation, invocation, or runner authority.
+alignment, strict RW-to-RX/full-sync policy, and exact release evidence. A
+dedicated platform path loads and releases the mapping transactionally, cleans
+post-allocation failures, and retains exact ready ownership for release retry.
+Invocation and runner authority remain separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.
