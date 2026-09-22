@@ -352,7 +352,12 @@ resident, and release failure transfers exact retry ownership.
 A one-shot Output transaction now composes exact load, call, admission, and
 release. Load or call failure restores the prepared snapshot and attempts exact
 cleanup; committed release failure retains the outcome and ready mapping for
-retry. Multi-resident and sequence orchestration remain separate.
+retry.
+
+A weighted multi-resident Output lease cache now reuses exact owners under FIFO
+limits without refreshing hit age. Live victims retire while retaining charged
+weight; invalidation, release, return, reconciliation, and limit changes retain
+keyed cleanup retry ownership. Sequence orchestration remains separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

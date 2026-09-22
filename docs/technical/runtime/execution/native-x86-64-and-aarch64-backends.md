@@ -258,7 +258,12 @@ retry ownership.
 A one-shot Output transaction now composes exact load, bound call, completion,
 and release. Load or call failure restores the prepared snapshot and attempts
 exact cleanup; committed release failure retains both outcome and ready mapping
-for retry. Multi-resident and sequence orchestration remain separate.
+for retry.
+
+A weighted multi-resident Output lease cache now reuses exact owners under FIFO
+limits without refreshing hit age. Live victims retire while retaining charged
+weight; invalidation, release, return, reconciliation, and limit changes retain
+keyed cleanup retry ownership. Sequence orchestration remains separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

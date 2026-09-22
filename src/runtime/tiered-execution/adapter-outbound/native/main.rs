@@ -98,6 +98,7 @@ mod register_masked_non_graphical_lease_cache;
 mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
 mod register_masked_non_graphical_sequence_execution;
+mod register_masked_output_lease_cache;
 mod register_masked_resident;
 mod register_masked_rotate_loaded_sequence;
 mod register_masked_rotate_sequence;
@@ -864,6 +865,28 @@ pub use register_masked_non_graphical_sequence_execution::{
     RegisterMaskedNonGraphicalNativeSequenceExecutionResult,
     RegisterMaskedNonGraphicalNativeSequenceOutcome,
     execute_loaded_register_masked_non_graphical_native_sequence,
+};
+pub use register_masked_output_lease_cache::{
+    RegisterMaskedOutputLease, RegisterMaskedOutputLeaseCache,
+    RegisterMaskedOutputLeaseCacheAcquisition,
+    RegisterMaskedOutputLeaseCacheBlock,
+    RegisterMaskedOutputLeaseCacheCapacityError,
+    RegisterMaskedOutputLeaseCacheDisposition,
+    RegisterMaskedOutputLeaseCacheEntryReleaseFailure,
+    RegisterMaskedOutputLeaseCacheInvalidation,
+    RegisterMaskedOutputLeaseCacheInvalidationResult,
+    RegisterMaskedOutputLeaseCacheLimits,
+    RegisterMaskedOutputLeaseCacheLoadFailure,
+    RegisterMaskedOutputLeaseCacheLoadReleaseFailures,
+    RegisterMaskedOutputLeaseCacheLoadResult,
+    RegisterMaskedOutputLeaseCacheReconciliationResult,
+    RegisterMaskedOutputLeaseCacheReconfiguration,
+    RegisterMaskedOutputLeaseCacheReconfigurationFailure,
+    RegisterMaskedOutputLeaseCacheReconfigurationResult,
+    RegisterMaskedOutputLeaseCacheReleaseFailure,
+    RegisterMaskedOutputLeaseCacheReleaseResult,
+    RegisterMaskedOutputLeaseCacheReleaseSummary,
+    RegisterMaskedOutputLeaseCacheUsage,
 };
 pub use register_masked_resident::{
     RegisterMaskedCrazyNativeExecutableOwner,

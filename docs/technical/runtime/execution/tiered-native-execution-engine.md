@@ -2185,7 +2185,10 @@ and release. Load or call failure restores the prepared snapshot. It attempts
 exact cleanup. Committed release failure retains outcome plus ready mapping
 for retry.
 
-Multi-resident and sequence orchestration remain separate.
+A weighted multi-resident Output lease cache now reuses exact owners under FIFO
+limits without refreshing hit age. Live victims retire while retaining charged
+weight; invalidation, release, return, reconciliation, and limit changes retain
+keyed cleanup retry ownership. Sequence orchestration remains separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
