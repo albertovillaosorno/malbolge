@@ -248,7 +248,12 @@ snapshot on runner or completion failure.
 A reusable Output owner now retains
 the verified program, artifact, and ready mapping across rebased calls. It uses
 platform mapped length for residency weight and preserves release-retry
-ownership. Resident caching and transaction orchestration remain separate.
+ownership.
+
+A single-resident Output lease cache now reuses that exact owner without adapter
+work, rejects different identity while occupied, and blocks release under live
+leases. Failed loads publish nothing, while release failure transfers exact
+retry ownership. Transaction orchestration remains separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

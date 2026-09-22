@@ -667,7 +667,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   A reusable Output
   owner retains the verified program, artifact, and ready mapping across rebased
   calls, reports platform mapping weight, and preserves release-retry ownership.
-  Resident caching and transaction orchestration remain separate.
+
+  A single-resident Output lease cache shares that exact owner on identity hits
+  without adapter work, rejects a different occupied identity, and blocks
+  release under live leases. Failed loads publish nothing. Failed release
+  transfers exact retry ownership. Transaction orchestration remains separate.
 - `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now

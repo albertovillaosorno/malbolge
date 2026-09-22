@@ -137,7 +137,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A reusable Output
   owner retains the verified program, artifact, and ready mapping across rebased
   calls, reports platform mapping weight, and preserves release-retry ownership.
-  Resident caching and transaction orchestration remain separate.
+
+  A single-resident Output lease cache shares that exact owner on identity hits
+  without adapter work, rejects a different occupied identity, and blocks
+  release under live leases. Failed loads publish nothing. Failed release
+  transfers exact retry ownership. Transaction orchestration remains separate.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

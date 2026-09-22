@@ -344,7 +344,11 @@ complete snapshot on runner or completion failure.
 A reusable Output owner now
 retains the verified program, artifact, and ready mapping across rebased calls.
 It reports platform mapping weight and preserves exact release-retry ownership.
-Resident caching and transaction orchestration remain separate.
+
+A single-resident Output lease cache now shares that exact owner on identity
+hits without adapter work. Live leases block release; failed loads publish no
+resident, and release failure transfers exact retry ownership. Transaction
+orchestration remains separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus
