@@ -52,7 +52,8 @@ use super::{
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedCrazyGuard,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNoOperationGuard,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
+    DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateError,
     DirectRegisterMaskedRotateGuard, DirectRegisterMaskedTerminalGuard,
     DirectRotateError, DirectRotateGuard, DirectRotateProgram, HostIsa,
     IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT,
@@ -498,6 +499,33 @@ pub(super) fn register_masked_crazy_coff(
     .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)
+}
+
+pub(super) fn register_masked_output_coff(
+    key: &NativeArtifactKey,
+    selected: DirectOutputProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedOutputError> {
+    let observation = selected.observation;
+    let guard = DirectRegisterMaskedOutputGuard {
+        accumulator: observation.registers.accumulator,
+        code_live_in: selected.live_in.value,
+        code_pointer: observation.registers.code_pointer,
+        data_pointer: observation.registers.data_pointer,
+        output_len: u64::try_from(observation.output_len)
+            .map_err(|_error| DirectRegisterMaskedOutputError::ObjectBytes)?,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_output_code(guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_output_code(guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedOutputError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedOutputError::ObjectBytes)
 }
 
 pub(super) fn register_masked_rotate_coff(

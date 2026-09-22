@@ -113,7 +113,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A/C/D reads plus C/D writes. Both reuse VM-owned semantics after v6 geometry
   preflight and preserve complete masked identity; mask drift fails closed.
   `direct-register-masked-crazy` revision 1 now emits and independently verifies
-  x86-64/AArch64 COFF; output host-object authority remains separate.
+  x86-64/AArch64 COFF. `direct-register-masked-output` revision 1 now does the
+  same while omitting dead input history from machine text.
+
+  The output object guards live A/C/D, output length, code live-in, exact memory
+  extent, prior termination, and output capacity. Input history remains bound
+  into the complete v6 key without entering machine text.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

@@ -70,6 +70,8 @@ use super::{
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID,
     DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION, DIRECT_ROTATE_BACKEND_ID,
     DIRECT_ROTATE_BACKEND_REVISION, DirectCodeWriteCommit, DirectCrazyCommit,
@@ -89,11 +91,12 @@ use super::{
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
     DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
-    DirectRotateCommit, DirectRotateError, DirectRotateProgram,
-    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
-    EffectOp, ExecutionGeometryRegionEffectProgram, HostOperatingSystem,
-    MemoryLiveIn, NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
+    DirectRegisterMaskedRotateError, DirectRotateCommit, DirectRotateError,
+    DirectRotateProgram, EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
+    EFFECT_IR_REGISTER_MASK_VERSION, EffectOp,
+    ExecutionGeometryRegionEffectProgram, HostOperatingSystem, MemoryLiveIn,
+    NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisterSet, ProfileRegisters, RegionEffectProgram,
     RegisterMaskedRegionEffectProgram, RunOutcome, Termination, TraceInput,
@@ -1373,6 +1376,25 @@ pub(super) fn validate_register_masked_crazy_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedCrazyError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_output_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedOutputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedOutputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedOutputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedOutputError::TargetFeatures);
     }
     Ok(())
 }

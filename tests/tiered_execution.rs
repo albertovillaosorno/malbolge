@@ -380,6 +380,8 @@ use execution_native::{
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID,
     DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION, DIRECT_ROTATE_BACKEND_ID,
     DIRECT_ROTATE_BACKEND_REVISION, DirectCacheDisposition, DirectCrazyError,
@@ -433,9 +435,10 @@ use execution_native::{
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError, DirectRegisterMaskedCrazyError,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
-    DirectRotateError, DirectSelectionError, DirectSequenceError,
-    ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
+    DirectRegisterMaskedRotateError, DirectRotateError, DirectSelectionError,
+    DirectSequenceError, ExecutionGeometryDirectNativeKind,
+    ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
     ExecutionGeometryNativeRunner, NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES,
@@ -629,6 +632,7 @@ use execution_native::{
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
+    emit_direct_register_masked_output_coff,
     emit_direct_register_masked_rotate_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, encode_native_process_call_request,
     encode_native_process_call_response, encode_native_process_memory_request,
@@ -717,8 +721,8 @@ use execution_native::{
     verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
-    verify_direct_register_masked_rotate, verify_direct_rotate,
-    verify_fused_direct_sequence,
+    verify_direct_register_masked_output, verify_direct_register_masked_rotate,
+    verify_direct_rotate, verify_fused_direct_sequence,
 };
 use file_blob_pair_store::{
     NativeContinuationFileBlobPairMember,
@@ -4164,6 +4168,17 @@ fn register_masked_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn register_masked_output_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID),
+        backend_revision: DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn register_masked_rotate_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID),
@@ -6188,6 +6203,122 @@ fn register_masked_v6_admission_rejects_incomplete_mask_identity()
             ))
     {
         return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_output_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    history_variant: &RegisterMaskedRegionEffectProgram,
+    output_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_output_target(isa);
+    let artifact =
+        emit_direct_register_masked_output_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} output emit failed: {error}")
+            })?;
+    let history = emit_direct_register_masked_output_coff(
+        history_variant,
+        target.clone(),
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} output history emit failed: {error}")
+    })?;
+    let output =
+        emit_direct_register_masked_output_coff(output_variant, target)
+            .map_err(|error| {
+                format!("v6 {isa:?} output live emit failed: {error}")
+            })?;
+    let text = direct_object_text(artifact.object())?;
+    if artifact.key() == history.key()
+        || text != direct_object_text(history.object())?
+        || artifact.key() == output.key()
+        || text == direct_object_text(output.object())?
+    {
+        return Err(format!("v6 {isa:?} output guard surface drifted"));
+    }
+    if !artifact
+        .object()
+        .windows(6)
+        .any(|window| window == b"MBPF\x06\x00")
+    {
+        return Err(format!("v6 {isa:?} output lost MBPF v6 marker"));
+    }
+    let verified = verify_direct_register_masked_output(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} output verify failed: {error}"))?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} output verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_objects_honor_guard_surface() -> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let mut history_variant = program.clone();
+    let history_effect = history_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 output history effect missing"))?;
+    history_effect.before.input_consumed =
+        history_effect.before.input_consumed.saturating_add(3);
+    history_effect.after.input_consumed =
+        history_effect.after.input_consumed.saturating_add(3);
+
+    let mut output_variant = program.clone();
+    let output_effect = output_variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 output live-history effect missing"))?;
+    output_effect.before.output_len =
+        output_effect.before.output_len.saturating_add(3);
+    output_effect.after.output_len =
+        output_effect.after.output_len.saturating_add(3);
+
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_output_object(
+            &program,
+            &history_variant,
+            &output_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_verifier_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = emit_direct_register_masked_output_coff(
+        &program,
+        register_masked_output_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 output baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_output(&tampered, &program)
+        != Err(DirectRegisterMaskedOutputError::ObjectBytes)
+    {
+        return Err(String::from("v6 output verifier admitted byte drift"));
+    }
+    if emit_direct_register_masked_output_coff(
+        &program,
+        register_masked_crazy_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedOutputError::TargetBackend)
+    {
+        return Err(String::from("v6 output crossed Crazy backend identity"));
+    }
+    let no_operation = canonical_register_masked_no_operation_program()?;
+    if emit_direct_register_masked_output_coff(
+        &no_operation,
+        register_masked_output_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedOutputError::ProgramShape)
+    {
+        return Err(String::from("v6 output backend admitted no-operation"));
     }
     Ok(())
 }

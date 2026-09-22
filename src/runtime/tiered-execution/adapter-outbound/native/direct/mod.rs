@@ -60,7 +60,7 @@ use coff::{
     jump_data_coff, no_operation_coff, non_graphical_coff, output_coff,
     register_masked_crazy_coff, register_masked_halt_fetch_coff,
     register_masked_no_operation_coff, register_masked_non_graphical_coff,
-    register_masked_rotate_coff, rotate_coff,
+    register_masked_output_coff, register_masked_rotate_coff, rotate_coff,
 };
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
@@ -81,6 +81,7 @@ pub use emit::{
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
+    emit_direct_register_masked_output_coff,
     emit_direct_register_masked_rotate_coff, emit_direct_rotate_coff,
 };
 use emit::{
@@ -152,6 +153,7 @@ use shape::{
     validate_register_masked_non_graphical_program,
     validate_register_masked_non_graphical_target,
     validate_register_masked_output_program,
+    validate_register_masked_output_target,
     validate_register_masked_rotate_program,
     validate_register_masked_rotate_target, validate_rotate_program,
     validate_rotate_target, validate_target,
@@ -174,7 +176,8 @@ pub use verify::{
     verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
-    verify_direct_register_masked_rotate, verify_direct_rotate,
+    verify_direct_register_masked_output, verify_direct_register_masked_rotate,
+    verify_direct_rotate,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -278,6 +281,11 @@ pub const DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID: &str =
     "direct-register-masked-crazy";
 /// Register-masked v6 Crazy code-generation revision.
 pub const DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION: u32 = 1;
+/// Backend identity for register-masked v6 output execution.
+pub const DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID: &str =
+    "direct-register-masked-output";
+/// Register-masked v6 output code-generation revision.
+pub const DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_REVISION: u32 = 1;
 /// Backend identity for register-masked v6 rotate execution.
 pub const DIRECT_REGISTER_MASKED_ROTATE_BACKEND_ID: &str =
     "direct-register-masked-rotate";
@@ -374,6 +382,16 @@ pub(super) struct DirectRegisterMaskedCrazyGuard {
     pub(super) code_pointer: u32,
     pub(super) data_live_in: u32,
     pub(super) data_pointer: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedOutputGuard {
+    pub(super) accumulator: u32,
+    pub(super) code_live_in: u32,
+    pub(super) code_pointer: u32,
+    pub(super) data_pointer: u32,
+    pub(super) output_len: u64,
     pub(super) required_memory_words: u64,
 }
 

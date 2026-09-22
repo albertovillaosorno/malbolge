@@ -45,8 +45,9 @@ use super::{
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
     DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
-    DirectRotateError, ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
+    DirectRegisterMaskedRotateError, DirectRotateError,
+    ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
     RegionEffectProgram, RegisterMaskedRegionEffectProgram,
     UntrustedNativeObjectArtifact, VerifiedCrazyNativeObjectArtifact,
     VerifiedDeoptNativeObjectArtifact,
@@ -70,6 +71,7 @@ use super::{
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+    VerifiedRegisterMaskedOutputNativeObjectArtifact,
     VerifiedRegisterMaskedRotateNativeObjectArtifact,
     VerifiedRotateNativeObjectArtifact, canonical_coff, crazy_coff,
     execution_geometry_crazy_coff, execution_geometry_initial_halt_coff,
@@ -81,8 +83,8 @@ use super::{
     no_operation_coff, non_graphical_coff, output_coff,
     register_masked_crazy_coff, register_masked_halt_fetch_coff,
     register_masked_no_operation_coff, register_masked_non_graphical_coff,
-    register_masked_rotate_coff, rotate_coff, structurally_admit_coff,
-    validate_crazy_program, validate_crazy_target,
+    register_masked_output_coff, register_masked_rotate_coff, rotate_coff,
+    structurally_admit_coff, validate_crazy_program, validate_crazy_target,
     validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
@@ -117,6 +119,8 @@ use super::{
     validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
     validate_register_masked_non_graphical_target,
+    validate_register_masked_output_program,
+    validate_register_masked_output_target,
     validate_register_masked_rotate_program,
     validate_register_masked_rotate_target, validate_rotate_program,
     validate_rotate_target, validate_target,
@@ -591,6 +595,39 @@ pub fn verify_direct_register_masked_crazy(
         return Err(DirectRegisterMaskedCrazyError::ObjectBytes);
     }
     Ok(VerifiedRegisterMaskedCrazyNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical mask-aware v6 output object.
+///
+/// This verifier deliberately stops before load-image or invocation authority.
+///
+/// # Errors
+///
+/// Returns the register-masked output error for shape, target, identity, COFF,
+/// or canonical-byte mismatch.
+pub fn verify_direct_register_masked_output(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<
+    VerifiedRegisterMaskedOutputNativeObjectArtifact,
+    DirectRegisterMaskedOutputError,
+> {
+    let selected = validate_register_masked_output_program(program)
+        .map_err(|_error| DirectRegisterMaskedOutputError::ProgramShape)?;
+    validate_register_masked_output_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRegisterMaskedOutputError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = register_masked_output_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedOutputError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedOutputNativeObjectArtifact { artifact: admitted })
 }
 
 /// Promotes only the canonical mask-aware v6 rotate object.

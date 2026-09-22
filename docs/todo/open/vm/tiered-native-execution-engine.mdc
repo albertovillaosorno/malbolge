@@ -646,6 +646,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   It guards live A/C/D, required memory, both code/data live-ins, and prior
   termination before the reviewed Crazy commit. I/O history remains out of
   `.text`; changed live A changes canonical bytes.
+- `direct-register-masked-output` revision 1 separately emits and independently
+  verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
+  It guards live A/C/D, output length, code live-in, required memory, prior
+  termination, and output capacity. Input history remains key-bound but absent
+  from `.text`.
 - `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now

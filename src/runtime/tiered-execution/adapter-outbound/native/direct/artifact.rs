@@ -614,6 +614,35 @@ impl VerifiedRegisterMaskedCrazyNativeObjectArtifact {
     }
 }
 
+/// Verified v6 output object with reduced register/history guards.
+///
+/// This value is intentionally object-only so semantic verification does not
+/// grant executable-memory or invocation authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedOutputNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedRegisterMaskedOutputNativeObjectArtifact {
+    /// Returns the complete v6 native artifact key.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact independently verified COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple bound into this artifact.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Verified v6 rotate object with reduced register/history guards.
 ///
 /// This value is intentionally object-only so semantic verification does not

@@ -861,6 +861,63 @@ impl From<NativeIdentityError> for DirectRegisterMaskedCrazyError {
     }
 }
 
+/// Failure while emitting or verifying register-masked v6 output.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedOutputError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v6 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical mask-aware output object.
+    ObjectBytes,
+    /// Register-masked IR is outside the reviewed output subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v6 contract.
+    TargetBackend,
+    /// Register-masked output has no CPU feature specializations.
+    TargetFeatures,
+    /// Register-masked output currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRegisterMaskedOutputError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "register-masked output COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "register-masked output identity construction failed"
+            },
+            Self::ObjectBytes => "register-masked output object bytes differ",
+            Self::ProgramShape => {
+                "register-masked IR is outside direct output subset"
+            },
+            Self::TargetBackend => {
+                "target does not select register-masked output backend"
+            },
+            Self::TargetFeatures => {
+                "register-masked output backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "register-masked output backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedOutputError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRegisterMaskedOutputError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying register-masked v6 rotate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectRegisterMaskedRotateError {

@@ -2148,9 +2148,14 @@ reuse reviewed VM-owned semantic derivation after v6 geometry preflight and
 reject dropped or invented masks.
 
 A distinct `direct-register-masked-crazy` revision-1 object family emits
-x86-64/AArch64 COFF with exact A/C/D, memory
-extent, code/data live-in, and prior-termination guards. I/O history remains in
-the complete v6 key without entering Crazy machine text.
+x86-64/AArch64 COFF with exact A/C/D, memory extent, code/data live-in, and
+prior-termination guards. I/O history remains in the complete v6 key without
+entering Crazy machine text.
+
+`direct-register-masked-output` revision 1 now emits and independently verifies
+x86-64/AArch64 COFF. Its reduced guard surface keeps A/C/D, output length, code
+live-in, memory extent, prior termination, and output capacity while omitting
+dead input history from machine text.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained

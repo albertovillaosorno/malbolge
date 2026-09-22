@@ -228,8 +228,10 @@ dead; rotate reads C/D and writes A/C/D; Crazy reads and writes A/C/D. Output
 reads A/C/D but writes only C/D. Mask drift fails closed before host-code
 authority.
 
-Distinct revision-1 object families currently emit no-operation, rotate, and
-Crazy on x86-64 and AArch64.
+Distinct revision-1 object families currently emit no-operation, rotate, Crazy,
+and output on x86-64 and AArch64. Output guards A/C/D, output length, code
+live-in, memory extent, prior termination, and output capacity. Input history
+remains key-bound without entering machine text.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

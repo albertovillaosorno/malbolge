@@ -47,8 +47,8 @@ use super::{
     DirectNoOperationProgram, DirectNonGraphicalError, DirectOutputError,
     DirectOutputProgram, DirectRegisterMaskedCrazyError,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
-    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedRotateError,
-    DirectRotateError, DirectRotateProgram,
+    DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
+    DirectRegisterMaskedRotateError, DirectRotateError, DirectRotateProgram,
     ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
     NativeTargetIdentity, ProfileMachineObservation, RegionEffectProgram,
     RegisterMaskedRegionEffectProgram, UntrustedNativeObjectArtifact,
@@ -62,8 +62,8 @@ use super::{
     no_operation_coff, non_graphical_coff, output_coff,
     register_masked_crazy_coff, register_masked_halt_fetch_coff,
     register_masked_no_operation_coff, register_masked_non_graphical_coff,
-    register_masked_rotate_coff, rotate_coff, target_triple,
-    validate_crazy_program, validate_crazy_target,
+    register_masked_output_coff, register_masked_rotate_coff, rotate_coff,
+    target_triple, validate_crazy_program, validate_crazy_target,
     validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
@@ -98,6 +98,8 @@ use super::{
     validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
     validate_register_masked_non_graphical_target,
+    validate_register_masked_output_program,
+    validate_register_masked_output_target,
     validate_register_masked_rotate_program,
     validate_register_masked_rotate_target, validate_rotate_program,
     validate_rotate_target, validate_target,
@@ -434,6 +436,27 @@ pub fn emit_direct_register_masked_crazy_coff(
     let key = NativeArtifactKey::new_register_masked(program, target)?;
     let triple = target_triple(key.target().host_isa());
     let object = register_masked_crazy_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+/// Emits one mask-aware v6 output candidate without execution authority.
+///
+/// # Errors
+///
+/// Returns the register-masked output error when shape, target, or canonical
+/// object identity cannot be represented.
+pub fn emit_direct_register_masked_output_coff(
+    program: &RegisterMaskedRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectRegisterMaskedOutputError> {
+    let selected = validate_register_masked_output_program(program)
+        .map_err(|_error| DirectRegisterMaskedOutputError::ProgramShape)?;
+    validate_register_masked_output_target(&target)?;
+    let key = NativeArtifactKey::new_register_masked(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = register_masked_output_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))

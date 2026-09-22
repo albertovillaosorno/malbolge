@@ -320,7 +320,12 @@ v6 memory geometry, keep complete masked identity, and reject mask drift.
 `direct-register-masked-crazy` revision 1 emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, exact memory extent,
 both code/data live-ins, and prior termination; I/O history stays key-bound but
-absent from code. Output host-object authority remains separate.
+absent from code.
+
+`direct-register-masked-output` revision 1 now emits and independently verifies
+x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
+live-in, exact memory extent, prior termination, and output capacity. Input
+history remains key-bound but absent from machine text.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus
