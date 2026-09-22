@@ -141,7 +141,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A single-resident Output lease cache shares that exact owner on identity hits
   without adapter work, rejects a different occupied identity, and blocks
   release under live leases. Failed loads publish nothing. Failed release
-  transfers exact retry ownership. Transaction orchestration remains separate.
+  transfers exact retry ownership.
+
+  A one-shot Output transaction composes exact load, bound call, admission, and
+  release. Load or call failure restores the prepared snapshot and attempts
+  exact cleanup. Committed release failure retains outcome plus ready mapping
+  for retry. Multi-resident and sequence orchestration remain separate.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

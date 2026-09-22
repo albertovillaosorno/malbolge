@@ -2178,7 +2178,14 @@ retry ownership.
 A single-resident Output lease cache now shares that owner on exact hits without
 adapter work. Different identity fails closed while occupied, live leases block
 release, failed loads publish no resident, and failed release transfers retry
-ownership. Transaction orchestration remains separate.
+ownership.
+
+A one-shot Output transaction now composes exact load, bound call, admission,
+and release. Load or call failure restores the prepared snapshot. It attempts
+exact cleanup. Committed release failure retains outcome plus ready mapping
+for retry.
+
+Multi-resident and sequence orchestration remain separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained

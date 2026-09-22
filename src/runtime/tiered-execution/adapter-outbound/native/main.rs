@@ -1047,6 +1047,8 @@ pub use runner::{
     RegisterMaskedNonGraphicalNativeRunner,
     RegisterMaskedOutputLoadedExecutionFailure,
     RegisterMaskedOutputLoadedExecutionResult,
+    RegisterMaskedOutputNativeExecutionFailure,
+    RegisterMaskedOutputNativeExecutionResult,
     RegisterMaskedOutputNativeRunner,
     RegisterMaskedRotateLoadedExecutionFailure,
     RegisterMaskedRotateLoadedExecutionResult,
@@ -1069,6 +1071,7 @@ pub use runner::{
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
+    execute_verified_register_masked_output_native,
     execute_verified_register_masked_rotate_native,
 };
 pub use sequence_continuation::{

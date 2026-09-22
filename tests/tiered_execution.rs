@@ -574,6 +574,7 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
     RegisterMaskedOutputNativeExecutableOwner,
+    RegisterMaskedOutputNativeExecutionFailure,
     RegisterMaskedOutputNativeOwnerExecutionFailure,
     RegisterMaskedOutputNativeOwnerLoadFailure,
     RegisterMaskedOutputNativeResidentCacheAcquireFailure,
@@ -680,6 +681,7 @@ use execution_native::{
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
+    execute_verified_register_masked_output_native,
     execute_verified_register_masked_rotate_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
@@ -5098,6 +5100,26 @@ fn assert_output_owner_run_failure(
         RegisterMaskedOutputNativeOwnerExecutionFailure::Preparation(_) => Err(
             String::from("v6 Output owner runner failure became preparation"),
         ),
+    }
+}
+
+fn retry_output_transaction_release_failure(
+    error: RegisterMaskedOutputNativeExecutionFailure<
+        FakeNativeAdapterOperation,
+        FakeNativeRunnerError,
+    >,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> TieredTestResult {
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 Output transaction retryable release missing")
+    })?;
+    failure
+        .retry(adapter)
+        .map_err(|retry| format!("v6 Output transaction retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output transaction retry count drifted"))
     }
 }
 
@@ -9881,6 +9903,229 @@ fn register_masked_v6_crazy_transaction_release_failure_retries()
         return Err(String::from("v6 Crazy transaction retry count drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_transaction_applies_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let (entry, expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    let mut expected_output = output;
+    apply_register_masked_output_expected(
+        &program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output transaction preparation: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(591)?,
+        native_executable_address(0x95000)?,
+    );
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_output_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Output transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 Output transaction success drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("v6 Output transaction load effect missing")
+        })?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output transaction load prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(592)?,
+        native_executable_address(0x96000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_output_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Output transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 Output transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let (entry, _expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 Output transaction runner prepare: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(593)?,
+        native_executable_address(0x97000)?,
+    );
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_output_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 Output transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 Output transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let (entry, expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    let mut expected_output = output;
+    apply_register_masked_output_expected(
+        &program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 Output transaction release prepare: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(594)?,
+        native_executable_address(0x98000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_output_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 Output transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from("v6 Output transaction release drifted"));
+    }
+    retry_output_transaction_release_failure(*error, &mut adapter)
 }
 
 #[test]

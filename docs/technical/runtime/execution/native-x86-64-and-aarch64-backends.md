@@ -253,7 +253,12 @@ ownership.
 A single-resident Output lease cache now reuses that exact owner without adapter
 work, rejects different identity while occupied, and blocks release under live
 leases. Failed loads publish nothing, while release failure transfers exact
-retry ownership. Transaction orchestration remains separate.
+retry ownership.
+
+A one-shot Output transaction now composes exact load, bound call, completion,
+and release. Load or call failure restores the prepared snapshot and attempts
+exact cleanup; committed release failure retains both outcome and ready mapping
+for retry. Multi-resident and sequence orchestration remain separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

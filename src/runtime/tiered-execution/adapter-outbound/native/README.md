@@ -347,8 +347,12 @@ It reports platform mapping weight and preserves exact release-retry ownership.
 
 A single-resident Output lease cache now shares that exact owner on identity
 hits without adapter work. Live leases block release; failed loads publish no
-resident, and release failure transfers exact retry ownership. Transaction
-orchestration remains separate.
+resident, and release failure transfers exact retry ownership.
+
+A one-shot Output transaction now composes exact load, call, admission, and
+release. Load or call failure restores the prepared snapshot and attempts exact
+cleanup; committed release failure retains the outcome and ready mapping for
+retry. Multi-resident and sequence orchestration remain separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

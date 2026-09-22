@@ -671,7 +671,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   A single-resident Output lease cache shares that exact owner on identity hits
   without adapter work, rejects a different occupied identity, and blocks
   release under live leases. Failed loads publish nothing. Failed release
-  transfers exact retry ownership. Transaction orchestration remains separate.
+  transfers exact retry ownership.
+
+  A one-shot Output transaction composes exact load, bound call, admission, and
+  release. Load or call failure restores the prepared snapshot and attempts
+  exact cleanup. Committed release failure retains outcome plus ready mapping
+  for retry. Multi-resident and sequence orchestration remain separate.
 - `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now
