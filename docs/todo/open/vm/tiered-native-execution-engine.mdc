@@ -637,10 +637,10 @@ baseline; native tiers are accelerators of identical observable behavior.
 - `admit_register_masked_direct_native()` applies canonical-profile and
   `002`/`001` preflight before shape admission. It recognizes C-only/no-write
   halt-fetch and non-graphical terminals, traced no-operation with C/D reads
-  and writes, traced rotate with C/D reads plus A/C/D writes, and traced Crazy
-  with A/C/D reads and writes. Mask drift fails as unsupported while mask
-  cardinality fails identity; semantic admission alone grants no v6 object or
-  execution authority.
+  and writes, traced rotate with C/D reads plus A/C/D writes, traced Crazy with
+  A/C/D reads and writes, and traced output with A/C/D reads plus C/D writes.
+  Mask drift fails as unsupported while mask cardinality fails identity;
+  semantic admission alone grants no v6 object or execution authority.
 - `direct-register-masked-crazy` revision 1 separately emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
   It guards live A/C/D, required memory, both code/data live-ins, and prior
@@ -813,7 +813,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   shrink active FIFO authority through the same release-or-retire path while
   prior limits remain published on blockage or release failure.
 
-  Wider mask-aware instruction coverage remains open.
+  Mask-aware input and jump instruction coverage remains open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

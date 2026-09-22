@@ -2142,12 +2142,15 @@ shrink active FIFO authority through the same release-or-retire path while prior
 limits remain published on blockage or release failure.
 
 Host-independent register-masked admission now also accepts traced Crazy when
-A/C/D are all live and all written. It reuses the reviewed VM-owned Crazy
-derivation after v6 geometry preflight, retains complete masked identity, and
-rejects dropped read/write masks. A distinct `direct-register-masked-crazy`
-revision-1 object family now emits x86-64/AArch64 COFF with exact A/C/D, memory
+A/C/D are all live and all written. It additionally admits traced output with
+A/C/D reads and C/D writes while retaining complete masked identity. Both shapes
+reuse reviewed VM-owned semantic derivation after v6 geometry preflight and
+reject dropped or invented masks.
+
+A distinct `direct-register-masked-crazy` revision-1 object family emits
+x86-64/AArch64 COFF with exact A/C/D, memory
 extent, code/data live-in, and prior-termination guards. I/O history remains in
-the complete v6 key without entering machine text.
+the complete v6 key without entering Crazy machine text.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained

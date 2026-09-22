@@ -4030,6 +4030,23 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_output_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let state = direct_output_pair_sequence_state()?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 output fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 output fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 output trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 output projection failed: {error:?}"))
+}
+
 fn canonical_register_masked_crazy_programs()
 -> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_crazy_pair_sequence_state()?;
@@ -5794,6 +5811,111 @@ fn register_masked_v6_no_operation_admission_uses_normative_masks()
         return Err(String::from("v6 no-op dead state lost masked identity"));
     }
     assert_register_masked_no_operation_mask_rejections(&program)
+}
+
+fn assert_register_masked_output_mask_rejections(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let mut missing_read = program.clone();
+    missing_read.register_live_ins.accumulator = false;
+    let Err(read_error) = admit_register_masked_direct_native(
+        &missing_read,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 output admitted missing accumulator read",
+        ));
+    };
+    if read_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 output read mask failed at wrong boundary",
+        ));
+    }
+
+    let mut invented_write = program.clone();
+    let writes = invented_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 output write mask missing"))?;
+    writes.accumulator = true;
+    let Err(write_error) = admit_register_masked_direct_native(
+        &invented_write,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 output admitted invented accumulator write",
+        ));
+    };
+    if write_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 output write mask failed at wrong boundary",
+        ));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_output_history_identity(
+    program: &RegisterMaskedRegionEffectProgram,
+    identity: &RegionEffectIdentity,
+) -> TieredTestResult {
+    let mut variant_program = program.clone();
+    let effect = variant_program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 output effect missing"))?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    let variant = admit_register_masked_direct_native(
+        &variant_program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 output history variant rejected: {error}"))?;
+    if variant.kind() == DirectNativeKind::Output
+        && variant.identity() != identity
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 output history lost complete identity"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_admission_tracks_masks() -> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let expected_reads = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    let expected_writes = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if program.register_live_ins != expected_reads
+        || program.register_writes.as_slice() != [expected_writes]
+    {
+        return Err(String::from("v6 output trace masks drifted"));
+    }
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 output admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 output identity failed: {error:?}"))?;
+    if admission.kind() != DirectNativeKind::Output
+        || admission.identity() != &identity
+    {
+        return Err(String::from("v6 output admission lost semantic identity"));
+    }
+    assert_register_masked_output_history_identity(&program, &identity)?;
+    assert_register_masked_output_mask_rejections(&program)
 }
 
 fn assert_register_masked_crazy_mask_rejections(

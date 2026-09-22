@@ -223,10 +223,13 @@ guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
 Host-independent v6 semantic admission also recognizes traced no-operation,
-rotate, and Crazy shapes. No-operation reads/writes C/D while A remains dead;
-rotate reads C/D and writes A/C/D; Crazy reads and writes A/C/D. Mask drift
-fails closed before host-code authority. Distinct revision-1 object families now
-emit all three shapes on x86-64 and AArch64.
+rotate, Crazy, and output shapes. No-operation reads/writes C/D while A remains
+dead; rotate reads C/D and writes A/C/D; Crazy reads and writes A/C/D. Output
+reads A/C/D but writes only C/D. Mask drift fails closed before host-code
+authority.
+
+Distinct revision-1 object families currently emit no-operation, rotate, and
+Crazy on x86-64 and AArch64.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

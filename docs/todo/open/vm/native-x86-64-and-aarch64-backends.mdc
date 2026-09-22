@@ -109,10 +109,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   change the complete v6 key without changing machine text.
 
   Host-independent register-masked semantic admission now additionally accepts
-  traced Crazy with exact A/C/D read and write masks. It reuses VM-owned Crazy
-  semantics after v6 geometry preflight and preserves complete masked identity;
-  mask drift fails closed. `direct-register-masked-crazy` revision 1 now emits
-  and independently verifies x86-64/AArch64 COFF.
+  traced Crazy with exact A/C/D read and write masks and traced output with
+  A/C/D reads plus C/D writes. Both reuse VM-owned semantics after v6 geometry
+  preflight and preserve complete masked identity; mask drift fails closed.
+  `direct-register-masked-crazy` revision 1 now emits and independently verifies
+  x86-64/AArch64 COFF; output host-object authority remains separate.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

@@ -313,12 +313,14 @@ shrink active FIFO authority through the same release-or-retire path while prior
 limits remain published on blockage or release failure.
 
 Host-independent register-masked admission now also accepts traced Crazy with
-exact A/C/D read and write masks. The semantic check reuses the reviewed Crazy
-derivation with already-admitted v6 memory geometry, keeps complete masked
-identity, and rejects mask drift. `direct-register-masked-crazy` revision 1 now
-emits and independently verifies x86-64/AArch64 COFF. Its machine text guards
-live A/C/D, exact memory extent, both code/data live-ins, and prior termination;
-I/O history stays key-bound but absent from code.
+exact A/C/D read and write masks and traced output with A/C/D reads plus C/D
+writes. These semantic checks reuse reviewed VM derivation with already-admitted
+v6 memory geometry, keep complete masked identity, and reject mask drift.
+
+`direct-register-masked-crazy` revision 1 emits and independently verifies
+x86-64/AArch64 COFF. Its machine text guards live A/C/D, exact memory extent,
+both code/data live-ins, and prior termination; I/O history stays key-bound but
+absent from code. Output host-object authority remains separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

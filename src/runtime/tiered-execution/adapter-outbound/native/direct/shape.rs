@@ -1209,6 +1209,57 @@ pub(super) fn validate_register_masked_rotate_program(
     .ok_or(DirectRotateError::ProgramShape)
 }
 
+fn register_masked_output_masks_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let expected_reads = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    let expected_writes = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected_reads
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied() == Some(expected_writes)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_output_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectOutputProgram, DirectOutputError> {
+    if !register_masked_output_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 1
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectOutputError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectOutputError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or(DirectOutputError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectOutputError::ProgramShape)?;
+    let output_instruction = target_profile(&program.profile_id)
+        .ok_or(DirectOutputError::ProgramShape)?
+        .output_instruction();
+    derive_output_effect(effect, live_in, memory_words, output_instruction)
+        .ok_or(DirectOutputError::ProgramShape)
+}
+
 fn register_masked_crazy_masks_supported(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> bool {
