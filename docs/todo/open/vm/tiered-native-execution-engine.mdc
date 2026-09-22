@@ -695,6 +695,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   through retained mappings without adapter work. Guard miss returns the current
   resume boundary; current-step failure rolls back memory/output while
   preserving the committed prefix and reusable residency.
+
+  A weighted FIFO Output sequence cache now reuses exact loaded chains without
+  adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+  mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+  failures retain exact retryable cleanup ownership.
 - `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now

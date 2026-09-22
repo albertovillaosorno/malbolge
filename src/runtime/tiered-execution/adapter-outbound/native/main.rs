@@ -101,6 +101,7 @@ mod register_masked_non_graphical_sequence_execution;
 mod register_masked_output_lease_cache;
 mod register_masked_output_loaded_sequence;
 mod register_masked_output_sequence;
+mod register_masked_output_sequence_cache;
 mod register_masked_output_sequence_execution;
 mod register_masked_resident;
 mod register_masked_rotate_loaded_sequence;
@@ -903,6 +904,24 @@ pub use register_masked_output_sequence::{
     RegisterMaskedOutputNativeSequenceKey,
     RegisterMaskedOutputNativeSequencePlan,
     RegisterMaskedOutputNativeSequencePlanError,
+};
+pub use register_masked_output_sequence_cache::{
+    RegisterMaskedOutputNativeSequenceCache,
+    RegisterMaskedOutputNativeSequenceCacheCapacityError,
+    RegisterMaskedOutputNativeSequenceCacheDisposition,
+    RegisterMaskedOutputNativeSequenceCacheEntry,
+    RegisterMaskedOutputNativeSequenceCacheInvalidationResult,
+    RegisterMaskedOutputNativeSequenceCacheInvariantError,
+    RegisterMaskedOutputNativeSequenceCacheLimits,
+    RegisterMaskedOutputNativeSequenceCacheLoadFailure,
+    RegisterMaskedOutputNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedOutputNativeSequenceCacheLoadResult,
+    RegisterMaskedOutputNativeSequenceCacheReconfiguration,
+    RegisterMaskedOutputNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedOutputNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedOutputNativeSequenceCacheReleaseFailure,
+    RegisterMaskedOutputNativeSequenceCacheReleaseResult,
+    RegisterMaskedOutputNativeSequenceCacheUsage,
 };
 pub use register_masked_output_sequence_execution::{
     RegisterMaskedOutputNativeSequenceExecutionFailure,

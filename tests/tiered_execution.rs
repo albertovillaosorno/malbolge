@@ -586,7 +586,8 @@ use execution_native::{
     RegisterMaskedOutputNativeResidentCacheRelease,
     RegisterMaskedOutputNativeResidentLease,
     RegisterMaskedOutputNativeResidentLeaseCache,
-    RegisterMaskedOutputNativeRunner,
+    RegisterMaskedOutputNativeRunner, RegisterMaskedOutputNativeSequenceCache,
+    RegisterMaskedOutputNativeSequenceCacheReconfigurationFailure,
     RegisterMaskedOutputNativeSequenceExecutionFailure,
     RegisterMaskedOutputNativeSequenceKey,
     RegisterMaskedOutputNativeSequenceOutcome,
@@ -1902,6 +1903,12 @@ type RegisterMaskedCrazyReconfigurationFixture = (
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlan,
+);
+
+type RegisterMaskedOutputReconfigurationFixture = (
+    RegisterMaskedOutputNativeSequencePlan,
+    RegisterMaskedOutputNativeSequencePlan,
+    RegisterMaskedOutputNativeSequencePlan,
 );
 
 type RegisterMaskedRotateReconfigurationFixture = (
@@ -20494,6 +20501,69 @@ fn register_masked_rotate_sequence_dead_state_variant(
         .map_err(|error| format!("v6 rotate dead-state cache plan: {error}"))
 }
 
+fn register_masked_output_sequence_target_variant(
+    plan: &RegisterMaskedOutputNativeSequencePlan,
+    isa: HostIsa,
+) -> Result<RegisterMaskedOutputNativeSequencePlan, String> {
+    let artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| verified_register_masked_output_for_isa(program, isa))
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedOutputNativeSequencePlan::new(plan.programs(), &artifacts)
+        .map_err(|error| format!("v6 Output target-variant plan: {error}"))
+}
+
+fn register_masked_output_sequence_history_variant(
+    plan: &RegisterMaskedOutputNativeSequencePlan,
+) -> Result<RegisterMaskedOutputNativeSequencePlan, String> {
+    let mut programs = plan.programs().to_vec();
+    for program in &mut programs {
+        let effect = program.effects.first_mut().ok_or_else(|| {
+            String::from("v6 Output cache history effect missing")
+        })?;
+        effect.before.input_consumed =
+            effect.before.input_consumed.saturating_add(1);
+        effect.after.input_consumed =
+            effect.after.input_consumed.saturating_add(1);
+    }
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedOutputNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 Output history cache plan: {error}"))
+}
+
+fn register_masked_output_single_sequence_plan()
+-> Result<RegisterMaskedOutputNativeSequencePlan, String> {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let program = plan.programs().first().ok_or_else(|| {
+        String::from("v6 Output single cache program missing")
+    })?;
+    let artifact = plan.artifacts().first().ok_or_else(|| {
+        String::from("v6 Output single cache artifact missing")
+    })?;
+    RegisterMaskedOutputNativeSequencePlan::new(
+        from_ref(program),
+        from_ref(artifact),
+    )
+    .map_err(|error| format!("v6 Output single cache plan: {error}"))
+}
+
+fn register_masked_output_weighted_reconfiguration_fixture()
+-> Result<RegisterMaskedOutputReconfigurationFixture, String> {
+    let first = register_masked_output_single_sequence_plan()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let third = register_masked_output_loaded_sequence_fixture()?;
+    Ok((first, second, third))
+}
+
 fn register_masked_crazy_sequence_target_variant(
     plan: &RegisterMaskedCrazyNativeSequencePlan,
     isa: HostIsa,
@@ -20554,6 +20624,92 @@ fn register_masked_crazy_weighted_reconfiguration_fixture()
     )?;
     let third = register_masked_crazy_loaded_sequence_fixture()?;
     Ok((first, second, third))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_tracks_weighted_usage()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mapped_bytes = mapped_lengths.iter().sum::<usize>();
+    let entry_limit = nonzero_test_limit(2, "v6 Output cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(3, "v6 Output cache mapping limit")?;
+    let byte_limit = nonzero_test_limit(40_000, "v6 Output cache byte limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(595)?,
+        native_executable_address(0x99000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let inserted = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 Output weighted insert: {error}"))?
+        .disposition()
+        .clone();
+    let usage = cache.usage();
+    let operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 Output weighted hit: {error}"))?
+        .disposition()
+        .clone();
+    if inserted.is_hit()
+        || usage.entries() != 1
+        || usage.mappings() != 2
+        || usage.mapped_bytes() != mapped_bytes
+        || !hit.is_hit()
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 Output weighted usage drifted"));
+    }
+    if !cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 Output weighted invalidate: {error}"))?
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+    {
+        return Err(String::from("v6 Output weighted invalidation drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_rejects_mapping_oversize()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let entry_limit = nonzero_test_limit(2, "v6 Output cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(1, "v6 Output cache mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(596)?,
+        native_executable_address(0x9a000)?,
+    );
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 Output mapping oversize was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::Mappings {
+        limit: mapping_limit,
+        required: 2,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || error.eviction_failure().is_some()
+        || error.load_failure().is_some()
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Output mapping oversize evidence drifted",
+        ));
+    }
+    Ok(())
 }
 
 #[test]
@@ -20642,6 +20798,878 @@ fn register_masked_v6_crazy_sequence_cache_rejects_mapping_oversize()
         return Err(String::from("v6 Crazy mapping oversize evidence drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_hit_keeps_fifo_age()
+-> TieredTestResult {
+    let first = register_masked_output_loaded_sequence_fixture()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let third = register_masked_output_sequence_history_variant(&first)?;
+    let first_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&second);
+    let third_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&third);
+    if first_key == second_key
+        || first_key == third_key
+        || second_key == third_key
+    {
+        return Err(String::from("v6 Output cache FIFO fixture key collision"));
+    }
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(364)?,
+        native_executable_address(0x46400)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output FIFO first: {error}"))?
+        .disposition()
+        .clone();
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 Output FIFO second: {error}"))?
+        .disposition()
+        .clone();
+    let hit_operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output FIFO hit: {error}"))?
+        .disposition()
+        .clone();
+    let hit_no_adapter_work = adapter.operations == hit_operations;
+    let inserted = cache
+        .ensure_plan(&mut adapter, &third)
+        .map_err(|error| format!("v6 Output FIFO third: {error}"))?
+        .disposition()
+        .clone();
+    let keys = cache.keys().cloned().collect::<Vec<_>>();
+    if !hit.is_hit()
+        || !hit_no_adapter_work
+        || inserted.evicted_key() != Some(&first_key)
+        || keys != [second_key, third_key]
+    {
+        return Err(String::from("v6 Output cache hit refreshed FIFO age"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output FIFO release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_executes_borrowed_chain()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(366)?,
+        native_executable_address(0x46600)?,
+    );
+    {
+        let entry =
+            cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+                format!("v6 Output cached execute load: {error}")
+            })?;
+        let loaded_operations = adapter.operations.clone();
+        let state = direct_output_pair_sequence_state()?;
+        let mut memory = state.memory().to_vec();
+        let mut expected_memory = memory.clone();
+        let input = [];
+        let mut output = [0u8; 8];
+        let mut expected_output = output;
+        for program in plan.programs() {
+            apply_register_masked_output_expected(
+                program,
+                &mut expected_memory,
+                &mut expected_output,
+            )?;
+        }
+        let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+            FakeNativeRunnerBehavior::Applied,
+        );
+        let outcome = execute_loaded_register_masked_output_native_sequence(
+            entry.sequence(),
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 Output cached execute: {error}"))?;
+        if outcome.completed_steps() != 2
+            || outcome.observation() != plan.exit()
+            || memory != expected_memory
+            || output != expected_output
+            || runner.calls != 2
+            || adapter.operations != loaded_operations
+        {
+            return Err(String::from("v6 Output cached execution drifted"));
+        }
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output cached execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_eviction_failure_retries()
+-> TieredTestResult {
+    let first = register_masked_output_loaded_sequence_fixture()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(368)?,
+        native_executable_address(0x46800)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output cache failure fixture: {error}"))?;
+    adapter.release_failure_at = Some(1);
+    let Err(failure) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 Output cache ignored eviction failure"));
+    };
+    if failure.evicted_key() != Some(&first_key)
+        || failure.requested_key() != &second_key
+        || failure
+            .eviction_failure()
+            .is_none_or(|item| item.failed_count() != 1)
+        || failure.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || adapter.release_attempts != 4
+    {
+        return Err(String::from("v6 Output cache eviction failure drifted"));
+    }
+    let pending = failure.into_release_failures();
+    if pending.eviction_failure().is_none()
+        || pending.candidate_failure().is_some()
+    {
+        return Err(String::from("v6 Output cache retry ownership drifted"));
+    }
+    pending
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 Output cache eviction retry: {error}"))?;
+    if adapter.release_attempts == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output cache eviction retry count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_reconfigures_fifo_limits()
+-> TieredTestResult {
+    let first = register_masked_output_loaded_sequence_fixture()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&first);
+    let old_limit = nonzero_test_limit(2, "v6 Output old cache limit")?;
+    let new_limit = nonzero_test_limit(1, "v6 Output new cache limit")?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(old_limit);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(370)?,
+        native_executable_address(0x47000)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output reconfigure first: {error}"))?;
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 Output reconfigure second: {error}"))?;
+    let requested = NativeExecutableSequenceCacheLimits::new(new_limit);
+    let change = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 Output reconfigure: {error}"))?;
+    if change.evicted_keys() != from_ref(&first_key)
+        || change.limit_transition()
+            != (
+                NativeExecutableSequenceCacheLimits::new(old_limit),
+                requested,
+            )
+        || cache.capacity() != new_limit
+        || cache.len() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output cache reconfiguration drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output reconfigure release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_capacity_cleanup_retries()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mapping_limit = nonzero_test_limit(1, "v6 Output cache mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "v6 Output cache entry limit",
+    )?)
+    .with_mapping_limit(mapping_limit);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(410)?,
+        native_executable_address(0x43000)?,
+    )
+    .with_release_failure_at(1);
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 Output capacity cleanup failure ignored"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::Mappings {
+            limit: mapping_limit,
+            required: 2,
+        })
+        || error
+            .candidate_cleanup_failure()
+            .is_none_or(|failure| failure.failed_count() != 1)
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Output capacity cleanup evidence drifted",
+        ));
+    }
+    let pending = error.into_release_failures();
+    if pending.candidate_failure().is_none()
+        || pending.eviction_failure().is_some()
+    {
+        return Err(String::from("v6 Output capacity retry ownership drifted"));
+    }
+    pending.retry(&mut adapter).map_err(|failure| {
+        format!("v6 Output capacity cleanup retry: {failure}")
+    })?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output capacity cleanup retry count drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_evicts_for_byte_limit()
+-> TieredTestResult {
+    let (first, second, candidate) =
+        register_masked_output_weighted_reconfiguration_fixture()?;
+    let expected = [
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&first),
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&second),
+    ];
+    let candidate_key =
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&candidate);
+    let mapped_lengths = [8_192usize, 12_288usize, 16_384usize, 20_480usize];
+    let candidate_bytes = mapped_lengths[2].saturating_add(mapped_lengths[3]);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "v6 Output cache entry limit",
+    )?)
+    .with_mapped_byte_limit(nonzero_test_limit(
+        candidate_bytes,
+        "v6 Output cache byte limit",
+    )?);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(412)?,
+        native_executable_address(0x43200)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    for plan in [&first, &second] {
+        let _entry = cache
+            .ensure_plan(&mut adapter, plan)
+            .map_err(|error| {
+                format!("v6 Output byte admission setup: {error}")
+            })?
+            .disposition()
+            .clone();
+    }
+    let evicted = cache
+        .ensure_plan(&mut adapter, &candidate)
+        .map_err(|error| format!("v6 Output byte admission: {error}"))?
+        .disposition()
+        .evicted_keys()
+        .to_vec();
+    if evicted != expected
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != candidate_bytes
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output byte admission FIFO drifted"));
+    }
+    cache.release_all(&mut adapter).map_err(|failure| {
+        format!("v6 Output byte admission cleanup: {failure}")
+    })
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_evicts_for_mapping_limit()
+-> TieredTestResult {
+    let first = register_masked_output_single_sequence_plan()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let candidate = register_masked_output_loaded_sequence_fixture()?;
+    let expected = [
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&first),
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&second),
+    ];
+    let candidate_key =
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&candidate);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "v6 Output cache entry limit",
+    )?)
+    .with_mapping_limit(nonzero_test_limit(
+        2,
+        "v6 Output cache mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(414)?,
+        native_executable_address(0x41800)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output weighted first: {error}"))?
+        .disposition()
+        .clone();
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 Output weighted second: {error}"))?
+        .disposition()
+        .clone();
+    let evicted = cache
+        .ensure_plan(&mut adapter, &candidate)
+        .map_err(|error| format!("v6 Output weighted candidate: {error}"))?
+        .disposition()
+        .evicted_keys()
+        .to_vec();
+    if evicted != expected
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output weighted FIFO eviction drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output weighted release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_evicts_oldest() -> TieredTestResult
+{
+    let first = register_masked_output_loaded_sequence_fixture()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&first);
+    let second_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(416)?,
+        native_executable_address(0x40000)?,
+    );
+    let _first_entry = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output cache first insert: {error}"))?;
+    let disposition = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 Output cache second insert: {error}"))?
+        .disposition()
+        .clone();
+    if disposition.is_hit()
+        || disposition.evicted_keys() != from_ref(&first_key)
+        || cache.contains_plan(&first)
+        || !cache.contains_plan(&second)
+        || cache.keys().next() != Some(&second_key)
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output cache FIFO eviction drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output cache final release: {error}"))?;
+    if cache.is_empty() && adapter.release_attempts == 4 {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output cache release-all drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_expands_limits_no_io()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "v6 Output cache entry limit")?,
+    );
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(418)?,
+        native_executable_address(0x42000)?,
+    );
+    let _entry = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 Output reconfigure fixture: {error}"))?;
+    let usage = cache.usage();
+    let byte_limit = nonzero_test_limit(
+        usage.mapped_bytes().saturating_mul(2),
+        "v6 Output cache byte limit",
+    )?;
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 Output cache expanded entry limit")?,
+    )
+    .with_mapped_byte_limit(byte_limit)
+    .with_mapping_limit(nonzero_test_limit(
+        3,
+        "v6 Output cache expanded mapping limit",
+    )?);
+    let operations = adapter.operations.clone();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| format!("v6 Output cache expand: {error}"))?;
+    if !report.evicted_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != new_limits
+        || cache.usage() != usage
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 Output cache expansion drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output cache expand cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_reuses_chain() -> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(420)?,
+        native_executable_address(0x39800)?,
+    );
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 Output cache insert: {error}"))?;
+        if inserted.disposition().is_hit()
+            || !inserted.disposition().evicted_keys().is_empty()
+            || inserted.sequence().plan() != &plan
+        {
+            return Err(String::from(
+                "v6 Output cache insert evidence drifted",
+            ));
+        }
+    }
+    let loaded_operations = adapter.operations.clone();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 Output cache hit: {error}"))?;
+        if !hit.disposition().is_hit()
+            || hit.key()
+                != &RegisterMaskedOutputNativeSequenceKey::from_plan(&plan)
+            || hit.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 Output cache exact hit drifted"));
+        }
+    }
+    if adapter.operations != loaded_operations || cache.len() != 1 {
+        return Err(String::from("v6 Output cache hit performed adapter work"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output cache release all: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_invalidation_is_explicit()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(422)?,
+        native_executable_address(0x40400)?,
+    );
+    let _entry = cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+        format!("v6 Output cache invalidate fixture: {error}")
+    })?;
+    let released = cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 Output cache invalidate: {error}"))?;
+    let release_attempts = adapter.release_attempts;
+    let missing =
+        cache
+            .invalidate_plan(&mut adapter, &plan)
+            .map_err(|error| {
+                format!("v6 Output cache missing invalidate: {error}")
+            })?;
+    if released
+        && !missing
+        && cache.is_empty()
+        && release_attempts == 2
+        && adapter.release_attempts == release_attempts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output cache invalidation drifted"))
+    }
+}
+
+fn retry_output_sequence_cache_reconfiguration(
+    error: RegisterMaskedOutputNativeSequenceCacheReconfigurationFailure<
+        FakeNativeAdapterOperation,
+    >,
+    cache: &mut RegisterMaskedOutputNativeSequenceCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    new_limits: NativeExecutableSequenceCacheLimits,
+) -> TieredTestResult {
+    let old_limits = cache.limits();
+    error
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 Output shrink release owner missing"))?
+        .retry(adapter)
+        .map_err(|failure| format!("v6 Output shrink retry: {failure}"))?;
+    let operations = adapter.operations.clone();
+    let report =
+        cache
+            .reconfigure_limits(adapter, new_limits)
+            .map_err(|failure| {
+                format!("v6 Output shrink publish retry: {failure}")
+            })?;
+    if report.evicted_keys().is_empty()
+        && report.limit_transition() == (old_limits, new_limits)
+        && cache.limits() == new_limits
+        && adapter.operations == operations
+    {
+        cache.release_all(adapter).map_err(|failure| {
+            format!("v6 Output shrink final release: {failure}")
+        })
+    } else {
+        Err(String::from("v6 Output shrink retry publication drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_reconfigure_release_retries()
+-> TieredTestResult {
+    let (first, second, third) =
+        register_masked_output_weighted_reconfiguration_fixture()?;
+    let expected = [
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&first),
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&second),
+    ];
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 Output cache entry limit")?,
+    );
+    let new_limits = old_limits.with_mapping_limit(nonzero_test_limit(
+        2,
+        "v6 Output cache mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(424)?,
+        native_executable_address(0x42400)?,
+    );
+    for plan in [&first, &second, &third] {
+        let _entry = cache
+            .ensure_plan(&mut adapter, plan)
+            .map_err(|error| format!("v6 Output retry setup: {error}"))?
+            .disposition()
+            .clone();
+    }
+    adapter.release_failure_at = Some(2);
+    let Err(error) = cache.reconfigure_limits(&mut adapter, new_limits) else {
+        return Err(String::from("v6 Output cache ignored shrink failure"));
+    };
+    if error.evicted_keys() != expected
+        || error.limit_transition() != (old_limits, new_limits)
+        || error.invariant_error().is_some()
+        || error.release_failure().is_none()
+        || cache.limits() != old_limits
+        || cache.len() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output failed shrink evidence drifted"));
+    }
+    retry_output_sequence_cache_reconfiguration(
+        *error,
+        &mut cache,
+        &mut adapter,
+        new_limits,
+    )
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_rejects_byte_oversize()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let required = mapped_lengths.iter().sum::<usize>();
+    let byte_limit = nonzero_test_limit(
+        required.saturating_sub(1),
+        "v6 Output cache byte limit",
+    )?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "v6 Output cache entry limit",
+    )?)
+    .with_mapped_byte_limit(byte_limit);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(426)?,
+        native_executable_address(0x41600)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 Output byte oversize was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::MappedBytes {
+        limit: byte_limit,
+        required,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().mapped_bytes() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output byte oversize evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_release_all_retries()
+-> TieredTestResult {
+    let first = register_masked_output_loaded_sequence_fixture()?;
+    let second = register_masked_output_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("v6 Output cache capacity missing"))?;
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(428)?,
+        native_executable_address(0x40600)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output cache release first: {error}"))?;
+    let _second = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 Output cache release second: {error}"))?;
+    adapter.release_failure_at = Some(1);
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from(
+            "v6 Output cache ignored release-all failure",
+        ));
+    };
+    if failure.attempted_entries() != 2
+        || failure.released_entries() != 1
+        || failure.failed_entries() != 1
+        || failure.retained_mappings() != 1
+        || !cache.is_empty()
+        || adapter.release_attempts != 4
+    {
+        return Err(String::from(
+            "v6 Output cache release-all evidence drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 Output cache release-all retry: {error}")
+    })?;
+    if adapter.release_attempts == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output cache release-all retry drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_shrinks_byte_limit_fifo()
+-> TieredTestResult {
+    let (first, second, third) =
+        register_masked_output_weighted_reconfiguration_fixture()?;
+    let expected = [
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&first),
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&second),
+    ];
+    let third_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&third);
+    let mapped_lengths = [8_192usize, 12_288usize, 16_384usize, 20_480usize];
+    let third_bytes = mapped_lengths[2].saturating_add(mapped_lengths[3]);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 Output cache entry limit")?,
+    );
+    let new_limits = old_limits.with_mapped_byte_limit(nonzero_test_limit(
+        third_bytes,
+        "v6 Output cache byte limit",
+    )?);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(430)?,
+        native_executable_address(0x42600)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    for plan in [&first, &second, &third] {
+        let _entry = cache
+            .ensure_plan(&mut adapter, plan)
+            .map_err(|error| format!("v6 Output byte shrink setup: {error}"))?
+            .disposition()
+            .clone();
+    }
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| format!("v6 Output byte shrink: {error}"))?;
+    if report.evicted_keys() != expected
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != third_bytes
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output cache byte shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output byte shrink cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_shrinks_mapping_limit_fifo()
+-> TieredTestResult {
+    let (first, second, third) =
+        register_masked_output_weighted_reconfiguration_fixture()?;
+    let expected = [
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&first),
+        RegisterMaskedOutputNativeSequenceKey::from_plan(&second),
+    ];
+    let third_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&third);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "v6 Output cache entry limit")?,
+    );
+    let new_limits = old_limits.with_mapping_limit(nonzero_test_limit(
+        2,
+        "v6 Output cache mapping limit",
+    )?);
+    let mut cache =
+        RegisterMaskedOutputNativeSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(432)?,
+        native_executable_address(0x42200)?,
+    );
+    for plan in [&first, &second, &third] {
+        let _entry = cache
+            .ensure_plan(&mut adapter, plan)
+            .map_err(|error| format!("v6 Output shrink setup: {error}"))?
+            .disposition()
+            .clone();
+    }
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| format!("v6 Output cache shrink: {error}"))?;
+    if report.evicted_keys() != expected
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 Output cache mapping shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 Output cache shrink cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_cache_usage_overflow_is_atomic()
+-> TieredTestResult {
+    let (first, second, _third) =
+        register_masked_output_weighted_reconfiguration_fixture()?;
+    let base_value = 0x42800usize;
+    let first_mapped_len =
+        usize::MAX.checked_sub(base_value).ok_or_else(|| {
+            String::from("v6 Output first mapped length underflow")
+        })?;
+    let second_mapped_len = base_value.checked_add(1).ok_or_else(|| {
+        String::from("v6 Output second mapped length overflow")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(434)?,
+        native_executable_address(base_value)?,
+    )
+    .with_mapped_len_overrides(vec![first_mapped_len, second_mapped_len]);
+    let mut cache = RegisterMaskedOutputNativeSequenceCache::new(
+        nonzero_test_limit(2, "v6 Output cache entry limit")?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 Output overflow first: {error}"))?
+        .disposition()
+        .clone();
+    let retained_usage = cache.usage();
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("v6 Output cache admitted usage overflow"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::WeightOverflow)
+        || error.candidate_cleanup_failure().is_some()
+        || !error.evicted_keys().is_empty()
+        || cache.usage() != retained_usage
+        || cache.len() != 1
+        || !cache.contains_plan(&first)
+        || cache.contains_plan(&second)
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 Output cache overflow mutated authority"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|failure| format!("v6 Output overflow cleanup: {failure}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output cache overflow cleanup drifted"))
+    }
 }
 
 #[test]

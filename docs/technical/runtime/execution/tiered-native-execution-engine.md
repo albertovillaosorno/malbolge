@@ -2203,6 +2203,11 @@ retained mappings without adapter work. Guard miss returns the current resume
 boundary; current-step failure rolls back memory/output while preserving the
 committed prefix and reusable residency.
 
+A weighted FIFO Output sequence cache now reuses exact loaded chains without
+adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+failures retain exact retryable cleanup ownership.
+
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
 identity, and the strict RW-to-RX/full-sync policy. Dedicated

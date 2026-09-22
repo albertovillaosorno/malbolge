@@ -166,6 +166,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   resume boundary; current-step failure rolls back memory/output while
   preserving the committed prefix and reusable residency.
 
+  A weighted FIFO Output sequence cache now reuses exact loaded chains without
+  adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+  mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+  failures retain exact retryable cleanup ownership.
+
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine
   text. A distinct relocation-free Crazy load image retains exact key/target

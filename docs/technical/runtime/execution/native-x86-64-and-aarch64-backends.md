@@ -278,6 +278,11 @@ retained mappings without adapter work. Guard miss returns the current resume
 boundary; current-step failure rolls back memory/output while preserving the
 committed prefix and reusable residency.
 
+A weighted FIFO Output sequence cache now reuses exact loaded chains without
+adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+failures retain exact retryable cleanup ownership.
+
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.
 Dead A and I/O history remain bound in the full v6 key without changing rotate

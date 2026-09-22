@@ -372,6 +372,11 @@ retained mappings without adapter work. Guard miss returns the current resume
 boundary; current-step failure rolls back memory/output while preserving the
 committed prefix and reusable residency.
 
+A weighted FIFO Output sequence cache now reuses exact loaded chains without
+adapter work on hits, preserves FIFO age, and enforces entry, mapping, and
+mapped-byte limits. Eviction, invalidation, reconfiguration, and release-all
+failures retain exact retryable cleanup ownership.
+
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus
 instruction-sync policy. Crazy-specific staged/sealed/ready typestates now
