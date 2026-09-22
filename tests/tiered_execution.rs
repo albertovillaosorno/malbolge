@@ -573,6 +573,8 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequenceOutcome,
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
+    RegisterMaskedOutputNativeExecutableOwner,
+    RegisterMaskedOutputNativeOwnerExecutionFailure,
     RegisterMaskedOutputNativeRunner,
     RegisterMaskedRotateNativeExecutableOwner,
     RegisterMaskedRotateNativeOwnerExecutionFailure,
@@ -1809,6 +1811,13 @@ struct RegisterMaskedCrazyOwnerFixture {
 struct RegisterMaskedNoOperationOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNoOperationNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedOutputOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    owner: RegisterMaskedOutputNativeExecutableOwner,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -4771,6 +4780,25 @@ fn register_masked_no_operation_owner_fixture(
     Ok(RegisterMaskedNoOperationOwnerFixture { adapter, owner, program })
 }
 
+fn register_masked_output_owner_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedOutputOwnerFixture, String> {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedOutputNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 Output owner fixture load failed: {error}"))?;
+    Ok(RegisterMaskedOutputOwnerFixture { adapter, owner, program })
+}
+
 fn register_masked_rotate_owner_fixture(
     mapping_id_value: u64,
     base_address: usize,
@@ -5001,6 +5029,68 @@ fn assert_crazy_owner_run_failure(
         },
         RegisterMaskedCrazyNativeOwnerExecutionFailure::Preparation(_) => Err(
             String::from("v6 Crazy owner runner failure became preparation"),
+        ),
+    }
+}
+
+fn execute_register_masked_output_owner_applied(
+    owner: &RegisterMaskedOutputNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedOutputNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 Output owner effect missing"))?;
+    let mut expected = effect.after;
+    expected.input_consumed = entry.input_consumed;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let mut expected_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_output_expected(
+        program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 Output owner execution failed: {error}")
+        })?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == expected_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output owner rebased execution drifted"))
+    }
+}
+
+fn assert_output_owner_run_failure(
+    error: &RegisterMaskedOutputNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> Result<(), String> {
+    match error {
+        RegisterMaskedOutputNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run =>
+        {
+            Ok(())
+        },
+        RegisterMaskedOutputNativeOwnerExecutionFailure::Execution(_) => Err(
+            String::from("v6 Output owner runner failure lost run phase"),
+        ),
+        RegisterMaskedOutputNativeOwnerExecutionFailure::Preparation(_) => Err(
+            String::from("v6 Output owner runner failure became preparation"),
         ),
     }
 }
@@ -13460,6 +13550,144 @@ fn register_masked_v6_crazy_owner_recovers_after_runner_failure()
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 Crazy owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_output_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let RegisterMaskedOutputOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_output_owner_fixture(584, 0x8e000)?;
+    let loaded_operations = adapter.operations.clone();
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 Output owner weight or identity drifted"));
+    }
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 Output owner effect missing"))?
+        .before;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for input_consumed in [1, 2] {
+        let mut entry = source_entry;
+        entry.input_consumed = input_consumed;
+        execute_register_masked_output_owner_applied(
+            &owner,
+            &mut runner,
+            &program,
+            entry,
+        )?;
+    }
+    let mapping_id = owner.executable().mapping().mapping_id();
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 Output owner remapped or changed mapping identity",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output owner release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output owner release was not explicit"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(585)?,
+        native_executable_address(0x8f000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedOutputNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 Output weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 Output owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output weighted owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_owner_recovers_after_runner_failure()
+-> TieredTestResult {
+    let RegisterMaskedOutputOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_output_owner_fixture(586, 0x90000)?;
+    let loaded_operations = adapter.operations.clone();
+    let (entry, _expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 Output owner runner failure was ignored"));
+    };
+    assert_output_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 Output owner failure changed residency or caller state",
+        ));
+    }
+    let mut succeeding = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_register_masked_output_owner_applied(
+        &owner,
+        &mut succeeding,
+        &program,
+        entry,
+    )?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 Output owner remapped after runner failure",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 Output owner release: {release}"))
 }
 
 #[test]

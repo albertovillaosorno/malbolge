@@ -132,8 +132,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   allowing only input-history rebasing. Exact ready-image equality binds the
   call to one synchronized mapping and restores the full entry snapshot on
   mismatch. A dedicated Output runner port now admits Applied/GuardMiss and
-  restores the full snapshot on runner or completion failure. Resident
-  ownership remains separate.
+  restores the full snapshot on runner or completion failure.
+
+  A reusable Output
+  owner retains the verified program, artifact, and ready mapping across rebased
+  calls, reports platform mapping weight, and preserves release-retry ownership.
+  Resident caching and transaction orchestration remain separate.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

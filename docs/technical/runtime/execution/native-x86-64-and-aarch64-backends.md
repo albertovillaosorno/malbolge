@@ -243,7 +243,12 @@ Prepared Output calls require exact live A/C/D and output length while allowing
 only input-history rebasing. Exact ready-image equality binds the call to one
 synchronized mapping and restores the full entry snapshot on mismatch. A
 dedicated Output runner port now admits Applied/GuardMiss and restores the full
-snapshot on runner or completion failure. Resident ownership remains separate.
+snapshot on runner or completion failure.
+
+A reusable Output owner now retains
+the verified program, artifact, and ready mapping across rebased calls. It uses
+platform mapped length for residency weight and preserves release-retry
+ownership. Resident caching and transaction orchestration remain separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.

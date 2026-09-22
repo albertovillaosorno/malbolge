@@ -2168,7 +2168,12 @@ Prepared Output calls require exact live A/C/D and output length while only
 input history may rebase. Exact ready-image equality binds the call to a
 synchronized mapping and restores the complete entry snapshot on mismatch. A
 dedicated Output runner port now admits Applied/GuardMiss and restores the full
-snapshot on runner or completion failure. Resident ownership remains separate.
+snapshot on runner or completion failure.
+
+A reusable Output owner now keeps the
+verified program, artifact, and ready mapping across rebased calls. Platform
+mapped length defines its residency weight and release failure retains exact
+retry ownership. Resident caching and transaction orchestration remain separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
