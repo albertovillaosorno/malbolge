@@ -661,7 +661,9 @@ baseline; native tiers are accelerators of identical observable behavior.
 - Prepared Output calls now require exact live A/C/D and output length while
   allowing only input-history rebasing. Exact ready-image equality binds the
   call to a synchronized mapping and restores the complete entry snapshot on
-  mismatch. Runner authority remains separate.
+  mismatch. A dedicated Output runner port now admits Applied/GuardMiss and
+  restores the full snapshot on runner or completion failure. Resident
+  ownership remains separate.
 - `VerifiedRegisterMaskedCrazyLoadImage` proves the verified Crazy object is
   relocation-free and ISA-aligned while retaining exact identity and the strict
   RW-to-RX/full-sync policy. Crazy-specific staged/sealed/ready typestates now

@@ -47,6 +47,8 @@ use super::invocation::{
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
+    PreparedRegisterMaskedOutputInvocation,
+    PreparedRegisterMaskedOutputNativeInvocation,
     PreparedRegisterMaskedRotateInvocation,
     PreparedRegisterMaskedRotateNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -60,6 +62,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
 };
 use super::platform::{
@@ -218,6 +221,25 @@ pub struct RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
 pub type RegisterMaskedCrazyLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedCrazyLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedOutputNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 Output call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedOutputLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedOutputNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 Output call.
+pub type RegisterMaskedOutputLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedOutputLoadedExecutionFailure<RunnerError>>,
 >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -479,6 +501,13 @@ type RegisterMaskedCrazyNativeCallResult<Runner> = Result<
     >,
 >;
 
+type RegisterMaskedOutputNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedOutputNativeCallFailure<
+        <Runner as RegisterMaskedOutputNativeRunner>::Error,
+    >,
+>;
+
 type RegisterMaskedNoOperationNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedNoOperationNativeCallFailure<
@@ -670,6 +699,29 @@ pub trait RegisterMaskedCrazyNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedCrazyNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 Output call.
+///
+/// This port receives only a view constructed after exact Output v6
+/// image/executable identity binding.
+pub trait RegisterMaskedOutputNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 Output executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedOutputNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -976,6 +1028,62 @@ impl<RunnerError> RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
             RegisterMaskedCrazyNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedCrazyNativeCallFailure::Binding(_)
             | RegisterMaskedCrazyNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedOutputLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedOutputNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedOutputNativeCallFailure::Completion(_)
+            | RegisterMaskedOutputNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 Output result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedOutputNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedOutputNativeCallFailure::Binding(_)
+            | RegisterMaskedOutputNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedOutputNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedOutputNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedOutputNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedOutputNativeCallFailure::Runner(error) => Some(error),
+            RegisterMaskedOutputNativeCallFailure::Binding(_)
+            | RegisterMaskedOutputNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -2609,6 +2717,29 @@ where
     )
 }
 
+/// Binds, runs, and admits one v6 Output call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedOutputLoadedExecutionFailure`] for binding, runner,
+/// or completion failure.
+pub fn execute_loaded_verified_register_masked_output_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedOutputNativeExecutable,
+    prepared: PreparedRegisterMaskedOutputInvocation<'_, '_>,
+) -> RegisterMaskedOutputLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedOutputNativeRunner,
+{
+    run_register_masked_output_prepared(runner, executable, prepared).map_err(
+        |cause| Box::new(RegisterMaskedOutputLoadedExecutionFailure { cause }),
+    )
+}
+
 /// Binds, runs, and admits one v6 no-operation call against a loaded mapping.
 ///
 /// Runner failure restores the complete rebased entry snapshot. Completion
@@ -3235,6 +3366,31 @@ where
     bound
         .complete(raw_status)
         .map_err(RegisterMaskedCrazyNativeCallFailure::Completion)
+}
+
+fn run_register_masked_output_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedOutputNativeExecutable,
+    prepared: PreparedRegisterMaskedOutputInvocation<'_, '_>,
+) -> RegisterMaskedOutputNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedOutputNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedOutputNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedOutputNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedOutputNativeCallFailure::Completion)
 }
 
 fn run_register_masked_no_operation_prepared<Runner>(

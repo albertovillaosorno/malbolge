@@ -491,6 +491,7 @@ use execution_native::{
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedRegisterMaskedOutputInvocation,
+    PreparedRegisterMaskedOutputNativeInvocation,
     PreparedRegisterMaskedRotateInvocation,
     PreparedRegisterMaskedRotateNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -501,6 +502,7 @@ use execution_native::{
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable, RegisterMaskedCrazyLease,
     RegisterMaskedCrazyLeaseCache, RegisterMaskedCrazyLeaseCacheAcquisition,
     RegisterMaskedCrazyLeaseCacheEntryReleaseFailure,
@@ -571,6 +573,7 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequenceOutcome,
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
+    RegisterMaskedOutputNativeRunner,
     RegisterMaskedRotateNativeExecutableOwner,
     RegisterMaskedRotateNativeOwnerExecutionFailure,
     RegisterMaskedRotateNativeOwnerLoadFailure,
@@ -658,6 +661,7 @@ use execution_native::{
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
+    execute_loaded_verified_register_masked_output_native,
     execute_loaded_verified_register_masked_rotate_native,
     execute_selected_cached_direct_fused_native_retry,
     execute_transactional_cached_direct_fused_native_retry,
@@ -1694,6 +1698,15 @@ struct FakeRegisterMaskedNoOperationNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedOutputNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeRegisterMaskedRotateNativeRunner {
     behavior: FakeNativeRunnerBehavior,
     behaviors: Vec<FakeNativeRunnerBehavior>,
@@ -1755,6 +1768,13 @@ struct RegisterMaskedNoOperationNativeFixture {
     adapter: FakeNativeExecutableAdapter,
     artifact: VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     ready: ReadyRegisterMaskedNoOperationNativeExecutable,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedOutputNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: VerifiedRegisterMaskedOutputNativeObjectArtifact,
+    ready: ReadyRegisterMaskedOutputNativeExecutable,
 }
 
 #[derive(Debug)]
@@ -2473,6 +2493,18 @@ impl FakeRegisterMaskedNoOperationNativeRunner {
     }
 }
 
+impl FakeRegisterMaskedOutputNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
 impl FakeRegisterMaskedRotateNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
@@ -3160,6 +3192,42 @@ impl RegisterMaskedNoOperationNativeRunner
             .copied()
             .unwrap_or(self.behavior);
         match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl RegisterMaskedOutputNativeRunner for FakeRegisterMaskedOutputNativeRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedOutputNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
             FakeNativeRunnerBehavior::Applied => {
                 invocation.apply_expected_for_test();
                 Ok(NativeRegionStatus::Applied.code())
@@ -4469,6 +4537,27 @@ fn register_masked_no_operation_native_fixture(
     Ok(RegisterMaskedNoOperationNativeFixture { adapter, artifact, ready })
 }
 
+fn register_masked_output_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedOutputNativeFixture, String> {
+    let artifact = verified_register_masked_output(program)?;
+    let image = VerifiedRegisterMaskedOutputLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 Output fixture image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(mapping_id_value)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(base_address)?,
+    );
+    let ready =
+        load_register_masked_output_native_executable(&mut adapter, &image)
+            .map_err(|error| {
+                format!("v6 Output fixture load failed: {error}")
+            })?;
+    Ok(RegisterMaskedOutputNativeFixture { adapter, artifact, ready })
+}
+
 fn register_masked_rotate_native_fixture(
     program: &RegisterMaskedRegionEffectProgram,
     mapping_id_value: u64,
@@ -4540,6 +4629,21 @@ fn apply_register_masked_crazy_expected_memory(
         *cell = write.after;
     }
     Ok(())
+}
+
+fn register_masked_output_rebased_observations(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedObservationPair, String> {
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 Output runner effect missing"))?;
+    let mut entry = source.before;
+    entry.input_consumed = 1;
+    let mut expected = source.after;
+    expected.input_consumed = entry.input_consumed;
+    Ok((entry, expected))
 }
 
 fn register_masked_rotate_rebased_observations(
@@ -8872,6 +8976,257 @@ fn register_masked_v6_crazy_loaded_runner_completion_drift_rolls_back()
     release_register_masked_crazy_native_executable(&mut adapter, ready)
         .map_err(|release_error| {
             format!("v6 Crazy completion release: {release_error}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_runner_rejects_ready_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let variant = register_masked_output_history_variant(&program)?;
+    let RegisterMaskedOutputNativeFixture {
+        mut adapter,
+        artifact: _variant_artifact,
+        ready,
+    } = register_masked_output_native_fixture(&variant, 579, 0x89000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 Output loaded drift source missing"))?;
+    let input = [1u8; 8];
+    let mut output = [0u8; 8];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output loaded drift prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_output_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Output loaded ready drift was invoked"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Bind
+        || error.binding_error()
+            != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || runner.calls != 0
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 Output loaded bind rejection drifted"));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Output loaded drift release: {release_error}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_runner_applies_rebased_state()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let RegisterMaskedOutputNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_output_native_fixture(&program, 580, 0x8a000)?;
+    let (entry, expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    let mut expected_output = output;
+    apply_register_masked_output_expected(
+        &program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output loaded preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_verified_register_masked_output_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Output loaded execution: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 Output loaded runner semantics drifted"));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Output loaded release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_runner_guard_miss_is_atomic()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let RegisterMaskedOutputNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_output_native_fixture(&program, 581, 0x8b000)?;
+    let (entry, _expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output guard preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_verified_register_masked_output_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 Output guard miss: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::GuardMiss
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 Output guard miss changed snapshot"));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 Output guard release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let RegisterMaskedOutputNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_output_native_fixture(&program, 582, 0x8c000)?;
+    let (entry, _expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output rollback preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_output_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Output runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 Output runner failure did not roll back"));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Output rollback release: {release_error}")
+        })?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_runner_completion_drift_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let RegisterMaskedOutputNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_output_native_fixture(&program, 583, 0x8d000)?;
+    let (entry, _expected) =
+        register_masked_output_rebased_observations(&program)?;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output completion preparation: {error}"))?;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_output_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 Output completion drift was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Complete
+        || !matches!(
+            error.completion_error(),
+            Some(VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { .. },
+            ))
+        )
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from(
+            "v6 Output completion drift did not roll back",
+        ));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|release_error| {
+            format!("v6 Output completion release: {release_error}")
         })?;
     Ok(())
 }

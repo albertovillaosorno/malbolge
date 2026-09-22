@@ -2166,8 +2166,9 @@ post-allocation failure and exact retry ownership after release failure.
 
 Prepared Output calls require exact live A/C/D and output length while only
 input history may rebase. Exact ready-image equality binds the call to a
-synchronized mapping and restores the complete entry snapshot on mismatch.
-Runner authority remains separate.
+synchronized mapping and restores the complete entry snapshot on mismatch. A
+dedicated Output runner port now admits Applied/GuardMiss and restores the full
+snapshot on runner or completion failure. Resident ownership remains separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained
