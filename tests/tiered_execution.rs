@@ -490,6 +490,7 @@ use execution_native::{
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
+    PreparedRegisterMaskedOutputInvocation,
     PreparedRegisterMaskedRotateInvocation,
     PreparedRegisterMaskedRotateNativeInvocation,
     PreparedVerifiedDirectInvocation,
@@ -608,6 +609,7 @@ use execution_native::{
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputLoadImage,
+    VerifiedRegisterMaskedOutputNativeObjectArtifact,
     VerifiedRegisterMaskedRotateLoadImage,
     VerifiedRegisterMaskedRotateNativeObjectArtifact,
     acquire_direct_fused_native_sequence,
@@ -8285,6 +8287,245 @@ fn register_masked_v6_crazy_binding_rejects_ready_identity_drift()
     }
     release_register_masked_crazy_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v6 Crazy variant release: {error}"))?;
+    Ok(())
+}
+
+fn verified_register_masked_output(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<VerifiedRegisterMaskedOutputNativeObjectArtifact, String> {
+    let candidate = emit_direct_register_masked_output_coff(
+        program,
+        register_masked_output_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 output helper emit: {error}"))?;
+    verify_direct_register_masked_output(&candidate, program)
+        .map_err(|error| format!("v6 output helper verify: {error}"))
+}
+
+fn apply_register_masked_output_expected(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+    output: &mut [u8],
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 output expected effect missing"))?;
+    for write in [effect.memory_delta.data, effect.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 output expected address: {error}"))?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 output expected write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    let value = effect
+        .output
+        .ok_or_else(|| String::from("v6 output expected append missing"))?;
+    let cell = output.get_mut(effect.before.output_len).ok_or_else(|| {
+        String::from("v6 output expected append exceeds capacity")
+    })?;
+    *cell = value;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_invocation_rebases_input_history()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 output invocation effect missing")
+        })?;
+    let mut entry = source.before;
+    entry.input_consumed = 1;
+    let mut expected = source.after;
+    expected.input_consumed = entry.input_consumed;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    let input = [1u8, 2];
+    let mut output = [9u8, 8, 7, 6, 5, 4, 3, 2];
+    let mut expected_output = output;
+    apply_register_masked_output_expected(
+        &program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let mut prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 output invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from("v6 output expected observation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 output completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from("v6 output rebased application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_invocation_rejects_output_length_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 output length-drift effect missing")
+        })?;
+    let mut entry = source.before;
+    let expected = entry.output_len;
+    entry.output_len = entry.output_len.saturating_add(1);
+    let observed = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [1u8; 8];
+    let mut output = [0u8; 8];
+    let result = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryOutputLength {
+            expected: value,
+            observed: seen,
+        }) if value == expected && seen == observed
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 output length rejection drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_binding_retains_exact_ready() -> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let image = VerifiedRegisterMaskedOutputLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 output binding image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(577)?,
+        native_executable_address(0x87000)?,
+    );
+    let ready =
+        load_register_masked_output_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 output binding load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("v6 output binding effect missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [1u8; 8];
+    let mut output = [0u8; 8];
+    let prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 output binding prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v6 output binding failed: {error}"))?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 output bound identity drifted"));
+    }
+    drop(bound);
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 output binding release: {error}"))?;
+    Ok(())
+}
+
+fn register_masked_output_history_variant(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut variant = program.clone();
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 output binding variant effect missing")
+    })?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    Ok(variant)
+}
+
+#[test]
+fn register_masked_v6_output_binding_rejects_ready_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact = verified_register_masked_output(&program)?;
+    let variant = register_masked_output_history_variant(&program)?;
+    let variant_candidate = emit_direct_register_masked_output_coff(
+        &variant,
+        register_masked_output_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 output variant emit: {error}"))?;
+    let variant_artifact =
+        verify_direct_register_masked_output(&variant_candidate, &variant)
+            .map_err(|error| format!("v6 output variant verify: {error}"))?;
+    let variant_image =
+        VerifiedRegisterMaskedOutputLoadImage::new(&variant_artifact)
+            .map_err(|error| format!("v6 output variant image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(578)?,
+        native_executable_address(0x88000)?,
+    );
+    let ready = load_register_masked_output_native_executable(
+        &mut adapter,
+        &variant_image,
+    )
+    .map_err(|error| format!("v6 output variant load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .map(|source| source.before)
+        .ok_or_else(|| String::from("v6 output binding source missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [1u8; 8];
+    let mut output = [0u8; 8];
+    let entry_output = output;
+    let mut prepared = PreparedRegisterMaskedOutputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 output drift prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let result = prepared.bind_executable(&ready);
+    if !matches!(
+        result,
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 output ready drift was admitted"));
+    }
+    release_register_masked_output_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 output variant release: {error}"))?;
     Ok(())
 }
 

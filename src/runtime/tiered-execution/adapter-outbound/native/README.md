@@ -333,8 +333,12 @@ plus instruction-sync policy. Output-specific staged/sealed/ready typestates
 admit exact copy, same-mapping RX transition, full-range sync, and exact release
 evidence. A dedicated platform path now loads and releases Output mappings
 transactionally, cleaning post-allocation failures and retaining exact ready
-ownership when release must be retried. Invocation and runner authority remain
-separate.
+ownership when release must be retried.
+
+Prepared Output calls now require exact live A/C/D and output length while only
+input history may rebase. Exact ready-image equality binds the call to one
+synchronized mapping and restores the full entry snapshot on mismatch. Runner
+authority remains separate.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

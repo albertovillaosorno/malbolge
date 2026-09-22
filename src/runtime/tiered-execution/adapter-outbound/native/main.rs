@@ -540,6 +540,8 @@ pub use invocation::{
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedNonGraphicalNativeInvocation,
+    PreparedRegisterMaskedOutputInvocation,
+    PreparedRegisterMaskedOutputNativeInvocation,
     PreparedRegisterMaskedRotateInvocation,
     PreparedRegisterMaskedRotateNativeInvocation,
     PreparedVerifiedDirectInvocation,

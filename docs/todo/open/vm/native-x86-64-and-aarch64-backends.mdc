@@ -126,7 +126,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   same-mapping RX transition, full-range sync, and exact release evidence. A
   dedicated platform path now loads/releases the ready mapping transactionally,
   cleans post-allocation failures, and retains exact ready ownership for release
-  retry. Invocation and runner authority remain separate.
+  retry.
+
+  Prepared Output calls now require exact live A/C/D and output length while
+  allowing only input-history rebasing. Exact ready-image equality binds the
+  call to one synchronized mapping and restores the full entry snapshot on
+  mismatch. Runner authority remains separate.
 
   The object guards live A/C/D, exact memory extent, code/data live-ins, and
   prior termination while I/O history remains key-bound but absent from machine

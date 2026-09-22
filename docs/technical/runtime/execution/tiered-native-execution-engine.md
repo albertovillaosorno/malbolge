@@ -2163,7 +2163,11 @@ staged/sealed/ready typestates admit exact copy, same-mapping RX transition,
 full-range instruction sync, and exact release evidence. A dedicated Output
 platform path now performs transactional load/release with cleanup after every
 post-allocation failure and exact retry ownership after release failure.
-Invocation and runner authority remain separate.
+
+Prepared Output calls require exact live A/C/D and output length while only
+input history may rebase. Exact ready-image equality binds the call to a
+synchronized mapping and restores the complete entry snapshot on mismatch.
+Runner authority remains separate.
 
 Independent verification reconstructs the key and canonical bytes. A distinct
 Crazy v6 load image proves relocation closure, ISA alignment, exact retained

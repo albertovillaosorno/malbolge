@@ -238,7 +238,11 @@ staged/sealed/ready lifecycle typestates. They retain exact identity, ISA
 alignment, strict RW-to-RX/full-sync policy, and exact release evidence. A
 dedicated platform path loads and releases the mapping transactionally, cleans
 post-allocation failures, and retains exact ready ownership for release retry.
-Invocation and runner authority remain separate.
+
+Prepared Output calls require exact live A/C/D and output length while allowing
+only input-history rebasing. Exact ready-image equality binds the call to one
+synchronized mapping and restores the full entry snapshot on mismatch. Runner
+authority remains separate.
 
 Rotate guards C/D, exact memory extent, both code/data live-ins, and prior live
 termination before committing the reviewed data/code writes and A/C/D results.
