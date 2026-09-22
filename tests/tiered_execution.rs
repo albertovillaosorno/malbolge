@@ -587,6 +587,11 @@ use execution_native::{
     RegisterMaskedOutputNativeResidentLease,
     RegisterMaskedOutputNativeResidentLeaseCache,
     RegisterMaskedOutputNativeRunner,
+    RegisterMaskedOutputNativeSequenceExecutionFailure,
+    RegisterMaskedOutputNativeSequenceKey,
+    RegisterMaskedOutputNativeSequenceOutcome,
+    RegisterMaskedOutputNativeSequencePlan,
+    RegisterMaskedOutputNativeSequencePlanError,
     RegisterMaskedRotateNativeExecutableOwner,
     RegisterMaskedRotateNativeOwnerExecutionFailure,
     RegisterMaskedRotateNativeOwnerLoadFailure,
@@ -665,6 +670,7 @@ use execution_native::{
     execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_crazy_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
+    execute_loaded_register_masked_output_native_sequence,
     execute_loaded_register_masked_rotate_native_sequence,
     execute_loaded_verified_direct_fused_native,
     execute_loaded_verified_execution_geometry_native,
@@ -699,6 +705,7 @@ use execution_native::{
     load_register_masked_non_graphical_native_executable,
     load_register_masked_non_graphical_native_sequence,
     load_register_masked_output_native_executable,
+    load_register_masked_output_native_sequence,
     load_register_masked_rotate_native_executable,
     load_register_masked_rotate_native_sequence,
     load_verified_execution_geometry_native_sequence,
@@ -1714,6 +1721,7 @@ struct FakeRegisterMaskedNoOperationNativeRunner {
 #[derive(Debug)]
 struct FakeRegisterMaskedOutputNativeRunner {
     behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
     calls: usize,
     entry_addresses: Vec<NonZeroUsize>,
     mapping_ids: Vec<NativeExecutableMappingId>,
@@ -2526,6 +2534,18 @@ impl FakeRegisterMaskedOutputNativeRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
         Self {
             behavior,
+            behaviors: Vec::new(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+
+    const fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+        Self {
+            behavior: FakeNativeRunnerBehavior::GuardMiss,
+            behaviors,
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -3256,7 +3276,12 @@ impl RegisterMaskedOutputNativeRunner for FakeRegisterMaskedOutputNativeRunner {
         self.mapping_ids.push(invocation.mapping_id());
         self.state_pointers_non_null
             .push(!invocation.state_mut_ptr().is_null());
-        match self.behavior {
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
             FakeNativeRunnerBehavior::Applied => {
                 invocation.apply_expected_for_test();
                 Ok(NativeRegionStatus::Applied.code())
@@ -4137,21 +4162,30 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
-fn canonical_register_masked_output_program()
--> Result<RegisterMaskedRegionEffectProgram, String> {
+fn canonical_register_masked_output_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_output_pair_sequence_state()?;
     let mut machine = ProfileMachine::from_snapshot(state);
-    let mut recorded = None;
+    let mut traces = Vec::new();
     let outcome = machine
-        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
-        .map_err(|error| format!("v6 output fixture step failed: {error}"))?;
-    if outcome != StepOutcome::Continued {
-        return Err(String::from("v6 output fixture did not continue"));
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 Output fixture run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 Output fixture did not run two steps"));
     }
-    let trace =
-        recorded.ok_or_else(|| String::from("v6 output trace missing"))?;
-    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
-        .map_err(|error| format!("v6 output projection failed: {error:?}"))
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("v6 Output projection failed: {error:?}"))
+}
+
+fn canonical_register_masked_output_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    canonical_register_masked_output_programs()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| String::from("v6 Output trace missing"))
 }
 
 fn canonical_register_masked_crazy_programs()
@@ -8614,16 +8648,23 @@ fn register_masked_v6_crazy_binding_rejects_ready_identity_drift()
     Ok(())
 }
 
-fn verified_register_masked_output(
+fn verified_register_masked_output_for_isa(
     program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
 ) -> Result<VerifiedRegisterMaskedOutputNativeObjectArtifact, String> {
     let candidate = emit_direct_register_masked_output_coff(
         program,
-        register_masked_output_target(HostIsa::X86_64),
+        register_masked_output_target(isa),
     )
     .map_err(|error| format!("v6 output helper emit: {error}"))?;
     verify_direct_register_masked_output(&candidate, program)
         .map_err(|error| format!("v6 output helper verify: {error}"))
+}
+
+fn verified_register_masked_output(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<VerifiedRegisterMaskedOutputNativeObjectArtifact, String> {
+    verified_register_masked_output_for_isa(program, HostIsa::X86_64)
 }
 
 fn apply_register_masked_output_expected(
@@ -19246,6 +19287,615 @@ fn register_masked_v6_crazy_sequence_late_failure_keeps_prefix()
     loaded
         .release(&mut adapter)
         .map_err(|error| format!("v6 Crazy late-failure release: {error}"))
+}
+#[test]
+fn register_masked_v6_output_sequence_plan_admits_pair() -> TieredTestResult {
+    let programs = canonical_register_masked_output_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let plan =
+        RegisterMaskedOutputNativeSequencePlan::new(&programs, &artifacts)
+            .map_err(|error| format!("v6 Output sequence plan: {error}"))?;
+    let first = programs
+        .first()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| {
+            String::from("v6 Output sequence first effect missing")
+        })?;
+    let last = programs
+        .last()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| {
+            String::from("v6 Output sequence last effect missing")
+        })?;
+    if plan.len() == 2
+        && !plan.is_empty()
+        && plan.entry() == first.before
+        && plan.exit() == last.after
+        && plan.programs() == programs
+        && plan.artifacts() == artifacts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_key_preserves_id() -> TieredTestResult {
+    let programs = canonical_register_masked_output_programs()?;
+    let x86_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let x86_plan =
+        RegisterMaskedOutputNativeSequencePlan::new(&programs, &x86_artifacts)
+            .map_err(|error| format!("v6 Output x86 key plan: {error}"))?;
+    let x86_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&x86_plan);
+    let expected = x86_artifacts
+        .iter()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let arm_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::AArch64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let arm_plan =
+        RegisterMaskedOutputNativeSequencePlan::new(&programs, &arm_artifacts)
+            .map_err(|error| format!("v6 Output AArch64 key plan: {error}"))?;
+    let arm_key = RegisterMaskedOutputNativeSequenceKey::from_plan(&arm_plan);
+    if x86_key.len() == 2
+        && !x86_key.is_empty()
+        && x86_key.artifact_keys() == expected
+        && x86_key != arm_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output sequence key identity drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedOutputNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedOutputNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 Output sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_output_program()?;
+    let count =
+        RegisterMaskedOutputNativeSequencePlan::new(from_ref(&program), &[]);
+    if count
+        == Err(RegisterMaskedOutputNativeSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_plan_rejects_chain_drift()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_output_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 Output sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let result =
+        RegisterMaskedOutputNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedOutputNativeSequencePlanError::ObservationChain {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_plan_rejects_target_drift()
+-> TieredTestResult {
+    let programs = canonical_register_masked_output_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(String::from("v6 Output target pair length drifted"));
+    };
+    let first = verified_register_masked_output_for_isa(
+        first_program,
+        HostIsa::X86_64,
+    )?;
+    let second = verified_register_masked_output_for_isa(
+        second_program,
+        HostIsa::AArch64,
+    )?;
+    let result = RegisterMaskedOutputNativeSequencePlan::new(&programs, &[
+        first, second,
+    ]);
+    if result
+        == Err(
+            RegisterMaskedOutputNativeSequencePlanError::TargetMismatch {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output sequence ignored target drift"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_rejects_terminated_prefix()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_output_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .first_mut()
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 Output sequence prefix effect missing")
+        })?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    let result =
+        RegisterMaskedOutputNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedOutputNativeSequencePlanError::TerminationBeforeEnd {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output sequence admitted terminated prefix",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_output_program()?;
+    let artifact =
+        verified_register_masked_output_for_isa(&program, HostIsa::X86_64)?;
+    let variant = register_masked_output_history_variant(&program)?;
+    let result = RegisterMaskedOutputNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(
+            RegisterMaskedOutputNativeSequencePlanError::ArtifactIdentity {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output sequence ignored artifact identity drift",
+        ))
+    }
+}
+
+fn assert_output_sequence_runner_failure(
+    failure: &RegisterMaskedOutputNativeSequenceExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+    completed_steps: usize,
+    observation: ProfileMachineObservation,
+    state_ok: (bool, bool, bool, bool),
+) -> TieredTestResult {
+    let (memory_ok, output_ok, residency_ok, calls_ok) = state_ok;
+    if failure.completed_steps() == completed_steps
+        && failure.step_index() == completed_steps
+        && failure.resume_index() == completed_steps
+        && failure.observation() == observation
+        && matches!(
+            failure.execution_failure(),
+            RegisterMaskedOutputNativeOwnerExecutionFailure::Execution(_)
+        )
+        && memory_ok
+        && output_ok
+        && residency_ok
+        && calls_ok
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output sequence runner rollback drifted"))
+    }
+}
+
+fn register_masked_output_loaded_sequence_fixture()
+-> Result<RegisterMaskedOutputNativeSequencePlan, String> {
+    let programs = canonical_register_masked_output_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_output_for_isa(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedOutputNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 Output loaded plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_loaded_sequence_loads_and_releases()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(535)?,
+        native_executable_address(0x69000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output sequence load: {error}"))?;
+    if loaded.len() != 2
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_lengths.iter().sum())
+        || loaded.plan() != &plan
+    {
+        return Err(String::from(
+            "v6 Output loaded sequence ownership drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output sequence release: {error}"))?;
+    if adapter.release_attempts == 2
+        && adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 Output loaded sequence did not release"))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_loaded_sequence_load_failure_is_atomic()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(536)?,
+        native_executable_address(0x6a000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 2);
+    let Err(error) =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from(
+            "v6 Output sequence ignored late load failure",
+        ));
+    };
+    if error.index() != 1
+        || error.loaded_count() != 1
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            RegisterMaskedOutputNativeOwnerLoadFailure::Load(_),
+        )
+        || adapter.release_attempts != 2
+        || !adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Copy,
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        return Err(String::from(
+            "v6 Output sequence late-load cleanup evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_output_loaded_sequence_release_failure_retries()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let expected_keys = plan
+        .artifacts()
+        .iter()
+        .rev()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(537)?,
+        native_executable_address(0x6b000)?,
+    )
+    .with_release_failure_at(1);
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v6 Output sequence ignored release failure"));
+    };
+    if failure.attempted_count() != 2
+        || failure.released_count() != 1
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != expected_keys.first()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 Output sequence release evidence drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 Output sequence release retry: {error}")
+    })?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 Output sequence release retry count drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_output_sequence_executes_pair() -> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(538)?,
+        native_executable_address(0x6c000)?,
+    );
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_output_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let input = [];
+    let mut output = [0u8; 8];
+    let mut expected_output = output;
+    for program in plan.programs() {
+        apply_register_masked_output_expected(
+            program,
+            &mut expected_memory,
+            &mut expected_output,
+        )?;
+    }
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_output_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output sequence execute: {error}"))?;
+    let expected = RegisterMaskedOutputNativeSequenceOutcome::Applied {
+        observation: plan.exit(),
+        steps: 2,
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 Output sequence applied outcome drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_guard_miss_is_atomic() -> TieredTestResult
+{
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(539)?,
+        native_executable_address(0x6d000)?,
+    );
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_output_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [0u8; 8];
+    let entry_output = output;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_register_masked_output_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output guard execute: {error}"))?;
+    let expected = RegisterMaskedOutputNativeSequenceOutcome::GuardMiss {
+        index: 0,
+        observation: plan.entry(),
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 Output sequence guard-miss boundary drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_runner_failure_reuses_mapping()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(540)?,
+        native_executable_address(0x6e000)?,
+    );
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output reusable load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_output_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let (input, mut output) = ([], [0u8; 8]);
+    let mut failing = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = execute_loaded_register_masked_output_native_sequence(
+        &loaded,
+        &mut failing,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 Output sequence runner failure ignored"));
+    };
+    assert_output_sequence_runner_failure(
+        failure.as_ref(),
+        0,
+        plan.entry(),
+        (
+            memory.as_slice() == state.memory(),
+            output == [0u8; 8],
+            adapter.operations == loaded_operations,
+            failing.calls == 1,
+        ),
+    )?;
+    let mut succeeding = FakeRegisterMaskedOutputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_output_native_sequence(
+        &loaded,
+        &mut succeeding,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 Output reusable execute: {error}"))?;
+    if !matches!(
+        outcome,
+        RegisterMaskedOutputNativeSequenceOutcome::Applied { .. }
+    ) || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 Output sequence remapped after failure"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output reusable release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_output_sequence_late_failure_keeps_prefix()
+-> TieredTestResult {
+    let plan = register_masked_output_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(541)?,
+        native_executable_address(0x6f000)?,
+    );
+    let loaded =
+        load_register_masked_output_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 Output late-failure load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_output_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let input = [];
+    let mut output = [0u8; 8];
+    let mut expected_output = output;
+    let first_program = plan
+        .programs()
+        .first()
+        .ok_or_else(|| String::from("v6 Output sequence first step missing"))?;
+    apply_register_masked_output_expected(
+        first_program,
+        &mut expected_memory,
+        &mut expected_output,
+    )?;
+    let first_observation = first_program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 Output sequence first effect missing"))?
+        .after;
+    let mut runner = FakeRegisterMaskedOutputNativeRunner::scripted(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = execute_loaded_register_masked_output_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v6 Output sequence ignored late runner failure",
+        ));
+    };
+    assert_output_sequence_runner_failure(
+        failure.as_ref(),
+        1,
+        first_observation,
+        (
+            memory == expected_memory,
+            output == expected_output,
+            adapter.operations == loaded_operations,
+            runner.calls == 2,
+        ),
+    )?;
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 Output late-failure release: {error}"))
 }
 #[test]
 fn register_masked_v6_rotate_sequence_plan_admits_pair() -> TieredTestResult {

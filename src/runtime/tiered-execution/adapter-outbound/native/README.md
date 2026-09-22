@@ -357,7 +357,20 @@ retry.
 A weighted multi-resident Output lease cache now reuses exact owners under FIFO
 limits without refreshing hit age. Live victims retire while retaining charged
 weight; invalidation, release, return, reconciliation, and limit changes retain
-keyed cleanup retry ownership. Sequence orchestration remains separate.
+keyed cleanup retry ownership.
+
+Exact Output sequence planning now admits continuous same-profile/same-target
+one-step chains, preserves ordered artifact identity, and rejects terminated
+prefixes or identity drift before mapping.
+
+Loaded Output sequence ownership now publishes only complete plans, cleans ready
+prefixes in reverse after late load failure, and retains exact failed executable
+ownership for retry.
+
+Loaded Output sequence execution now advances exact output observations through
+retained mappings without adapter work. Guard miss returns the current resume
+boundary; current-step failure rolls back memory/output while preserving the
+committed prefix and reusable residency.
 
 A dedicated Crazy load-image type extracts only relocation-free, ISA-aligned
 code while retaining the exact v6 key/triple and strict RW-to-RX plus

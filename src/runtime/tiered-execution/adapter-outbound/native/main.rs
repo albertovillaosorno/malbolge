@@ -99,6 +99,9 @@ mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
 mod register_masked_non_graphical_sequence_execution;
 mod register_masked_output_lease_cache;
+mod register_masked_output_loaded_sequence;
+mod register_masked_output_sequence;
+mod register_masked_output_sequence_execution;
 mod register_masked_resident;
 mod register_masked_rotate_loaded_sequence;
 mod register_masked_rotate_sequence;
@@ -887,6 +890,25 @@ pub use register_masked_output_lease_cache::{
     RegisterMaskedOutputLeaseCacheReleaseResult,
     RegisterMaskedOutputLeaseCacheReleaseSummary,
     RegisterMaskedOutputLeaseCacheUsage,
+};
+pub use register_masked_output_loaded_sequence::{
+    LoadedRegisterMaskedOutputNativeSequence,
+    RegisterMaskedOutputNativeSequenceLoadFailure,
+    RegisterMaskedOutputNativeSequenceLoadResult,
+    RegisterMaskedOutputNativeSequenceReleaseFailure,
+    RegisterMaskedOutputNativeSequenceReleaseResult,
+    load_register_masked_output_native_sequence,
+};
+pub use register_masked_output_sequence::{
+    RegisterMaskedOutputNativeSequenceKey,
+    RegisterMaskedOutputNativeSequencePlan,
+    RegisterMaskedOutputNativeSequencePlanError,
+};
+pub use register_masked_output_sequence_execution::{
+    RegisterMaskedOutputNativeSequenceExecutionFailure,
+    RegisterMaskedOutputNativeSequenceExecutionResult,
+    RegisterMaskedOutputNativeSequenceOutcome,
+    execute_loaded_register_masked_output_native_sequence,
 };
 pub use register_masked_resident::{
     RegisterMaskedCrazyNativeExecutableOwner,
