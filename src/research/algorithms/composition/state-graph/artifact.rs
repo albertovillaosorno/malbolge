@@ -178,6 +178,16 @@ impl VerifiedRegionArtifact {
             tier: RegionExecutionTier::VerifiedShortcut,
         })
     }
+
+    /// Returns the verifier-admitted product-owned v6 effect program.
+    ///
+    /// This exposes portable semantic evidence only. Native backends must still
+    /// perform their own profile, shape, identity, object, and execution
+    /// admission before granting any host-code authority.
+    #[must_use]
+    pub const fn program(&self) -> &RegisterMaskedRegionEffectProgram {
+        &self.program
+    }
 }
 
 fn projected_program(

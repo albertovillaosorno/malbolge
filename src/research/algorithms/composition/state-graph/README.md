@@ -295,3 +295,8 @@ cardinality tampering. V3/v4/v5 identities remain frozen, and existing native
 backends deliberately do not admit v6. Its existing per-effect `TraceInput`
 field supplies bounded input authority without another schema version; host-code
 emission stays with the native backend TODO.
+
+A verified region artifact may expose its product-owned register-masked v6 IR
+for handoff to runtime AOT admission. Runtime re-admits that IR independently;
+the research type itself grants no host-code authority. Integration evidence
+keeps unsupported multi-step reductions fail-closed at this boundary.

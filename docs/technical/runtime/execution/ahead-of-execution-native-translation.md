@@ -63,6 +63,13 @@ and publishes an object-only sealed set. Read-only lookup distinguishes exact
 hits, uncovered identities, and unsupported host format without runtime
 emission. These values deliberately do not grant load or invocation authority.
 
+The research state-graph boundary can now hand a verifier-admitted region to
+production only through its product-owned register-masked v6 program. The native
+side re-runs its own semantic/profile admission and object verification. An
+integration fixture proves a reviewed one-step region crosses this boundary,
+while a verified multi-step region remains unsupported rather than gaining
+native authority from its research provenance.
+
 ### Remaining Scope
 
 Durable AOT artifact storage/loading, import/admission of reduced dependency
