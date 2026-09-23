@@ -99,8 +99,15 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   existing filesystem blob adapter supplies locked same-directory staging,
   atomic replacement, and explicit durability confirmation; storage paths stay
   caller-owned rather than entering graph semantics.
-- Durable AOT object storage/loading, executable residency ownership for whole
-  reduced graphs, and verified collapsed multi-step native effects remain open.
+- Verified register-masked AOT objects now have single-object bounded durable
+  persistence. Storage contains only canonical COFF bytes; restore derives the
+  exact key from caller-supplied expected IR/runtime/host assumptions and reruns
+  structural plus canonical-byte verification. Missing or corrupted objects fail
+  closed, and restored artifacts may be sealed into an exact-key AOT set without
+  re-emission.
+- Transactional multi-object bundle persistence, executable residency ownership
+  for whole reduced graphs, and verified collapsed multi-step native effects
+  remain open.
 
 ## Acceptance
 

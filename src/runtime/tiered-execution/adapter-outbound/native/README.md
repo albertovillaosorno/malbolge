@@ -1128,6 +1128,15 @@ shapes, emits and independently verifies canonical objects, and deduplicates
 complete mask-aware keys. Read-only lookup never emits on a miss, and these AOT
 objects still carry no executable-memory or invocation authority.
 
+Single verified v6 objects can now cross the bounded blob-persistence boundary.
+The store writes only canonical COFF bytes. Restore accepts expected IR,
+runtime,
+host, and a byte bound from the caller, reconstructs the current native key, and
+runs ordinary structural/canonical object verification before returning fresh
+object-only authority. A restored collection can be sealed into a read-only AOT
+set without re-emission; filesystem paths and executable residency remain
+separate ownership concerns.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

@@ -19,7 +19,8 @@
 //   - Outputs: verified object-only AOT sets and read-only tier selection.
 //   - Side effects: process-local allocation and canonical object emission.
 // - Split-When:
-//   - Register-masked executable loading or durable storage gains ownership.
+//   - Register-masked executable loading or multi-object bundle ownership gains
+//     independent policy.
 // - Merge-When:
 //   - General AOT preparation subsumes all portable IR schema generations.
 // - Summary:
@@ -56,6 +57,7 @@ use super::{
     NativeArtifactKey, NativeIdentityError, NativeTargetConfig,
     NativeTargetIdentity, RegisterMaskedDirectAdmissionError,
     RegisterMaskedRegionEffectProgram, RuntimeCapability,
+    UntrustedNativeObjectArtifact,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedDirectAdmission,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
@@ -69,7 +71,7 @@ use super::{
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
-    emit_direct_register_masked_rotate_coff,
+    emit_direct_register_masked_rotate_coff, target_triple,
     verify_direct_register_masked_crazy,
     verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_no_operation,
@@ -109,6 +111,9 @@ impl RegisterMaskedAotKind {
         }
     }
 }
+
+type VerifiedAotArtifact = VerifiedAheadOfExecutionRegisterMaskedArtifact;
+type AotObjectError = RegisterMaskedAheadOfExecutionObjectError;
 
 /// One verified object-only register-masked v6 AOT artifact.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -153,6 +158,19 @@ impl VerifiedAheadOfExecutionRegisterMaskedArtifact {
             Self::Rotate(_artifact) => DirectNativeKind::Rotate,
         }
     }
+
+    /// Returns the exact independently verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        match self {
+            Self::Crazy(artifact) => artifact.object(),
+            Self::HaltFetch(artifact) => artifact.object(),
+            Self::NoOperation(artifact) => artifact.object(),
+            Self::NonGraphical(artifact) => artifact.object(),
+            Self::Output(artifact) => artifact.object(),
+            Self::Rotate(artifact) => artifact.object(),
+        }
+    }
 }
 
 /// Sealed object-only AOT set for independently verified v6 programs.
@@ -164,6 +182,23 @@ pub struct VerifiedAheadOfExecutionRegisterMaskedSet {
 }
 
 impl VerifiedAheadOfExecutionRegisterMaskedSet {
+    /// Seals already verified object artifacts into one exact-key AOT set.
+    ///
+    /// Exact duplicate keys collapse to one retained artifact. This operation
+    /// performs no emission and accepts only values that already crossed native
+    /// semantic verification.
+    #[must_use]
+    pub fn from_verified_artifacts(
+        artifacts: Vec<VerifiedAheadOfExecutionRegisterMaskedArtifact>,
+    ) -> Self {
+        let mut entries = NativeArtifactCache::default();
+        for artifact in artifacts {
+            let key = artifact.key().clone();
+            let _replaced = entries.insert(key, Arc::new(artifact));
+        }
+        Self { entries }
+    }
+
     /// Reports whether no exact v6 artifacts were prepared.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
@@ -265,6 +300,34 @@ impl Display for AheadOfExecutionRegisterMaskedPreparationError<'_> {
             },
             Self::TargetFormat => f.write_str(
                 "register-masked AOT preparation currently requires Windows",
+            ),
+        }
+    }
+}
+
+/// Failure while rebuilding one verified v6 artifact from durable object bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AheadOfExecutionRegisterMaskedObjectRestoreError<'requirement> {
+    /// Semantic/profile admission rejected the expected v6 program.
+    Admission(Box<RegisterMaskedDirectAdmissionError<'requirement>>),
+    /// Exact v6 native identity construction failed unexpectedly.
+    Identity(Box<NativeIdentityError>),
+    /// Persisted object bytes failed canonical semantic verification.
+    Object(Box<RegisterMaskedAheadOfExecutionObjectError>),
+    /// Register-masked direct objects currently use Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for AheadOfExecutionRegisterMaskedObjectRestoreError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Admission(error) => Display::fmt(error, f),
+            Self::Identity(_error) => {
+                f.write_str("register-masked durable object identity failed")
+            },
+            Self::Object(error) => Display::fmt(error, f),
+            Self::TargetFormat => f.write_str(
+                "register-masked durable object currently requires Windows",
             ),
         }
     }
@@ -373,6 +436,64 @@ where
     Ok(VerifiedAheadOfExecutionRegisterMaskedSet { entries })
 }
 
+/// Rebuilds one verified v6 AOT artifact from opaque durable object bytes.
+///
+/// The supplied program, runtime capability, and host are authoritative. Stored
+/// bytes carry no key or semantic authority: this function reconstructs the
+/// exact native key, then reruns structural and canonical-byte verification.
+///
+/// # Errors
+///
+/// Returns semantic admission, identity, target-format, structural, or exact
+/// canonical-byte failure without granting executable-memory authority.
+pub fn restore_ahead_of_execution_register_masked_object<'requirement>(
+    program: &'requirement RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+    object: Vec<u8>,
+) -> Result<
+    VerifiedAheadOfExecutionRegisterMaskedArtifact,
+    AheadOfExecutionRegisterMaskedObjectRestoreError<'requirement>,
+> {
+    let admission = admit_register_masked_direct_native(program, runtime)
+        .map_err(|error| {
+            AheadOfExecutionRegisterMaskedObjectRestoreError::Admission(
+                Box::new(error),
+            )
+        })?;
+    let kind =
+        RegisterMaskedAotKind::from_admission(&admission).map_err(|error| {
+            AheadOfExecutionRegisterMaskedObjectRestoreError::Admission(
+                Box::new(error),
+            )
+        })?;
+    if host.operating_system != HostOperatingSystem::Windows {
+        return Err(
+            AheadOfExecutionRegisterMaskedObjectRestoreError::TargetFormat,
+        );
+    }
+    let target = register_masked_target(kind, host);
+    let key = NativeArtifactKey::new_register_masked(program, target).map_err(
+        |error| {
+            AheadOfExecutionRegisterMaskedObjectRestoreError::Identity(
+                Box::new(error),
+            )
+        },
+    )?;
+    let candidate = UntrustedNativeObjectArtifact::from_emitter_output(
+        key,
+        object,
+        target_triple(host.isa),
+    );
+    verify_register_masked_candidate(program, kind, &candidate).map_err(
+        |error| {
+            AheadOfExecutionRegisterMaskedObjectRestoreError::Object(Box::new(
+                error,
+            ))
+        },
+    )
+}
+
 /// Performs one read-only AOT-first lookup for register-masked v6 IR.
 ///
 /// A miss never emits or inserts an object. Unsupported host formats select the
@@ -461,6 +582,45 @@ fn register_masked_target(
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+fn verify_register_masked_candidate(
+    program: &RegisterMaskedRegionEffectProgram,
+    kind: RegisterMaskedAotKind,
+    candidate: &UntrustedNativeObjectArtifact,
+) -> Result<VerifiedAotArtifact, AotObjectError> {
+    match kind {
+        RegisterMaskedAotKind::Crazy => {
+            verify_direct_register_masked_crazy(candidate, program)
+                .map(VerifiedAotArtifact::Crazy)
+                .map_err(AotObjectError::Crazy)
+        },
+        RegisterMaskedAotKind::HaltFetch => {
+            verify_direct_register_masked_halt_fetch(candidate, program)
+                .map(VerifiedAotArtifact::HaltFetch)
+                .map_err(AotObjectError::HaltFetch)
+        },
+        RegisterMaskedAotKind::NoOperation => {
+            verify_direct_register_masked_no_operation(candidate, program)
+                .map(VerifiedAotArtifact::NoOperation)
+                .map_err(AotObjectError::NoOperation)
+        },
+        RegisterMaskedAotKind::NonGraphical => {
+            verify_direct_register_masked_non_graphical(candidate, program)
+                .map(VerifiedAotArtifact::NonGraphical)
+                .map_err(AotObjectError::NonGraphical)
+        },
+        RegisterMaskedAotKind::Output => {
+            verify_direct_register_masked_output(candidate, program)
+                .map(VerifiedAotArtifact::Output)
+                .map_err(AotObjectError::Output)
+        },
+        RegisterMaskedAotKind::Rotate => {
+            verify_direct_register_masked_rotate(candidate, program)
+                .map(VerifiedAotArtifact::Rotate)
+                .map_err(AotObjectError::Rotate)
+        },
+    }
 }
 
 fn emit_verified_register_masked(

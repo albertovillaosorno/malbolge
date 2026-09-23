@@ -139,6 +139,7 @@ pub use coff::{
 pub use compiler::{BootstrapCompilerError, compile_preflighted_clang_c23};
 pub use direct::{
     AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
+    AheadOfExecutionRegisterMaskedObjectRestoreError,
     AheadOfExecutionRegisterMaskedPreparationError,
     AheadOfExecutionRegisterMaskedReducedStateGraphCodecError,
     AheadOfExecutionRegisterMaskedReducedStateGraphDecodeLimits,
@@ -293,6 +294,7 @@ pub use direct::{
     prepare_ahead_of_execution_register_masked_set,
     prepare_ahead_of_execution_register_masked_state_graph,
     prepare_ahead_of_execution_state_graph,
+    restore_ahead_of_execution_register_masked_object,
     select_ahead_of_execution_preflighted_tier,
     select_ahead_of_execution_register_masked_tier,
     select_ahead_of_execution_verified_direct_sequence,

@@ -139,6 +139,8 @@ pub mod pair_retention_reclamation_transition;
 pub mod pair_retention_reconciliation;
 #[path = "tier/graph_store.rs"]
 pub mod reduced_graph_persistence;
+#[path = "tier/object_store.rs"]
+pub mod register_masked_aot_object_persistence;
 #[path = "retry_control.rs"]
 pub mod retry_control;
 #[path = "tier/retry_cycle.rs"]

@@ -62,6 +62,8 @@ pub mod reduced_graph_persistence;
 pub mod region_artifact;
 #[path = "../src/research/algorithms/composition/state-graph/region.rs"]
 pub mod region_certificate;
+#[path = "../src/runtime/tiered-execution/composition/tier/object_store.rs"]
+pub mod register_masked_aot_object_persistence;
 
 use std::fs;
 use std::io::ErrorKind;
@@ -69,6 +71,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::id as process_id;
 use std::slice::from_ref;
+use std::sync::Arc;
 
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
@@ -115,6 +118,13 @@ use reduced_graph_persistence::{
 };
 use region_artifact::{UntrustedRegionArtifact, VerifiedRegionArtifact};
 use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
+use register_masked_aot_object_persistence::{
+    RegisterMaskedAotObjectPersistenceLoad,
+    RegisterMaskedAotObjectRestorePersistenceError,
+    RegisterMaskedAotObjectRestoreRequest,
+    persist_register_masked_aot_object_durably,
+    restore_register_masked_aot_object,
+};
 
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
@@ -958,6 +968,53 @@ fn product_reduced_graph_durable_encoder_requires_admission()
     }
 }
 
+fn first_reduced_aot_program()
+-> HandoffResult<RegisterMaskedRegionEffectProgram> {
+    let (graph, _entry) = reduced_dispatch_fixture()?;
+    graph
+        .node(0)
+        .map(|node| node.program().clone())
+        .ok_or_else(|| {
+            String::from("reduced AOT object fixture lost first node")
+        })
+}
+
+fn select_prepared_reduced_artifact(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> HandoffResult<
+    Arc<execution_native::VerifiedAheadOfExecutionRegisterMaskedArtifact>,
+> {
+    let aot = prepare_one(program).map_err(|error| error.to_string())?;
+    match select_ahead_of_execution_register_masked_tier(
+        program,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?
+    {
+        AheadOfExecutionRegisterMaskedTier::Direct(artifact) => Ok(artifact),
+        AheadOfExecutionRegisterMaskedTier::Interpreter => Err(String::from(
+            "object fixture unexpectedly selected interpreter",
+        )),
+        AheadOfExecutionRegisterMaskedTier::Uncovered => {
+            Err(String::from("object fixture was absent after preparation"))
+        },
+    }
+}
+
+const fn object_restore_request(
+    program: &RegisterMaskedRegionEffectProgram,
+    maximum_bytes: NonZeroUsize,
+) -> RegisterMaskedAotObjectRestoreRequest<'_> {
+    RegisterMaskedAotObjectRestoreRequest::new(
+        program,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+        maximum_bytes,
+    )
+}
+
 fn expect_reduced_graph_blob_missing(
     store: &mut NativeContinuationFileBlobStore,
     maximum_bytes: NonZeroUsize,
@@ -1011,6 +1068,150 @@ fn persist_and_restore_register_masked_reduced_graph(
             "durable graph round-trip drifted: bytes={bytes} graph={graph:?}"
         )),
     }
+}
+
+#[test]
+fn product_register_masked_aot_object_store_rejects_wrong_ir()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("object_wrong_ir")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let source_program =
+            graph
+                .node(0)
+                .map(|node| node.program().clone())
+                .ok_or_else(|| String::from("object source program missing"))?;
+        let expected_program = graph
+            .node(1)
+            .map(|node| node.program().clone())
+            .ok_or_else(|| String::from("object expected program missing"))?;
+        let artifact = select_prepared_reduced_artifact(&source_program)?;
+        let maximum_bytes = NonZeroUsize::new(4096)
+            .ok_or_else(|| String::from("AOT object bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        blob_store::NativeContinuationBlobStore::replace(
+            &mut store,
+            artifact.object(),
+        )
+        .map_err(|error| {
+            format!("cannot seed mismatched AOT object: {error:?}")
+        })?;
+        match restore_register_masked_aot_object(
+            &mut store,
+            object_restore_request(&expected_program, maximum_bytes),
+        ) {
+            Err(RegisterMaskedAotObjectRestorePersistenceError::Native(_)) => {
+                Ok(())
+            },
+            other => {
+                Err(format!("wrong-IR AOT object was accepted: {other:?}"))
+            },
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_object_store_rejects_wrong_bytes()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("object_wrong_bytes")?;
+    let result = (|| -> HandoffResult<()> {
+        let program = first_reduced_aot_program()?;
+        let artifact = select_prepared_reduced_artifact(&program)?;
+        let mut corrupt = artifact.object().to_vec();
+        let last = corrupt
+            .last_mut()
+            .ok_or_else(|| String::from("verified AOT object was empty"))?;
+        *last ^= 1;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        blob_store::NativeContinuationBlobStore::replace(&mut store, &corrupt)
+            .map_err(|error| {
+                format!("cannot seed corrupt AOT object: {error:?}")
+            })?;
+        let maximum_bytes = NonZeroUsize::new(4096)
+            .ok_or_else(|| String::from("AOT object bound became zero"))?;
+        match restore_register_masked_aot_object(
+            &mut store,
+            object_restore_request(&program, maximum_bytes),
+        ) {
+            Err(RegisterMaskedAotObjectRestorePersistenceError::Native(_)) => {
+                Ok(())
+            },
+            other => Err(format!("corrupt AOT object was accepted: {other:?}")),
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_object_store_round_trips_file_blob()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("object_round_trip")?;
+    let result = (|| -> HandoffResult<()> {
+        let program = first_reduced_aot_program()?;
+        let source = select_prepared_reduced_artifact(&program)?;
+        let maximum_bytes = NonZeroUsize::new(4096)
+            .ok_or_else(|| String::from("AOT object bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let missing = restore_register_masked_aot_object(
+            &mut store,
+            object_restore_request(&program, maximum_bytes),
+        )
+        .map_err(|error| format!("missing AOT object restore: {error:?}"))?;
+        if missing != RegisterMaskedAotObjectPersistenceLoad::Missing {
+            return Err(String::from("missing AOT object invented authority"));
+        }
+        let durable = persist_register_masked_aot_object_durably(
+            &mut store,
+            &source,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("durable AOT object persist: {error:?}"))?;
+        if !durable.is_durable() || durable.bytes() != source.object().len() {
+            return Err(String::from("AOT object durability evidence drifted"));
+        }
+        let restored = restore_register_masked_aot_object(
+            &mut store,
+            object_restore_request(&program, maximum_bytes),
+        )
+        .map_err(|error| format!("durable AOT object restore: {error:?}"))?;
+        let RegisterMaskedAotObjectPersistenceLoad::Restored {
+            bytes,
+            artifact,
+        } = restored
+        else {
+            return Err(String::from("durable AOT object disappeared"));
+        };
+        if bytes != durable.bytes() || artifact.as_ref() != source.as_ref() {
+            return Err(String::from("durable AOT object round-trip drifted"));
+        }
+        let restored_set =
+            VerifiedAheadOfExecutionRegisterMaskedSet::from_verified_artifacts(
+                vec![*artifact],
+            );
+        let selected = select_ahead_of_execution_register_masked_tier(
+            &program,
+            safe_rust_profiled_capability(),
+            windows_x86_64(),
+            &restored_set,
+        )
+        .map_err(|error| error.to_string())?;
+        if matches!(selected, AheadOfExecutionRegisterMaskedTier::Direct(_)) {
+            Ok(())
+        } else {
+            Err(String::from("restored AOT object was not selectable"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
 }
 
 #[test]

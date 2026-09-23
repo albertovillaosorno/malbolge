@@ -131,10 +131,19 @@ reduced-graph provenance same-directory staged replacement, publication locking,
 and explicit post-publication durability confirmation without moving path or I/O
 policy into the graph codec.
 
+Verified register-masked AOT objects also have single-object durable storage.
+Only canonical COFF bytes are persisted; native keys are never serialized as
+authority. Restore receives the expected v6 program, runtime capability, host,
+and byte bound from the caller, reconstructs the current exact key, and reruns
+structural plus canonical-byte verification before returning an object-only
+artifact. Restored artifacts can be sealed into an exact-key AOT set without
+re-emission, while executable-memory authority remains outside this boundary.
+
 ### Remaining Scope
 
-Durable AOT object storage/loading, whole-graph executable residency/lifecycle
-ownership, and verified collapsed multi-step native effects remain open.
+Transactional multi-object bundle persistence, whole-graph executable
+residency/lifecycle ownership, and verified collapsed multi-step native effects
+remain open.
 
 ## Invariants
 
