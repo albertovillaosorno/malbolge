@@ -70,9 +70,17 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   multi-step nodes
   remain fail-closed at native preparation until a reviewed collapsed shape
   exists.
-- Durable artifact loading, dependency-reduced graph identity/import, runtime
-  native transition dispatch, and verified collapsed multi-step effects remain
-  open.
+- Product-owned dependency-reduced v6 graph evidence now has an import and
+  admission boundary. Each node carries an exact witness, claimed v6 program,
+  claimed reduced identity, and successor; admission normatively replays the
+  witness, reprojects v6, and independently derives geometry, termination,
+  memory/register live-ins, masked register values, and relative input
+  observations. Duplicate reduced identities, false successor guards, open or
+  unreachable topology, and any claimed-field mismatch fail closed.
+- Reduced graph admission grants evidence and guard authority only. Runtime
+  native transition dispatch must re-evaluate the admitted successor guard on
+  the actual runtime exit state; durable reduced-graph serialization/loading and
+  verified collapsed multi-step native effects remain open.
 
 ## Acceptance
 

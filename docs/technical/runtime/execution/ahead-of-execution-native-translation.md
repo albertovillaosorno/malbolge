@@ -84,10 +84,26 @@ Only closed, reachable topology proceeds to transactional v6 object preparation.
 A multi-step node may therefore gain topology authority without gaining native
 execution authority when no reviewed collapsed native shape exists.
 
+Dependency-reduced v6 graph evidence now crosses a separate product-owned
+admission boundary. Every untrusted node carries a complete witness checkpoint,
+v6 program, reduced-identity claim, and successor. Admission normatively replays
+the witness, reprojects the v6 program, and independently derives the reduced
+guard from opaque geometry, termination, memory/register live-ins, masked live
+register values, and ordered input observations relative to the candidate
+cursor. Prior output history, absolute input cursor, unobserved input, dead
+registers, and memory outside live-ins do not become reduced identity.
+
+A budget-exhausted witness exit must satisfy the admitted successor guard, not
+necessarily equal the successor witness checkpoint. Duplicate reduced
+identities are rejected so one runtime guard cannot ambiguously identify two
+nodes. The verified graph is evidence only: future native transition dispatch
+must re-evaluate the successor guard on the actual runtime exit state before
+selecting a precompiled node.
+
 ### Remaining Scope
 
-Durable AOT artifact storage/loading, import/admission of reduced dependency
-state-graph evidence, runtime native transition dispatch between admitted graph
+Durable AOT artifact storage/loading, durable reduced-graph
+serialization/loading, runtime native transition dispatch between admitted graph
 states, and verified collapsed multi-step native effects remain open.
 
 ## Invariants

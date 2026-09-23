@@ -43,6 +43,7 @@ mod fused;
 mod plan;
 mod preparation;
 mod register_masked_preparation;
+mod register_masked_reduced_state_graph;
 mod register_masked_state_graph;
 mod sequence;
 mod shape;
@@ -123,6 +124,7 @@ pub use plan::{
 pub use preparation::*;
 use register_masked_preparation::prepare_register_masked_set_iter;
 pub use register_masked_preparation::*;
+pub use register_masked_reduced_state_graph::*;
 pub use register_masked_state_graph::*;
 pub use sequence::*;
 use shape::{

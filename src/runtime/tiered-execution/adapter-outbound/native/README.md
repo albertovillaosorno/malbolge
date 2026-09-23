@@ -1089,9 +1089,16 @@ startup/offline preparation only; durable storage remains a separate boundary.
 finite exact-state graph. It replays every complete checkpoint through the
 normative ProfileMachine, requires exact one-step IR reprojection and exact
 successor checkpoints, rejects open/unreachable or duplicate states, and starts
-native preparation only after the complete topology is verified. Runtime native
-transition dispatch and reduced dependency-state graph admission remain outside
-this boundary.
+native preparation only after the complete topology is verified.
+
+Register-masked v6 additionally admits dependency-reduced graph evidence through
+a product-owned boundary. Exact witness checkpoints are replayed only as proof
+material; the admitted node identity is independently derived from opaque
+geometry, termination, memory/register live-ins, masked live register values,
+and relative input observations. Budget-exhausted witness exits must satisfy the
+successor guard, duplicate reduced identities are rejected, and the resulting
+graph grants no loading, invocation, or dispatch authority. Runtime transition
+dispatch must re-check the successor guard against the actual runtime exit.
 
 Register-masked v6 programs can also be prepared into a sealed object-only AOT
 set through `prepare_ahead_of_execution_register_masked_set()`. Preparation
