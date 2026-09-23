@@ -100,12 +100,27 @@ pub fn prepare_ahead_of_execution_native_set<'requirement>(
     VerifiedAheadOfExecutionNativeSet,
     AheadOfExecutionPreparationError<'requirement>,
 > {
-    if programs.is_empty() {
-        return Err(AheadOfExecutionPreparationError::Empty);
-    }
+    prepare_ahead_of_execution_native_set_iter(programs.iter(), runtime, host)
+}
 
+pub(super) fn prepare_ahead_of_execution_native_set_iter<
+    'requirement,
+    Programs,
+>(
+    programs: Programs,
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+) -> Result<
+    VerifiedAheadOfExecutionNativeSet,
+    AheadOfExecutionPreparationError<'requirement>,
+>
+where
+    Programs: IntoIterator<Item = &'requirement RegionEffectProgram>,
+{
     let mut cache = VerifiedDirectNativeCache::default();
-    for (index, program) in programs.iter().enumerate() {
+    let mut observed = false;
+    for (index, program) in programs.into_iter().enumerate() {
+        observed = true;
         let prepared = prepare_verified_direct_target(
             program,
             runtime,
@@ -135,5 +150,9 @@ pub fn prepare_ahead_of_execution_native_set<'requirement>(
             })?);
         let _replaced = cache.entries.insert(key, artifact);
     }
-    Ok(cache.seal())
+    if observed {
+        Ok(cache.seal())
+    } else {
+        Err(AheadOfExecutionPreparationError::Empty)
+    }
 }

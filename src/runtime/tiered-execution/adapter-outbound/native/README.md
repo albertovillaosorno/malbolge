@@ -1083,8 +1083,15 @@ requested region has a reviewed direct fast path and passes profile preflight,
 emission, and semantic verification. Exact duplicate keys are emitted once.
 Empty input, deoptimization-only variants, unsupported target formats, and any
 indexed preparation failure publish no partial set. This is process-local
-startup/offline preparation only; durable storage and state-graph transition
-admission remain separate boundaries.
+startup/offline preparation only; durable storage remains a separate boundary.
+
+`prepare_ahead_of_execution_state_graph()` accepts an explicitly untrusted
+finite exact-state graph. It replays every complete checkpoint through the
+normative ProfileMachine, requires exact one-step IR reprojection and exact
+successor checkpoints, rejects open/unreachable or duplicate states, and starts
+native preparation only after the complete topology is verified. Runtime native
+transition dispatch and reduced dependency-state graph admission remain outside
+this boundary.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed

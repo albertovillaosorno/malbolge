@@ -42,19 +42,25 @@ hosts, or any failed variant produce no partial AOT product.
 
 The completed preparation cache is consumed into a sealed
 VerifiedAheadOfExecutionNativeSet. Runtime AOT lookup accepts only that
-read-only
-set and never emits or inserts code on a miss. Single-region lookup
-distinguishes
-exact native hit, uncovered direct identity, and unsupported host format after
-profile preflight. Ordered direct sequences publish only when every exact
-step is
-already present in the sealed AOT set; partial coverage remains unchanged.
+read-only set and never emits or inserts code on a miss. Single-region lookup
+distinguishes exact native hit, uncovered direct identity, and unsupported host
+format after
+profile preflight. Ordered direct sequences publish only when every exact step
+is already present in the sealed AOT set; partial coverage remains unchanged.
+
+Finite exact-state graph claims now have a deterministic admission path. Each
+node carries a complete ProfileMachineState checkpoint, exact one-step portable
+IR, and an optional successor. Admission replays every node with ProfileMachine,
+requires byte-equivalent portable-IR reprojection, requires continued edges to
+land on the complete claimed successor checkpoint, rejects open/unreachable or
+duplicate exact states, and only then transactionally prepares every native
+fast path into one sealed AOT set.
 
 ### Remaining Scope
 
-Durable AOT artifact storage/loading, verifier-proven finite state-graph
-materialization, native transitions between graph states, and collapsed
-multi-step native effects remain open.
+Durable AOT artifact storage/loading, import/admission of reduced dependency
+state-graph evidence, runtime native transition dispatch between admitted graph
+states, and verified collapsed multi-step native effects remain open.
 
 ## Invariants
 

@@ -340,10 +340,11 @@ use execution_clock::NativeContinuationSystemMonotonicClock;
 use execution_native as en;
 use execution_native::{
     AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
-    BootstrapCompilerError, BootstrapProfilePreflightError,
-    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    CachedPreflightedExecutionTier, CoffAdmissionError,
-    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    AheadOfExecutionStateGraphError, AheadOfExecutionStateGraphNodeClaim,
+    AheadOfExecutionStateGraphPreparationError, BootstrapCompilerError,
+    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
+    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
+    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
@@ -618,7 +619,8 @@ use execution_native::{
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     StagedRegisterMaskedOutputNativeExecutable,
-    StagedRegisterMaskedRotateNativeExecutable, UntrustedNativeObjectArtifact,
+    StagedRegisterMaskedRotateNativeExecutable,
+    UntrustedAheadOfExecutionStateGraph, UntrustedNativeObjectArtifact,
     VerifiedDirectFusedLoadImage, VerifiedDirectInvocationError,
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
@@ -716,7 +718,8 @@ use execution_native::{
     native_process_call_response_byte_limit,
     native_process_memory_request_byte_len,
     native_process_memory_response_byte_limit, plan_direct_fused_native_retry,
-    prepare_ahead_of_execution_native_set, rebase_direct_fused_native_retry,
+    prepare_ahead_of_execution_native_set,
+    prepare_ahead_of_execution_state_graph, rebase_direct_fused_native_retry,
     rebase_direct_fused_native_retry_failure,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable,
@@ -1080,6 +1083,10 @@ use retry_router::{
 use retry_turn::{
     NativeContinuationRetryTurnOutcome, execute_native_continuation_retry_turn,
 };
+
+const AOT_STATE_GRAPH_FIXTURE: &[u8] = include_bytes!(
+    "compatibility/specification/interpreter-io-roundtrip.malbolge"
+);
 
 const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
 const FIXTURE_PROFILE_VERSION: &str = "2026.3";
@@ -30054,6 +30061,158 @@ fn seed_verified_direct_cache(
         Ok(())
     } else {
         Err(String::from("failed to seed verified direct cache"))
+    }
+}
+
+fn aot_state_graph_nodes()
+-> Result<Vec<AheadOfExecutionStateGraphNodeClaim>, String> {
+    let mut machine = ProfileMachine::from_source(
+        current_profile(),
+        AOT_STATE_GRAPH_FIXTURE,
+        Vec::new(),
+    )
+    .map_err(|error| format!("AOT graph fixture load: {error}"))?;
+    let mut nodes = Vec::new();
+    for _step in 0usize..8usize {
+        let entry = machine.snapshot_state();
+        let mut observed = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                observed = Some(*trace);
+            })
+            .map_err(|error| format!("AOT graph fixture step: {error}"))?;
+        let trace = observed
+            .ok_or_else(|| String::from("AOT graph fixture trace missing"))?;
+        let program = RegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| {
+                format!("AOT graph fixture projection: {error:?}")
+            })?;
+        let successor = match outcome {
+            StepOutcome::Continued => Some(nodes.len().saturating_add(1)),
+            StepOutcome::Terminated(_reason) => None,
+        };
+        nodes.push(AheadOfExecutionStateGraphNodeClaim {
+            entry,
+            program,
+            successor,
+        });
+        if matches!(outcome, StepOutcome::Terminated(_)) {
+            return Ok(nodes);
+        }
+    }
+    Err(String::from("AOT graph fixture did not terminate"))
+}
+
+fn aot_graph_claim() -> Result<UntrustedAheadOfExecutionStateGraph, String> {
+    Ok(UntrustedAheadOfExecutionStateGraph::new(
+        0,
+        aot_state_graph_nodes()?,
+    ))
+}
+
+#[test]
+fn aot_state_graph_replays_and_prepares_closed_claim() -> Result<(), String> {
+    let claim = aot_graph_claim()?;
+    let verified = claim.verify().map_err(|error| error.to_string())?;
+    if verified.entry() != 0 || verified.len() != 3 || verified.is_empty() {
+        return Err(format!("AOT verified graph shape drifted: {verified:?}"));
+    }
+    let prepared = prepare_ahead_of_execution_state_graph(
+        &claim,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    if prepared.graph() != &verified || prepared.native().len() != 3 {
+        return Err(String::from("AOT graph preparation lost exact coverage"));
+    }
+    for index in 0..verified.len() {
+        let node = verified.node(index).ok_or_else(|| {
+            format!("AOT verified graph node {index} missing")
+        })?;
+        let selected = select_ahead_of_execution_preflighted_tier(
+            &node.program,
+            safe_rust_profiled_capability(),
+            DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+            prepared.native(),
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(selected, AheadOfExecutionPreflightedTier::Direct(_)) {
+            return Err(format!("AOT graph node {index} was not precompiled"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_state_graph_rejects_tampered_program_before_native_work()
+-> Result<(), String> {
+    let mut nodes = aot_state_graph_nodes()?;
+    let node = nodes
+        .get_mut(1)
+        .ok_or_else(|| String::from("AOT graph tamper node missing"))?;
+    node.program.profile_fingerprint.push('x');
+    let claim = UntrustedAheadOfExecutionStateGraph::new(0, nodes);
+    if claim.verify()
+        == Err(AheadOfExecutionStateGraphError::ProgramMismatch { index: 1 })
+        && prepare_ahead_of_execution_state_graph(
+            &claim,
+            safe_rust_profiled_capability(),
+            DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        ) == Err(AheadOfExecutionStateGraphPreparationError::Graph(
+            AheadOfExecutionStateGraphError::ProgramMismatch { index: 1 },
+        ))
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT graph admitted tampered portable IR"))
+    }
+}
+
+#[test]
+fn aot_state_graph_rejects_wrong_exact_successor() -> Result<(), String> {
+    let mut nodes = aot_state_graph_nodes()?;
+    let first = nodes
+        .first_mut()
+        .ok_or_else(|| String::from("AOT graph first node missing"))?;
+    first.successor = Some(2);
+    let claim = UntrustedAheadOfExecutionStateGraph::new(0, nodes);
+    if claim.verify()
+        == Err(AheadOfExecutionStateGraphError::SuccessorStateMismatch {
+            index: 0,
+            successor: 2,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT graph trusted a false exact-state edge"))
+    }
+}
+
+#[test]
+fn aot_state_graph_rejects_open_and_unreachable_claims() -> Result<(), String> {
+    let mut open_nodes = aot_state_graph_nodes()?;
+    let first = open_nodes
+        .first_mut()
+        .ok_or_else(|| String::from("AOT graph first node missing"))?;
+    first.successor = None;
+    let open = UntrustedAheadOfExecutionStateGraph::new(0, open_nodes);
+    if open.verify()
+        != Err(AheadOfExecutionStateGraphError::MissingSuccessor { index: 0 })
+    {
+        return Err(String::from("AOT graph admitted an open transition"));
+    }
+
+    let unreachable =
+        UntrustedAheadOfExecutionStateGraph::new(1, aot_state_graph_nodes()?);
+    if unreachable.verify()
+        == Err(AheadOfExecutionStateGraphError::Unreachable { index: 0 })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "AOT graph admitted an unreachable exact state",
+        ))
     }
 }
 

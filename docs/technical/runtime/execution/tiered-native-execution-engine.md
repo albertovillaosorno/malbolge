@@ -2275,21 +2275,26 @@ ownership.
 Broader register-masked template coverage remains open and unsupported v6
 execution remains fail-closed.
 
-The ordinary direct path now exposes process-local transactional AOT preparation
-plus read-only lookup over a sealed verified artifact set. Preparation
-deduplicates complete artifact keys and publishes nothing unless every requested
-variant has a reviewed fast path and passes emission/verification. Exact
-one-step identities return retained native artifacts, uncovered identities
-remain
-distinguishable for later JIT policy, and ordered sequences require complete
-precompiled coverage without runtime emission.
+The ordinary direct path now exposes process-local transactional AOT
+preparation plus read-only lookup over a sealed verified artifact set.
+Preparation deduplicates complete artifact keys and publishes nothing unless
+every requested variant has a reviewed fast path and passes emission and
+verification. Exact one-step identities return retained native artifacts,
+uncovered identities remain distinguishable for later JIT policy, and ordered
+sequences require complete precompiled coverage without runtime emission.
+
+Finite exact-state graph claims are also replay-verified against complete VM
+checkpoints before all graph nodes are transactionally prepared into the same
+sealed AOT boundary. Claimed one-step IR and successor checkpoints have no
+independent authority.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, host-real AArch64 and Windows native-worker
 execution, durable cache serialization/storage and cross-process leasing,
-durable AOT preparation/loading, finite-state native transition policy, and
-latency-bounded JIT rescue beyond verified direct process-local lookup remain
-open, alongside broader end-to-end performance policy. The interpreter
+durable AOT preparation/loading, reduced state-graph artifact admission, native
+graph-transition dispatch, and latency-bounded JIT rescue beyond verified direct
+process-local lookup remain open, alongside broader end-to-end performance
+policy. The interpreter
 remains the only normative execution authority and the guaranteed fallback.
 
 ## Invariants

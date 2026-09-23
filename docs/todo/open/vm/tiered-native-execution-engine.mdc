@@ -893,7 +893,10 @@ behavior.
   exact direct identities reuse retained artifacts, uncovered identities remain
   distinct, and ordered sequences require complete precompiled coverage without
   runtime emission.
-- Durable AOT preparation/loading, finite-state native transition policy, and
-  latency-bounded JIT rescue remain unimplemented. Durable cache
+- Finite exact-state graph claims now require normative replay, exact successor
+  checkpoints, closed reachable topology, and all-or-nothing native preparation.
+- Durable AOT preparation/loading, reduced state-graph artifact admission,
+  native graph-transition dispatch, and latency-bounded JIT rescue remain
+  unimplemented. Durable cache
   serialization/storage/eviction, broader platform execution evidence, and
   broader end-to-end tier performance policy also remain open.

@@ -44,6 +44,7 @@ mod plan;
 mod preparation;
 mod sequence;
 mod shape;
+mod state_graph;
 mod verify;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -161,6 +162,7 @@ use shape::{
     validate_register_masked_rotate_target, validate_rotate_program,
     validate_rotate_target, validate_target,
 };
+pub use state_graph::*;
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_crazy,
