@@ -112,11 +112,22 @@ transition-budget exhaustion return explicit lower-tier fallback with the exact
 resume state and committed-transition count. A mutated guard miss or terminal
 completion with the wrong termination condition is a hard dispatch failure.
 
+Reduced graph provenance now has a canonical durable codec. Encoding first
+re-admits the complete claim, then stores only profile identity/fingerprint,
+complete witness checkpoints, step budgets, and topology; verifier-derived
+identity and v6 programs are deliberately not serialized as authority. Loading
+resolves the exact profile fingerprint, validates canonical checkpoints,
+replays every witness under a caller-owned per-node step limit, reprojects v6,
+re-derives reduced identities, and runs ordinary closed/reachable graph
+admission before publishing a verified graph. Malformed, truncated, trailing,
+unknown-profile, over-budget, or unverifiable bytes fail closed; untrusted node
+counts do not drive eager allocation.
+
 ### Remaining Scope
 
-Durable AOT artifact storage/loading, durable reduced-graph
-serialization/loading, whole-graph executable residency/lifecycle ownership,
-and verified collapsed multi-step native effects remain open.
+Durable AOT object storage/loading, blob/filesystem binding for reduced-graph
+provenance, whole-graph executable residency/lifecycle ownership, and verified
+collapsed multi-step native effects remain open.
 
 ## Invariants
 

@@ -21,8 +21,7 @@
 //     checks.
 //   - Side effects: normative VM replay and process-local allocation only.
 // - Split-When:
-//   - Runtime graph dispatch or durable reduced-graph serialization gains
-//     ownership.
+//   - Reduced identity admission gains a different proof model.
 // - Merge-When:
 //   - Exact and reduced graph admission share one proved identity model.
 // - Summary:
@@ -316,6 +315,14 @@ impl UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph {
         nodes: Vec<AheadOfExecutionRegisterMaskedReducedStateGraphNodeClaim>,
     ) -> Self {
         Self { entry, nodes }
+    }
+
+    /// Returns the exact untrusted node claims retained for verification.
+    #[must_use]
+    pub(super) fn nodes(
+        &self,
+    ) -> &[AheadOfExecutionRegisterMaskedReducedStateGraphNodeClaim] {
+        &self.nodes
     }
 
     /// Replays all witnesses and independently admits reduced identities/edges.

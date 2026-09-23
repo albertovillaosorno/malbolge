@@ -1106,6 +1106,17 @@ admitted successor guard before continuing. Guard miss is atomic; uncovered or
 unsupported native coverage, unsupported host format, and budget exhaustion
 return explicit lower-tier fallback rather than guessing another graph state.
 
+Reduced graph provenance also has a canonical durable codec. The encoder first
+verifies the supplied claim and stores only exact profile identity/fingerprint,
+complete witness checkpoints, step budgets, and topology. The decoder treats
+those bytes as untrusted evidence: it resolves the exact profile fingerprint,
+validates checkpoints, normatively replays each witness under a caller-owned
+per-node step limit, reprojects v6 IR, derives fresh reduced guards, and reruns
+ordinary graph admission. Untrusted node counts do not drive eager allocation.
+
+Serialized identity or IR therefore never bypasses the verifier boundary.
+Storage backend selection remains outside this codec.
+
 Register-masked v6 programs can also be prepared into a sealed object-only AOT
 set through `prepare_ahead_of_execution_register_masked_set()`. Preparation
 re-runs product-owned semantic admission, selects only the six reviewed v6

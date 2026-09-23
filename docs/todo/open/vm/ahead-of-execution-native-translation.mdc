@@ -85,9 +85,17 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   objects, unsupported reviewed shapes, host-format fallback, and transition
   budget exhaustion return an explicit lower-tier boundary without guessing;
   mutated guard misses and incompatible terminal completion fail hard.
-- Durable reduced-graph serialization/loading, executable residency ownership
-  for whole reduced graphs, and verified collapsed multi-step native effects
-  remain open.
+- Dependency-reduced graph provenance now has a canonical durable codec.
+  Encoding first admits the complete claim and persists only exact profile
+  identity/fingerprint, witness checkpoints, step budgets, and topology. Decode
+  treats every byte as untrusted, validates canonical checkpoints, normatively
+  replays under a caller-owned per-node step limit, reprojects v6, derives fresh
+  reduced guards, and reruns graph admission before publishing authority.
+  Framing/profile/checkpoint/replay drift or replay-budget excess fails closed,
+  and untrusted node counts do not drive eager allocation.
+- Durable AOT object storage/loading, blob/filesystem binding for reduced-graph
+  provenance, executable residency ownership for whole reduced graphs, and
+  verified collapsed multi-step native effects remain open.
 
 ## Acceptance
 

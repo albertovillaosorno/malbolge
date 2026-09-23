@@ -20,7 +20,7 @@
 //     evidence.
 //   - Side effects: test-process allocation and canonical object emission only.
 // - Split-When:
-//   - Reduced graph import gains a product-owned serialization boundary.
+//   - Durable graph storage or executable residency gains integration policy.
 // - Merge-When:
 //   - State-graph optimization becomes production runtime infrastructure.
 // - Summary:
@@ -56,6 +56,8 @@ use std::slice::from_ref;
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
     AheadOfExecutionRegisterMaskedPreparationError,
+    AheadOfExecutionRegisterMaskedReducedStateGraphCodecError,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDecodeLimits,
     AheadOfExecutionRegisterMaskedReducedStateGraphDispatchEnvironment,
     AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFailure,
     AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFallback,
@@ -72,7 +74,9 @@ use execution_native::{
     UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph,
     VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
     VerifiedAheadOfExecutionRegisterMaskedSet,
+    decode_ahead_of_execution_register_masked_reduced_state_graph,
     dispatch_ahead_of_execution_register_masked_reduced_state_graph,
+    encode_ahead_of_execution_register_masked_reduced_state_graph,
     prepare_ahead_of_execution_register_masked_set,
     select_ahead_of_execution_register_masked_tier,
 };
@@ -91,6 +95,10 @@ use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
 type HandoffResult<T> = Result<T, String>;
+type ReducedCodecError =
+    AheadOfExecutionRegisterMaskedReducedStateGraphCodecError;
+type ReducedCodecLimits =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDecodeLimits;
 type ReducedDispatchFailure<'graph> =
     AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFailure<
         'graph,
@@ -299,8 +307,8 @@ fn checkpoint_with_registers(
     )
 }
 
-fn reduced_dispatch_fixture() -> HandoffResult<(
-    VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+fn reduced_dispatch_claim() -> HandoffResult<(
+    UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph,
     ProfileMachineState,
 )> {
     let first_entry = reduced_graph_entry()?;
@@ -323,11 +331,19 @@ fn reduced_dispatch_fixture() -> HandoffResult<(
             reduced_graph_node(&first, Some(1))?,
             reduced_graph_node(&second, None)?,
         ]);
-    let graph = claim.verify().map_err(|error| error.to_string())?;
     let entry = first
         .entry()
         .materialize_checkpoint()
         .map_err(|error| format!("dispatch entry checkpoint: {error:?}"))?;
+    Ok((claim, entry))
+}
+
+fn reduced_dispatch_fixture() -> HandoffResult<(
+    VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    ProfileMachineState,
+)> {
+    let (claim, entry) = reduced_dispatch_claim()?;
+    let graph = claim.verify().map_err(|error| error.to_string())?;
     Ok((graph, entry))
 }
 
@@ -348,6 +364,10 @@ fn prepare_reduced_dispatch_aot(
         windows_x86_64(),
     )
     .map_err(|error| error.to_string())
+}
+
+const fn reduced_codec_limits() -> ReducedCodecLimits {
+    ReducedCodecLimits::new(1)
 }
 
 const fn reduced_dispatch_request<'graph, 'aot>(
@@ -726,6 +746,149 @@ fn product_reduced_identity_rebases_relative_input_and_history()
     } else {
         Err(String::from(
             "reduced identity lost relative-input semantics",
+        ))
+    }
+}
+
+#[test]
+fn product_reduced_graph_durable_codec_replays_authority() -> HandoffResult<()>
+{
+    let (claim, _entry) = reduced_dispatch_claim()?;
+    let expected = claim.verify().map_err(|error| error.to_string())?;
+    let first =
+        encode_ahead_of_execution_register_masked_reduced_state_graph(&claim)
+            .map_err(|error| error.to_string())?;
+    let second =
+        encode_ahead_of_execution_register_masked_reduced_state_graph(&claim)
+            .map_err(|error| error.to_string())?;
+    let loaded = decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &first,
+        reduced_codec_limits(),
+    )
+    .map_err(|error| error.to_string())?;
+    if first == second && loaded == expected {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable reduced graph bytes changed replayed authority",
+        ))
+    }
+}
+
+#[test]
+fn product_reduced_durable_codec_rejects_bad_framing() -> HandoffResult<()> {
+    let (claim, _entry) = reduced_dispatch_claim()?;
+    let bytes =
+        encode_ahead_of_execution_register_masked_reduced_state_graph(&claim)
+            .map_err(|error| error.to_string())?;
+
+    let mut bad_magic = bytes.clone();
+    let first = bad_magic
+        .first_mut()
+        .ok_or_else(|| String::from("durable graph bytes were empty"))?;
+    *first ^= 0xff;
+    if decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &bad_magic,
+        reduced_codec_limits(),
+    ) != Err(ReducedCodecError::Magic)
+    {
+        return Err(String::from("durable graph accepted wrong magic"));
+    }
+
+    let fingerprint = current_profile().fingerprint().as_bytes();
+    let mut bad_fingerprint = bytes.clone();
+    let fingerprint_offset = bad_fingerprint
+        .windows(fingerprint.len())
+        .position(|window| window == fingerprint)
+        .ok_or_else(|| {
+            String::from("durable graph omitted profile fingerprint")
+        })?;
+    let fingerprint_byte =
+        bad_fingerprint.get_mut(fingerprint_offset).ok_or_else(|| {
+            String::from("durable graph fingerprint offset vanished")
+        })?;
+    *fingerprint_byte ^= 0xff;
+    if decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &bad_fingerprint,
+        reduced_codec_limits(),
+    ) != Err(ReducedCodecError::ProfileFingerprint)
+    {
+        return Err(String::from(
+            "durable graph accepted wrong profile fingerprint",
+        ));
+    }
+
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    if decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &trailing,
+        reduced_codec_limits(),
+    ) != Err(ReducedCodecError::TrailingBytes)
+    {
+        return Err(String::from("durable graph accepted trailing bytes"));
+    }
+
+    let mut truncated = bytes;
+    let _last = truncated
+        .pop()
+        .ok_or_else(|| String::from("durable graph bytes were empty"))?;
+    if decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &truncated,
+        reduced_codec_limits(),
+    ) == Err(ReducedCodecError::Truncated)
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable graph accepted truncated bytes"))
+    }
+}
+
+#[test]
+fn product_reduced_durable_codec_bounds_replay_work() -> HandoffResult<()> {
+    let (claim, _entry) = reduced_dispatch_claim()?;
+    let bytes =
+        encode_ahead_of_execution_register_masked_reduced_state_graph(&claim)
+            .map_err(|error| error.to_string())?;
+    let result = decode_ahead_of_execution_register_masked_reduced_state_graph(
+        &bytes,
+        ReducedCodecLimits::new(0),
+    );
+    if matches!(
+        result,
+        Err(ReducedCodecError::ReplayStepLimit {
+            index: 0,
+            limit: 0,
+            observed: 1,
+        })
+    ) {
+        Ok(())
+    } else {
+        Err(format!("durable graph ignored replay limit: {result:?}"))
+    }
+}
+
+#[test]
+fn product_reduced_graph_durable_encoder_requires_admission()
+-> HandoffResult<()> {
+    let entry = reduced_graph_entry()?;
+    let region = verified_region_from_entry(&entry, 1)?;
+    let mut node = reduced_graph_node(&region, Some(0))?;
+    node.identity.register_values.accumulator =
+        node.identity.register_values.accumulator.saturating_add(1);
+    let claim =
+        UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph::new(0, vec![
+            node,
+        ]);
+    if matches!(
+        encode_ahead_of_execution_register_masked_reduced_state_graph(&claim),
+        Err(ReducedCodecError::Graph(
+            ReducedGraphError::IdentityMismatch { index: 0 }
+        ))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable graph encoder serialized unadmitted evidence",
         ))
     }
 }
