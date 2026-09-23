@@ -68,7 +68,10 @@ production only through its product-owned register-masked v6 program. The native
 side re-runs its own semantic/profile admission and object verification. An
 integration fixture proves a reviewed one-step region crosses this boundary,
 while a verified multi-step region remains unsupported rather than gaining
-native authority from its research provenance.
+native authority from its research provenance. Product-owned multi-step v6
+reprojection now independently derives read-before-write memory/register
+live-ins, verifies trace continuity/profile/outcome, and rejects derived
+execution geometry because schema v6 carries no explicit geometry token.
 
 ### Remaining Scope
 

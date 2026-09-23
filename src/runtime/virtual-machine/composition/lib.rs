@@ -134,8 +134,8 @@ pub use execution_ir::{
     ExecutionGeometryRegionEffectProgram, IrEncodingError, MemoryLiveIn,
     ProfileExecutionGeometryRequirement,
     ProfileExecutionGeometryRequirementError, RegionEffectProgram,
-    RegisterMaskedRegionEffectProgram, StepProgramProjectionError,
-    is_canonical_effect_ir_version,
+    RegisterMaskedRegionEffectProgram, RegisterMaskedRegionProjectionError,
+    StepProgramProjectionError, is_canonical_effect_ir_version,
 };
 pub use host_capability::{
     HOST_CALL_FLAG_NONBLOCKING, HOST_CAPABILITY_ABI_VERSION,

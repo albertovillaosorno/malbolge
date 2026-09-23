@@ -35,7 +35,7 @@
 
 //! Portable bounded-region effect IR for tiered execution.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::ops::{Deref, DerefMut};
 
@@ -257,6 +257,34 @@ pub enum IrEncodingError {
     RegisterMaskCountMismatch,
     /// The declared effect-IR format version has no canonical encoder.
     UnsupportedFormatVersion,
+}
+
+/// Failure while projecting one bounded normative trace region to v6 IR.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedRegionProjectionError {
+    /// Two entry-live memory reads disagree before any region write dominates.
+    ConflictingMemoryRead,
+    /// Adjacent trace observations do not form one continuous execution path.
+    DiscontinuousTrace {
+        /// Zero-based trace whose entry differs from the previous exit.
+        index: usize,
+    },
+    /// A region projection requires at least one committed semantic trace.
+    Empty,
+    /// Declared bounded-run outcome disagrees with trace count or termination.
+    Outcome,
+    /// One trace belongs to a different canonical profile identity.
+    ProfileMismatch {
+        /// Zero-based mismatching trace.
+        index: usize,
+    },
+    /// One trace is not independently projectable as canonical one-step IR.
+    Step {
+        /// Exact one-step projection failure.
+        error: StepProgramProjectionError,
+        /// Zero-based failing trace.
+        index: usize,
+    },
 }
 
 /// Failure while projecting one complete normative step trace to portable IR.
@@ -508,6 +536,48 @@ impl RegisterMaskedRegionEffectProgram {
         self.program.format_version
     }
 
+    /// Projects one bounded canonical-profile trace region to portable v6 IR.
+    ///
+    /// Memory and register live-ins are derived from reads that occur before
+    /// the first dominating write in the region. Every trace is
+    /// independently checked by the one-step projector, adjacent
+    /// observations must be exact, and the declared bounded-run outcome
+    /// must match the trace count and final termination state. The result
+    /// remains untrusted until an independent verifier establishes that the
+    /// trace region itself is authoritative.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegisterMaskedRegionProjectionError`] for empty,
+    /// discontinuous, cross-profile, internally invalid, or
+    /// outcome-inconsistent trace regions.
+    pub fn from_profile_region_traces(
+        profile: &'static ProfileDescriptor,
+        traces: &[ProfileStepTrace],
+        step_budget: usize,
+        outcome: RunOutcome,
+    ) -> Result<Self, RegisterMaskedRegionProjectionError> {
+        validate_profile_region_outcome(traces, step_budget, outcome)?;
+        let projection = project_profile_region_traces(profile, traces)?;
+        validate_profile_region_final_state(traces, outcome)?;
+        Ok(Self {
+            program: RegionEffectProgram {
+                effects: projection.effects,
+                format_version: EFFECT_IR_REGISTER_MASK_VERSION,
+                memory_live_ins: projection.memory_live_ins,
+                outcome,
+                profile_fingerprint: String::from(profile.fingerprint()),
+                profile_id: String::from(profile.id()),
+                profile_requirement: TargetProfileRequirement::from_descriptor(
+                    profile,
+                ),
+                step_budget,
+            },
+            register_live_ins: projection.register_live_ins,
+            register_writes: projection.register_writes,
+        })
+    }
+
     /// Projects one complete canonical-geometry trace to portable v6 IR.
     ///
     /// Register reads become the one-step entry live-in mask and committed
@@ -621,6 +691,180 @@ impl RegionEffectProgram {
     #[must_use]
     pub fn required_memory_words(&self) -> u64 {
         required_memory_words(&self.memory_live_ins, &self.effects)
+    }
+}
+
+struct RegisterMaskedRegionProjection {
+    effects: Vec<EffectOp>,
+    memory_live_ins: Vec<MemoryLiveIn>,
+    register_live_ins: ProfileRegisterSet,
+    register_writes: Vec<ProfileRegisterSet>,
+}
+
+fn collect_region_memory_live_ins(
+    trace: &ProfileStepTrace,
+    live_ins: &mut BTreeMap<u32, u32>,
+    written: &BTreeSet<u32>,
+) -> Result<(), RegisterMaskedRegionProjectionError> {
+    for read in [
+        trace.memory_reads.fetch,
+        trace.memory_reads.data,
+        trace.memory_reads.encryption,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if written.contains(&read.address) {
+            continue;
+        }
+        match live_ins.get(&read.address) {
+            Some(value) if *value != read.value => {
+                return Err(
+                    RegisterMaskedRegionProjectionError::ConflictingMemoryRead,
+                );
+            },
+            Some(_value) => {},
+            None => {
+                let _previous = live_ins.insert(read.address, read.value);
+            },
+        }
+    }
+    Ok(())
+}
+
+const fn collect_region_register_live_ins(
+    trace: &ProfileStepTrace,
+    live_ins: &mut ProfileRegisterSet,
+    written: ProfileRegisterSet,
+) {
+    let reads = trace.register_accesses.reads;
+    live_ins.accumulator |= reads.accumulator && !written.accumulator;
+    live_ins.code_pointer |= reads.code_pointer && !written.code_pointer;
+    live_ins.data_pointer |= reads.data_pointer && !written.data_pointer;
+}
+
+const fn merge_register_sets(
+    destination: &mut ProfileRegisterSet,
+    source: ProfileRegisterSet,
+) {
+    destination.accumulator |= source.accumulator;
+    destination.code_pointer |= source.code_pointer;
+    destination.data_pointer |= source.data_pointer;
+}
+
+fn project_profile_region_traces(
+    profile: &'static ProfileDescriptor,
+    traces: &[ProfileStepTrace],
+) -> Result<RegisterMaskedRegionProjection, RegisterMaskedRegionProjectionError>
+{
+    let mut live_memory = BTreeMap::<u32, u32>::new();
+    let mut written_memory = BTreeSet::<u32>::new();
+    let mut live_registers = ProfileRegisterSet::default();
+    let mut written_registers = ProfileRegisterSet::default();
+    let mut effects = Vec::with_capacity(traces.len());
+    let mut register_writes = Vec::with_capacity(traces.len());
+    let mut previous_after = None;
+    for (index, trace) in traces.iter().enumerate() {
+        if trace.profile != profile {
+            return Err(RegisterMaskedRegionProjectionError::ProfileMismatch {
+                index,
+            });
+        }
+        if previous_after.is_some_and(|previous| previous != trace.before) {
+            return Err(
+                RegisterMaskedRegionProjectionError::DiscontinuousTrace {
+                    index,
+                },
+            );
+        }
+        let _validated = RegionEffectProgram::from_profile_step_trace(trace)
+            .map_err(|error| RegisterMaskedRegionProjectionError::Step {
+                error,
+                index,
+            })?;
+        collect_region_memory_live_ins(
+            trace,
+            &mut live_memory,
+            &written_memory,
+        )?;
+        collect_region_register_live_ins(
+            trace,
+            &mut live_registers,
+            written_registers,
+        );
+        for write in [trace.memory_delta.data, trace.memory_delta.encryption]
+            .into_iter()
+            .flatten()
+        {
+            let _inserted = written_memory.insert(write.address);
+        }
+        merge_register_sets(
+            &mut written_registers,
+            trace.register_accesses.writes,
+        );
+        effects.push(EffectOp::from_trace(trace));
+        register_writes.push(trace.register_accesses.writes);
+        previous_after = Some(trace.after);
+    }
+    Ok(RegisterMaskedRegionProjection {
+        effects,
+        memory_live_ins: live_memory
+            .into_iter()
+            .map(|(address, value)| MemoryLiveIn { address, value })
+            .collect(),
+        register_live_ins: live_registers,
+        register_writes,
+    })
+}
+
+fn validate_profile_region_final_state(
+    traces: &[ProfileStepTrace],
+    outcome: RunOutcome,
+) -> Result<(), RegisterMaskedRegionProjectionError> {
+    let final_trace = traces
+        .last()
+        .ok_or(RegisterMaskedRegionProjectionError::Empty)?;
+    let valid = match outcome {
+        RunOutcome::BudgetExhausted { .. } => {
+            final_trace.after.termination.is_none()
+        },
+        RunOutcome::Terminated { reason, .. } => {
+            final_trace.after.termination == Some(reason)
+        },
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(RegisterMaskedRegionProjectionError::Outcome)
+    }
+}
+
+const fn validate_profile_region_outcome(
+    traces: &[ProfileStepTrace],
+    step_budget: usize,
+    outcome: RunOutcome,
+) -> Result<(), RegisterMaskedRegionProjectionError> {
+    if traces.is_empty() {
+        return Err(RegisterMaskedRegionProjectionError::Empty);
+    }
+    let steps = match outcome {
+        RunOutcome::BudgetExhausted { steps } => {
+            if steps != step_budget {
+                return Err(RegisterMaskedRegionProjectionError::Outcome);
+            }
+            steps
+        },
+        RunOutcome::Terminated { steps, .. } => {
+            if steps > step_budget {
+                return Err(RegisterMaskedRegionProjectionError::Outcome);
+            }
+            steps
+        },
+    };
+    if steps == traces.len() {
+        Ok(())
+    } else {
+        Err(RegisterMaskedRegionProjectionError::Outcome)
     }
 }
 
