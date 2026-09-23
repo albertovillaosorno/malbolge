@@ -1093,6 +1093,13 @@ native preparation only after the complete topology is verified. Runtime native
 transition dispatch and reduced dependency-state graph admission remain outside
 this boundary.
 
+Register-masked v6 programs can also be prepared into a sealed object-only AOT
+set through `prepare_ahead_of_execution_register_masked_set()`. Preparation
+re-runs product-owned semantic admission, selects only the six reviewed v6
+shapes, emits and independently verifies canonical objects, and deduplicates
+complete mask-aware keys. Read-only lookup never emits on a miss, and these AOT
+objects still carry no executable-memory or invocation authority.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

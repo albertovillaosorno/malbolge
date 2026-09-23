@@ -52,9 +52,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   admission. Portable IR must reproject exactly, continued edges must land on
   the complete claimed successor checkpoint, and closed/reachable topology is
   required before all graph-node fast paths are prepared into one sealed set.
-- Durable artifact loading, reduced dependency-state graph import/admission,
-  runtime native transition dispatch, and verified collapsed multi-step effects
-  remain open.
+- Register-masked v6 portable IR now has transactional object-only AOT
+  preparation and read-only lookup. Exact mask-aware keys are deduplicated and
+  every object is independently verified before the sealed set is published.
+- Durable artifact loading, research-to-product reduced graph handoff, runtime
+  native transition dispatch, and verified collapsed multi-step effects remain
+  open.
 
 ## Acceptance
 

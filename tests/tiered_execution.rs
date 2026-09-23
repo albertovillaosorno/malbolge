@@ -30216,6 +30216,126 @@ fn aot_state_graph_rejects_open_and_unreachable_claims() -> Result<(), String> {
     }
 }
 
+fn all_register_masked_aot_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
+    Ok(vec![
+        canonical_register_masked_halt_program()?,
+        canonical_register_masked_non_graphical_program()?,
+        canonical_register_masked_no_operation_program()?,
+        canonical_register_masked_output_program()?,
+        canonical_register_masked_crazy_program()?,
+        canonical_register_masked_rotate_program()?,
+    ])
+}
+
+#[test]
+fn aot_register_masked_prepares_all_reviewed_shapes() -> Result<(), String> {
+    let programs = all_register_masked_aot_programs()?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let runtime = safe_rust_profiled_capability();
+    let aot = en::prepare_ahead_of_execution_register_masked_set(
+        &programs, runtime, host,
+    )
+    .map_err(|error| error.to_string())?;
+    if aot.len() != programs.len() || aot.is_empty() {
+        return Err(format!("v6 AOT set retained {} artifacts", aot.len()));
+    }
+    for program in &programs {
+        let admission = admit_register_masked_direct_native(program, runtime)
+            .map_err(|error| error.to_string())?;
+        let selected = en::select_ahead_of_execution_register_masked_tier(
+            program, runtime, host, &aot,
+        )
+        .map_err(|error| error.to_string())?;
+        let en::AheadOfExecutionRegisterMaskedTier::Direct(artifact) = selected
+        else {
+            return Err(String::from(
+                "prepared v6 AOT artifact was not reused",
+            ));
+        };
+        if artifact.kind() != admission.kind() {
+            return Err(String::from("v6 AOT artifact changed admitted kind"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_deduplicates_and_keeps_miss_read_only()
+-> Result<(), String> {
+    let programs = canonical_register_masked_crazy_programs()?;
+    let first = programs
+        .first()
+        .ok_or_else(|| String::from("v6 Crazy AOT fixture was empty"))?;
+    let second = programs.get(1).ok_or_else(|| {
+        String::from("v6 Crazy AOT fixture lacked second step")
+    })?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let runtime = safe_rust_profiled_capability();
+    let aot = en::prepare_ahead_of_execution_register_masked_set(
+        &[first.clone(), first.clone()],
+        runtime,
+        host,
+    )
+    .map_err(|error| error.to_string())?;
+    if aot.len() != 1 {
+        return Err(String::from("v6 AOT duplicate emitted twice"));
+    }
+    let miss = en::select_ahead_of_execution_register_masked_tier(
+        second, runtime, host, &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let hit = en::select_ahead_of_execution_register_masked_tier(
+        first, runtime, host, &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    if miss == en::AheadOfExecutionRegisterMaskedTier::Uncovered
+        && matches!(hit, en::AheadOfExecutionRegisterMaskedTier::Direct(_))
+        && aot.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 AOT miss mutated or bypassed sealed set"))
+    }
+}
+
+#[test]
+fn aot_register_masked_fails_closed_for_empty_and_host_format()
+-> Result<(), String> {
+    let runtime = safe_rust_profiled_capability();
+    let windows =
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let linux = DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64);
+    if en::prepare_ahead_of_execution_register_masked_set(&[], runtime, windows)
+        != Err(en::AheadOfExecutionRegisterMaskedPreparationError::Empty)
+    {
+        return Err(String::from("empty v6 AOT preparation did not fail"));
+    }
+    let program = canonical_register_masked_halt_program()?;
+    if en::prepare_ahead_of_execution_register_masked_set(
+        from_ref(&program),
+        runtime,
+        linux,
+    ) != Err(
+        en::AheadOfExecutionRegisterMaskedPreparationError::TargetFormat,
+    ) {
+        return Err(String::from("v6 AOT preparation admitted Linux COFF"));
+    }
+    let empty = en::VerifiedAheadOfExecutionRegisterMaskedSet::default();
+    if en::select_ahead_of_execution_register_masked_tier(
+        &program, runtime, linux, &empty,
+    )
+    .map_err(|error| error.to_string())?
+        == en::AheadOfExecutionRegisterMaskedTier::Interpreter
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 AOT lookup did not select interpreter on Linux",
+        ))
+    }
+}
+
 #[test]
 fn aot_preparation_rejects_empty_variant_set() -> Result<(), String> {
     let result = prepare_ahead_of_execution_native_set(

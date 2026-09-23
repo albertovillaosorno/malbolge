@@ -56,6 +56,13 @@ land on the complete claimed successor checkpoint, rejects open/unreachable or
 duplicate exact states, and only then transactionally prepares every native
 fast path into one sealed AOT set.
 
+Register-masked v6 IR now has its own transactional AOT object boundary. The
+runtime re-runs semantic/profile admission, emits and independently verifies one
+of the six reviewed v6 templates, deduplicates exact mask-aware artifact keys,
+and publishes an object-only sealed set. Read-only lookup distinguishes exact
+hits, uncovered identities, and unsupported host format without runtime
+emission. These values deliberately do not grant load or invocation authority.
+
 ### Remaining Scope
 
 Durable AOT artifact storage/loading, import/admission of reduced dependency

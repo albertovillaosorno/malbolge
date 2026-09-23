@@ -42,6 +42,7 @@ mod error;
 mod fused;
 mod plan;
 mod preparation;
+mod register_masked_preparation;
 mod sequence;
 mod shape;
 mod state_graph;
@@ -119,6 +120,7 @@ pub use plan::{
     select_verified_execution_geometry_direct_native,
 };
 pub use preparation::*;
+pub use register_masked_preparation::*;
 pub use sequence::*;
 use shape::{
     validate_crazy_program, validate_crazy_target,
