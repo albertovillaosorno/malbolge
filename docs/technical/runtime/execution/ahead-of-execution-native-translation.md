@@ -123,11 +123,18 @@ admission before publishing a verified graph. Malformed, truncated, trailing,
 unknown-profile, over-budget, or unverifiable bytes fail closed; untrusted node
 counts do not drive eager allocation.
 
+Typed persistence now binds those canonical provenance bytes to the existing
+bounded single-blob port. Publication encodes and verifies before replacement;
+restore performs a bounded blob load before any decode/replay and represents a
+missing blob explicitly. The existing filesystem blob adapter therefore gives
+reduced-graph provenance same-directory staged replacement, publication locking,
+and explicit post-publication durability confirmation without moving path or I/O
+policy into the graph codec.
+
 ### Remaining Scope
 
-Durable AOT object storage/loading, blob/filesystem binding for reduced-graph
-provenance, whole-graph executable residency/lifecycle ownership, and verified
-collapsed multi-step native effects remain open.
+Durable AOT object storage/loading, whole-graph executable residency/lifecycle
+ownership, and verified collapsed multi-step native effects remain open.
 
 ## Invariants
 

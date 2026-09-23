@@ -93,9 +93,14 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   reduced guards, and reruns graph admission before publishing authority.
   Framing/profile/checkpoint/replay drift or replay-budget excess fails closed,
   and untrusted node counts do not drive eager allocation.
-- Durable AOT object storage/loading, blob/filesystem binding for reduced-graph
-  provenance, executable residency ownership for whole reduced graphs, and
-  verified collapsed multi-step native effects remain open.
+- Typed reduced-graph persistence now uses the bounded single-blob application
+  service. Missing state is explicit, publication encodes before replacement,
+  and restore loads under a caller-owned byte bound before decode/replay. The
+  existing filesystem blob adapter supplies locked same-directory staging,
+  atomic replacement, and explicit durability confirmation; storage paths stay
+  caller-owned rather than entering graph semantics.
+- Durable AOT object storage/loading, executable residency ownership for whole
+  reduced graphs, and verified collapsed multi-step native effects remain open.
 
 ## Acceptance
 

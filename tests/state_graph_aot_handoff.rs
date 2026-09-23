@@ -18,9 +18,11 @@
 //   - Inputs: verifier-admitted research artifacts and product-owned v6 IR.
 //   - Outputs: AOT object-admission handoff assertions and fail-closed
 //     evidence.
-//   - Side effects: test-process allocation and canonical object emission only.
+//   - Side effects: test-process allocation, canonical object emission, and
+//     isolated temporary blob persistence only.
 // - Split-When:
-//   - Durable graph storage or executable residency gains integration policy.
+//   - Native object-bundle persistence or executable residency gains
+//     integration policy.
 // - Merge-When:
 //   - State-graph optimization becomes production runtime infrastructure.
 // - Summary:
@@ -36,21 +38,36 @@
 
 //! Research-to-product register-masked AOT handoff integration evidence.
 
+#[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
+pub mod blob_persistence;
+#[path = "../src/runtime/tiered-execution/port-outbound/blob_store.rs"]
+pub mod blob_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/blob/main.rs"]
+pub mod file_blob_store;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/fs_coord/main.rs"]
+pub mod file_coordination;
 #[path = "../src/research/algorithms/composition/state-graph/index.rs"]
 pub mod indexed;
 #[path = "../src/research/algorithms/composition/state-graph/state.rs"]
 pub mod indexed_state;
 #[path = "../src/research/algorithms/composition/state-graph/output.rs"]
 pub mod persistent_output;
+#[path = "../src/runtime/tiered-execution/composition/tier/graph_store.rs"]
+pub mod reduced_graph_persistence;
 #[path = "../src/research/algorithms/composition/state-graph/artifact.rs"]
 pub mod region_artifact;
 #[path = "../src/research/algorithms/composition/state-graph/region.rs"]
 pub mod region_certificate;
 
+use std::fs;
+use std::io::ErrorKind;
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
+use std::process::id as process_id;
 use std::slice::from_ref;
 
 use execution_cache::{HostIsa, HostOperatingSystem};
@@ -80,6 +97,7 @@ use execution_native::{
     prepare_ahead_of_execution_register_masked_set,
     select_ahead_of_execution_register_masked_tier,
 };
+use file_blob_store::NativeContinuationFileBlobStore;
 use indexed_state::IndexedMachineState;
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
@@ -88,6 +106,12 @@ use malbolge::{
     RunOutcome, StepProgramProjectionError, Termination, current_profile,
     decode_profile_instruction, safe_rust_profiled_capability,
     verify_minimum_initial_halt_profile_width,
+};
+use reduced_graph_persistence::{
+    RegisterMaskedReducedGraphPersistenceError,
+    RegisterMaskedReducedGraphPersistenceLoad,
+    persist_register_masked_reduced_graph_durably,
+    restore_register_masked_reduced_graph,
 };
 use region_artifact::{UntrustedRegionArtifact, VerifiedRegionArtifact};
 use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
@@ -116,6 +140,15 @@ type ReducedDispatchRequest<'graph, 'aot> =
         'aot,
     >;
 type ReducedGraphError = AheadOfExecutionRegisterMaskedReducedStateGraphError;
+type ReducedGraph = VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph;
+type ReducedGraphClaim =
+    UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph;
+
+#[derive(Debug, Eq, PartialEq)]
+struct ReducedGraphStoreFixture {
+    destination: PathBuf,
+    directory: PathBuf,
+}
 type ReducedNativeExecution = RegisterMaskedReducedStateGraphNativeExecution;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -305,6 +338,38 @@ fn checkpoint_with_registers(
         registers,
         state.io().clone(),
     )
+}
+
+fn reduced_graph_store_fixture(
+    case_name: &str,
+) -> HandoffResult<ReducedGraphStoreFixture> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/state_graph_aot_handoff_store")
+        .join(process_id().to_string())
+        .join(case_name);
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => {
+            return Err(format!("cannot clear reduced graph store: {error}"));
+        },
+    }
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("cannot create reduced graph store: {error}")
+    })?;
+    let destination = directory.join("reduced-graph.bin");
+    Ok(ReducedGraphStoreFixture { destination, directory })
+}
+
+fn remove_reduced_graph_store_fixture(directory: &Path) -> HandoffResult<()> {
+    match fs::remove_dir_all(directory) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(format!("cannot remove reduced graph store: {error}"))
+        },
+    }
 }
 
 fn reduced_dispatch_claim() -> HandoffResult<(
@@ -891,6 +956,111 @@ fn product_reduced_graph_durable_encoder_requires_admission()
             "durable graph encoder serialized unadmitted evidence",
         ))
     }
+}
+
+fn expect_reduced_graph_blob_missing(
+    store: &mut NativeContinuationFileBlobStore,
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let result = restore_register_masked_reduced_graph(
+        store,
+        maximum_bytes,
+        reduced_codec_limits(),
+    )
+    .map_err(|error| format!("missing graph restore: {error:?}"))?;
+    if result == RegisterMaskedReducedGraphPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("missing graph blob invented state"))
+    }
+}
+
+fn persist_and_restore_register_masked_reduced_graph(
+    store: &mut NativeContinuationFileBlobStore,
+    claim: &ReducedGraphClaim,
+    expected: &ReducedGraph,
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let durable = persist_register_masked_reduced_graph_durably(
+        store,
+        claim,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("durable graph persist: {error:?}"))?;
+    if !durable.is_durable() || durable.bytes() == 0 {
+        return Err(String::from("graph blob durability was not confirmed"));
+    }
+    let restored = restore_register_masked_reduced_graph(
+        store,
+        maximum_bytes,
+        reduced_codec_limits(),
+    )
+    .map_err(|error| format!("durable graph restore: {error:?}"))?;
+    match restored {
+        RegisterMaskedReducedGraphPersistenceLoad::Restored {
+            bytes,
+            graph,
+        } if bytes == durable.bytes() && graph == *expected => Ok(()),
+        RegisterMaskedReducedGraphPersistenceLoad::Missing => {
+            Err(String::from("durable graph disappeared after publication"))
+        },
+        RegisterMaskedReducedGraphPersistenceLoad::Restored {
+            bytes,
+            graph,
+        } => Err(format!(
+            "durable graph round-trip drifted: bytes={bytes} graph={graph:?}"
+        )),
+    }
+}
+
+#[test]
+fn product_reduced_graph_store_rejects_corrupt_file_blob() -> HandoffResult<()>
+{
+    let fixture = reduced_graph_store_fixture("corrupt")?;
+    let result = (|| -> HandoffResult<()> {
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        blob_store::NativeContinuationBlobStore::replace(&mut store, b"BAD!")
+            .map_err(|error| format!("cannot seed corrupt graph: {error:?}"))?;
+        let maximum_bytes = NonZeroUsize::new(64)
+            .ok_or_else(|| String::from("corrupt graph bound became zero"))?;
+        match restore_register_masked_reduced_graph(
+            &mut store,
+            maximum_bytes,
+            reduced_codec_limits(),
+        ) {
+            Err(RegisterMaskedReducedGraphPersistenceError::Codec(
+                ReducedCodecError::Magic,
+            )) => Ok(()),
+            other => Err(format!("corrupt graph blob was accepted: {other:?}")),
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_reduced_graph_store_round_trips_file_blob() -> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("round_trip")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, _entry) = reduced_dispatch_claim()?;
+        let expected = claim.verify().map_err(|error| error.to_string())?;
+        let maximum_bytes = NonZeroUsize::new(134_217_728)
+            .ok_or_else(|| String::from("graph blob bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        expect_reduced_graph_blob_missing(&mut store, maximum_bytes)?;
+        persist_and_restore_register_masked_reduced_graph(
+            &mut store,
+            &claim,
+            &expected,
+            maximum_bytes,
+        )
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
 }
 
 #[test]

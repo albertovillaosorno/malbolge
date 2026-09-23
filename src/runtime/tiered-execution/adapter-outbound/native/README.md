@@ -1115,7 +1115,11 @@ per-node step limit, reprojects v6 IR, derives fresh reduced guards, and reruns
 ordinary graph admission. Untrusted node counts do not drive eager allocation.
 
 Serialized identity or IR therefore never bypasses the verifier boundary.
-Storage backend selection remains outside this codec.
+Storage backend selection remains outside this codec. Typed tiered-execution
+composition now binds the codec to the bounded blob-persistence service, so the
+existing filesystem blob adapter can publish provenance through locked staged
+replacement and explicit durability confirmation without giving filesystem
+paths semantic authority.
 
 Register-masked v6 programs can also be prepared into a sealed object-only AOT
 set through `prepare_ahead_of_execution_register_masked_set()`. Preparation
