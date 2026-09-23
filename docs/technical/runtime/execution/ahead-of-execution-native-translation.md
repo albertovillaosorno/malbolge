@@ -73,6 +73,17 @@ reprojection now independently derives read-before-write memory/register
 live-ins, verifies trace continuity/profile/outcome, and rejects derived
 execution geometry because schema v6 carries no explicit geometry token.
 
+Register-masked v6 now also has a product-owned exact-topology admission path.
+Each untrusted node supplies a complete entry checkpoint, one bounded v6
+program, and an optional successor. Admission normatively replays the declared
+step
+budget, reprojects the full trace region, compares the exact v6 program, and
+requires budget-exhausted exits to equal the claimed successor checkpoint.
+Only closed, reachable topology proceeds to transactional v6 object preparation.
+
+A multi-step node may therefore gain topology authority without gaining native
+execution authority when no reviewed collapsed native shape exists.
+
 ### Remaining Scope
 
 Durable AOT artifact storage/loading, import/admission of reduced dependency

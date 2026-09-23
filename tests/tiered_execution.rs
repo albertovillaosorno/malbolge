@@ -1541,7 +1541,11 @@ type CrazyTheoremSequenceTriple = (
     Box<gclru::CrazyTheoremSequence>,
 );
 
+type AotGraphStateResult = Result<ProfileMachineState, String>;
 type TieredTestResult = Result<(), String>;
+type V6GraphError = en::AheadOfExecutionRegisterMaskedStateGraphError;
+type V6GraphPreparationError<'requirement> =
+    en::AheadOfExecutionRegisterMaskedStateGraphPreparationError<'requirement>;
 type OrdinaryCachedAcquisitionFailure = Box<
     DirectFusedNativeCachedRetryAcquisitionFailure<FakeNativeAdapterOperation>,
 >;
@@ -30064,6 +30068,113 @@ fn seed_verified_direct_cache(
     }
 }
 
+fn aot_register_masked_state_graph_entry() -> AotGraphStateResult {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"QP", Vec::new())
+            .map_err(|error| format!("v6 graph base load failed: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    let no_operation = (33u32..=126u32)
+        .find(|cell| profile_cell_decodes_to_no_operation(*cell, 0))
+        .ok_or_else(|| String::from("v6 graph no-op cell missing"))?;
+    let halt = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 1) == Some(b'v'))
+        .ok_or_else(|| String::from("v6 graph halt cell missing"))?;
+    *memory
+        .get_mut(0)
+        .ok_or_else(|| String::from("v6 graph memory[0] missing"))? =
+        no_operation;
+    *memory
+        .get_mut(1)
+        .ok_or_else(|| String::from("v6 graph memory[1] missing"))? = halt;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("v6 graph IO failed: {error}"))?;
+    ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 0x0011_2233,
+            code_pointer: 0,
+            data_pointer: 2,
+        },
+        io,
+    )
+    .map_err(|error| format!("v6 graph entry failed: {error}"))
+}
+
+fn aot_register_masked_state_graph_nodes()
+-> Result<Vec<en::AheadOfExecutionRegisterMaskedStateGraphNodeClaim>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(aot_register_masked_state_graph_entry()?);
+    let mut nodes = Vec::new();
+    for _step in 0usize..4usize {
+        let entry = machine.snapshot_state();
+        let mut observed = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                observed = Some(*trace);
+            })
+            .map_err(|error| {
+                format!("v6 graph fixture step failed: {error}")
+            })?;
+        let trace = observed
+            .ok_or_else(|| String::from("v6 graph fixture trace missing"))?;
+        let program =
+            RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+                .map_err(|error| {
+                    format!("v6 graph projection failed: {error:?}")
+                })?;
+        let successor = match outcome {
+            StepOutcome::Continued => Some(nodes.len().saturating_add(1)),
+            StepOutcome::Terminated(_reason) => None,
+        };
+        nodes.push(en::AheadOfExecutionRegisterMaskedStateGraphNodeClaim {
+            entry,
+            program,
+            successor,
+        });
+        if matches!(outcome, StepOutcome::Terminated(_)) {
+            return Ok(nodes);
+        }
+    }
+    Err(String::from("v6 graph fixture did not terminate"))
+}
+
+fn aot_register_masked_graph_claim()
+-> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
+    Ok(en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+        0,
+        aot_register_masked_state_graph_nodes()?,
+    ))
+}
+
+fn aot_register_masked_multi_step_graph_claim()
+-> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
+    let entry = aot_register_masked_state_graph_entry()?;
+    let mut machine = ProfileMachine::from_snapshot(entry.clone());
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 multi-step graph run failed: {error}"))?;
+    let program =
+        RegisterMaskedRegionEffectProgram::from_profile_region_traces(
+            entry.profile(),
+            &traces,
+            2,
+            outcome,
+        )
+        .map_err(|error| {
+            format!("v6 multi-step graph projection: {error:?}")
+        })?;
+    Ok(en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+        0,
+        vec![en::AheadOfExecutionRegisterMaskedStateGraphNodeClaim {
+            entry,
+            program,
+            successor: None,
+        }],
+    ))
+}
+
 fn aot_state_graph_nodes()
 -> Result<Vec<AheadOfExecutionStateGraphNodeClaim>, String> {
     let mut machine = ProfileMachine::from_source(
@@ -30213,6 +30324,138 @@ fn aot_state_graph_rejects_open_and_unreachable_claims() -> Result<(), String> {
         Err(String::from(
             "AOT graph admitted an unreachable exact state",
         ))
+    }
+}
+
+#[test]
+fn aot_register_masked_state_graph_replays_and_prepares_closed_claim()
+-> Result<(), String> {
+    let claim = aot_register_masked_graph_claim()?;
+    let verified = claim.verify().map_err(|error| error.to_string())?;
+    if verified.entry() != 0 || verified.len() != 2 || verified.is_empty() {
+        return Err(format!("v6 verified graph shape drifted: {verified:?}"));
+    }
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let runtime = safe_rust_profiled_capability();
+    let prepared = en::prepare_ahead_of_execution_register_masked_state_graph(
+        &claim, runtime, host,
+    )
+    .map_err(|error| error.to_string())?;
+    if prepared.graph() != &verified || prepared.native().len() != 2 {
+        return Err(String::from("v6 graph preparation lost exact coverage"));
+    }
+    for index in 0..verified.len() {
+        let node = verified
+            .node(index)
+            .ok_or_else(|| format!("v6 verified graph node {index} missing"))?;
+        let selected = en::select_ahead_of_execution_register_masked_tier(
+            &node.program,
+            runtime,
+            host,
+            prepared.native(),
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(
+            selected,
+            en::AheadOfExecutionRegisterMaskedTier::Direct(_)
+        ) {
+            return Err(format!("v6 graph node {index} was not precompiled"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_state_graph_verifies_multi_step_but_native_fails_closed()
+-> Result<(), String> {
+    let claim = aot_register_masked_multi_step_graph_claim()?;
+    let verified = claim.verify().map_err(|error| error.to_string())?;
+    if verified.len() != 1 || verified.is_empty() {
+        return Err(String::from("v6 multi-step graph was not verified"));
+    }
+    let prepared = en::prepare_ahead_of_execution_register_masked_state_graph(
+        &claim,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    if matches!(
+        prepared,
+        Err(V6GraphPreparationError::Native(
+            en::AheadOfExecutionRegisterMaskedPreparationError::Admission {
+                index: 0,
+                ..
+            }
+        ))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 multi-step graph gained unsupported native authority",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_state_graph_rejects_tampering_and_false_successor()
+-> Result<(), String> {
+    let mut tampered_nodes = aot_register_masked_state_graph_nodes()?;
+    let tampered = tampered_nodes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 graph tamper node missing"))?;
+    tampered.program.profile_fingerprint.push('x');
+    let tampered_claim =
+        en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+            0,
+            tampered_nodes,
+        );
+    if tampered_claim.verify()
+        != Err(V6GraphError::ProgramMismatch { index: 0 })
+    {
+        return Err(String::from("v6 graph admitted tampered program"));
+    }
+
+    let mut wrong_nodes = aot_register_masked_state_graph_nodes()?;
+    let first = wrong_nodes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 graph first node missing"))?;
+    first.successor = Some(0);
+    let wrong = en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+        0,
+        wrong_nodes,
+    );
+    if wrong.verify()
+        == Err(V6GraphError::SuccessorStateMismatch { index: 0, successor: 0 })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 graph trusted a false exact-state edge"))
+    }
+}
+
+#[test]
+fn aot_register_masked_state_graph_rejects_open_and_unreachable_claims()
+-> Result<(), String> {
+    let mut open_nodes = aot_register_masked_state_graph_nodes()?;
+    let first = open_nodes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 graph first node missing"))?;
+    first.successor = None;
+    let open = en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+        0, open_nodes,
+    );
+    if open.verify() != Err(V6GraphError::MissingSuccessor { index: 0 }) {
+        return Err(String::from("v6 graph admitted an open transition"));
+    }
+
+    let unreachable =
+        en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
+            1,
+            aot_register_masked_state_graph_nodes()?,
+        );
+    if unreachable.verify() == Err(V6GraphError::Unreachable { index: 0 }) {
+        Ok(())
+    } else {
+        Err(String::from("v6 graph admitted an unreachable exact state"))
     }
 }
 

@@ -62,8 +62,17 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   reduction remains fail-closed until a matching native shape exists. Product
   multi-step reprojection now derives dependency masks from normative traces and
   rejects continuity/profile/outcome drift plus unrepresented derived geometry.
-- Durable artifact loading, reduced graph topology handoff, runtime native
-  transition dispatch, and verified collapsed multi-step effects remain open.
+- Product-owned register-masked v6 graph claims now carry exact entry
+  checkpoints, bounded v6 programs, and claimed successors. Runtime admission
+  replays every node for its declared step budget, reprojects v6 IR, requires an
+  exact successor checkpoint after budget exhaustion, and proves closed,
+  reachable topology before transactional native preparation. Verified
+  multi-step nodes
+  remain fail-closed at native preparation until a reviewed collapsed shape
+  exists.
+- Durable artifact loading, dependency-reduced graph identity/import, runtime
+  native transition dispatch, and verified collapsed multi-step effects remain
+  open.
 
 ## Acceptance
 

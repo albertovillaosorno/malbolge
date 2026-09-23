@@ -309,7 +309,23 @@ pub fn prepare_ahead_of_execution_register_masked_set<'requirement>(
     VerifiedAheadOfExecutionRegisterMaskedSet,
     AheadOfExecutionRegisterMaskedPreparationError<'requirement>,
 > {
-    if programs.is_empty() {
+    prepare_register_masked_set_iter(programs.iter(), runtime, host)
+}
+
+pub(super) fn prepare_register_masked_set_iter<'requirement, Programs>(
+    programs: Programs,
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+) -> Result<
+    VerifiedAheadOfExecutionRegisterMaskedSet,
+    AheadOfExecutionRegisterMaskedPreparationError<'requirement>,
+>
+where
+    Programs:
+        IntoIterator<Item = &'requirement RegisterMaskedRegionEffectProgram>,
+{
+    let mut indexed_programs = programs.into_iter().enumerate().peekable();
+    if indexed_programs.peek().is_none() {
         return Err(AheadOfExecutionRegisterMaskedPreparationError::Empty);
     }
     if host.operating_system != HostOperatingSystem::Windows {
@@ -319,7 +335,7 @@ pub fn prepare_ahead_of_execution_register_masked_set<'requirement>(
     }
 
     let mut entries = NativeArtifactCache::default();
-    for (index, program) in programs.iter().enumerate() {
+    for (index, program) in indexed_programs {
         let admission = admit_register_masked_direct_native(program, runtime)
             .map_err(|error| {
             AheadOfExecutionRegisterMaskedPreparationError::Admission {

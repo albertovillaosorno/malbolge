@@ -43,6 +43,7 @@ mod fused;
 mod plan;
 mod preparation;
 mod register_masked_preparation;
+mod register_masked_state_graph;
 mod sequence;
 mod shape;
 mod state_graph;
@@ -120,7 +121,9 @@ pub use plan::{
     select_verified_execution_geometry_direct_native,
 };
 pub use preparation::*;
+use register_masked_preparation::prepare_register_masked_set_iter;
 pub use register_masked_preparation::*;
+pub use register_masked_state_graph::*;
 pub use sequence::*;
 use shape::{
     validate_crazy_program, validate_crazy_target,
