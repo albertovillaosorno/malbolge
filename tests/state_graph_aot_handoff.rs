@@ -9,8 +9,8 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Integration evidence from verified research region artifacts to product
-//     register-masked AOT admission.
+//   - Integration evidence from verified research regions through product v6
+//     AOT admission and dependency-reduced runtime dispatch.
 // - Must-Not:
 //   - Make production runtime depend on research modules or grant invocation
 //     authority from research verification alone.
@@ -56,22 +56,34 @@ use std::slice::from_ref;
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
     AheadOfExecutionRegisterMaskedPreparationError,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchEnvironment,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFailure,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFallback,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchOutcome,
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchRequest,
     AheadOfExecutionRegisterMaskedReducedStateGraphError,
     AheadOfExecutionRegisterMaskedReducedStateGraphNodeClaim,
     AheadOfExecutionRegisterMaskedTier, DirectHost, DirectNativeKind,
     RegisterMaskedDependencyIdentityClaim,
     RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedReducedStateGraphNativeExecution,
+    RegisterMaskedReducedStateGraphNativeExecutionRequest,
+    RegisterMaskedReducedStateGraphNativeExecutor,
     UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    VerifiedAheadOfExecutionRegisterMaskedSet,
+    dispatch_ahead_of_execution_register_masked_reduced_state_graph,
     prepare_ahead_of_execution_register_masked_set,
     select_ahead_of_execution_register_masked_tier,
 };
 use indexed_state::IndexedMachineState;
 use malbolge::{
-    ProfileMachine, ProfileMachineIoState, ProfileMachineState,
-    ProfileRegisters, ProfileStepTrace, RegisterMaskedRegionEffectProgram,
-    RegisterMaskedRegionProjectionError, RunOutcome,
-    StepProgramProjectionError, current_profile, decode_profile_instruction,
-    safe_rust_profiled_capability, verify_minimum_initial_halt_profile_width,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineState, ProfileRegisters, ProfileStepTrace,
+    RegisterMaskedRegionEffectProgram, RegisterMaskedRegionProjectionError,
+    RunOutcome, StepProgramProjectionError, Termination, current_profile,
+    decode_profile_instruction, safe_rust_profiled_capability,
+    verify_minimum_initial_halt_profile_width,
 };
 use region_artifact::{UntrustedRegionArtifact, VerifiedRegionArtifact};
 use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
@@ -79,7 +91,100 @@ use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
 type HandoffResult<T> = Result<T, String>;
+type ReducedDispatchFailure<'graph> =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFailure<
+        'graph,
+        ProfileMachineError,
+    >;
+type ReducedDispatchEnvironment<'aot> =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchEnvironment<'aot>;
+type ReducedDispatchFallback =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchFallback;
+type ReducedDispatchOutcome =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchOutcome;
+type ReducedDispatchRequest<'graph, 'aot> =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchRequest<
+        'graph,
+        'aot,
+    >;
 type ReducedGraphError = AheadOfExecutionRegisterMaskedReducedStateGraphError;
+type ReducedNativeExecution = RegisterMaskedReducedStateGraphNativeExecution;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReducedExecutorMode {
+    Apply,
+    GuardMiss,
+    MutatedGuardMiss,
+    TamperSuccessor,
+    TamperTerminal,
+}
+
+#[derive(Debug)]
+struct NormativeReducedGraphExecutor {
+    calls: usize,
+    kinds: Vec<DirectNativeKind>,
+    mode: ReducedExecutorMode,
+}
+
+impl NormativeReducedGraphExecutor {
+    const fn new(mode: ReducedExecutorMode) -> Self {
+        Self {
+            calls: 0,
+            kinds: Vec::new(),
+            mode,
+        }
+    }
+}
+
+impl RegisterMaskedReducedStateGraphNativeExecutor
+    for NormativeReducedGraphExecutor
+{
+    type Error = ProfileMachineError;
+
+    fn execute(
+        &mut self,
+        request: RegisterMaskedReducedStateGraphNativeExecutionRequest<'_>,
+    ) -> Result<ReducedNativeExecution, Self::Error> {
+        let artifact = request.artifact();
+        let entry = request.entry();
+        let index = request.index();
+        let program = request.program();
+        self.calls = self.calls.saturating_add(1);
+        self.kinds.push(artifact.kind());
+        match self.mode {
+            ReducedExecutorMode::GuardMiss => {
+                return Ok(ReducedNativeExecution::GuardMiss(entry.clone()));
+            },
+            ReducedExecutorMode::MutatedGuardMiss => {
+                return Ok(ReducedNativeExecution::GuardMiss(
+                    checkpoint_with_registers(entry, ProfileRegisters {
+                        accumulator: entry
+                            .registers()
+                            .accumulator
+                            .saturating_add(1),
+                        ..entry.registers()
+                    })?,
+                ));
+            },
+            ReducedExecutorMode::Apply
+            | ReducedExecutorMode::TamperSuccessor
+            | ReducedExecutorMode::TamperTerminal => {},
+        }
+        let mut machine = ProfileMachine::from_snapshot(entry.clone());
+        let _outcome = machine.run(program.program.step_budget)?;
+        let mut exit = machine.snapshot_state();
+        if self.mode == ReducedExecutorMode::TamperSuccessor && index == 0 {
+            exit = checkpoint_with_registers(&exit, ProfileRegisters {
+                code_pointer: exit.registers().code_pointer.saturating_add(1),
+                ..exit.registers()
+            })?;
+        }
+        if self.mode == ReducedExecutorMode::TamperTerminal && index == 1 {
+            exit = checkpoint_with_termination(&exit, None)?;
+        }
+        Ok(ReducedNativeExecution::Applied(exit))
+    }
+}
 
 fn verified_artifact(
     source: &[u8],
@@ -164,6 +269,106 @@ fn reduced_graph_node(
     })
 }
 
+fn checkpoint_with_termination(
+    state: &ProfileMachineState,
+    termination: Option<Termination>,
+) -> Result<ProfileMachineState, ProfileMachineError> {
+    let io = ProfileMachineIoState::new(
+        state.io().input().to_vec(),
+        state.io().input_consumed(),
+        state.io().output().to_vec(),
+        termination,
+    )?;
+    ProfileMachineState::new_with_geometry(
+        state.geometry(),
+        state.memory().to_vec(),
+        state.registers(),
+        io,
+    )
+}
+
+fn checkpoint_with_registers(
+    state: &ProfileMachineState,
+    registers: ProfileRegisters,
+) -> Result<ProfileMachineState, ProfileMachineError> {
+    ProfileMachineState::new_with_geometry(
+        state.geometry(),
+        state.memory().to_vec(),
+        registers,
+        state.io().clone(),
+    )
+}
+
+fn reduced_dispatch_fixture() -> HandoffResult<(
+    VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    ProfileMachineState,
+)> {
+    let first_entry = reduced_graph_entry()?;
+    let first = verified_region_from_entry(&first_entry, 1)?;
+    let exact_successor = first.exit().clone();
+    let checkpoint = exact_successor
+        .materialize_checkpoint()
+        .map_err(|error| format!("dispatch successor checkpoint: {error:?}"))?;
+    let before = checkpoint.registers();
+    let changed_successor = exact_successor
+        .with_validated_registers(ProfileRegisters {
+            accumulator: before.accumulator.saturating_add(1),
+            code_pointer: before.code_pointer,
+            data_pointer: before.data_pointer,
+        })
+        .map_err(|error| format!("dispatch successor rebase: {error:?}"))?;
+    let second = verified_region_from_entry(&changed_successor, 1)?;
+    let claim =
+        UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph::new(0, vec![
+            reduced_graph_node(&first, Some(1))?,
+            reduced_graph_node(&second, None)?,
+        ]);
+    let graph = claim.verify().map_err(|error| error.to_string())?;
+    let entry = first
+        .entry()
+        .materialize_checkpoint()
+        .map_err(|error| format!("dispatch entry checkpoint: {error:?}"))?;
+    Ok((graph, entry))
+}
+
+fn prepare_reduced_dispatch_aot(
+    graph: &VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+) -> HandoffResult<VerifiedAheadOfExecutionRegisterMaskedSet> {
+    let programs = (0..graph.len())
+        .map(|index| {
+            graph
+                .node(index)
+                .map(|node| node.program().clone())
+                .ok_or_else(|| format!("dispatch graph lost node {index}"))
+        })
+        .collect::<HandoffResult<Vec<_>>>()?;
+    prepare_ahead_of_execution_register_masked_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+const fn reduced_dispatch_request<'graph, 'aot>(
+    graph: &'graph VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    aot: &'aot VerifiedAheadOfExecutionRegisterMaskedSet,
+    entry: ProfileMachineState,
+    transition_budget: usize,
+) -> ReducedDispatchRequest<'graph, 'aot> {
+    let environment = ReducedDispatchEnvironment::new(
+        aot,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+    );
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchRequest::new(
+        graph,
+        environment,
+        entry,
+        transition_budget,
+    )
+}
+
 const fn windows_x86_64() -> DirectHost {
     DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64)
 }
@@ -171,7 +376,7 @@ const fn windows_x86_64() -> DirectHost {
 fn prepare_one(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<
-    execution_native::VerifiedAheadOfExecutionRegisterMaskedSet,
+    VerifiedAheadOfExecutionRegisterMaskedSet,
     AheadOfExecutionRegisterMaskedPreparationError<'_>,
 > {
     prepare_ahead_of_execution_register_masked_set(
@@ -521,6 +726,229 @@ fn product_reduced_identity_rebases_relative_input_and_history()
     } else {
         Err(String::from(
             "reduced identity lost relative-input semantics",
+        ))
+    }
+}
+
+#[test]
+fn product_reduced_graph_dispatch_rechecks_actual_successor_state()
+-> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+    let mut executor =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::Apply);
+    let outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, entry, 2),
+            &mut executor,
+        )
+        .map_err(|error| error.to_string())?;
+    let ReducedDispatchOutcome::Completed { state, transitions } = outcome
+    else {
+        return Err(format!("reduced dispatch did not complete: {outcome:?}"));
+    };
+    if transitions == 2
+        && state.io().termination() == Some(Termination::HaltInstruction)
+        && executor.calls == 2
+        && executor.kinds
+            == vec![DirectNativeKind::NoOperation, DirectNativeKind::HaltFetch]
+    {
+        Ok(())
+    } else {
+        Err(String::from("reduced dispatch changed exact AOT route"))
+    }
+}
+
+#[test]
+fn product_reduced_graph_dispatch_fails_closed_without_guessing()
+-> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+
+    let mut tampered = NormativeReducedGraphExecutor::new(
+        ReducedExecutorMode::TamperSuccessor,
+    );
+    let tampered_outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, entry.clone(), 2),
+            &mut tampered,
+        )
+        .map_err(|error| error.to_string())?;
+    if !matches!(tampered_outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::SuccessorGuardMiss {
+            index: 0,
+            successor: 1,
+        },
+        transitions: 1,
+        ..
+    }) || tampered.calls != 1
+    {
+        return Err(String::from(
+            "reduced dispatch guessed after successor miss",
+        ));
+    }
+
+    let mut budgeted =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::Apply);
+    let budget_outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, entry, 1),
+            &mut budgeted,
+        )
+        .map_err(|error| error.to_string())?;
+    if !matches!(budget_outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::TransitionBudgetExhausted { index: 1 },
+        transitions: 1,
+        ..
+    }) || budgeted.calls != 1
+    {
+        return Err(String::from("reduced dispatch ignored transition budget"));
+    }
+
+    Ok(())
+}
+
+#[test]
+fn product_reduced_dispatch_rejects_entry_guard_miss() -> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+    let bad_entry = checkpoint_with_registers(&entry, ProfileRegisters {
+        code_pointer: entry.registers().code_pointer.saturating_add(1),
+        ..entry.registers()
+    })
+    .map_err(|error| format!("dispatch bad entry failed: {error}"))?;
+    let mut executor =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::Apply);
+    let outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, bad_entry, 2),
+            &mut executor,
+        )
+        .map_err(|error| error.to_string())?;
+    if matches!(outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::NodeGuardMiss { index: 0 },
+        transitions: 0,
+        ..
+    }) && executor.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "reduced dispatch executed outside entry guard",
+        ))
+    }
+}
+
+#[test]
+fn product_reduced_graph_dispatch_preserves_guard_miss_atomicity()
+-> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+
+    let mut guard_miss =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::GuardMiss);
+    let outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, entry.clone(), 2),
+            &mut guard_miss,
+        )
+        .map_err(|error| error.to_string())?;
+    if !matches!(outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::NativeGuardMiss { index: 0 },
+        transitions: 0,
+        ..
+    }) {
+        return Err(String::from("native guard miss did not fall back"));
+    }
+
+    let mut mutated = NormativeReducedGraphExecutor::new(
+        ReducedExecutorMode::MutatedGuardMiss,
+    );
+    match dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+        reduced_dispatch_request(&graph, &aot, entry, 2),
+        &mut mutated,
+    ) {
+        Err(ReducedDispatchFailure::GuardMissMutation { index: 0 }) => Ok(()),
+        result => {
+            Err(format!("unexpected mutated guard-miss result: {result:?}"))
+        },
+    }
+}
+
+#[test]
+fn product_reduced_dispatch_rejects_terminal_state_mismatch()
+-> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+    let mut executor =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::TamperTerminal);
+    let result =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &aot, entry, 2),
+            &mut executor,
+        );
+    if matches!(
+        result,
+        Err(ReducedDispatchFailure::TerminalStateMismatch { index: 1 })
+    ) && executor.calls == 2
+    {
+        Ok(())
+    } else {
+        Err(format!("unexpected terminal mismatch result: {result:?}"))
+    }
+}
+
+#[test]
+fn product_reduced_graph_dispatch_exposes_lower_tier_boundaries()
+-> HandoffResult<()> {
+    let (graph, entry) = reduced_dispatch_fixture()?;
+    let empty = VerifiedAheadOfExecutionRegisterMaskedSet::default();
+    let mut uncovered =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::Apply);
+    let uncovered_outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            reduced_dispatch_request(&graph, &empty, entry.clone(), 2),
+            &mut uncovered,
+        )
+        .map_err(|error| error.to_string())?;
+    if !matches!(uncovered_outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::Uncovered { index: 0 },
+        transitions: 0,
+        ..
+    }) || uncovered.calls != 0
+    {
+        return Err(String::from("uncovered reduced node attempted execution"));
+    }
+
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+    let mut host_fallback =
+        NormativeReducedGraphExecutor::new(ReducedExecutorMode::Apply);
+    let linux = DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64);
+    let host_outcome =
+        dispatch_ahead_of_execution_register_masked_reduced_state_graph(
+            AheadOfExecutionRegisterMaskedReducedStateGraphDispatchRequest::new(
+                &graph,
+                ReducedDispatchEnvironment::new(
+                    &aot,
+                    safe_rust_profiled_capability(),
+                    linux,
+                ),
+                entry,
+                2,
+            ),
+            &mut host_fallback,
+        )
+        .map_err(|error| error.to_string())?;
+    if matches!(host_outcome, ReducedDispatchOutcome::Fallback {
+        reason: ReducedDispatchFallback::TargetInterpreter { index: 0 },
+        transitions: 0,
+        ..
+    }) && host_fallback.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "host fallback attempted reduced native execution",
         ))
     }
 }

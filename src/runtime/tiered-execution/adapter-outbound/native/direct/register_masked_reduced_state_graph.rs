@@ -323,7 +323,8 @@ impl UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph {
     /// # Errors
     ///
     /// Returns a typed mismatch for false identity, program, topology, or edge
-    /// claims. The result grants no native execution or dispatch authority.
+    /// claims. The result grants reduced guard/topology authority only; it
+    /// grants no native invocation authority.
     pub fn verify(
         &self,
     ) -> Result<

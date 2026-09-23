@@ -96,15 +96,27 @@ registers, and memory outside live-ins do not become reduced identity.
 A budget-exhausted witness exit must satisfy the admitted successor guard, not
 necessarily equal the successor witness checkpoint. Duplicate reduced
 identities are rejected so one runtime guard cannot ambiguously identify two
-nodes. The verified graph is evidence only: future native transition dispatch
-must re-evaluate the successor guard on the actual runtime exit state before
-selecting a precompiled node.
+nodes.
+
+Reduced graphs now have a bounded AOT-first runtime dispatcher. Each turn first
+checks the admitted reduced identity against the complete actual entry state,
+performs read-only exact AOT selection, and invokes only the selected verified
+artifact through a caller-owned native executor port. A committed continuing
+transition may advance only when the declared successor guard matches the
+complete actual runtime exit; the dispatcher never searches for another node by
+approximation or witness similarity.
+
+Guard miss is required to return the unchanged entry checkpoint. Uncovered
+objects, unsupported reviewed native shapes, unsupported host formats, and
+transition-budget exhaustion return explicit lower-tier fallback with the exact
+resume state and committed-transition count. A mutated guard miss or terminal
+completion with the wrong termination condition is a hard dispatch failure.
 
 ### Remaining Scope
 
 Durable AOT artifact storage/loading, durable reduced-graph
-serialization/loading, runtime native transition dispatch between admitted graph
-states, and verified collapsed multi-step native effects remain open.
+serialization/loading, whole-graph executable residency/lifecycle ownership,
+and verified collapsed multi-step native effects remain open.
 
 ## Invariants
 

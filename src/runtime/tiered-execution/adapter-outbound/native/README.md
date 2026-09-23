@@ -1096,9 +1096,15 @@ a product-owned boundary. Exact witness checkpoints are replayed only as proof
 material; the admitted node identity is independently derived from opaque
 geometry, termination, memory/register live-ins, masked live register values,
 and relative input observations. Budget-exhausted witness exits must satisfy the
-successor guard, duplicate reduced identities are rejected, and the resulting
-graph grants no loading, invocation, or dispatch authority. Runtime transition
-dispatch must re-check the successor guard against the actual runtime exit.
+successor guard and duplicate reduced identities are rejected.
+
+The admitted reduced graph can now drive bounded AOT-first runtime dispatch.
+The dispatcher rechecks every actual node entry, performs read-only exact AOT
+lookup, delegates only the selected verified artifact through a caller-owned
+native executor port, and requires the actual applied exit to satisfy the
+admitted successor guard before continuing. Guard miss is atomic; uncovered or
+unsupported native coverage, unsupported host format, and budget exhaustion
+return explicit lower-tier fallback rather than guessing another graph state.
 
 Register-masked v6 programs can also be prepared into a sealed object-only AOT
 set through `prepare_ahead_of_execution_register_masked_set()`. Preparation

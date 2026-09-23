@@ -77,10 +77,17 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   memory/register live-ins, masked register values, and relative input
   observations. Duplicate reduced identities, false successor guards, open or
   unreachable topology, and any claimed-field mismatch fail closed.
-- Reduced graph admission grants evidence and guard authority only. Runtime
-  native transition dispatch must re-evaluate the admitted successor guard on
-  the actual runtime exit state; durable reduced-graph serialization/loading and
-  verified collapsed multi-step native effects remain open.
+- Dependency-reduced v6 graphs now have bounded AOT-first runtime dispatch.
+  Each turn rechecks the current node guard, performs read-only exact AOT
+  selection, delegates invocation through a caller-owned native executor port,
+  and rechecks the admitted successor guard against the complete actual runtime
+  exit before another precompiled node may run. Native guard miss, uncovered
+  objects, unsupported reviewed shapes, host-format fallback, and transition
+  budget exhaustion return an explicit lower-tier boundary without guessing;
+  mutated guard misses and incompatible terminal completion fail hard.
+- Durable reduced-graph serialization/loading, executable residency ownership
+  for whole reduced graphs, and verified collapsed multi-step native effects
+  remain open.
 
 ## Acceptance
 
