@@ -1428,6 +1428,8 @@ type CollapsedNoOperationPairObservations =
     (ProfileMachineObservation, ProfileMachineObservation);
 type CollapsedNoOperationRotateObservations =
     (ProfileMachineObservation, ProfileMachineObservation);
+type CollapsedRotateNoOperationObservations =
+    (ProfileMachineObservation, ProfileMachineObservation);
 
 #[derive(Debug)]
 struct CollapsedNoOperationHaltNativeFixture {
@@ -31418,6 +31420,48 @@ fn collapsed_no_operation_rotate_native_fixture(
     Ok(CollapsedNoOperationRotateNativeFixture { adapter, artifact, ready })
 }
 
+fn collapsed_rotate_no_operation_rebased_observations(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<CollapsedRotateNoOperationObservations, String> {
+    let first = program.effects.first().ok_or_else(|| {
+        String::from("collapsed rotate/no-op first effect missing")
+    })?;
+    let terminal = program.effects.last().ok_or_else(|| {
+        String::from("collapsed rotate/no-op terminal effect missing")
+    })?;
+    let mut entry = first.before;
+    entry.registers.accumulator = 0x7788_99aa;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = terminal.after;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    Ok((entry, expected))
+}
+
+fn apply_collapsed_rotate_no_operation_expected_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> Result<(), String> {
+    for effect in &program.effects {
+        for write in [effect.memory_delta.data, effect.memory_delta.encryption]
+            .into_iter()
+            .flatten()
+        {
+            let address = usize::try_from(write.address).map_err(|error| {
+                format!("collapsed rotate/no-op write address: {error}")
+            })?;
+            let cell = memory.get_mut(address).ok_or_else(|| {
+                String::from(
+                    "collapsed rotate/no-op write exceeds invocation memory",
+                )
+            })?;
+            *cell = write.after;
+        }
+    }
+    Ok(())
+}
+
 fn collapsed_no_operation_rotate_rebased_observations(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<CollapsedNoOperationRotateObservations, String> {
@@ -31872,6 +31916,158 @@ fn aot_register_masked_no_op_rotate_release_retry() -> Result<(), String> {
             "collapsed no-op/rotate release retry count drifted",
         ))
     }
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_invocation_rebases() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        collapsed_rotate_no_operation_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_collapsed_rotate_no_operation_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared =
+        en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from(
+            "collapsed rotate/no-op expected observation drifted",
+        ));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-op invocation application drifted",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_binding_is_exact() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(737)?,
+        native_executable_address(0x8c000)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("collapsed rotate/no-op binding entry missing")
+        })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| error.to_string())?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op bound identity drifted",
+        ));
+    }
+    drop(bound);
+    en::release_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_rotate_no_op_binding_rejects_target_drift() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let other =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::AArch64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&other)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(738)?,
+        native_executable_address(0x8d000)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| {
+            String::from("collapsed rotate/no-op drift entry missing")
+        })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if !matches!(
+        prepared.bind_executable(&ready),
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != entry_memory
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op binding admitted target drift",
+        ));
+    }
+    en::release_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[test]

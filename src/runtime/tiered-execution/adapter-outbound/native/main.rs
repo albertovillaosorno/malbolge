@@ -636,6 +636,8 @@ pub use invocation::{
     PreparedRegisterMaskedOutputNativeInvocation,
     PreparedRegisterMaskedRotateInvocation,
     PreparedRegisterMaskedRotateNativeInvocation,
+    PreparedRegisterMaskedRotateNoOperationInvocation,
+    PreparedRegisterMaskedRotateNoOperationNativeInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedExecutionGeometryInvocationError,
