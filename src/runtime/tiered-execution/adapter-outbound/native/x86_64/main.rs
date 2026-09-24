@@ -51,6 +51,7 @@ use super::direct::{
     DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNoOperationHaltTemplate,
     DirectRegisterMaskedNoOperationPairTemplate,
+    DirectRegisterMaskedNoOperationRotateTemplate,
     DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateGuard,
     DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
@@ -324,6 +325,92 @@ pub(super) fn register_masked_no_operation_pair_code(
     code.push(0xc3);
     patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
+}
+
+/// Encodes collapsed v6 no-operation followed by rotate.
+#[must_use]
+pub(super) fn register_masked_no_operation_rotate_code(
+    template: DirectRegisterMaskedNoOperationRotateTemplate,
+) -> Option<Vec<u8>> {
+    if template.first_encrypted_address != template.entry_code_pointer
+        || template.rotate_encrypted_address != template.rotate_code_pointer
+        || template.rotate_data_address != template.rotate_data_pointer
+    {
+        return None;
+    }
+    let first_offset = memory_byte_offset(template.entry_code_pointer)?;
+    let rotate_code_offset = memory_byte_offset(template.rotate_code_pointer)?;
+    let rotate_data_offset = memory_byte_offset(template.rotate_data_address)?;
+    let mut code = Vec::with_capacity(224);
+    let mut guard_jumps = Vec::with_capacity(10);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    push_u32_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        0x44,
+        template.entry_code_pointer,
+    );
+    push_u32_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        0x48,
+        template.entry_data_pointer,
+    );
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&template.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    for (offset, live_in) in [
+        (first_offset, template.first_live_in),
+        (rotate_code_offset, template.rotate_code_live_in),
+        (rotate_data_offset, template.rotate_data_live_in),
+    ] {
+        push_direct_memory_guard_near(
+            &mut code,
+            &mut guard_jumps,
+            offset,
+            live_in,
+        );
+    }
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    push_register_masked_no_operation_rotate_commit(
+        &mut code,
+        (first_offset, rotate_code_offset, rotate_data_offset),
+        template,
+    );
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_register_masked_no_operation_rotate_commit(
+    code: &mut Vec<u8>,
+    offsets: (u32, u32, u32),
+    template: DirectRegisterMaskedNoOperationRotateTemplate,
+) {
+    let (first_offset, rotate_code_offset, rotate_data_offset) = offsets;
+    for (offset, value) in [
+        (first_offset, template.first_encrypted_value),
+        (rotate_data_offset, template.rotated_value),
+        (rotate_code_offset, template.rotate_encrypted_value),
+    ] {
+        code.extend_from_slice(&[0xc7, 0x82]);
+        code.extend_from_slice(&offset.to_le_bytes());
+        code.extend_from_slice(&value.to_le_bytes());
+    }
+    code.extend_from_slice(&[0xc7, 0x41, 0x40]);
+    code.extend_from_slice(&template.rotated_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&template.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&template.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
 }
 
 /// Encodes v6 Crazy using its declared A/C/D dependencies.

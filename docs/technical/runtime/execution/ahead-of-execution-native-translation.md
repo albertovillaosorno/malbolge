@@ -235,9 +235,15 @@ evidence, and delegates the foreign call only to the isolated worker. Real
 x86-64 POSIX-worker evidence executes and releases the collapsed pair object
 without poisoning the session.
 
-The no-operation/rotate shape remains semantic-only until it receives its own
-native proof. Additional multi-step shapes stay unsupported until each receives
-equally explicit semantic and native proof.
+The no-operation/rotate shape now has a distinct backend identity and
+byte-canonical Windows COFF templates for x86-64 and AArch64. Independent
+verification reconstructs semantic admission, exact v6 key/target assumptions,
+COFF structure, and canonical bytes before promotion. This grants object
+authority only: no load image, executable-memory lifecycle, ABI binding, runner,
+or foreign-call authority exists for this shape yet.
+
+Additional multi-step shapes stay unsupported until each receives equally
+explicit semantic and native proof.
 
 ## Invariants
 

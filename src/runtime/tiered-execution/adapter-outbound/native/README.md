@@ -1169,9 +1169,13 @@ independent semantic/key/target/structure/byte verification.
 A third reviewed shape is no-operation followed by rotate. Its separate
 semantic boundary rechecks both write masks, three distinct live-ins, both code
 encryptions, exact data rotation into memory and accumulator, pointer
-successors, continuity, and budget-exhausted completion. It intentionally owns
-no backend identity, object, load image, executable lifecycle, ABI, or call
-authority yet.
+successors, continuity, and budget-exhausted completion.
+
+That shape now owns a distinct backend identity plus byte-canonical
+x86-64/AArch64 Windows COFF. Independent verification reconstructs semantic
+admission, exact v6 key/target assumptions, COFF structure, and canonical bytes
+before promotion. It intentionally owns no load image, executable lifecycle,
+ABI, runner, or call authority yet.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

@@ -51,6 +51,7 @@ use super::direct::{
     DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNoOperationHaltTemplate,
     DirectRegisterMaskedNoOperationPairTemplate,
+    DirectRegisterMaskedNoOperationRotateTemplate,
     DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateGuard,
     DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
@@ -370,6 +371,98 @@ fn push_register_masked_no_operation_pair_commit(
         movz_w9(template.second_encrypted_value),
         movk_w9_high(template.second_encrypted_value),
         0xb900_0149,
+        movz_w9(template.next_code_pointer),
+        movk_w9_high(template.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.next_data_pointer),
+        movk_w9_high(template.next_data_pointer),
+        0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+}
+
+/// Encodes collapsed v6 no-operation followed by rotate.
+#[must_use]
+pub(super) fn register_masked_no_operation_rotate_code(
+    template: DirectRegisterMaskedNoOperationRotateTemplate,
+) -> Option<Vec<u8>> {
+    if template.first_encrypted_address != template.entry_code_pointer
+        || template.rotate_encrypted_address != template.rotate_code_pointer
+        || template.rotate_data_address != template.rotate_data_pointer
+    {
+        return None;
+    }
+    let mut words = Vec::with_capacity(80);
+    let mut guard_branches = Vec::with_capacity(10);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4408,
+        template.entry_code_pointer,
+    );
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4808,
+        template.entry_data_pointer,
+    );
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    for (address, live_in) in [
+        (template.entry_code_pointer, template.first_live_in),
+        (template.rotate_code_pointer, template.rotate_code_live_in),
+        (template.rotate_data_address, template.rotate_data_live_in),
+    ] {
+        push_indexed_memory_guard(
+            &mut words,
+            &mut guard_branches,
+            address,
+            live_in,
+        );
+    }
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_register_masked_no_operation_rotate_commit(&mut words, template);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_register_masked_no_operation_rotate_commit(
+    words: &mut Vec<u32>,
+    template: DirectRegisterMaskedNoOperationRotateTemplate,
+) {
+    for (address, value) in [
+        (
+            template.first_encrypted_address,
+            template.first_encrypted_value,
+        ),
+        (template.rotate_data_address, template.rotated_value),
+        (
+            template.rotate_encrypted_address,
+            template.rotate_encrypted_value,
+        ),
+    ] {
+        words.extend_from_slice(&[
+            movz_w10(address),
+            movk_w10_high(address),
+            0x8b0a_090a,
+            movz_w9(value),
+            movk_w9_high(value),
+            0xb900_0149,
+        ]);
+    }
+    words.extend_from_slice(&[
+        movz_w9(template.rotated_value),
+        movk_w9_high(template.rotated_value),
+        0xb900_4009,
         movz_w9(template.next_code_pointer),
         movk_w9_high(template.next_code_pointer),
         0xb900_4409,
