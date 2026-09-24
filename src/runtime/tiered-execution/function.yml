@@ -551,6 +551,12 @@ parts:
     responsibility: >-
       Gate retries and preserve exact attempt/outcome/stop evidence without
       timing policy.
+  - id: part-0103
+    path: composition/tier/aot_bundle.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist complete register-masked AOT object bundles atomically.
 projects: []
 tests: []
 graph:

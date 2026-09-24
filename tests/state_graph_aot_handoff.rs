@@ -21,7 +21,7 @@
 //   - Side effects: test-process allocation, canonical object emission, and
 //     isolated temporary blob persistence only.
 // - Split-When:
-//   - Native object-bundle persistence or executable residency gains
+//   - Executable residency or verified collapsed multi-step effects gain
 //     integration policy.
 // - Merge-When:
 //   - State-graph optimization becomes production runtime infrastructure.
@@ -62,6 +62,8 @@ pub mod reduced_graph_persistence;
 pub mod region_artifact;
 #[path = "../src/research/algorithms/composition/state-graph/region.rs"]
 pub mod region_certificate;
+#[path = "../src/runtime/tiered-execution/composition/tier/aot_bundle.rs"]
+pub mod register_masked_aot_bundle_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/object_store.rs"]
 pub mod register_masked_aot_object_persistence;
 
@@ -118,6 +120,16 @@ use reduced_graph_persistence::{
 };
 use region_artifact::{UntrustedRegionArtifact, VerifiedRegionArtifact};
 use region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
+use register_masked_aot_bundle_persistence::{
+    RegisterMaskedAotBundleFramingError, RegisterMaskedAotBundlePersistRequest,
+    RegisterMaskedAotBundlePersistenceLoad,
+    RegisterMaskedAotBundlePreparationError,
+    RegisterMaskedAotBundleRestorePersistenceError,
+    RegisterMaskedAotBundleRestoreRequest, RegisterMaskedAotBundleSource,
+    RegisterMaskedAotBundleStoreError, persist_register_masked_aot_bundle,
+    persist_register_masked_aot_bundle_durably,
+    restore_register_masked_aot_bundle,
+};
 use register_masked_aot_object_persistence::{
     RegisterMaskedAotObjectPersistenceLoad,
     RegisterMaskedAotObjectRestorePersistenceError,
@@ -422,17 +434,23 @@ fn reduced_dispatch_fixture() -> HandoffResult<(
     Ok((graph, entry))
 }
 
-fn prepare_reduced_dispatch_aot(
+fn reduced_dispatch_programs(
     graph: &VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
-) -> HandoffResult<VerifiedAheadOfExecutionRegisterMaskedSet> {
-    let programs = (0..graph.len())
+) -> HandoffResult<Vec<RegisterMaskedRegionEffectProgram>> {
+    (0..graph.len())
         .map(|index| {
             graph
                 .node(index)
                 .map(|node| node.program().clone())
                 .ok_or_else(|| format!("dispatch graph lost node {index}"))
         })
-        .collect::<HandoffResult<Vec<_>>>()?;
+        .collect()
+}
+
+fn prepare_reduced_dispatch_aot(
+    graph: &VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+) -> HandoffResult<VerifiedAheadOfExecutionRegisterMaskedSet> {
+    let programs = reduced_dispatch_programs(graph)?;
     prepare_ahead_of_execution_register_masked_set(
         &programs,
         safe_rust_profiled_capability(),
@@ -1003,6 +1021,32 @@ fn select_prepared_reduced_artifact(
     }
 }
 
+const fn bundle_persist_request<'bundle>(
+    programs: &'bundle [RegisterMaskedRegionEffectProgram],
+    aot: &'bundle VerifiedAheadOfExecutionRegisterMaskedSet,
+    maximum_bytes: NonZeroUsize,
+) -> RegisterMaskedAotBundlePersistRequest<'bundle> {
+    let source = RegisterMaskedAotBundleSource::new(
+        programs,
+        aot,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+    );
+    RegisterMaskedAotBundlePersistRequest::new(source, maximum_bytes)
+}
+
+const fn bundle_restore_request(
+    programs: &[RegisterMaskedRegionEffectProgram],
+    maximum_bytes: NonZeroUsize,
+) -> RegisterMaskedAotBundleRestoreRequest<'_> {
+    RegisterMaskedAotBundleRestoreRequest::new(
+        programs,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+        maximum_bytes,
+    )
+}
+
 const fn object_restore_request(
     program: &RegisterMaskedRegionEffectProgram,
     maximum_bytes: NonZeroUsize,
@@ -1068,6 +1112,282 @@ fn persist_and_restore_register_masked_reduced_graph(
             "durable graph round-trip drifted: bytes={bytes} graph={graph:?}"
         )),
     }
+}
+
+fn expect_hostile_bundle_count_rejected(
+    store: &mut NativeContinuationFileBlobStore,
+    canonical: &[u8],
+    programs: &[RegisterMaskedRegionEffectProgram],
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let mut hostile_count = canonical.to_vec();
+    hostile_count
+        .get_mut(6..10)
+        .ok_or_else(|| String::from("AOT bundle count framing missing"))?
+        .copy_from_slice(&u32::MAX.to_le_bytes());
+    blob_store::NativeContinuationBlobStore::replace(store, &hostile_count)
+        .map_err(|error| {
+            format!("cannot seed hostile bundle count: {error:?}")
+        })?;
+    let hostile = restore_register_masked_aot_bundle(
+        store,
+        bundle_restore_request(programs, maximum_bytes),
+    );
+    if hostile
+        == Err(RegisterMaskedAotBundleRestorePersistenceError::Framing(
+            RegisterMaskedAotBundleFramingError::CountMismatch {
+                expected: programs.len(),
+                observed: u32::MAX,
+            },
+        ))
+    {
+        Ok(())
+    } else {
+        Err(format!("hostile bundle count was accepted: {hostile:?}"))
+    }
+}
+
+fn expect_trailing_bundle_rejected(
+    store: &mut NativeContinuationFileBlobStore,
+    canonical: &[u8],
+    programs: &[RegisterMaskedRegionEffectProgram],
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let mut trailing = canonical.to_vec();
+    trailing.push(0);
+    blob_store::NativeContinuationBlobStore::replace(store, &trailing)
+        .map_err(|error| format!("cannot seed trailing bundle: {error:?}"))?;
+    let result = restore_register_masked_aot_bundle(
+        store,
+        bundle_restore_request(programs, maximum_bytes),
+    );
+    if result
+        == Err(RegisterMaskedAotBundleRestorePersistenceError::Framing(
+            RegisterMaskedAotBundleFramingError::Trailing,
+        ))
+    {
+        Ok(())
+    } else {
+        Err(format!("trailing AOT bundle was accepted: {result:?}"))
+    }
+}
+
+#[test]
+fn product_register_masked_aot_bundle_rejects_untrusted_framing()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("bundle_framing")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let aot = prepare_reduced_dispatch_aot(&graph)?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let _write = persist_register_masked_aot_bundle(
+            &mut store,
+            bundle_persist_request(&programs, &aot, maximum_bytes),
+        )
+        .map_err(|error| format!("AOT bundle persist: {error:?}"))?;
+        let canonical = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("cannot load canonical bundle: {error:?}"))?
+        .ok_or_else(|| String::from("canonical AOT bundle disappeared"))?;
+        expect_hostile_bundle_count_rejected(
+            &mut store,
+            &canonical,
+            &programs,
+            maximum_bytes,
+        )?;
+        expect_trailing_bundle_rejected(
+            &mut store,
+            &canonical,
+            &programs,
+            maximum_bytes,
+        )
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_bundle_missing_is_explicit() -> HandoffResult<()>
+{
+    let fixture = reduced_graph_store_fixture("bundle_missing")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let restored = restore_register_masked_aot_bundle(
+            &mut store,
+            bundle_restore_request(&programs, maximum_bytes),
+        )
+        .map_err(|error| format!("missing AOT bundle restore: {error:?}"))?;
+        if restored == RegisterMaskedAotBundlePersistenceLoad::Missing {
+            Ok(())
+        } else {
+            Err(String::from("missing AOT bundle invented authority"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_bundle_rejects_reorder() -> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("bundle_reordered")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let aot = prepare_reduced_dispatch_aot(&graph)?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let _write = persist_register_masked_aot_bundle(
+            &mut store,
+            bundle_persist_request(&programs, &aot, maximum_bytes),
+        )
+        .map_err(|error| format!("AOT bundle persist: {error:?}"))?;
+        let mut reordered = programs.clone();
+        reordered.reverse();
+        match restore_register_masked_aot_bundle(
+            &mut store,
+            bundle_restore_request(&reordered, maximum_bytes),
+        ) {
+            Err(RegisterMaskedAotBundleRestorePersistenceError::Native {
+                index: 0,
+                ..
+            }) => Ok(()),
+            other => {
+                Err(format!("reordered AOT bundle was accepted: {other:?}"))
+            },
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_bundle_requires_complete_set_before_publish()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("bundle_incomplete")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let first = programs
+            .first()
+            .ok_or_else(|| String::from("AOT bundle graph was empty"))?;
+        let incomplete =
+            prepare_one(first).map_err(|error| error.to_string())?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        blob_store::NativeContinuationBlobStore::replace(&mut store, b"before")
+            .map_err(|error| format!("cannot seed prior bundle: {error:?}"))?;
+        let result = persist_register_masked_aot_bundle(
+            &mut store,
+            bundle_persist_request(&programs, &incomplete, maximum_bytes),
+        );
+        if !matches!(
+            &result,
+            Err(RegisterMaskedAotBundleStoreError::Preparation(error))
+                if **error
+                    == RegisterMaskedAotBundlePreparationError::Uncovered {
+                        index: 1,
+                    }
+        ) {
+            return Err(format!(
+                "incomplete AOT bundle was published: {result:?}"
+            ));
+        }
+        let retained = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("cannot reload prior bundle: {error:?}"))?;
+        if retained.as_deref() == Some(b"before") {
+            Ok(())
+        } else {
+            Err(String::from("failed bundle replaced prior atomic blob"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_bundle_round_trips_reduced_graph()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("bundle_round_trip")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let aot = prepare_reduced_dispatch_aot(&graph)?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let durable = persist_register_masked_aot_bundle_durably(
+            &mut store,
+            bundle_persist_request(&programs, &aot, maximum_bytes),
+        )
+        .map_err(|error| format!("durable AOT bundle persist: {error:?}"))?;
+        if !durable.is_durable() || durable.bytes() == 0 {
+            return Err(String::from(
+                "AOT bundle durability was not confirmed",
+            ));
+        }
+        let restored = restore_register_masked_aot_bundle(
+            &mut store,
+            bundle_restore_request(&programs, maximum_bytes),
+        )
+        .map_err(|error| format!("durable AOT bundle restore: {error:?}"))?;
+        let RegisterMaskedAotBundlePersistenceLoad::Restored {
+            bytes,
+            objects,
+            set,
+        } = restored
+        else {
+            return Err(String::from("durable AOT bundle disappeared"));
+        };
+        if bytes != durable.bytes() || objects != programs.len() {
+            return Err(String::from(
+                "AOT bundle publication evidence drifted",
+            ));
+        }
+        for program in &programs {
+            let selected = select_ahead_of_execution_register_masked_tier(
+                program,
+                safe_rust_profiled_capability(),
+                windows_x86_64(),
+                &set,
+            )
+            .map_err(|error| error.to_string())?;
+            if !matches!(
+                selected,
+                AheadOfExecutionRegisterMaskedTier::Direct(_)
+            ) {
+                return Err(String::from(
+                    "restored bundle lost exact coverage",
+                ));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
 }
 
 #[test]

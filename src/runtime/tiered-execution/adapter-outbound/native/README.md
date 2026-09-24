@@ -1137,6 +1137,15 @@ object-only authority. A restored collection can be sealed into a read-only AOT
 set without re-emission; filesystem paths and executable residency remain
 separate ownership concerns.
 
+Complete caller-ordered v6 sets can additionally be persisted as one atomic AOT
+bundle. Bundle framing stores no native key authority: it carries only a schema
+marker/version, object count, per-object lengths, and canonical COFF payloads.
+The entire bounded bundle is prepared before one blob replacement.
+
+Restore checks the stored count against the expected program sequence, rebuilds
+each current key, and independently verifies every object before sealing a set.
+Incomplete, reordered, or malformed bundles cannot expose partial AOT authority.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

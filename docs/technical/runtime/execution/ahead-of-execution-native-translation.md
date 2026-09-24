@@ -139,11 +139,25 @@ structural plus canonical-byte verification before returning an object-only
 artifact. Restored artifacts can be sealed into an exact-key AOT set without
 re-emission, while executable-memory authority remains outside this boundary.
 
+Complete ordered v6 object sets now also cross one atomic durable bundle
+boundary. Canonical bundle framing contains only a schema marker/version, the
+expected object count, per-object lengths, and verified COFF payloads; no native
+key is serialized as authority. Publication selects every expected exact
+artifact read-only and constructs the entire bounded blob before the single
+replacement, so a missing later artifact cannot publish a prefix.
+
+Restore compares the untrusted stored count with the caller-owned expected
+program sequence before object decoding, and that stored count never controls an
+eager allocation. Every object is rebound to its expected program/runtime/host
+and independently reverified before any sealed AOT set is returned. Reordered,
+truncated, trailing, incomplete, oversized, or unverifiable bundles fail closed,
+while the filesystem blob adapter supplies the single atomic publication point
+and explicit durability confirmation.
+
 ### Remaining Scope
 
-Transactional multi-object bundle persistence, whole-graph executable
-residency/lifecycle ownership, and verified collapsed multi-step native effects
-remain open.
+Whole-graph executable residency/lifecycle ownership and verified collapsed
+multi-step native effects remain open.
 
 ## Invariants
 

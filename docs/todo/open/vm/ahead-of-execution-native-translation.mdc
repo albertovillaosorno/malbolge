@@ -105,9 +105,15 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   structural plus canonical-byte verification. Missing or corrupted objects fail
   closed, and restored artifacts may be sealed into an exact-key AOT set without
   re-emission.
-- Transactional multi-object bundle persistence, executable residency ownership
-  for whole reduced graphs, and verified collapsed multi-step native effects
-  remain open.
+- Complete ordered register-masked object sets now have atomic bounded bundle
+  persistence through one canonical blob. Framing stores only version/count,
+  per-object lengths, and COFF bytes; publication resolves every expected exact
+  artifact before replacement, so incomplete sets cannot publish prefixes.
+  Restore checks stored count against the caller-owned program sequence and
+  reverifies every object under current IR/runtime/host assumptions before a set
+  is returned; reordered or malformed bundles fail closed.
+- Executable residency ownership for whole reduced graphs and verified collapsed
+  multi-step native effects remain open.
 
 ## Acceptance
 
