@@ -2317,6 +2317,15 @@ impl<'buffers, 'executable>
         self.invocation.apply_expected_for_test();
     }
 
+    /// Applies one structurally admitted process-call response.
+    pub(crate) fn apply_process_response(
+        &mut self,
+        response: &NativeProcessCallResponse,
+    ) -> Result<i32, NativeProcessCallResponseError> {
+        let mapping_id = self.mapping_id();
+        self.invocation.apply_process_response(mapping_id, response)
+    }
+
     /// Admits one raw status through the bound collapsed v6 contract.
     pub(crate) fn complete(
         self,
@@ -2357,6 +2366,14 @@ impl<'buffers, 'executable>
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }
+    }
+
+    /// Copies this exact collapsed call into pointer-free process evidence.
+    pub(crate) fn process_request(&self) -> NativeProcessCallRequest {
+        self.invocation.process_request(
+            self.mapping_id(),
+            self.executable.image().entry_offset(),
+        )
     }
 
     /// Returns the mutable ABI state pointer for the dedicated runner.

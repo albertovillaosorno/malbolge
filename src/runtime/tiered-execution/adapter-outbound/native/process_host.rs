@@ -13,8 +13,8 @@
 // - Must-Not:
 //   - Admit lifecycle/semantic evidence or perform local memory/native calls.
 // - Allows:
-//   - Inputs: existing native executable-memory adapter requests.
-//   - Outputs: decoded untrusted MBNPM1 reports or stable host errors.
+//   - Inputs: executable-memory requests and exact bound native invocations.
+//   - Outputs: decoded untrusted MBNPM1/MBNPC1 evidence or stable host errors.
 //   - Side effects: bounded exchanges through one retained child session.
 // - Split-When:
 //   - Runner integration requires independent call-session policy.
@@ -25,8 +25,7 @@
 // - Description:
 //   - Existing safe lifecycle code remains the sole report-admission authority.
 // - Usage:
-//   - Passed to native loaders and later to single-host execution
-//     orchestration.
+//   - Passed to native loaders and exact runner orchestration.
 // - Defaults:
 //   - Remote, framing, transport, or response-shape failure fails closed.
 //
@@ -37,6 +36,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use super::invocation::{
     PreparedDirectFusedNativeInvocation, PreparedNativeExecutableInvocation,
+    PreparedRegisterMaskedNoOperationHaltNativeInvocation,
 };
 use super::lifecycle::{
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
@@ -59,7 +59,10 @@ use super::process_memory_wire::{
     native_process_memory_response_byte_limit,
 };
 use super::process_session::{NativeProcessSession, NativeProcessSessionError};
-use super::runner::{DirectFusedNativeRunner, NativeExecutableRunner};
+use super::runner::{
+    DirectFusedNativeRunner, NativeExecutableRunner,
+    RegisterMaskedNoOperationHaltNativeRunner,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NativeProcessHostErrorKind {
@@ -82,7 +85,7 @@ pub struct NativeProcessHostError {
     wire_error: Option<NativeProcessMemoryWireError>,
 }
 
-/// One persistent child owner for native executable-memory and future calls.
+/// One persistent child owner for native executable memory and calls.
 #[derive(Debug)]
 pub struct NativeProcessHost {
     session: NativeProcessSession,
@@ -308,6 +311,29 @@ impl NativeProcessHost {
         }
     }
 
+    fn exchange_register_masked_no_operation_halt_call(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationHaltNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, NativeProcessHostError> {
+        let request = invocation.process_request();
+        let encoded = encode_native_process_call_request(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response_limit = native_process_call_response_byte_limit(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response = self
+            .session
+            .exchange(&encoded, response_limit)
+            .map_err(NativeProcessHostError::session)?;
+        let decoded = decode_native_process_call_response(&response, &request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        invocation
+            .apply_process_response(&decoded)
+            .map_err(NativeProcessHostError::call_response)
+    }
+
     /// Takes ownership of one already-spawned persistent native child session.
     #[must_use]
     pub const fn new(session: NativeProcessSession) -> Self {
@@ -396,6 +422,20 @@ impl DirectFusedNativeRunner for NativeProcessHost {
         invocation: &mut PreparedDirectFusedNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.exchange_fused_call(invocation)
+    }
+}
+
+impl RegisterMaskedNoOperationHaltNativeRunner for NativeProcessHost {
+    type Error = NativeProcessHostError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationHaltNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, Self::Error> {
+        self.exchange_register_masked_no_operation_halt_call(invocation)
     }
 }
 

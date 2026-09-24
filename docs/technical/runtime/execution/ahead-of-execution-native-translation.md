@@ -189,7 +189,12 @@ the exact synchronized collapsed executable.
 A caller-owned runner port receives only that exact bound executable view.
 Loaded-call orchestration restores the complete entry snapshot after runner
 failure and delegates final status/state admission to the existing semantic
-verifier. Concrete process-backed foreign-call authority remains open.
+verifier. The persistent process host now projects that bound call through the
+existing `MBNPC1` wire, validates the returned mapping/state/buffer evidence
+before semantic completion, and owns the foreign call only inside the isolated
+worker. Real x86-64 POSIX-worker evidence executes and releases the collapsed
+Windows-ABI object without poisoning the session.
+
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.
 

@@ -130,8 +130,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - A caller-owned runner port now executes only an exactly bound collapsed
   mapping, restores the complete prepared snapshot on runner failure, and
   admits completion through the existing semantic verifier.
-- Concrete process-backed foreign-call execution for the collapsed shape
-  remains open; all other multi-step shapes stay fail-closed.
+- The persistent native process host now projects that exact bound call through
+  the existing `MBNPC1` protocol, validates returned mapping/state/buffer
+  evidence before semantic completion, and delegates the foreign call to the
+  isolated worker. Real x86-64 POSIX-worker integration executes and releases
+  the collapsed Windows-ABI object without poisoning the session.
+- All other multi-step shapes stay fail-closed.
 
 ## Acceptance
 

@@ -1160,10 +1160,14 @@ COFF and byte-exact verification. Its relocation-free load image feeds a typed
 strict-W^X lifecycle with synchronized ready ownership and retryable release.
 
 ABI preparation derives the collapsed expected state, permits only dead A/I/O
-rebasing, and binds to the exact ready image. A caller-owned runner port now
+rebasing, and binds to the exact ready image. A caller-owned runner port
 executes only that bound view, with rollback on runner failure and ordinary
-semantic completion admission. Concrete process-backed foreign-call authority
-remains separate.
+semantic
+completion admission. `NativeProcessHost` projects the same view through the
+existing `MBNPC1` request/response wire and delegates the foreign call to the
+isolated worker; response evidence is structurally admitted before semantic
+completion. Real x86-64 POSIX-worker integration covers the collapsed call and
+release path.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
