@@ -179,6 +179,13 @@ successor steps, budget-exhausted completion at two steps, and canonical v6
 identity. This pair admission grants no target, object, executable-memory, or
 call authority.
 
+A third reviewed semantic shape now admits one v6 no-operation followed by
+rotate. It independently rechecks both write masks, three distinct memory
+live-ins, both code encryptions, the exact rotated data/accumulator value,
+pointer successors, effect continuity, budget-exhausted completion, and
+canonical v6 identity. This admission grants no target, object, executable
+memory, ABI, or call authority.
+
 ### Remaining Scope
 
 The admitted no-operation/halt shape now has its own backend identity and
@@ -228,8 +235,9 @@ evidence, and delegates the foreign call only to the isolated worker. Real
 x86-64 POSIX-worker evidence executes and releases the collapsed pair object
 without poisoning the session.
 
-Additional multi-step shapes stay unsupported until each receives an equally
-explicit semantic and native proof.
+The no-operation/rotate shape remains semantic-only until it receives its own
+native proof. Additional multi-step shapes stay unsupported until each receives
+equally explicit semantic and native proof.
 
 ## Invariants
 

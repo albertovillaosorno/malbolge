@@ -125,6 +125,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   live-ins and encryptions, exact continuity, both pointer-successor steps,
   budget-exhausted completion at two steps, and canonical v6 identity. This
   pair still has no backend/object/load/invocation authority.
+- A third reviewed semantic shape now admits a v6 no-operation followed by
+  rotate. It independently rechecks both write masks, three distinct memory
+  live-ins, both code encryptions, exact rotate data/accumulator mutation,
+  pointer successors, effect continuity, budget-exhausted completion, and
+  canonical v6 identity. It has no backend/object/load/ABI/call authority.
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
