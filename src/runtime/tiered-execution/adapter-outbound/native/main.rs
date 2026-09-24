@@ -655,6 +655,7 @@ pub use lifecycle::{
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
+    ReadyRegisterMaskedRotateNoOperationNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedCrazyNativeExecutable,
     SealedRegisterMaskedNativeExecutable,
@@ -665,6 +666,7 @@ pub use lifecycle::{
     SealedRegisterMaskedNonGraphicalNativeExecutable,
     SealedRegisterMaskedOutputNativeExecutable,
     SealedRegisterMaskedRotateNativeExecutable,
+    SealedRegisterMaskedRotateNoOperationNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
@@ -675,6 +677,7 @@ pub use lifecycle::{
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     StagedRegisterMaskedOutputNativeExecutable,
     StagedRegisterMaskedRotateNativeExecutable,
+    StagedRegisterMaskedRotateNoOperationNativeExecutable,
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
@@ -688,6 +691,7 @@ pub use loader::{
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedOutputLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
+    VerifiedRegisterMaskedRotateNoOperationLoadImage,
 };
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
@@ -734,6 +738,9 @@ pub use platform::{
     RegisterMaskedRotateNativeExecutableLoadResult,
     RegisterMaskedRotateNativeExecutableReleaseFailure,
     RegisterMaskedRotateNativeExecutableReleaseResult,
+    RegisterMaskedRotateNoOperationNativeExecutableLoadResult,
+    RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure,
+    RegisterMaskedRotateNoOperationNativeExecutableReleaseResult,
     load_direct_fused_native_executable,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_crazy_native_executable,
@@ -745,6 +752,7 @@ pub use platform::{
     load_register_masked_non_graphical_native_executable,
     load_register_masked_output_native_executable,
     load_register_masked_rotate_native_executable,
+    load_register_masked_rotate_no_operation_native_executable,
     release_direct_fused_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
     release_register_masked_crazy_native_executable,
@@ -756,6 +764,7 @@ pub use platform::{
     release_register_masked_non_graphical_native_executable,
     release_register_masked_output_native_executable,
     release_register_masked_rotate_native_executable,
+    release_register_masked_rotate_no_operation_native_executable,
 };
 pub use process_call::{
     NativeProcessCallRequest, NativeProcessCallResponse,

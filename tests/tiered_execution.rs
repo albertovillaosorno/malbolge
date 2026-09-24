@@ -31230,10 +31230,18 @@ fn aot_register_masked_collapsed_rotate_no_operation_object_is_canonical()
             safe_rust_profiled_capability(),
         )
         .map_err(|error| error.to_string())?;
+        let image = en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(
+            &verified,
+        )
+        .map_err(|error| error.to_string())?;
         if verified.object().is_empty()
             || verified.key() != candidate.key()
             || verified.admission().identity() != candidate.key().ir()
             || verified.target_triple() != candidate.target_triple()
+            || image.key() != verified.key()
+            || image.code().is_empty()
+            || image.entry_code().is_empty()
+            || image.policy() != en::NativeExecutableLoadPolicy::strict_wx()
         {
             return Err(format!(
                 "collapsed rotate/no-op object identity drifted for {isa:?}",
@@ -31346,6 +31354,27 @@ fn aot_register_masked_collapsed_no_operation_rotate_object_is_canonical()
     Ok(())
 }
 
+fn verified_collapsed_rotate_no_operation(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<
+    en::VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+    String,
+> {
+    let candidate = en::emit_direct_register_masked_rotate_no_operation_coff(
+        program,
+        safe_rust_profiled_capability(),
+        register_masked_rotate_no_operation_target(isa),
+    )
+    .map_err(|error| error.to_string())?;
+    en::verify_direct_register_masked_rotate_no_operation(
+        &candidate,
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())
+}
+
 fn verified_collapsed_no_operation_rotate(
     program: &RegisterMaskedRegionEffectProgram,
     isa: HostIsa,
@@ -31429,6 +31458,213 @@ fn apply_collapsed_no_operation_rotate_expected_memory(
         }
     }
     Ok(())
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_lifecycle_retains_identity()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    for (isa, mapping_value, base_value) in [
+        (HostIsa::X86_64, 731u64, 0x87000usize),
+        (HostIsa::AArch64, 732u64, 0x88000usize),
+    ] {
+        let artifact = verified_collapsed_rotate_no_operation(&program, isa)?;
+        let image = en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(
+            &artifact,
+        )
+        .map_err(|error| error.to_string())?;
+        let mapping_id = native_executable_mapping_id(mapping_value)?;
+        let base = native_executable_address(base_value)?;
+        let staged =
+            en::StagedRegisterMaskedRotateNoOperationNativeExecutable::stage(
+                &image,
+                NativeExecutableMappingReport::new(
+                    mapping_id,
+                    base,
+                    image.allocation_len(),
+                    NativeExecutablePermission::ReadWrite,
+                ),
+                image.code(),
+            )
+            .map_err(|error| error.to_string())?;
+        let sealed = staged
+            .admit_read_execute(NativeExecutableMappingReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+                NativeExecutablePermission::ReadExecute,
+            ))
+            .map_err(|error| error.to_string())?;
+        let ready = sealed
+            .admit_instruction_sync(NativeInstructionSyncReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+            ))
+            .map_err(|error| error.to_string())?;
+        let release = ready.release_request();
+        if ready.image() != &image
+            || ready.key() != artifact.key()
+            || ready.mapping().mapping_id() != mapping_id
+            || ready.entry_address() != base
+            || ready.target() != artifact.key().target()
+            || ready.target_triple() != artifact.target_triple()
+            || release.mapping_id() != mapping_id
+            || release.base_address() != base
+            || release.mapped_len() != image.allocation_len()
+        {
+            return Err(format!(
+                "collapsed rotate/no-op lifecycle identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_lifecycle_rejects_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mapping_id = native_executable_mapping_id(733)?;
+    let base = native_executable_address(0x89000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut changed = image.code().to_vec();
+    let first = changed.first_mut().ok_or_else(|| {
+        String::from("collapsed rotate/no-op lifecycle code missing")
+    })?;
+    *first ^= 1;
+    if en::StagedRegisterMaskedRotateNoOperationNativeExecutable::stage(
+        &image, writable, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op lifecycle admitted changed code",
+        ));
+    }
+    let staged =
+        en::StagedRegisterMaskedRotateNoOperationNativeExecutable::stage(
+            &image,
+            writable,
+            image.code(),
+        )
+        .map_err(|error| error.to_string())?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(734)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op lifecycle admitted mapping identity drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_platform_lifecycle() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(735)?,
+        native_executable_address(0x8a000)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    if ready.key() != image.key()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op platform load drifted",
+        ));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if adapter.release_requests == [release] {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-op platform release drifted",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_rotate_no_op_release_retry() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(736)?,
+        native_executable_address(0x8b000)?,
+    )
+    .with_release_failures(1);
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        en::release_register_masked_rotate_no_operation_native_executable(
+            &mut adapter,
+            ready,
+        )
+    else {
+        return Err(String::from(
+            "collapsed rotate/no-op release failure was unexpectedly ignored",
+        ));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op release failure lost ready ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-op release retry count drifted",
+        ))
+    }
 }
 
 #[test]

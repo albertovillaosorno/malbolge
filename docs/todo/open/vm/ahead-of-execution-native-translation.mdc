@@ -160,7 +160,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - Non-aliasing rotate/no-operation now has a distinct backend identity and
   canonical x86-64/AArch64 Windows COFF. Independent verification reconstructs
   semantic admission, exact v6 key/target assumptions, COFF structure, and
-  canonical bytes. Load/lifecycle/ABI/runner/call authority remains absent.
+  canonical bytes.
+- Its dedicated relocation-free load image proves exact extraction, ISA
+  alignment, and strict W^X. Shape-specific typestate admits exact copy,
+  same-mapping RW-to-RX, full instruction synchronization, and retryable release
+  ownership while retaining the complete native identity. ABI/runner/call
+  authority remains absent.
 
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the

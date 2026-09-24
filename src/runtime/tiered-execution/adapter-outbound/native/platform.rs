@@ -50,6 +50,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
+    ReadyRegisterMaskedRotateNoOperationNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedCrazyNativeExecutable,
     SealedRegisterMaskedNativeExecutable,
@@ -60,6 +61,7 @@ use super::lifecycle::{
     SealedRegisterMaskedNonGraphicalNativeExecutable,
     SealedRegisterMaskedOutputNativeExecutable,
     SealedRegisterMaskedRotateNativeExecutable,
+    SealedRegisterMaskedRotateNoOperationNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
@@ -70,6 +72,7 @@ use super::lifecycle::{
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     StagedRegisterMaskedOutputNativeExecutable,
     StagedRegisterMaskedRotateNativeExecutable,
+    StagedRegisterMaskedRotateNoOperationNativeExecutable,
     validate_direct_fused_writable_mapping,
     validate_execution_geometry_writable_mapping,
     validate_register_masked_crazy_writable_mapping,
@@ -79,6 +82,7 @@ use super::lifecycle::{
     validate_register_masked_no_operation_writable_mapping,
     validate_register_masked_non_graphical_writable_mapping,
     validate_register_masked_output_writable_mapping,
+    validate_register_masked_rotate_no_operation_writable_mapping,
     validate_register_masked_rotate_writable_mapping,
     validate_register_masked_writable_mapping, validate_writable_mapping,
 };
@@ -93,6 +97,7 @@ use super::loader::{
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedOutputLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
+    VerifiedRegisterMaskedRotateNoOperationLoadImage,
 };
 
 /// Exact writable allocation request derived from one verified load image.
@@ -230,6 +235,15 @@ pub struct RegisterMaskedNoOperationRotateNativeExecutableReleaseFailure<Error>
     executable: Box<ReadyRegisterMaskedNoOperationRotateNativeExecutable>,
 }
 
+/// Failed collapsed v6 rotate/no-operation release retaining exact executable
+/// identity.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure<Error>
+{
+    error: Box<Error>,
+    executable: Box<ReadyRegisterMaskedRotateNoOperationNativeExecutable>,
+}
+
 /// Failed v6 rotate release retaining exact executable identity.
 #[derive(Debug, Eq, PartialEq)]
 pub struct RegisterMaskedRotateNativeExecutableReleaseFailure<Error> {
@@ -346,6 +360,21 @@ pub type RegisterMaskedNoOperationRotateNativeExecutableReleaseResult<Error> =
     Result<
         (),
         RegisterMaskedNoOperationRotateNativeExecutableReleaseFailure<Error>,
+    >;
+
+/// Result of loading one collapsed v6 rotate/no-operation native executable.
+pub type RegisterMaskedRotateNoOperationNativeExecutableLoadResult<Error> =
+    Result<
+        ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+        NativeExecutableLoadFailure<Error>,
+    >;
+
+/// Result of explicitly releasing one collapsed v6 rotate/no-operation
+/// executable.
+pub type RegisterMaskedRotateNoOperationNativeExecutableReleaseResult<Error> =
+    Result<
+        (),
+        RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure<Error>,
     >;
 
 /// Result of loading one v6 rotate native executable.
@@ -1096,6 +1125,59 @@ impl<Error: Display> Display
     }
 }
 
+impl<Error>
+    RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure<Error>
+{
+    /// Returns the platform release error.
+    #[must_use]
+    pub const fn error(&self) -> &Error {
+        &self.error
+    }
+
+    /// Returns the exact collapsed v6 executable retained for retry.
+    #[must_use]
+    pub fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedRotateNoOperationNativeExecutable {
+        self.executable.as_ref()
+    }
+
+    /// Retries release without losing collapsed rotate/no-op v6 identity after
+    /// failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refreshed failure retaining the same executable on failure.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedRotateNoOperationNativeExecutableReleaseResult<Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = Error>,
+    {
+        let request = self.executable.release_request();
+        match adapter.release(request) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Self {
+                error: Box::new(error),
+                executable: self.executable,
+            }),
+        }
+    }
+}
+
+impl<Error: Display> Display
+    for RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure<Error>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(
+            f,
+            "collapsed v6 rotate/no-operation native release failed: {}",
+            self.error
+        )
+    }
+}
+
 impl<Error> RegisterMaskedRotateNativeExecutableReleaseFailure<Error> {
     /// Returns the platform release error.
     #[must_use]
@@ -1681,6 +1763,66 @@ where
     }
 }
 
+/// Loads one verified collapsed v6 rotate/no-operation image through the
+/// adapter.
+///
+/// Every post-allocation failure attempts exact release before returning. The
+/// result remains collapsed-rotate/no-op-specific with no binding or runner
+/// authority.
+///
+/// # Errors
+///
+/// Returns [`NativeExecutableLoadFailure`] when an adapter operation or
+/// lifecycle admission fails.
+pub fn load_register_masked_rotate_no_operation_native_executable<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedRotateNoOperationLoadImage,
+) -> RegisterMaskedRotateNoOperationNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let allocated =
+        allocate_register_masked_rotate_no_operation_image(adapter, image)?;
+    let staged = copy_register_masked_rotate_no_operation_image(
+        adapter, image, allocated,
+    )?;
+    let sealed = protect_register_masked_rotate_no_operation_image(
+        adapter, staged, allocated,
+    )?;
+    synchronize_register_masked_rotate_no_operation_image(
+        adapter, sealed, allocated,
+    )
+}
+
+/// Releases one ready collapsed v6 rotate/no-operation executable with retry
+/// ownership.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure`]
+/// with the exact ready executable when the adapter rejects release.
+pub fn release_register_masked_rotate_no_operation_native_executable<
+    Adapter,
+    Error,
+>(
+    adapter: &mut Adapter,
+    executable: ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+) -> RegisterMaskedRotateNoOperationNativeExecutableReleaseResult<Error>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = Error>,
+{
+    let request = executable.release_request();
+    match adapter.release(request) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(
+            RegisterMaskedRotateNoOperationNativeExecutableReleaseFailure {
+                error: Box::new(error),
+                executable: Box::new(executable),
+            },
+        ),
+    }
+}
+
 /// Loads one verified v6 rotate image through the platform adapter.
 ///
 /// Every post-allocation failure attempts exact release before returning. The
@@ -2167,6 +2309,47 @@ where
     let release_request = NativeExecutableReleaseRequest::from_mapping(mapping);
     if let Err(error) =
         validate_register_masked_no_operation_rotate_writable_mapping(
+            image, mapping,
+        )
+    {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Allocate,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            release_request,
+        ));
+    }
+    Ok(AllocatedNativeMapping { mapping, release_request })
+}
+
+fn allocate_register_masked_rotate_no_operation_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedRotateNoOperationLoadImage,
+) -> NativeExecutableLoadStepResult<AllocatedNativeMapping, Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeExecutableAllocationRequest::new(
+        image.allocation_len(),
+        image.minimum_instruction_alignment(),
+        image.policy().initial_permissions(),
+    );
+    let mapping = match adapter.allocate_writable(request) {
+        Ok(mapping) => mapping,
+        Err(error) => {
+            return Err(NativeExecutableLoadFailure {
+                cause: NativeExecutableLoadFailureCause::Adapter(Box::new(
+                    error,
+                )),
+                phase: NativeExecutableLoadPhase::Allocate,
+                release_error: None,
+                release_request: None,
+            });
+        },
+    };
+    let release_request = NativeExecutableReleaseRequest::from_mapping(mapping);
+    if let Err(error) =
+        validate_register_masked_rotate_no_operation_writable_mapping(
             image, mapping,
         )
     {
@@ -2808,6 +2991,63 @@ where
     })
 }
 
+fn copy_register_masked_rotate_no_operation_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedRotateNoOperationLoadImage,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    StagedRegisterMaskedRotateNoOperationNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let copied = match adapter.copy_code(allocated.mapping, image.code()) {
+        Ok(copied) => copied,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Copy,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    if copied.mapping_id() != allocated.mapping.mapping_id() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyMappingIdentity,
+            )),
+            allocated.release_request,
+        ));
+    }
+    if copied.start_address() != allocated.mapping.base_address() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyStartAddress,
+            )),
+            allocated.release_request,
+        ));
+    }
+    StagedRegisterMaskedRotateNoOperationNativeExecutable::stage(
+        image,
+        allocated.mapping,
+        copied.copied_code(),
+    )
+    .map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
 fn copy_register_masked_rotate_image<Adapter>(
     adapter: &mut Adapter,
     image: &VerifiedRegisterMaskedRotateLoadImage,
@@ -3281,6 +3521,38 @@ where
     })
 }
 
+fn protect_register_masked_rotate_no_operation_image<Adapter>(
+    adapter: &mut Adapter,
+    staged: StagedRegisterMaskedRotateNoOperationNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    SealedRegisterMaskedRotateNoOperationNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let report = match adapter.protect_read_execute(allocated.mapping) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Protect,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    staged.admit_read_execute(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Protect,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
 fn protect_register_masked_rotate_image<Adapter>(
     adapter: &mut Adapter,
     staged: StagedRegisterMaskedRotateNativeExecutable,
@@ -3651,6 +3923,40 @@ fn synchronize_register_masked_no_operation_rotate_image<Adapter>(
     sealed: SealedRegisterMaskedNoOperationRotateNativeExecutable,
     allocated: AllocatedNativeMapping,
 ) -> RegisterMaskedNoOperationRotateNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeInstructionSyncRequest::new(
+        sealed.mapping().mapping_id(),
+        sealed.mapping().base_address(),
+        sealed.image().allocation_len(),
+    );
+    let report = match adapter.synchronize_instructions(request) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Synchronize,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    sealed.admit_instruction_sync(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Synchronize,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
+fn synchronize_register_masked_rotate_no_operation_image<Adapter>(
+    adapter: &mut Adapter,
+    sealed: SealedRegisterMaskedRotateNoOperationNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> RegisterMaskedRotateNoOperationNativeExecutableLoadResult<Adapter::Error>
 where
     Adapter: NativeExecutableMemoryAdapter,
 {

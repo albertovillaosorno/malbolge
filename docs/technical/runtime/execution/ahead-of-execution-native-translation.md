@@ -270,7 +270,13 @@ where rotate rewrites the second instruction remains rejected.
 That non-aliasing rotate/no-operation shape now has a distinct backend identity
 and canonical x86-64/AArch64 Windows COFF. Verification reconstructs semantic
 admission, exact v6 key/target assumptions, COFF structure, and canonical bytes.
-Load, lifecycle, ABI, runner, and foreign-call authority remain absent.
+
+Its dedicated relocation-free load image proves exact extraction, ISA alignment,
+and strict W^X. Shape-specific typestate admits exact copy, same-mapping
+RW-to-RX, complete instruction synchronization, and retained release evidence.
+The platform adapter transactionally allocates, copies, protects, synchronizes,
+and releases this exact image; failed release retains retry ownership. ABI,
+runner, and foreign-call authority remain absent.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.

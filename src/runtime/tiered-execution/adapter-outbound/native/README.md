@@ -1203,8 +1203,13 @@ remains rejected.
 
 That shape now has its own backend identity and byte-canonical x86-64/AArch64
 Windows COFF. Independent verification reconstructs semantic admission, exact
-v6 key/target assumptions, COFF structure, and canonical bytes. Load,
-executable-memory, ABI, runner, and foreign-call authority remain absent.
+v6 key/target assumptions, COFF structure, and canonical bytes.
+
+Its dedicated relocation-free load image and shape-specific typestate retain
+complete native identity through exact copy, same-mapping RW-to-RX, full
+instruction synchronization, and retryable release. The platform adapter
+performs the same strict-W^X operation order without granting ABI, runner, or
+foreign-call authority.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and
