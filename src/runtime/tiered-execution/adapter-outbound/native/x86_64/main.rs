@@ -48,9 +48,10 @@ use super::direct::{
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
     DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedCrazyGuard,
-    DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedOutputGuard,
-    DirectRegisterMaskedRotateGuard, DirectRegisterMaskedTerminalGuard,
-    DirectRotateCommit, DirectRotateGuard,
+    DirectRegisterMaskedNoOperationGuard,
+    DirectRegisterMaskedNoOperationHaltTemplate,
+    DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateGuard,
+    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -194,6 +195,67 @@ pub(super) fn register_masked_no_operation_code(
     let guard_miss = code.len();
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+/// Encodes one collapsed v6 no-operation followed by graphical halt.
+#[must_use]
+pub(super) fn register_masked_no_operation_halt_code(
+    template: DirectRegisterMaskedNoOperationHaltTemplate,
+) -> Option<Vec<u8>> {
+    if template.encrypted_address != template.entry_code_pointer {
+        return None;
+    }
+    let code_offset = memory_byte_offset(template.entry_code_pointer)?;
+    let halt_offset = memory_byte_offset(template.next_code_pointer)?;
+    let mut code = Vec::with_capacity(176);
+    let mut guard_jumps = Vec::with_capacity(9);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    push_u32_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        0x44,
+        template.entry_code_pointer,
+    );
+    push_u32_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        0x48,
+        template.entry_data_pointer,
+    );
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&template.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        template.code_live_in,
+    );
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        halt_offset,
+        template.halt_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&code_offset.to_le_bytes());
+    code.extend_from_slice(&template.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&template.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&template.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
 }
 

@@ -32,7 +32,9 @@
 //   - Any profile, mask, effect, live-in, continuity, or outcome drift rejects.
 //
 
-//! Reviewed semantic admission for collapsed register-masked v6 regions.
+//! Reviewed semantic admission and canonical objects for collapsed v6 regions.
+
+use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use malbolge::{
     EFFECT_IR_REGISTER_MASK_VERSION, MemoryLiveIn, ProfileMemoryDelta,
@@ -43,11 +45,120 @@ use malbolge::{
     profile_cell_decodes_to_no_operation, profile_pointer_successor,
 };
 
-use super::{RegionEffectIdentity, RegisterMaskedDirectAdmissionError};
+use super::coff::build_minimal_coff;
+use super::{
+    CoffAdmissionError, DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_REVISION,
+    DirectRegisterMaskedNoOperationHaltTemplate, HostIsa, HostOperatingSystem,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactKey, NativeIdentityError,
+    NativeTargetIdentity, RegionEffectIdentity,
+    RegisterMaskedDirectAdmissionError, RegisterMaskedDirectAdmissionErrorKind,
+    StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
+    aarch64, structurally_admit_coff, target_triple, x86_64,
+};
+
+/// Failure while emitting or verifying the collapsed no-operation/halt object.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedNoOperationHaltError {
+    /// Semantic admission rejected the source v6 region.
+    Admission(RegisterMaskedDirectAdmissionErrorKind),
+    /// Candidate key or target triple differs from reconstructed authority.
+    ArtifactIdentity,
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Complete native identity could not be represented.
+    Identity(NativeIdentityError),
+    /// Candidate bytes differ from the canonical reviewed template.
+    ObjectBytes,
+    /// Target ABI differs from the reviewed native region contract.
+    TargetAbi,
+    /// Target backend identity or revision differs.
+    TargetBackend,
+    /// Target requests unsupported host-code features.
+    TargetFeatures,
+    /// Collapsed direct objects currently require Windows COFF.
+    TargetFormat,
+}
+
+/// Byte-exact verified object for the collapsed v6 no-operation/halt shape.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
+    admission: VerifiedRegisterMaskedNoOperationHaltAdmission,
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl Display for DirectRegisterMaskedNoOperationHaltError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Admission(_kind) => {
+                "collapsed v6 no-operation/halt semantic admission failed"
+            },
+            Self::ArtifactIdentity => {
+                "collapsed v6 no-operation/halt artifact identity drifted"
+            },
+            Self::Coff(_error) => {
+                "collapsed v6 no-operation/halt COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "collapsed v6 no-operation/halt native identity failed"
+            },
+            Self::ObjectBytes => {
+                "collapsed v6 no-operation/halt object bytes drifted"
+            },
+            Self::TargetAbi => {
+                "collapsed v6 no-operation/halt target ABI is unsupported"
+            },
+            Self::TargetBackend => {
+                "collapsed v6 no-operation/halt target backend is unsupported"
+            },
+            Self::TargetFeatures => {
+                "collapsed v6 no-operation/halt target features are unsupported"
+            },
+            Self::TargetFormat => {
+                "collapsed v6 no-operation/halt backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedNoOperationHaltError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
+    /// Returns the independently reconstructed collapsed semantic admission.
+    #[must_use]
+    pub const fn admission(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationHaltAdmission {
+        &self.admission
+    }
+
+    /// Returns the exact complete v6 native artifact key.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns independently verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact target triple retained by structural admission.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
 
 /// Proved net effect for one collapsed no-operation followed by halt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRegisterMaskedNoOperationHaltAdmission {
+    code_live_in: MemoryLiveIn,
     encrypted_address: u32,
     encrypted_value: u32,
     entry_code_pointer: u32,
@@ -56,9 +167,16 @@ pub struct VerifiedRegisterMaskedNoOperationHaltAdmission {
     identity: RegionEffectIdentity,
     next_code_pointer: u32,
     next_data_pointer: u32,
+    required_memory_words: u64,
 }
 
 impl VerifiedRegisterMaskedNoOperationHaltAdmission {
+    /// Returns the exact entry code-cell live-in.
+    #[must_use]
+    pub const fn code_live_in(&self) -> MemoryLiveIn {
+        self.code_live_in
+    }
+
     /// Returns the code cell encrypted by the first semantic step.
     #[must_use]
     pub const fn encrypted_address(&self) -> u32 {
@@ -105,6 +223,12 @@ impl VerifiedRegisterMaskedNoOperationHaltAdmission {
     #[must_use]
     pub const fn next_data_pointer(&self) -> u32 {
         self.next_data_pointer
+    }
+
+    /// Returns the exact declared memory capacity bound into this admission.
+    #[must_use]
+    pub const fn required_memory_words(&self) -> u64 {
+        self.required_memory_words
     }
 }
 
@@ -175,6 +299,7 @@ fn validate_no_operation_halt(
         return None;
     }
     Some(VerifiedRegisterMaskedNoOperationHaltAdmission {
+        code_live_in,
         encrypted_address: entry_code_pointer,
         encrypted_value,
         entry_code_pointer,
@@ -183,6 +308,7 @@ fn validate_no_operation_halt(
         identity,
         next_code_pointer,
         next_data_pointer,
+        required_memory_words: program.required_memory_words(),
     })
 }
 
@@ -277,4 +403,128 @@ fn second_effect_matches(
             halt_live_in.value,
             effect.before.registers.code_pointer,
         ) == Some(b'v')
+}
+
+/// Emits one untrusted canonical candidate for collapsed no-operation/halt.
+///
+/// # Errors
+///
+/// Returns a collapsed-object error on semantic admission, target, identity, or
+/// canonical byte construction failure.
+pub fn emit_direct_register_masked_no_operation_halt_coff(
+    program: &RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    target: NativeTargetIdentity,
+) -> Result<
+    UntrustedNativeObjectArtifact,
+    DirectRegisterMaskedNoOperationHaltError,
+> {
+    let admission = admit_register_masked_no_operation_halt(program, runtime)
+        .map_err(|error| {
+        DirectRegisterMaskedNoOperationHaltError::Admission(error.kind())
+    })?;
+    validate_collapsed_target(&target)?;
+    let key = NativeArtifactKey::new_register_masked(program, target)
+        .map_err(DirectRegisterMaskedNoOperationHaltError::Identity)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = canonical_collapsed_coff(&key, &admission)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+/// Promotes only exact canonical collapsed no-operation/halt object bytes.
+///
+/// The verifier independently reconstructs semantic admission, exact v6 key,
+/// target contract, structural COFF admission, and canonical instruction bytes.
+///
+/// # Errors
+///
+/// Returns a collapsed-object error on any semantic, identity, target,
+/// structural, or canonical-byte mismatch.
+pub fn verify_direct_register_masked_no_operation_halt(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+) -> Result<
+    VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
+    DirectRegisterMaskedNoOperationHaltError,
+> {
+    let admission = admit_register_masked_no_operation_halt(program, runtime)
+        .map_err(|error| {
+        DirectRegisterMaskedNoOperationHaltError::Admission(error.kind())
+    })?;
+    validate_collapsed_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )
+    .map_err(DirectRegisterMaskedNoOperationHaltError::Identity)?;
+    if artifact.key() != &expected_key
+        || artifact.target_triple()
+            != target_triple(expected_key.target().host_isa())
+    {
+        return Err(DirectRegisterMaskedNoOperationHaltError::ArtifactIdentity);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = canonical_collapsed_coff(&expected_key, &admission)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedNoOperationHaltError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
+        admission,
+        artifact: admitted,
+    })
+}
+
+fn validate_collapsed_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedNoOperationHaltError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedNoOperationHaltError::TargetFormat);
+    }
+    if target.backend_id()
+        != DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_REVISION
+    {
+        return Err(DirectRegisterMaskedNoOperationHaltError::TargetBackend);
+    }
+    if target.native_abi_revision() != NATIVE_REGION_ABI_REVISION {
+        return Err(DirectRegisterMaskedNoOperationHaltError::TargetAbi);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedNoOperationHaltError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn canonical_collapsed_coff(
+    key: &NativeArtifactKey,
+    admission: &VerifiedRegisterMaskedNoOperationHaltAdmission,
+) -> Result<Vec<u8>, DirectRegisterMaskedNoOperationHaltError> {
+    let code_live_in = admission.code_live_in();
+    let halt_live_in = admission.halt_live_in();
+    let template = DirectRegisterMaskedNoOperationHaltTemplate {
+        code_live_in: code_live_in.value,
+        encrypted_address: admission.encrypted_address(),
+        encrypted_value: admission.encrypted_value(),
+        entry_code_pointer: admission.entry_code_pointer(),
+        entry_data_pointer: admission.entry_data_pointer(),
+        halt_live_in: halt_live_in.value,
+        next_code_pointer: admission.next_code_pointer(),
+        next_data_pointer: admission.next_data_pointer(),
+        required_memory_words: admission.required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_no_operation_halt_code(template)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_no_operation_halt_code(template)
+        },
+    }
+    .ok_or(DirectRegisterMaskedNoOperationHaltError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedNoOperationHaltError::ObjectBytes)
 }

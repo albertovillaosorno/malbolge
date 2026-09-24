@@ -174,10 +174,16 @@ memory, or invocation authority.
 
 ### Remaining Scope
 
-Byte-canonical native emission, object verification, loading, and invocation for
-the admitted no-operation/halt collapsed shape remain open. Additional
-multi-step shapes stay unsupported until each receives an equally explicit
-semantic and native proof.
+The admitted no-operation/halt shape now has its own backend identity and
+byte-canonical Windows COFF templates for x86-64 and AArch64. Independent
+verification reconstructs semantic admission, exact v6 key/target assumptions,
+COFF structure, and canonical bytes before promoting the object. A dedicated
+load image then proves relocation closure, ISA alignment, and strict RW-to-RX
+W^X policy without granting executable mapping or call authority.
+
+Executable lifecycle, binding, runner, and invocation authority for this
+collapsed shape remain open. Additional multi-step shapes stay unsupported
+until each receives an equally explicit semantic and native proof.
 
 ## Invariants
 

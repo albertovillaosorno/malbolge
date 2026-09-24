@@ -568,7 +568,7 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: >-
-      Admit reviewed collapsed multi-step register-masked semantic effects.
+      Admit and verify reviewed collapsed register-masked native objects.
 projects: []
 tests: []
 graph:

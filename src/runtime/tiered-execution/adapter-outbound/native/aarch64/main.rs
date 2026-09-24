@@ -48,9 +48,10 @@ use super::direct::{
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
     DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedCrazyGuard,
-    DirectRegisterMaskedNoOperationGuard, DirectRegisterMaskedOutputGuard,
-    DirectRegisterMaskedRotateGuard, DirectRegisterMaskedTerminalGuard,
-    DirectRotateCommit, DirectRotateGuard,
+    DirectRegisterMaskedNoOperationGuard,
+    DirectRegisterMaskedNoOperationHaltTemplate,
+    DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateGuard,
+    DirectRegisterMaskedTerminalGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -226,6 +227,70 @@ pub(super) fn register_masked_no_operation_code(
         movz_w9(commit.next_data_pointer),
         movk_w9_high(commit.next_data_pointer),
         0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+/// Encodes one collapsed v6 no-operation followed by graphical halt.
+#[must_use]
+pub(super) fn register_masked_no_operation_halt_code(
+    template: DirectRegisterMaskedNoOperationHaltTemplate,
+) -> Option<Vec<u8>> {
+    if template.encrypted_address != template.entry_code_pointer {
+        return None;
+    }
+    let mut words = Vec::with_capacity(60);
+    let mut guard_branches = Vec::with_capacity(9);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4408,
+        template.entry_code_pointer,
+    );
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4808,
+        template.entry_data_pointer,
+    );
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, template.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        template.entry_code_pointer,
+        template.code_live_in,
+    );
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        template.next_code_pointer,
+        template.halt_live_in,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.extend_from_slice(&[
+        movz_w9(template.encrypted_value),
+        movk_w9_high(template.encrypted_value),
+        0xb900_0149,
+        movz_w9(template.next_code_pointer),
+        movk_w9_high(template.next_code_pointer),
+        0xb900_4409,
+        movz_w9(template.next_data_pointer),
+        movk_w9_high(template.next_data_pointer),
+        0xb900_4809,
+        0x5280_002a,
+        0x3901_300a,
         0x2a1f_03e0,
         0xd65f_03c0,
     ]);

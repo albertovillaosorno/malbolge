@@ -120,8 +120,13 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   v6 no-operation followed by halt. It rechecks masks, both code-cell live-ins,
   encryption, pointer successors, effect continuity, terminal completion, and
   complete canonical v6 identity without granting host-code authority.
-- Byte-canonical object emission/verification and executable invocation for that
-  collapsed shape remain open; other multi-step shapes stay fail-closed.
+- That collapsed shape now has a dedicated backend identity plus canonical
+  Windows COFF for x86-64/AArch64. Independent verification reconstructs the
+  semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
+  Its dedicated load image proves relocation closure, ISA alignment, and strict
+  W^X without granting executable mapping or call authority.
+- Executable lifecycle, binding, runner, and invocation for the collapsed shape
+  remain open; all other multi-step shapes stay fail-closed.
 
 ## Acceptance
 

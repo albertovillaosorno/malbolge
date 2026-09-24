@@ -4306,6 +4306,22 @@ fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn register_masked_no_operation_halt_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            en::DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_ID,
+        ),
+        backend_revision:
+            en::DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn register_masked_no_operation_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(
@@ -30545,6 +30561,100 @@ fn aot_reduced_graph_resident_retains_failed_rollback_for_retry()
         Ok(())
     } else {
         Err(String::from("rollback retry did not release exact mapping"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_object_is_canonical()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let candidate = en::emit_direct_register_masked_no_operation_halt_coff(
+            &program,
+            safe_rust_profiled_capability(),
+            register_masked_no_operation_halt_target(isa),
+        )
+        .map_err(|error| error.to_string())?;
+        let verified = en::verify_direct_register_masked_no_operation_halt(
+            &candidate,
+            &program,
+            safe_rust_profiled_capability(),
+        )
+        .map_err(|error| error.to_string())?;
+        let image =
+            en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&verified)
+                .map_err(|error| error.to_string())?;
+        if verified.object().is_empty()
+            || verified.key() != candidate.key()
+            || verified.admission().identity() != candidate.key().ir()
+            || image.key() != verified.key()
+            || image.code().is_empty()
+            || image.entry_code().is_empty()
+            || image.policy() != en::NativeExecutableLoadPolicy::strict_wx()
+        {
+            return Err(format!(
+                "collapsed no-op/halt object identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_rejects_byte_drift()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact = en::emit_direct_register_masked_no_operation_halt_coff(
+        &program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = artifact.object().to_vec();
+    let text_start = usize::try_from(read_fixture_u32(&object, 40)?)
+        .map_err(|error| format!("collapsed text start: {error}"))?;
+    let first = object
+        .get_mut(text_start)
+        .ok_or_else(|| String::from("collapsed object text missing"))?;
+    *first ^= 1;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        object,
+        artifact.target_triple(),
+    );
+    let error = en::verify_direct_register_masked_no_operation_halt(
+        &tampered,
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .err()
+    .ok_or_else(|| {
+        String::from("collapsed byte drift unexpectedly verified")
+    })?;
+    if error == en::DirectRegisterMaskedNoOperationHaltError::ObjectBytes {
+        Ok(())
+    } else {
+        Err(format!("collapsed byte rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_rejects_target_drift()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let error = en::emit_direct_register_masked_no_operation_halt_coff(
+        &program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_target(HostIsa::X86_64),
+    )
+    .err()
+    .ok_or_else(|| {
+        String::from("collapsed target drift unexpectedly emitted")
+    })?;
+    if error == en::DirectRegisterMaskedNoOperationHaltError::TargetBackend {
+        Ok(())
+    } else {
+        Err(format!("collapsed target rejection drifted: {error}"))
     }
 }
 

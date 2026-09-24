@@ -54,6 +54,7 @@ use super::direct::{
     VerifiedExecutionGeometryRotateNativeObjectArtifact,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputNativeObjectArtifact,
@@ -123,6 +124,19 @@ pub struct VerifiedRegisterMaskedLoadImage {
 /// proves only relocation closure, ISA alignment, and strict W^X policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRegisterMaskedNoOperationLoadImage {
+    code: Box<[u8]>,
+    entry_offset: usize,
+    key: NativeArtifactKey,
+    policy: NativeExecutableLoadPolicy,
+    target_triple: &'static str,
+}
+
+/// Relocation-free image for the collapsed v6 no-operation/halt object.
+///
+/// This value proves exact COFF closure, ISA alignment, and strict W^X policy.
+/// It grants no executable mapping, binding, runner, or invocation authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedNoOperationHaltLoadImage {
     code: Box<[u8]>,
     entry_offset: usize,
     key: NativeArtifactKey,
@@ -584,6 +598,91 @@ impl VerifiedRegisterMaskedLoadImage {
     }
 
     /// Returns exact target assumptions retained by this v6 image.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.key.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.target_triple
+    }
+}
+
+impl VerifiedRegisterMaskedNoOperationHaltLoadImage {
+    /// Returns the exact number of admitted collapsed v6 code bytes.
+    #[must_use]
+    pub const fn allocation_len(&self) -> usize {
+        self.code.len()
+    }
+
+    /// Returns the complete relocation-free collapsed instruction stream.
+    #[must_use]
+    pub const fn code(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Returns code beginning at the required native entrypoint.
+    #[must_use]
+    pub fn entry_code(&self) -> &[u8] {
+        self.code.get(self.entry_offset..).unwrap_or_default()
+    }
+
+    /// Returns the entrypoint byte offset inside [`Self::code`].
+    #[must_use]
+    pub const fn entry_offset(&self) -> usize {
+        self.entry_offset
+    }
+
+    /// Returns the exact ISA retained by the complete collapsed v6 key.
+    #[must_use]
+    pub const fn host_isa(&self) -> HostIsa {
+        self.key.target().host_isa()
+    }
+
+    /// Returns the complete retained collapsed v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        &self.key
+    }
+
+    /// Returns minimum instruction alignment required by the target ISA.
+    #[must_use]
+    pub const fn minimum_instruction_alignment(&self) -> usize {
+        minimum_instruction_alignment(self.host_isa())
+    }
+
+    /// Extracts a relocation-free image from one verified collapsed object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn new(
+        artifact: &VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        let parts = verified_load_image_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )?;
+        Ok(Self {
+            code: parts.code,
+            entry_offset: parts.entry_offset,
+            key: parts.key,
+            policy: parts.policy,
+            target_triple: parts.target_triple,
+        })
+    }
+
+    /// Returns the mandatory W^X and instruction-sync policy evidence.
+    #[must_use]
+    pub const fn policy(&self) -> NativeExecutableLoadPolicy {
+        self.policy
+    }
+
+    /// Returns exact target assumptions retained by this collapsed v6 image.
     #[must_use]
     pub const fn target(&self) -> &NativeTargetIdentity {
         self.key.target()
