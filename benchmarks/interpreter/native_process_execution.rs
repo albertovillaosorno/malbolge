@@ -91,6 +91,7 @@ const SCALES: [u8; 3] = [1, 2, 4];
 enum ExecutionMode {
     Interpreter,
     Lifecycle,
+    LoadRelease,
     Resident,
 }
 
@@ -412,6 +413,27 @@ fn measure_lifecycle(
     Ok((start.elapsed().as_nanos(), 0))
 }
 
+fn measure_load_release(
+    fixture: &ExecutionFixture,
+    host: &mut NativeProcessHost,
+    scale: u8,
+) -> IoResult<(u128, usize)> {
+    let start = Instant::now();
+    let mut cycle = 0u8;
+    while cycle < scale {
+        let owner =
+            DirectFusedNativeExecutableOwner::load(host, &fixture.artifact)
+                .map_err(|error| {
+                    io_error("native execution load-only load", error)
+                })?;
+        owner.release(host).map_err(|error| {
+            io_error("native execution load-only release", error)
+        })?;
+        cycle = cycle.saturating_add(1);
+    }
+    Ok((start.elapsed().as_nanos(), 0))
+}
+
 fn measure_resident(
     fixture: &ExecutionFixture,
     host: &mut NativeProcessHost,
@@ -463,6 +485,9 @@ fn measure(
     match mode {
         ExecutionMode::Interpreter => measure_interpreter(fixture, scale),
         ExecutionMode::Lifecycle => measure_lifecycle(fixture, host, scale),
+        ExecutionMode::LoadRelease => {
+            measure_load_release(fixture, host, scale)
+        },
         ExecutionMode::Resident => measure_resident(fixture, host, scale),
     }
 }
@@ -471,7 +496,17 @@ const fn mode_label(mode: ExecutionMode) -> &'static str {
     match mode {
         ExecutionMode::Interpreter => "interpreter",
         ExecutionMode::Lifecycle => "one-shot-lifecycle",
+        ExecutionMode::LoadRelease => "load-release",
         ExecutionMode::Resident => "resident-call",
+    }
+}
+
+const fn completed_calls(mode: ExecutionMode, scale: u8) -> u8 {
+    match mode {
+        ExecutionMode::Interpreter
+        | ExecutionMode::Lifecycle
+        | ExecutionMode::Resident => scale,
+        ExecutionMode::LoadRelease => 0,
     }
 }
 
@@ -501,6 +536,7 @@ fn warm_up(
     for mode in [
         ExecutionMode::Interpreter,
         ExecutionMode::Lifecycle,
+        ExecutionMode::LoadRelease,
         ExecutionMode::Resident,
     ] {
         let _measurement = measure(fixture, host, mode, scale)?;
@@ -519,6 +555,7 @@ fn emit_scale_samples(
         let order = if sample.rem_euclid(2) == 0 {
             [
                 ExecutionMode::Interpreter,
+                ExecutionMode::LoadRelease,
                 ExecutionMode::Lifecycle,
                 ExecutionMode::Resident,
             ]
@@ -526,6 +563,7 @@ fn emit_scale_samples(
             [
                 ExecutionMode::Resident,
                 ExecutionMode::Lifecycle,
+                ExecutionMode::LoadRelease,
                 ExecutionMode::Interpreter,
             ]
         };
@@ -533,7 +571,7 @@ fn emit_scale_samples(
             let (nanoseconds, retained_mapped_bytes) =
                 measure(fixture, host, mode, scale)?;
             emit_sample(output, &ExecutionSample {
-                calls: scale,
+                calls: completed_calls(mode, scale),
                 mode,
                 nanoseconds,
                 object_bytes: fixture.artifact.object().len(),

@@ -199,6 +199,8 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
   `native-x86-64-and-aarch64-backends`,
   `self-modification-state-graph-optimizer`.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- The native process benchmark now isolates executable load/release from
+  one-shot call lifecycle and resident transition timing, alongside the exact
+  interpreter baseline. Retained AOT-focused raw measurements and a reproducible
+  scaling/statistical summary remain pending, including a JIT baseline when that
+  tier is available.
