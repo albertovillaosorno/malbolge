@@ -3545,6 +3545,53 @@ impl RegisterMaskedRotateNativeRunner for FakeRegisterMaskedRotateNativeRunner {
     }
 }
 
+impl en::RegisterMaskedRotateNoOperationNativeRunner
+    for FakeRegisterMaskedNoOperationNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation:
+            &mut en::PreparedRegisterMaskedRotateNoOperationNativeInvocation<
+                '_,
+                '_,
+            >,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
 impl RegisterMaskedNonGraphicalNativeRunner
     for FakeRegisterMaskedNonGraphicalNativeRunner
 {
@@ -32216,6 +32263,123 @@ fn aot_no_op_rotate_binding_rejects_target_drift() -> Result<(), String> {
         ));
     }
     en::release_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_rotate_no_op_loaded_runner_applies() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(739)?,
+        native_executable_address(0x8e000)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let (entry, expected) =
+        collapsed_rotate_no_operation_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome =
+        en::execute_loaded_verified_register_masked_rotate_no_operation_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory == entry_memory
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op loaded runner semantics drifted",
+        ));
+    }
+    en::release_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_rotate_no_op_loaded_runner_rolls_back() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact =
+        verified_collapsed_rotate_no_operation(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(740)?,
+        native_executable_address(0x8f000)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("rotate/no-op runner entry missing"))?
+        .before;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let failure =
+        en::execute_loaded_verified_register_masked_rotate_no_operation_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+        .err()
+        .ok_or_else(|| String::from("rotate/no-op runner failure applied"))?;
+    if failure.phase() != NativeExecutableExecutionPhase::Run
+        || failure.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || memory != entry_memory
+        || runner.calls != 1
+    {
+        return Err(String::from(
+            "collapsed rotate/no-op runner failure did not roll back",
+        ));
+    }
+    en::release_register_masked_rotate_no_operation_native_executable(
         &mut adapter,
         ready,
     )

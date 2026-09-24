@@ -1212,8 +1212,11 @@ performs the same strict-W^X operation order.
 
 Rotate/no-operation ABI preparation derives both code encryptions, the rotate
 data write, and the exact two-step exit while allowing only dead accumulator
-and I/O rebasing. Binding requires the exact synchronized retained image and
-grants no runner or foreign-call authority.
+and I/O rebasing. Binding requires the exact synchronized retained image.
+
+A caller-owned rotate/no-operation runner receives only that bound view,
+restores the complete rebased entry snapshot after runner failure, and
+reverifies completion. Foreign-call authority remains absent.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

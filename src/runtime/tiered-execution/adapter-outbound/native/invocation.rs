@@ -3140,12 +3140,30 @@ impl<'buffers, 'executable>
         'executable,
     >
 {
+    /// Restores the complete rebased entry snapshot after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact collapsed rotate/no-op transition for contract
     /// tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn apply_expected_for_test(&mut self) {
         self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the bound collapsed rotate/no-op contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
     }
 
     /// Returns the synchronized non-zero collapsed rotate/no-op v6 entrypoint.
