@@ -1168,8 +1168,11 @@ independent semantic/key/target/structure/byte verification.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and
-retryable release. ABI binding, runner, and foreign-call authority remain
-closed.
+retryable release. Pair ABI preparation derives both encryptions and the exact
+two-step exit while permitting only dead accumulator/I/O rebasing; binding
+requires the exact synchronized retained image.
+
+Runner and foreign-call authority remain closed for the pair.
 
 ABI preparation derives the no-operation/halt expected state, permits only dead
 A/I/O

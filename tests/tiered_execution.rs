@@ -1422,6 +1422,8 @@ type CollapsedNoOperationHaltArtifact =
     en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
 type CollapsedNoOperationPairArtifact =
     en::VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact;
+type CollapsedNoOperationPairObservations =
+    (ProfileMachineObservation, ProfileMachineObservation);
 
 #[derive(Debug)]
 struct CollapsedNoOperationHaltNativeFixture {
@@ -30683,6 +30685,46 @@ fn collapsed_no_operation_pair_image(
         .map_err(|error| error.to_string())
 }
 
+fn collapsed_no_operation_pair_rebased_observations(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<CollapsedNoOperationPairObservations, String> {
+    let first = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("collapsed pair first effect missing"))?;
+    let terminal = program.effects.last().ok_or_else(|| {
+        String::from("collapsed pair terminal effect missing")
+    })?;
+    let mut entry = first.before;
+    entry.registers.accumulator = 0x6677_8899;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = terminal.after;
+    expected.registers.accumulator = entry.registers.accumulator;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    Ok((entry, expected))
+}
+
+fn apply_collapsed_no_operation_pair_expected_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> Result<(), String> {
+    for effect in &program.effects {
+        let write = effect.memory_delta.encryption.ok_or_else(|| {
+            String::from("collapsed pair encryption write missing")
+        })?;
+        let address = usize::try_from(write.address).map_err(|error| {
+            format!("collapsed pair write address: {error}")
+        })?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("collapsed pair write exceeds invocation memory")
+        })?;
+        *cell = write.after;
+    }
+    Ok(())
+}
+
 #[test]
 fn aot_register_masked_collapsed_no_operation_pair_object_is_canonical()
 -> Result<(), String> {
@@ -31232,6 +31274,154 @@ fn aot_register_masked_collapsed_no_operation_halt_release_retry()
         return Err(String::from("collapsed release retry count drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_invocation_rebases()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_pair(&program, HostIsa::X86_64)?;
+    let (entry, expected) =
+        collapsed_no_operation_pair_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_collapsed_no_operation_pair_expected_memory(
+        &program,
+        &mut expected_memory,
+    )?;
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared =
+        en::PreparedRegisterMaskedNoOperationPairInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from(
+            "collapsed pair expected observation drifted",
+        ));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed pair invocation application drifted",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_binding_is_exact()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_pair(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationPairLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(625)?,
+        native_executable_address(0x77000)?,
+    );
+    let ready = en::load_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("collapsed pair binding entry missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationPairInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| error.to_string())?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("collapsed pair bound identity drifted"));
+    }
+    drop(bound);
+    en::release_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_collapsed_no_operation_pair_binding_rejects_target_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_pair(&program, HostIsa::X86_64)?;
+    let other =
+        verified_collapsed_no_operation_pair(&program, HostIsa::AArch64)?;
+    let image = en::VerifiedRegisterMaskedNoOperationPairLoadImage::new(&other)
+        .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(626)?,
+        native_executable_address(0x78000)?,
+    );
+    let ready = en::load_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("collapsed pair drift entry missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationPairInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if !matches!(
+        prepared.bind_executable(&ready),
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != entry_memory
+    {
+        return Err(String::from(
+            "collapsed pair binding admitted target drift",
+        ));
+    }
+    en::release_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[test]

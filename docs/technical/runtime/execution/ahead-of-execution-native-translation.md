@@ -213,8 +213,13 @@ copy, the same-mapping RW-to-RX transition, complete instruction
 synchronization, and retryable release ownership without granting call
 authority.
 
-The no-operation pair still requires its own ABI binding, runner, and
-foreign-call proof before it can execute as one collapsed native transition.
+ABI preparation for the no-operation pair now derives both encryption writes
+and the exact two-step exit while permitting only dead accumulator and I/O
+history to rebase. Binding accepts only the exact synchronized pair executable
+whose retained load image matches that prepared call.
+
+The no-operation pair still requires its own runner and foreign-call proof
+before it can execute as one collapsed native transition.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.

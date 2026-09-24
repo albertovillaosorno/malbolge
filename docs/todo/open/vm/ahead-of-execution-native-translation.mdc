@@ -148,9 +148,13 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   alignment, and strict W^X. Pair-specific typestate admits exact copy,
   same-mapping RW-to-RX, full instruction synchronization, and retryable release
   ownership while retaining complete native identity.
-- The no-operation pair still requires dedicated ABI-binding, runner, and
-  foreign-call proof before collapsed native execution; all other multi-step
-  shapes stay fail-closed.
+- Pair ABI preparation now derives both code encryptions and the exact
+  two-step exit while permitting only dead accumulator/I/O rebasing. Binding
+  accepts only the exact synchronized pair executable with the same retained
+  load image.
+- The no-operation pair still requires dedicated runner and foreign-call proof
+  before collapsed native execution; all other multi-step shapes stay
+  fail-closed.
 
 ## Acceptance
 
