@@ -106,3 +106,6 @@ exact two-step workload and timing boundary, not a general VM speedup claim.
 Retained measurements belong under `evidence/` with source/toolchain/worker
 hashes, host identity, raw samples, resource budgets, failure counts,
 dispersion, and uncertainty.
+
+The retained five-mode Linux x86-64 AOT phase bundle is under
+`benchmarks/interpreter/evidence/2026-09-24-aot-process-phases-linux-x86_64/`.

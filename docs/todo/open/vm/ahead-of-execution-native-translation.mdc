@@ -199,8 +199,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
   `native-x86-64-and-aarch64-backends`,
   `self-modification-state-graph-optimizer`.
-- The native process benchmark now isolates exact object preparation,
-  executable load/release, one-shot call lifecycle, resident transition timing,
-  and the equivalent interpreter baseline for one reviewed workload. Retained
-  raw measurements and a reproducible scaling/statistical summary remain
-  pending, including a JIT baseline when that tier is available.
+- Retained Linux x86-64 phase evidence now binds 225 raw samples to the
+  clean producer under `benchmarks/interpreter/evidence/`, in the
+  `2026-09-24-aot-process-phases-linux-x86_64/` bundle. It records exact
+  preparation, load/release, one-shot lifecycle, resident transition, and
+  interpreter
+  timing with median, observed range, inclusive IQR, resource use, source
+  hashes, and zero retained-sample failures. A JIT baseline remains pending
+  because the guarded JIT tier is not yet implemented.
