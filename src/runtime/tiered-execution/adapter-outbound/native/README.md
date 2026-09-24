@@ -1162,10 +1162,14 @@ and retryable release.
 
 The second reviewed shape is two consecutive no-operations. It rechecks both
 write masks, code-cell live-ins and encryptions, exact continuity, two
-pointer-successor steps, and budget-exhausted completion at two steps. It now
-owns a distinct backend identity plus byte-canonical x86-64/AArch64 Windows
-COFF, with independent semantic/key/target/structure/byte verification. It has
-no load-image, executable-memory, ABI-binding, or runner authority yet.
+pointer-successor steps, and budget-exhausted completion at two steps. It owns a
+distinct backend identity plus byte-canonical x86-64/AArch64 Windows COFF, with
+independent semantic/key/target/structure/byte verification.
+
+Its dedicated relocation-free load image and typestate lifecycle admit
+strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and
+retryable release. ABI binding, runner, and foreign-call authority remain
+closed.
 
 ABI preparation derives the no-operation/halt expected state, permits only dead
 A/I/O

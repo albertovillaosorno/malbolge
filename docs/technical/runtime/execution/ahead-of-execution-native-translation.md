@@ -205,12 +205,16 @@ Windows-ABI object without poisoning the session.
 The no-operation pair now has its own backend identity and byte-canonical
 Windows COFF templates for x86-64 and AArch64. Independent verification
 reconstructs pair semantic admission, exact v6 key/target assumptions, COFF
-structure, and canonical bytes before promoting the object. This still grants
-no executable-memory, ABI-binding, or invocation authority.
+structure, and canonical bytes before promoting the object.
 
-The no-operation pair still requires its own load image, executable lifecycle,
-ABI binding, runner, and foreign-call proof before it can execute as one
-collapsed native transition.
+Its dedicated relocation-free load image now proves exact COFF extraction, ISA
+alignment, and the strict W^X policy. Pair-specific typestate then admits exact
+copy, the same-mapping RW-to-RX transition, complete instruction
+synchronization, and retryable release ownership without granting call
+authority.
+
+The no-operation pair still requires its own ABI binding, runner, and
+foreign-call proof before it can execute as one collapsed native transition.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.

@@ -143,11 +143,14 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - The no-operation pair now has a dedicated backend identity plus canonical
   x86-64/AArch64 Windows COFF. Independent verification reconstructs pair
   semantic admission, exact v6 key/target assumptions, COFF structure, and
-  canonical bytes before promotion. It still has no load/lifecycle/ABI/call
-  authority.
-- The no-operation pair still requires dedicated load-image, executable
-  lifecycle, ABI-binding, runner, and foreign-call proof before collapsed
-  native execution; all other multi-step shapes stay fail-closed.
+  canonical bytes before promotion.
+- A dedicated relocation-free pair load image proves exact extraction, ISA
+  alignment, and strict W^X. Pair-specific typestate admits exact copy,
+  same-mapping RW-to-RX, full instruction synchronization, and retryable release
+  ownership while retaining complete native identity.
+- The no-operation pair still requires dedicated ABI-binding, runner, and
+  foreign-call proof before collapsed native execution; all other multi-step
+  shapes stay fail-closed.
 
 ## Acceptance
 

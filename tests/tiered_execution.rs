@@ -1420,6 +1420,8 @@ struct CoffCompileCase {
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 type CollapsedNoOperationHaltArtifact =
     en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
+type CollapsedNoOperationPairArtifact =
+    en::VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact;
 
 #[derive(Debug)]
 struct CollapsedNoOperationHaltNativeFixture {
@@ -30654,6 +30656,33 @@ fn aot_reduced_graph_resident_retains_failed_rollback_for_retry()
     }
 }
 
+fn verified_collapsed_no_operation_pair(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<CollapsedNoOperationPairArtifact, String> {
+    let candidate = en::emit_direct_register_masked_no_operation_pair_coff(
+        program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_pair_target(isa),
+    )
+    .map_err(|error| error.to_string())?;
+    en::verify_direct_register_masked_no_operation_pair(
+        &candidate,
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn collapsed_no_operation_pair_image(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<en::VerifiedRegisterMaskedNoOperationPairLoadImage, String> {
+    let artifact = verified_collapsed_no_operation_pair(program, isa)?;
+    en::VerifiedRegisterMaskedNoOperationPairLoadImage::new(&artifact)
+        .map_err(|error| error.to_string())
+}
+
 #[test]
 fn aot_register_masked_collapsed_no_operation_pair_object_is_canonical()
 -> Result<(), String> {
@@ -30682,6 +30711,189 @@ fn aot_register_masked_collapsed_no_operation_pair_object_is_canonical()
         }
     }
     Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_lifecycle_retains_identity()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    for (isa, mapping_value, base_value) in [
+        (HostIsa::X86_64, 619u64, 0x72000usize),
+        (HostIsa::AArch64, 620u64, 0x73000usize),
+    ] {
+        let image = collapsed_no_operation_pair_image(&program, isa)?;
+        let mapping_id = native_executable_mapping_id(mapping_value)?;
+        let base = native_executable_address(base_value)?;
+        let writable = NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        );
+        let staged =
+            en::StagedRegisterMaskedNoOperationPairNativeExecutable::stage(
+                &image,
+                writable,
+                image.code(),
+            )
+            .map_err(|error| error.to_string())?;
+        let sealed = staged
+            .admit_read_execute(NativeExecutableMappingReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+                NativeExecutablePermission::ReadExecute,
+            ))
+            .map_err(|error| error.to_string())?;
+        let ready = sealed
+            .admit_instruction_sync(NativeInstructionSyncReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+            ))
+            .map_err(|error| error.to_string())?;
+        if ready.image() != &image
+            || ready.key() != image.key()
+            || ready.mapping().mapping_id() != mapping_id
+            || ready.entry_address() != base
+            || ready.release_request().mapping_id() != mapping_id
+        {
+            return Err(format!(
+                "collapsed pair lifecycle identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_lifecycle_rejects_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let image = collapsed_no_operation_pair_image(&program, HostIsa::X86_64)?;
+    let mapping_id = native_executable_mapping_id(621)?;
+    let base = native_executable_address(0x74000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut changed = image.code().to_vec();
+    let first = changed
+        .first_mut()
+        .ok_or_else(|| String::from("collapsed pair lifecycle code missing"))?;
+    *first ^= 1;
+    if en::StagedRegisterMaskedNoOperationPairNativeExecutable::stage(
+        &image, writable, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from(
+            "collapsed pair lifecycle admitted changed code",
+        ));
+    }
+    let staged =
+        en::StagedRegisterMaskedNoOperationPairNativeExecutable::stage(
+            &image,
+            writable,
+            image.code(),
+        )
+        .map_err(|error| error.to_string())?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(622)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from(
+            "collapsed pair lifecycle admitted mapping identity drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_platform_load_release()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let image = collapsed_no_operation_pair_image(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(623)?,
+        native_executable_address(0x75000)?,
+    );
+    let ready = en::load_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    if ready.key() != image.key()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("collapsed pair platform load drifted"));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if adapter.release_requests == [release] {
+        Ok(())
+    } else {
+        Err(String::from("collapsed pair platform release drifted"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_release_retry()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let image = collapsed_no_operation_pair_image(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(624)?,
+        native_executable_address(0x76000)?,
+    )
+    .with_release_failures(1);
+    let ready = en::load_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        en::release_register_masked_no_operation_pair_native_executable(
+            &mut adapter,
+            ready,
+        )
+    else {
+        return Err(String::from(
+            "collapsed pair release failure was unexpectedly ignored",
+        ));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "collapsed pair release failure lost ready ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("collapsed pair release retry count drifted"))
+    }
 }
 
 #[test]
