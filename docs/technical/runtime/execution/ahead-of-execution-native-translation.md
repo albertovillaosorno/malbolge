@@ -268,11 +268,11 @@ deterministically without changing guest-visible state silently.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
   `native-x86-64-and-aarch64-backends`,
   `self-modification-state-graph-optimizer`.
-- The native process benchmark now isolates executable load/release from
-  one-shot call lifecycle and resident transition timing, alongside the exact
-  interpreter baseline. Retained AOT-focused raw measurements and a reproducible
-  scaling/statistical summary remain pending, including a JIT baseline when that
-  tier is available.
+- The native process benchmark now isolates exact object preparation,
+  executable load/release, one-shot call lifecycle, resident transition timing,
+  and the equivalent interpreter baseline for one reviewed workload. Retained
+  raw measurements and a reproducible scaling/statistical summary remain
+  pending, including a JIT baseline when that tier is available.
 ## References
 
 - [Tiered Native Execution](../../adr/tiered-native-execution.md)

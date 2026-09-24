@@ -92,6 +92,7 @@ enum ExecutionMode {
     Interpreter,
     Lifecycle,
     LoadRelease,
+    Preparation,
     Resident,
 }
 
@@ -104,6 +105,7 @@ struct ExecutionFixture {
     input: Vec<u8>,
     interpreter_entry: ProfileMachineState,
     interpreter_exit: ProfileMachineState,
+    programs: Vec<RegionEffectProgram>,
 }
 
 struct NativeCallBuffers {
@@ -238,9 +240,7 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
         .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
         .map_err(|error| io_error("native execution trace", error))?;
     if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
-        return Err(IoError::other(
-            "native execution workload did not run exactly two steps",
-        ));
+        return Err(IoError::other("two-step benchmark outcome drifted"));
     }
     let programs = traces
         .iter()
@@ -287,6 +287,7 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
         input,
         interpreter_entry,
         interpreter_exit,
+        programs,
     })
 }
 
@@ -434,6 +435,30 @@ fn measure_load_release(
     Ok((start.elapsed().as_nanos(), 0))
 }
 
+fn measure_preparation(
+    fixture: &ExecutionFixture,
+    scale: u8,
+) -> IoResult<(u128, usize)> {
+    let start = Instant::now();
+    let mut prepared = Vec::with_capacity(usize::from(scale));
+    let mut cycle = 0u8;
+    while cycle < scale {
+        prepared.push(verified_fused_artifact(black_box(&fixture.programs))?);
+        cycle = cycle.saturating_add(1);
+    }
+    let nanoseconds = start.elapsed().as_nanos();
+    if prepared.iter().all(|artifact| {
+        artifact.object() == fixture.artifact.object()
+            && artifact.key() == fixture.artifact.key()
+    }) {
+        Ok((nanoseconds, 0))
+    } else {
+        Err(IoError::other(
+            "native execution preparation artifact drifted",
+        ))
+    }
+}
+
 fn measure_resident(
     fixture: &ExecutionFixture,
     host: &mut NativeProcessHost,
@@ -488,6 +513,7 @@ fn measure(
         ExecutionMode::LoadRelease => {
             measure_load_release(fixture, host, scale)
         },
+        ExecutionMode::Preparation => measure_preparation(fixture, scale),
         ExecutionMode::Resident => measure_resident(fixture, host, scale),
     }
 }
@@ -497,6 +523,7 @@ const fn mode_label(mode: ExecutionMode) -> &'static str {
         ExecutionMode::Interpreter => "interpreter",
         ExecutionMode::Lifecycle => "one-shot-lifecycle",
         ExecutionMode::LoadRelease => "load-release",
+        ExecutionMode::Preparation => "object-preparation",
         ExecutionMode::Resident => "resident-call",
     }
 }
@@ -506,7 +533,7 @@ const fn completed_calls(mode: ExecutionMode, scale: u8) -> u8 {
         ExecutionMode::Interpreter
         | ExecutionMode::Lifecycle
         | ExecutionMode::Resident => scale,
-        ExecutionMode::LoadRelease => 0,
+        ExecutionMode::LoadRelease | ExecutionMode::Preparation => 0,
     }
 }
 
@@ -537,6 +564,7 @@ fn warm_up(
         ExecutionMode::Interpreter,
         ExecutionMode::Lifecycle,
         ExecutionMode::LoadRelease,
+        ExecutionMode::Preparation,
         ExecutionMode::Resident,
     ] {
         let _measurement = measure(fixture, host, mode, scale)?;
@@ -555,6 +583,7 @@ fn emit_scale_samples(
         let order = if sample.rem_euclid(2) == 0 {
             [
                 ExecutionMode::Interpreter,
+                ExecutionMode::Preparation,
                 ExecutionMode::LoadRelease,
                 ExecutionMode::Lifecycle,
                 ExecutionMode::Resident,
@@ -564,6 +593,7 @@ fn emit_scale_samples(
                 ExecutionMode::Resident,
                 ExecutionMode::Lifecycle,
                 ExecutionMode::LoadRelease,
+                ExecutionMode::Preparation,
                 ExecutionMode::Interpreter,
             ]
         };
