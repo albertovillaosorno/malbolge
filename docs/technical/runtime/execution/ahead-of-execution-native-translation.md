@@ -245,8 +245,12 @@ and strict W^X. Shape-specific typestate admits exact copy, same-mapping
 RW-to-RX, complete instruction synchronization, and retained release evidence.
 The platform adapter now transactionally allocates, copies, protects, and
 synchronizes this exact shape, releasing on post-allocation failure; explicit
-release retains retry ownership. ABI binding, runner, and foreign-call authority
-remain absent.
+release retains retry ownership.
+
+ABI preparation derives both code encryptions, the rotate data write, and the
+exact two-step exit while permitting only dead accumulator and I/O rebasing.
+Binding accepts only the exact synchronized no-operation/rotate executable.
+Runner and foreign-call authority remain absent.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.

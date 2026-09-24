@@ -1181,7 +1181,10 @@ evidence.
 
 The platform adapter now transactionally allocates, copies, protects,
 synchronizes, and explicitly releases that exact image while preserving cleanup
-and retry ownership. ABI, runner, and call authority remain absent.
+and retry ownership. ABI preparation derives both code encryptions, the rotate
+data write, and the exact two-step exit while allowing only dead accumulator and
+I/O rebasing. Binding accepts only the exact synchronized executable. Runner and
+call authority remain absent.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

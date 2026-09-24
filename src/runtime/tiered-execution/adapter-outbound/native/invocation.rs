@@ -59,6 +59,7 @@ use super::direct::{
     VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
+    VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputNativeObjectArtifact,
     VerifiedRegisterMaskedRotateNativeObjectArtifact,
@@ -74,6 +75,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNoOperationPairNativeExecutable,
+    ReadyRegisterMaskedNoOperationRotateNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     ReadyRegisterMaskedOutputNativeExecutable,
     ReadyRegisterMaskedRotateNativeExecutable,
@@ -85,6 +87,7 @@ use super::loader::{
     VerifiedRegisterMaskedNoOperationHaltLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationPairLoadImage,
+    VerifiedRegisterMaskedNoOperationRotateLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedOutputLoadImage,
     VerifiedRegisterMaskedRotateLoadImage,
@@ -399,6 +402,22 @@ pub struct PreparedRegisterMaskedNoOperationPairInvocation<'artifact, 'buffers>
     load_image: VerifiedRegisterMaskedNoOperationPairLoadImage,
 }
 
+/// One verified collapsed v6 no-operation/rotate artifact bound to an ABI
+/// transition.
+///
+/// C/D and all three memory live-ins remain exact. Dead A/I/O history may
+/// rebase because rotate overwrites A and neither step performs I/O.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNoOperationRotateInvocation<
+    'artifact,
+    'buffers,
+> {
+    artifact:
+        &'artifact VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedNoOperationRotateLoadImage,
+}
+
 /// One verified v6 rotate artifact bound to a rebased ABI transition.
 ///
 /// This prepared value proves exact C/D-live entry guards, dead A/I/O rebasing,
@@ -503,6 +522,20 @@ pub struct PreparedRegisterMaskedNoOperationPairNativeInvocation<
     'executable,
 > {
     executable: &'executable ReadyRegisterMaskedNoOperationPairNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact collapsed v6 no-operation/rotate call and mapping.
+///
+/// No runner consumes this type yet. It proves exact image identity plus one
+/// borrow-scoped ABI call contract.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+    'buffers,
+    'executable,
+> {
+    executable:
+        &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -1659,6 +1692,160 @@ impl<'artifact, 'buffers>
 }
 
 impl<'artifact, 'buffers>
+    PreparedRegisterMaskedNoOperationRotateInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete pair entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact collapsed no-op/rotate transition for contract
+    /// tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified collapsed no-op/rotate artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Binds this call to one synchronized collapsed no-op/rotate executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns a binding error when executable image identity differs. Failure
+    /// restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable:
+            &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+            'buffers,
+            'executable,
+        >,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(
+            PreparedRegisterMaskedNoOperationRotateNativeInvocation::new(
+                executable,
+                self.invocation,
+            ),
+        )
+    }
+
+    /// Admits one raw status through the collapsed no-operation/rotate
+    /// contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error when application or guard-miss semantics
+    /// differ from the exact prepared snapshots.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful collapsed no-op/rotate exit observation.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free collapsed no-op/rotate image.
+    #[must_use]
+    pub const fn load_image(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationRotateLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified collapsed no-operation/rotate transition.
+    ///
+    /// C and D must match their source live-ins. A and I/O cursors may rebase
+    /// because rotate overwrites A and neither step performs I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error for identity, live-register, buffer,
+    /// memory, shape, or load-image disagreement.
+    pub fn new(
+        artifact:
+            &'artifact
+                VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_rotate_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image =
+            VerifiedRegisterMaskedNoOperationRotateLoadImage::new(artifact)
+                .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::
+                new_register_masked_no_operation_rotate(
+                    program, entry, buffers,
+                )
+        .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the collapsed no-op/rotate
+    /// artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this collapsed no-op/rotate
+    /// call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+impl<'artifact, 'buffers>
     PreparedRegisterMaskedRotateInvocation<'artifact, 'buffers>
 {
     /// Restores the complete rebased entry snapshot without admitting a call.
@@ -2647,6 +2834,66 @@ impl<'buffers, 'executable>
     }
 
     /// Returns the mutable ABI state pointer for exact binding tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+        'buffers,
+        'executable,
+    >
+{
+    /// Simulates the exact collapsed no-op/rotate transition for contract
+    /// tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the synchronized non-zero collapsed no-op/rotate v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedNoOperationRotateNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable:
+            &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer retained by this bound call.
     #[must_use]
     pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
         self.invocation.state_mut_ptr()
@@ -3892,6 +4139,52 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         })
     }
 
+    fn new_register_masked_no_operation_rotate(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let terminal = register_masked_no_operation_rotate_terminal(program)?;
+        let NativeRegionBuffers { input, memory, output } = buffers;
+        let required = program.required_memory_words();
+        if u64::try_from(memory.len())
+            .map_or(true, |available| available < required)
+        {
+            return Err(NativeRegionInvocationError::MemoryCapacity {
+                available: memory.len(),
+                required,
+            });
+        }
+        validate_live_ins(&program.memory_live_ins, memory)?;
+        let entry_memory = memory.to_vec();
+        let entry_output = output.to_vec();
+        let (expected_memory, expected_output) = derive_direct_fused_expected(
+            &program.program,
+            input,
+            &entry_memory,
+            &entry_output,
+        )?;
+        let frame = NativeRegionCallFrame::new(memory, input, output, entry)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        let entry_state = *frame.state();
+        let mut expected_observation = terminal.after;
+        expected_observation.input_consumed = entry.input_consumed;
+        expected_observation.output_len = entry.output_len;
+        let expected_state = entry_state
+            .with_observation(expected_observation)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        Ok(Self {
+            entry_memory,
+            entry_output,
+            entry_state,
+            expected_memory,
+            expected_observation,
+            expected_output,
+            expected_state,
+            frame,
+        })
+    }
+
     fn new_register_masked_output(
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
@@ -4277,6 +4570,31 @@ fn register_masked_no_operation_pair_terminal(
         || first.output.is_some()
         || terminal.output.is_some()
         || program.memory_live_ins.len() != 2
+    {
+        return Err(NativeRegionInvocationError::ProgramShape);
+    }
+    Ok(*terminal)
+}
+
+fn register_masked_no_operation_rotate_terminal(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<EffectOp, NativeRegionInvocationError> {
+    let [first, terminal] = program.effects.as_slice() else {
+        return Err(NativeRegionInvocationError::ProgramShape);
+    };
+    if program.format_version != EFFECT_IR_REGISTER_MASK_VERSION
+        || program.step_budget != 2
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 2 })
+        || program.register_writes.len() != 2
+        || first.before.termination.is_some()
+        || first.after.termination.is_some()
+        || first.after != terminal.before
+        || terminal.after.termination.is_some()
+        || first.input.is_some()
+        || terminal.input.is_some()
+        || first.output.is_some()
+        || terminal.output.is_some()
+        || program.memory_live_ins.len() != 3
     {
         return Err(NativeRegionInvocationError::ProgramShape);
     }

@@ -140,8 +140,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   release evidence.
 - The platform adapter now transactionally allocates, copies, protects, and
   synchronizes the exact no-operation/rotate image, with cleanup on
-  post-allocation failure and retryable explicit release. ABI/runner/call
-  authority remains absent.
+  post-allocation failure and retryable explicit release.
+- No-operation/rotate ABI preparation derives both code encryptions, the rotate
+  data write, and the exact two-step exit while allowing only dead accumulator
+  and I/O rebasing. Binding accepts only the exact synchronized executable;
+  runner/call authority remains absent.
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
