@@ -46,6 +46,7 @@ mod register_masked_collapsed;
 mod register_masked_collapsed_no_operation_rotate;
 mod register_masked_collapsed_no_operation_rotate_object;
 mod register_masked_collapsed_rotate_no_operation;
+mod register_masked_collapsed_rotate_no_operation_object;
 mod register_masked_preparation;
 mod register_masked_reduced_state_graph;
 mod register_masked_reduced_state_graph_codec;
@@ -132,6 +133,7 @@ pub use register_masked_collapsed::*;
 pub use register_masked_collapsed_no_operation_rotate::*;
 pub use register_masked_collapsed_no_operation_rotate_object::*;
 pub use register_masked_collapsed_rotate_no_operation::*;
+pub use register_masked_collapsed_rotate_no_operation_object::*;
 use register_masked_preparation::prepare_register_masked_set_iter;
 pub use register_masked_preparation::*;
 pub use register_masked_reduced_state_graph::*;
@@ -315,6 +317,11 @@ pub const DIRECT_REGISTER_MASKED_NO_OPERATION_ROTATE_BACKEND_ID: &str =
     "direct-register-masked-no-operation-rotate";
 /// Collapsed v6 no-operation/rotate code-generation revision.
 pub const DIRECT_REGISTER_MASKED_NO_OPERATION_ROTATE_BACKEND_REVISION: u32 = 1;
+/// Backend identity for collapsed v6 rotate then no-operation execution.
+pub const DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_ID: &str =
+    "direct-register-masked-rotate-no-operation";
+/// Collapsed v6 rotate/no-operation code-generation revision.
+pub const DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_REVISION: u32 = 1;
 /// Backend identity for register-masked v6 Crazy execution.
 pub const DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID: &str =
     "direct-register-masked-crazy";
@@ -458,6 +465,25 @@ pub(super) struct DirectRegisterMaskedNoOperationRotateTemplate {
     pub(super) rotate_data_address: u32,
     pub(super) rotate_data_live_in: u32,
     pub(super) rotate_data_pointer: u32,
+    pub(super) rotate_encrypted_address: u32,
+    pub(super) rotate_encrypted_value: u32,
+    pub(super) rotated_value: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedRotateNoOperationTemplate {
+    pub(super) entry_code_pointer: u32,
+    pub(super) entry_data_pointer: u32,
+    pub(super) next_code_pointer: u32,
+    pub(super) next_data_pointer: u32,
+    pub(super) no_operation_code_pointer: u32,
+    pub(super) no_operation_encrypted_address: u32,
+    pub(super) no_operation_encrypted_value: u32,
+    pub(super) no_operation_live_in: u32,
+    pub(super) required_memory_words: u64,
+    pub(super) rotate_code_live_in: u32,
+    pub(super) rotate_data_address: u32,
+    pub(super) rotate_data_live_in: u32,
     pub(super) rotate_encrypted_address: u32,
     pub(super) rotate_encrypted_value: u32,
     pub(super) rotated_value: u32,

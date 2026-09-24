@@ -265,8 +265,12 @@ A fourth semantic shape now admits only the non-aliasing v6 rotate followed by
 no-operation form. It independently rechecks the rotate data/code live-ins,
 both code encryptions, rotation result, register masks, exact continuity,
 pointer successors, and budget-exhausted completion. The internal-alias form
-where rotate rewrites the second instruction remains rejected, and this shape
-has no backend, object, load, ABI, runner, or foreign-call authority.
+where rotate rewrites the second instruction remains rejected.
+
+That non-aliasing rotate/no-operation shape now has a distinct backend identity
+and canonical x86-64/AArch64 Windows COFF. Verification reconstructs semantic
+admission, exact v6 key/target assumptions, COFF structure, and canonical bytes.
+Load, lifecycle, ABI, runner, and foreign-call authority remain absent.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.

@@ -4526,6 +4526,22 @@ fn register_masked_no_operation_rotate_target(
     })
 }
 
+fn register_masked_rotate_no_operation_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            en::DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_ID,
+        ),
+        backend_revision:
+            en::DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn register_masked_no_operation_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(
@@ -31193,6 +31209,101 @@ fn aot_register_masked_collapsed_no_operation_pair_rejects_target_drift()
         Ok(())
     } else {
         Err(format!("collapsed pair target rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_object_is_canonical()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let candidate =
+            en::emit_direct_register_masked_rotate_no_operation_coff(
+                &program,
+                safe_rust_profiled_capability(),
+                register_masked_rotate_no_operation_target(isa),
+            )
+            .map_err(|error| error.to_string())?;
+        let verified = en::verify_direct_register_masked_rotate_no_operation(
+            &candidate,
+            &program,
+            safe_rust_profiled_capability(),
+        )
+        .map_err(|error| error.to_string())?;
+        if verified.object().is_empty()
+            || verified.key() != candidate.key()
+            || verified.admission().identity() != candidate.key().ir()
+            || verified.target_triple() != candidate.target_triple()
+        {
+            return Err(format!(
+                "collapsed rotate/no-op object identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_rejects_byte_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let artifact = en::emit_direct_register_masked_rotate_no_operation_coff(
+        &program,
+        safe_rust_profiled_capability(),
+        register_masked_rotate_no_operation_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = artifact.object().to_vec();
+    let text_start =
+        usize::try_from(read_fixture_u32(&object, 40)?).map_err(|error| {
+            format!("collapsed rotate/no-op text start: {error}")
+        })?;
+    let first = object.get_mut(text_start).ok_or_else(|| {
+        String::from("collapsed rotate/no-op object text missing")
+    })?;
+    *first ^= 1;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        object,
+        artifact.target_triple(),
+    );
+    let error = en::verify_direct_register_masked_rotate_no_operation(
+        &tampered,
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .err()
+    .ok_or_else(|| {
+        String::from("collapsed rotate/no-op byte drift unexpectedly verified")
+    })?;
+    if error == en::DirectRegisterMaskedRotateNoOperationError::ObjectBytes {
+        Ok(())
+    } else {
+        Err(format!(
+            "collapsed rotate/no-op byte rejection drifted: {error}",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_rejects_target_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let error = en::emit_direct_register_masked_rotate_no_operation_coff(
+        &program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_rotate_target(HostIsa::X86_64),
+    )
+    .err()
+    .ok_or_else(|| {
+        String::from("collapsed rotate/no-op target drift unexpectedly emitted")
+    })?;
+    if error == en::DirectRegisterMaskedRotateNoOperationError::TargetBackend {
+        Ok(())
+    } else {
+        Err(format!(
+            "collapsed rotate/no-op target rejection drifted: {error}",
+        ))
     }
 }
 
