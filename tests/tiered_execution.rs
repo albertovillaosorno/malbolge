@@ -1543,6 +1543,8 @@ type CrazyTheoremSequenceTriple = (
 );
 
 type AotGraphStateResult = Result<ProfileMachineState, String>;
+type AotRegisterMaskedMultiStepFixture =
+    (ProfileMachineState, RegisterMaskedRegionEffectProgram);
 type TieredTestResult = Result<(), String>;
 type V6GraphError = en::AheadOfExecutionRegisterMaskedStateGraphError;
 type V6GraphPreparationError<'requirement> =
@@ -30189,8 +30191,8 @@ fn prepare_reduced_graph_aot(
     .map_err(|error| error.to_string())
 }
 
-fn aot_register_masked_multi_step_graph_claim()
--> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
+fn aot_register_masked_multi_step_fixture()
+-> Result<AotRegisterMaskedMultiStepFixture, String> {
     let entry = aot_register_masked_state_graph_entry()?;
     let mut machine = ProfileMachine::from_snapshot(entry.clone());
     let mut traces = Vec::new();
@@ -30207,6 +30209,12 @@ fn aot_register_masked_multi_step_graph_claim()
         .map_err(|error| {
             format!("v6 multi-step graph projection: {error:?}")
         })?;
+    Ok((entry, program))
+}
+
+fn aot_register_masked_multi_step_graph_claim()
+-> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
+    let (entry, program) = aot_register_masked_multi_step_fixture()?;
     Ok(en::UntrustedAheadOfExecutionRegisterMaskedStateGraph::new(
         0,
         vec![en::AheadOfExecutionRegisterMaskedStateGraphNodeClaim {
@@ -30541,6 +30549,58 @@ fn aot_reduced_graph_resident_retains_failed_rollback_for_retry()
 }
 
 #[test]
+fn aot_register_masked_collapsed_no_operation_halt_admits_net_effect()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let admitted = en::admit_register_masked_no_operation_halt(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("collapsed identity: {error:?}"))?;
+    let halt = admitted.halt_live_in();
+    if admitted.identity() == &identity
+        && admitted.encrypted_address() == admitted.entry_code_pointer()
+        && admitted.next_code_pointer() == halt.address
+        && admitted.entry_code_pointer() != admitted.next_code_pointer()
+        && admitted.entry_data_pointer() != admitted.next_data_pointer()
+    {
+        Ok(())
+    } else {
+        Err(String::from("collapsed no-op/halt admission drifted"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_rejects_drift()
+-> Result<(), String> {
+    let (_entry, mut program) = aot_register_masked_multi_step_fixture()?;
+    let terminal = program
+        .program
+        .effects
+        .get_mut(1)
+        .ok_or_else(|| String::from("collapsed terminal effect missing"))?;
+    terminal.after.registers.accumulator =
+        terminal.after.registers.accumulator.saturating_add(1);
+    let Err(error) = en::admit_register_masked_no_operation_halt(
+        &program,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "tampered collapsed effect unexpectedly admitted",
+        ));
+    };
+    if error.kind()
+        == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        Ok(())
+    } else {
+        Err(format!("collapsed tamper rejection drifted: {error}"))
+    }
+}
+
+#[test]
 fn aot_register_masked_state_graph_verifies_multi_step_but_native_fails_closed()
 -> Result<(), String> {
     let claim = aot_register_masked_multi_step_graph_claim()?;
@@ -30548,6 +30608,14 @@ fn aot_register_masked_state_graph_verifies_multi_step_but_native_fails_closed()
     if verified.len() != 1 || verified.is_empty() {
         return Err(String::from("v6 multi-step graph was not verified"));
     }
+    let node = verified
+        .node(0)
+        .ok_or_else(|| String::from("v6 multi-step graph node missing"))?;
+    let _admitted = en::admit_register_masked_no_operation_halt(
+        &node.program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())?;
     let prepared = en::prepare_ahead_of_execution_register_masked_state_graph(
         &claim,
         safe_rust_profiled_capability(),

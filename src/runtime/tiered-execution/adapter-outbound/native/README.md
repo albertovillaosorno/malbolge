@@ -1152,6 +1152,12 @@ published, and equal native keys share one mapping. Late load failure releases
 already loaded unique mappings in reverse order; failed cleanup remains exact,
 retryable ready-executable ownership.
 
+A separate collapsed-v6 admission boundary now proves the first reviewed
+two-step semantic shape: no-operation followed by halt. It rechecks exact masks,
+live-ins, encryption, pointer successors, continuity, terminal completion, and
+canonical v6 identity, but deliberately stops before target selection or native
+object authority.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

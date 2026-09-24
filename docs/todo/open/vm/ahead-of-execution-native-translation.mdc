@@ -116,7 +116,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   node resolves against the sealed exact AOT set before publication; duplicate
   native keys share one mapping, late load failure rolls prior unique mappings
   back in reverse order, and failed cleanup retains retryable exact ownership.
-- Verified collapsed multi-step native effects remain open.
+- The first collapsed multi-step semantic shape now admits exactly a verified
+  v6 no-operation followed by halt. It rechecks masks, both code-cell live-ins,
+  encryption, pointer successors, effect continuity, terminal completion, and
+  complete canonical v6 identity without granting host-code authority.
+- Byte-canonical object emission/verification and executable invocation for that
+  collapsed shape remain open; other multi-step shapes stay fail-closed.
 
 ## Acceptance
 

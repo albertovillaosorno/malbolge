@@ -563,6 +563,12 @@ parts:
     language: rust
     responsibility: >-
       Own complete reduced-graph register-masked executable residency.
+  - id: part-0105
+    path: adapter-outbound/native/direct/register_masked_collapsed.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: >-
+      Admit reviewed collapsed multi-step register-masked semantic effects.
 projects: []
 tests: []
 graph:

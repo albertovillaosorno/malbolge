@@ -165,9 +165,19 @@ Failed rollback releases retain exact ready-executable ownership for caller
 retry. Explicit whole-graph release follows the same reverse-order rule and
 reports checked aggregate mapping/byte weight without executing guest code.
 
+The first reviewed collapsed multi-step semantic shape is now admitted for v6
+no-operation followed by halt. Admission rechecks the exact two-effect outcome,
+register masks, both code-cell live-ins, no-operation encryption, pointer
+successors, effect continuity, and terminal completion while retaining complete
+canonical v6 identity. This proof grants no host target, object, executable
+memory, or invocation authority.
+
 ### Remaining Scope
 
-Verified collapsed multi-step native effects remain open.
+Byte-canonical native emission, object verification, loading, and invocation for
+the admitted no-operation/halt collapsed shape remain open. Additional
+multi-step shapes stay unsupported until each receives an equally explicit
+semantic and native proof.
 
 ## Invariants
 
