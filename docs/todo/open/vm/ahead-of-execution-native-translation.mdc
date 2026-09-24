@@ -152,7 +152,10 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   two-step exit while permitting only dead accumulator/I/O rebasing. Binding
   accepts only the exact synchronized pair executable with the same retained
   load image.
-- The no-operation pair still requires dedicated runner and foreign-call proof
+- A caller-owned pair runner port now receives only the exact bound executable.
+  Runner failure restores the complete rebased entry snapshot, and returned
+  status/state remains subject to semantic completion admission.
+- The no-operation pair still requires dedicated foreign-call/process-host proof
   before collapsed native execution; all other multi-step shapes stay
   fail-closed.
 

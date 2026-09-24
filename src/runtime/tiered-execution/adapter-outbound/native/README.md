@@ -1172,7 +1172,9 @@ retryable release. Pair ABI preparation derives both encryptions and the exact
 two-step exit while permitting only dead accumulator/I/O rebasing; binding
 requires the exact synchronized retained image.
 
-Runner and foreign-call authority remain closed for the pair.
+A caller-owned pair runner receives only that exact bound view, restores the
+complete entry snapshot on runner failure, and returns through semantic
+completion admission. Foreign-call/process-host authority remains closed.
 
 ABI preparation derives the no-operation/halt expected state, permits only dead
 A/I/O

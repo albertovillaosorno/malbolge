@@ -218,8 +218,12 @@ and the exact two-step exit while permitting only dead accumulator and I/O
 history to rebase. Binding accepts only the exact synchronized pair executable
 whose retained load image matches that prepared call.
 
-The no-operation pair still requires its own runner and foreign-call proof
-before it can execute as one collapsed native transition.
+A caller-owned pair runner port now receives only that exact bound executable
+view. Runner failure restores the complete rebased entry snapshot, and returned
+status/state is admitted through the existing semantic completion contract.
+
+The no-operation pair still requires foreign-call/process-host proof before it
+can execute as one collapsed native transition.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.

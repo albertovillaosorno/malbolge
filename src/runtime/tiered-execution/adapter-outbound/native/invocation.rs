@@ -2575,11 +2575,29 @@ impl<'buffers, 'executable>
 impl<'buffers, 'executable>
     PreparedRegisterMaskedNoOperationPairNativeInvocation<'buffers, 'executable>
 {
+    /// Restores the complete rebased entry snapshot after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact pair transition for binding contract tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn apply_expected_for_test(&mut self) {
         self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the bound collapsed pair contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
     }
 
     /// Returns the synchronized non-zero collapsed pair entrypoint.
@@ -2615,6 +2633,17 @@ impl<'buffers, 'executable>
     #[must_use]
     pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
         self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
     }
 }
 
