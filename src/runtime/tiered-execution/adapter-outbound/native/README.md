@@ -1174,8 +1174,11 @@ successors, continuity, and budget-exhausted completion.
 That shape now owns a distinct backend identity plus byte-canonical
 x86-64/AArch64 Windows COFF. Independent verification reconstructs semantic
 admission, exact v6 key/target assumptions, COFF structure, and canonical bytes
-before promotion. It intentionally owns no load image, executable lifecycle,
-ABI, runner, or call authority yet.
+before promotion. Its dedicated relocation-free load image proves exact
+extraction, ISA alignment, and strict W^X; shape-specific typestate admits exact
+copy, same-mapping RW-to-RX, full synchronization, and retained release
+evidence. Platform load orchestration, ABI, runner, and call authority remain
+absent.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

@@ -31124,15 +31124,156 @@ fn aot_register_masked_collapsed_no_operation_rotate_object_is_canonical()
             safe_rust_profiled_capability(),
         )
         .map_err(|error| error.to_string())?;
+        let image = en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(
+            &verified,
+        )
+        .map_err(|error| error.to_string())?;
         if verified.object().is_empty()
             || verified.key() != candidate.key()
             || verified.admission().identity() != candidate.key().ir()
             || verified.target_triple() != candidate.target_triple()
+            || image.key() != verified.key()
+            || image.code().is_empty()
+            || image.entry_code().is_empty()
+            || image.policy() != en::NativeExecutableLoadPolicy::strict_wx()
         {
             return Err(format!(
                 "collapsed no-op/rotate object identity drifted for {isa:?}",
             ));
         }
+    }
+    Ok(())
+}
+
+fn verified_collapsed_no_operation_rotate(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<
+    en::VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
+    String,
+> {
+    let candidate = en::emit_direct_register_masked_no_operation_rotate_coff(
+        program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_rotate_target(isa),
+    )
+    .map_err(|error| error.to_string())?;
+    en::verify_direct_register_masked_no_operation_rotate(
+        &candidate,
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_register_masked_no_op_rotate_lifecycle_retains_identity()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    for (isa, mapping_value, base_value) in [
+        (HostIsa::X86_64, 625u64, 0x77000usize),
+        (HostIsa::AArch64, 626u64, 0x78000usize),
+    ] {
+        let artifact = verified_collapsed_no_operation_rotate(&program, isa)?;
+        let image = en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(
+            &artifact,
+        )
+        .map_err(|error| error.to_string())?;
+        let mapping_id = native_executable_mapping_id(mapping_value)?;
+        let base = native_executable_address(base_value)?;
+        let staged =
+            en::StagedRegisterMaskedNoOperationRotateNativeExecutable::stage(
+                &image,
+                NativeExecutableMappingReport::new(
+                    mapping_id,
+                    base,
+                    image.allocation_len(),
+                    NativeExecutablePermission::ReadWrite,
+                ),
+                image.code(),
+            )
+            .map_err(|error| error.to_string())?;
+        let sealed = staged
+            .admit_read_execute(NativeExecutableMappingReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+                NativeExecutablePermission::ReadExecute,
+            ))
+            .map_err(|error| error.to_string())?;
+        let ready = sealed
+            .admit_instruction_sync(NativeInstructionSyncReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+            ))
+            .map_err(|error| error.to_string())?;
+        let release = ready.release_request();
+        if ready.image() != &image
+            || ready.key() != artifact.key()
+            || ready.mapping().mapping_id() != mapping_id
+            || ready.entry_address() != base
+            || ready.target() != artifact.key().target()
+            || ready.target_triple() != artifact.target_triple()
+            || release.mapping_id() != mapping_id
+            || release.base_address() != base
+            || release.mapped_len() != image.allocation_len()
+        {
+            return Err(format!(
+                "collapsed no-op/rotate lifecycle identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_no_op_rotate_lifecycle_rejects_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_rotate(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mapping_id = native_executable_mapping_id(627)?;
+    let base = native_executable_address(0x79000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut changed = image.code().to_vec();
+    let first = changed.first_mut().ok_or_else(|| {
+        String::from("collapsed no-op/rotate lifecycle code missing")
+    })?;
+    *first ^= 1;
+    if en::StagedRegisterMaskedNoOperationRotateNativeExecutable::stage(
+        &image, writable, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate lifecycle admitted changed code",
+        ));
+    }
+    let staged =
+        en::StagedRegisterMaskedNoOperationRotateNativeExecutable::stage(
+            &image,
+            writable,
+            image.code(),
+        )
+        .map_err(|error| error.to_string())?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(628)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate lifecycle admitted mapping identity drift",
+        ));
     }
     Ok(())
 }

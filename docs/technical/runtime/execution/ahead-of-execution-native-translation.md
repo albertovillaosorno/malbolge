@@ -238,9 +238,13 @@ without poisoning the session.
 The no-operation/rotate shape now has a distinct backend identity and
 byte-canonical Windows COFF templates for x86-64 and AArch64. Independent
 verification reconstructs semantic admission, exact v6 key/target assumptions,
-COFF structure, and canonical bytes before promotion. This grants object
-authority only: no load image, executable-memory lifecycle, ABI binding, runner,
-or foreign-call authority exists for this shape yet.
+COFF structure, and canonical bytes before promotion.
+
+Its dedicated relocation-free load image proves exact extraction, ISA alignment,
+and strict W^X. Shape-specific typestate admits exact copy, same-mapping
+RW-to-RX, complete instruction synchronization, and retained release evidence.
+Platform adapter orchestration, ABI binding, runner, and foreign-call authority
+remain absent.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.
