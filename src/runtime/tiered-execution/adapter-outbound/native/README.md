@@ -1146,6 +1146,12 @@ Restore checks the stored count against the expected program sequence, rebuilds
 each current key, and independently verifies every object before sealing a set.
 Incomplete, reordered, or malformed bundles cannot expose partial AOT authority.
 
+Verified reduced v6 graphs can additionally own complete executable residency.
+Every graph node selects an exact sealed artifact before the resident is
+published, and equal native keys share one mapping. Late load failure releases
+already loaded unique mappings in reverse order; failed cleanup remains exact,
+retryable ready-executable ownership.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
 direct

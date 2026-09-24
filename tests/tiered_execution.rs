@@ -527,6 +527,7 @@ use execution_native::{
     RegisterMaskedCrazyNativeSequenceOutcome,
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
+    RegisterMaskedDependencyIdentityClaim as ReducedIdentityClaim,
     RegisterMaskedDirectAdmissionErrorKind,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
@@ -30147,6 +30148,47 @@ fn aot_register_masked_graph_claim()
     ))
 }
 
+fn aot_register_masked_reduced_graph()
+-> Result<en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph, String> {
+    let nodes = aot_register_masked_state_graph_nodes()?
+        .into_iter()
+        .map(|node| {
+            let identity = ReducedIdentityClaim::from_witness_and_program(
+                &node.entry,
+                &node.program,
+            );
+            en::AheadOfExecutionRegisterMaskedReducedStateGraphNodeClaim {
+                identity,
+                program: node.program,
+                successor: node.successor,
+                witness: node.entry,
+            }
+        })
+        .collect();
+    en::UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph::new(0, nodes)
+        .verify()
+        .map_err(|error| error.to_string())
+}
+
+fn prepare_reduced_graph_aot(
+    graph: &en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+) -> Result<en::VerifiedAheadOfExecutionRegisterMaskedSet, String> {
+    let programs = (0..graph.len())
+        .map(|index| {
+            graph
+                .node(index)
+                .map(|node| node.program().clone())
+                .ok_or_else(|| format!("reduced graph node {index} missing"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    en::prepare_ahead_of_execution_register_masked_set(
+        &programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())
+}
+
 fn aot_register_masked_multi_step_graph_claim()
 -> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
     let entry = aot_register_masked_state_graph_entry()?;
@@ -30363,6 +30405,139 @@ fn aot_register_masked_state_graph_replays_and_prepares_closed_claim()
         }
     }
     Ok(())
+}
+
+#[test]
+fn aot_reduced_graph_resident_loads_and_releases_complete_graph()
+-> Result<(), String> {
+    let graph = aot_register_masked_reduced_graph()?;
+    let aot = prepare_reduced_graph_aot(&graph)?;
+    let environment = en::RegisterMaskedReducedGraphResidentEnvironment::new(
+        &aot,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(0x7600)?,
+        native_executable_address(0x7600_0000)?,
+    );
+    let resident =
+        en::load_ahead_of_execution_register_masked_reduced_state_graph(
+            &mut adapter,
+            &graph,
+            environment,
+        )
+        .map_err(|error| format!("reduced graph resident load: {error:?}"))?;
+    let weight = resident.resident_weight().ok_or_else(|| {
+        String::from("reduced graph resident weight overflow")
+    })?;
+    if resident.graph() != &graph
+        || resident.node_count() != graph.len()
+        || resident.owner_count() != 2
+        || resident.node_key(0).is_none()
+        || resident.node_key(1).is_none()
+        || weight.mappings() != 2
+        || weight.nodes() != graph.len()
+        || weight.unique_artifacts() != 2
+        || weight.mapped_bytes() == 0
+    {
+        return Err(String::from("reduced graph resident identity drifted"));
+    }
+    resident
+        .release(&mut adapter)
+        .map_err(|error| format!("reduced graph release: {error:?}"))?;
+    if adapter.allocation_requests.len() == 2
+        && adapter.release_requests.len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("reduced graph resident lifecycle drifted"))
+    }
+}
+
+#[test]
+fn aot_reduced_graph_resident_rolls_back_late_load_failure()
+-> Result<(), String> {
+    let graph = aot_register_masked_reduced_graph()?;
+    let aot = prepare_reduced_graph_aot(&graph)?;
+    let environment = en::RegisterMaskedReducedGraphResidentEnvironment::new(
+        &aot,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(0x7700)?,
+        native_executable_address(0x7700_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2);
+    let Err(failure) =
+        en::load_ahead_of_execution_register_masked_reduced_state_graph(
+            &mut adapter,
+            &graph,
+            environment,
+        )
+    else {
+        return Err(String::from(
+            "late graph resident load unexpectedly succeeded",
+        ));
+    };
+    if failure.index() == 1
+        && matches!(
+            failure.cause(),
+            en::RegisterMaskedReducedGraphResidentLoadCause::Owner(_)
+        )
+        && failure.cleanup_failures().is_empty()
+        && adapter.allocation_requests.len() == 2
+        && adapter.release_requests.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(format!("late resident rollback drifted: {failure:?}"))
+    }
+}
+
+#[test]
+fn aot_reduced_graph_resident_retains_failed_rollback_for_retry()
+-> Result<(), String> {
+    let graph = aot_register_masked_reduced_graph()?;
+    let aot = prepare_reduced_graph_aot(&graph)?;
+    let environment = en::RegisterMaskedReducedGraphResidentEnvironment::new(
+        &aot,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(0x7800)?,
+        native_executable_address(0x7800_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2)
+    .with_release_failures(1);
+    let Err(failure) =
+        en::load_ahead_of_execution_register_masked_reduced_state_graph(
+            &mut adapter,
+            &graph,
+            environment,
+        )
+    else {
+        return Err(String::from(
+            "failed rollback graph resident unexpectedly succeeded",
+        ));
+    };
+    if failure.index() != 1 || failure.cleanup_failures().len() != 1 {
+        return Err(format!("rollback cleanup ownership drifted: {failure:?}"));
+    }
+    let mut cleanup = failure.into_cleanup_failures();
+    let pending = cleanup
+        .pop()
+        .ok_or_else(|| String::from("rollback cleanup owner missing"))?;
+    pending
+        .retry(&mut adapter)
+        .map_err(|error| format!("rollback cleanup retry failed: {error:?}"))?;
+    if cleanup.is_empty() && adapter.release_requests.len() == 2 {
+        Ok(())
+    } else {
+        Err(String::from("rollback retry did not release exact mapping"))
+    }
 }
 
 #[test]

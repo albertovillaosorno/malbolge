@@ -88,6 +88,7 @@ mod register_masked_crazy_sequence;
 mod register_masked_crazy_sequence_cache;
 mod register_masked_crazy_sequence_execution;
 mod register_masked_crazy_sequence_lease_cache;
+mod register_masked_graph_resident;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -797,6 +798,20 @@ pub use register_masked_crazy_sequence_lease_cache::{
     RegisterMaskedCrazyNativeSequenceLeaseReconciliationResult,
     RegisterMaskedCrazyNativeSequenceLeaseReconfigurationFailure,
     RegisterMaskedCrazyNativeSequenceLeaseReconfigurationResult,
+};
+pub use register_masked_graph_resident::{
+    LoadedRegisterMaskedReducedStateGraph,
+    RegisterMaskedReducedGraphResidentEnvironment,
+    RegisterMaskedReducedGraphResidentLoadCause,
+    RegisterMaskedReducedGraphResidentLoadFailure,
+    RegisterMaskedReducedGraphResidentLoadResult,
+    RegisterMaskedReducedGraphResidentOwner,
+    RegisterMaskedReducedGraphResidentOwnerLoadFailure,
+    RegisterMaskedReducedGraphResidentReleaseAllFailure,
+    RegisterMaskedReducedGraphResidentReleaseAllResult,
+    RegisterMaskedReducedGraphResidentReleaseFailure,
+    RegisterMaskedReducedGraphResidentWeight,
+    load_ahead_of_execution_register_masked_reduced_state_graph,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,

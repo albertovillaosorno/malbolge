@@ -557,6 +557,12 @@ parts:
     language: rust
     responsibility: >-
       Persist complete register-masked AOT object bundles atomically.
+  - id: part-0104
+    path: adapter-outbound/native/register_masked_graph_resident.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: >-
+      Own complete reduced-graph register-masked executable residency.
 projects: []
 tests: []
 graph:

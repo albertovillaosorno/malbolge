@@ -154,10 +154,20 @@ truncated, trailing, incomplete, oversized, or unverifiable bundles fail closed,
 while the filesystem blob adapter supplies the single atomic publication point
 and explicit durability confirmation.
 
+Whole reduced v6 graphs now also have explicit executable residency ownership.
+Every node selects its exact artifact from the sealed AOT set before
+publication.
+Unique native keys retain one reusable mapping, while duplicate keys share that
+mapping without weakening node identity.
+
+A late load failure releases earlier unique mappings in reverse load order.
+Failed rollback releases retain exact ready-executable ownership for caller
+retry. Explicit whole-graph release follows the same reverse-order rule and
+reports checked aggregate mapping/byte weight without executing guest code.
+
 ### Remaining Scope
 
-Whole-graph executable residency/lifecycle ownership and verified collapsed
-multi-step native effects remain open.
+Verified collapsed multi-step native effects remain open.
 
 ## Invariants
 
