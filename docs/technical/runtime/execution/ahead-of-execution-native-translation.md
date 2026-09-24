@@ -250,7 +250,10 @@ release retains retry ownership.
 ABI preparation derives both code encryptions, the rotate data write, and the
 exact two-step exit while permitting only dead accumulator and I/O rebasing.
 Binding accepts only the exact synchronized no-operation/rotate executable.
-Runner and foreign-call authority remain absent.
+
+A caller-owned runner now receives only that bound view. Runner failure restores
+the complete rebased entry snapshot, and returned status/state is admitted
+through exact semantic completion. Foreign-call authority remains absent.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.

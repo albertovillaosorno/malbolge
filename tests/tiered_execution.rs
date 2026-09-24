@@ -1422,6 +1422,8 @@ type CollapsedNoOperationHaltArtifact =
     en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
 type CollapsedNoOperationPairArtifact =
     en::VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact;
+type CollapsedNoOperationRotateArtifact =
+    en::VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact;
 type CollapsedNoOperationPairObservations =
     (ProfileMachineObservation, ProfileMachineObservation);
 type CollapsedNoOperationRotateObservations =
@@ -1439,6 +1441,13 @@ struct CollapsedNoOperationPairNativeFixture {
     adapter: FakeNativeExecutableAdapter,
     artifact: CollapsedNoOperationPairArtifact,
     ready: en::ReadyRegisterMaskedNoOperationPairNativeExecutable,
+}
+
+#[derive(Debug)]
+struct CollapsedNoOperationRotateNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: CollapsedNoOperationRotateArtifact,
+    ready: en::ReadyRegisterMaskedNoOperationRotateNativeExecutable,
 }
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
@@ -3367,6 +3376,53 @@ impl en::RegisterMaskedNoOperationPairNativeRunner
         &mut self,
         invocation:
             &mut en::PreparedRegisterMaskedNoOperationPairNativeInvocation<
+                '_,
+                '_,
+            >,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl en::RegisterMaskedNoOperationRotateNativeRunner
+    for FakeRegisterMaskedNoOperationNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation:
+            &mut en::PreparedRegisterMaskedNoOperationRotateNativeInvocation<
                 '_,
                 '_,
             >,
@@ -31168,6 +31224,28 @@ fn verified_collapsed_no_operation_rotate(
     .map_err(|error| error.to_string())
 }
 
+fn collapsed_no_operation_rotate_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<CollapsedNoOperationRotateNativeFixture, String> {
+    let artifact =
+        verified_collapsed_no_operation_rotate(program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = en::load_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(CollapsedNoOperationRotateNativeFixture { adapter, artifact, ready })
+}
+
 fn collapsed_no_operation_rotate_rebased_observations(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<CollapsedNoOperationRotateObservations, String> {
@@ -31560,6 +31638,105 @@ fn aot_no_op_rotate_binding_rejects_target_drift() -> Result<(), String> {
     {
         return Err(String::from(
             "collapsed no-op/rotate binding admitted target drift",
+        ));
+    }
+    en::release_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_no_op_rotate_loaded_runner_applies() -> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let CollapsedNoOperationRotateNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_rotate_native_fixture(&program, 633, 0x7e000)?;
+    let (entry, expected) =
+        collapsed_no_operation_rotate_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let prepared = en::PreparedRegisterMaskedNoOperationRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome =
+        en::execute_loaded_verified_register_masked_no_operation_rotate_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory == entry_memory
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate loaded runner semantics drifted",
+        ));
+    }
+    en::release_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_no_op_rotate_loaded_runner_rolls_back() -> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let CollapsedNoOperationRotateNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_rotate_native_fixture(&program, 634, 0x7f000)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("no-op/rotate runner entry missing"))?
+        .before;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let failure =
+        en::execute_loaded_verified_register_masked_no_operation_rotate_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+        .err()
+        .ok_or_else(|| String::from("no-op/rotate runner failure applied"))?;
+    if failure.phase() != NativeExecutableExecutionPhase::Run
+        || failure.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || memory != entry_memory
+        || runner.calls != 1
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate runner failure did not roll back",
         ));
     }
     en::release_register_masked_no_operation_rotate_native_executable(
