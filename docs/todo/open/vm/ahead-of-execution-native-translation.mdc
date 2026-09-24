@@ -127,8 +127,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   W^X. Typed lifecycle admission now covers exact copy, RW-to-RX, instruction
   synchronization, retryable release ownership, ABI preparation, dead-state
   rebasing, and exact synchronized-executable binding.
-- Dedicated runner and actual foreign-call execution for the collapsed shape
-  remain open; all other multi-step shapes stay fail-closed.
+- A caller-owned runner port now executes only an exactly bound collapsed
+  mapping, restores the complete prepared snapshot on runner failure, and
+  admits completion through the existing semantic verifier.
+- Concrete process-backed foreign-call execution for the collapsed shape
+  remains open; all other multi-step shapes stay fail-closed.
 
 ## Acceptance
 

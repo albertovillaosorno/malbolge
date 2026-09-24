@@ -1160,8 +1160,10 @@ COFF and byte-exact verification. Its relocation-free load image feeds a typed
 strict-W^X lifecycle with synchronized ready ownership and retryable release.
 
 ABI preparation derives the collapsed expected state, permits only dead A/I/O
-rebasing, and binds to the exact ready image; runner/call authority stays
-separate.
+rebasing, and binds to the exact ready image. A caller-owned runner port now
+executes only that bound view, with rollback on runner failure and ordinary
+semantic completion admission. Concrete process-backed foreign-call authority
+remains separate.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed

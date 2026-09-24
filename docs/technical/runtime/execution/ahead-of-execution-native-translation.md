@@ -186,9 +186,12 @@ instruction synchronization, and retryable release ownership. ABI preparation
 reconstructs the two-step net effect with dead A/I/O rebasing and binds only to
 the exact synchronized collapsed executable.
 
-Dedicated runner and actual foreign-call execution authority for this collapsed
-shape remain open. Additional multi-step shapes stay unsupported until each
-receives an equally explicit semantic and native proof.
+A caller-owned runner port receives only that exact bound executable view.
+Loaded-call orchestration restores the complete entry snapshot after runner
+failure and delegates final status/state admission to the existing semantic
+verifier. Concrete process-backed foreign-call authority remains open.
+Additional multi-step shapes stay unsupported until each receives an equally
+explicit semantic and native proof.
 
 ## Invariants
 

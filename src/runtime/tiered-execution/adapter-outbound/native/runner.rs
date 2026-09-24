@@ -43,6 +43,8 @@ use super::invocation::{
     PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNoOperationHaltInvocation,
+    PreparedRegisterMaskedNoOperationHaltNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNoOperationNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
@@ -60,6 +62,7 @@ use super::lifecycle::{
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
     ReadyRegisterMaskedOutputNativeExecutable,
@@ -263,6 +266,26 @@ pub type RegisterMaskedNoOperationLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError>>,
 >;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedNoOperationHaltNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded collapsed v6 no-op/halt call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedNoOperationHaltLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedNoOperationHaltNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified collapsed v6 no-op/halt call.
+pub type RegisterMaskedNoOperationHaltLoadedExecutionResult<RunnerError> =
+    Result<
+        NativeRegionInvocationOutcome,
+        Box<RegisterMaskedNoOperationHaltLoadedExecutionFailure<RunnerError>>,
+    >;
 
 #[derive(Debug, Eq, PartialEq)]
 enum RegisterMaskedRotateNativeCallFailure<RunnerError> {
@@ -555,6 +578,13 @@ type RegisterMaskedNoOperationNativeCallResult<Runner> = Result<
     >,
 >;
 
+type RegisterMaskedNoOperationHaltNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedNoOperationHaltNativeCallFailure<
+        <Runner as RegisterMaskedNoOperationHaltNativeRunner>::Error,
+    >,
+>;
+
 type RegisterMaskedRotateNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedRotateNativeCallFailure<
@@ -785,6 +815,32 @@ pub trait RegisterMaskedNoOperationNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNoOperationNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact collapsed v6 no-op/halt call.
+///
+/// This port receives only a view constructed after exact collapsed-v6
+/// image/executable identity binding.
+pub trait RegisterMaskedNoOperationHaltNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized collapsed-v6 executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationHaltNativeInvocation<
             '_,
             '_,
         >,
@@ -1182,6 +1238,68 @@ impl<RunnerError> RegisterMaskedNoOperationLoadedExecutionFailure<RunnerError> {
             },
             RegisterMaskedNoOperationNativeCallFailure::Binding(_)
             | RegisterMaskedNoOperationNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError>
+    RegisterMaskedNoOperationHaltLoadedExecutionFailure<RunnerError>
+{
+    /// Returns exact ready-image binding failure, when identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedNoOperationHaltNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Completion(_)
+            | RegisterMaskedNoOperationHaltNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns collapsed-v6 result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedNoOperationHaltNativeCallFailure::Completion(
+                error,
+            ) => Some(*error),
+            RegisterMaskedNoOperationHaltNativeCallFailure::Binding(_)
+            | RegisterMaskedNoOperationHaltNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedNoOperationHaltNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedNoOperationHaltNativeCallFailure::Runner(error) => {
+                Some(error)
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Binding(_)
+            | RegisterMaskedNoOperationHaltNativeCallFailure::Completion(_) => {
+                None
+            },
         }
     }
 }
@@ -2600,6 +2718,31 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedNoOperationHaltLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(
+            f,
+            "loaded collapsed v6 no-op/halt failed during {}: ",
+            self.phase()
+        )?;
+        match &self.cause {
+            RegisterMaskedNoOperationHaltNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Completion(
+                error,
+            ) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedNoOperationHaltNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for RegisterMaskedRotateLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -2988,6 +3131,34 @@ where
     run_register_masked_no_operation_prepared(runner, executable, prepared)
         .map_err(|cause| {
             Box::new(RegisterMaskedNoOperationLoadedExecutionFailure { cause })
+        })
+}
+
+/// Binds, runs, and admits one collapsed-v6 no-op/halt call.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns the collapsed loaded-execution failure for binding, runner, or
+/// completion failure.
+pub fn execute_loaded_verified_register_masked_no_operation_halt_native<
+    Runner,
+>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+    prepared: PreparedRegisterMaskedNoOperationHaltInvocation<'_, '_>,
+) -> RegisterMaskedNoOperationHaltLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedNoOperationHaltNativeRunner,
+{
+    run_register_masked_no_operation_halt_prepared(runner, executable, prepared)
+        .map_err(|cause| {
+            Box::new(RegisterMaskedNoOperationHaltLoadedExecutionFailure {
+                cause,
+            })
         })
 }
 
@@ -3724,6 +3895,33 @@ where
     bound
         .complete(raw_status)
         .map_err(RegisterMaskedNoOperationNativeCallFailure::Completion)
+}
+
+fn run_register_masked_no_operation_halt_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+    prepared: PreparedRegisterMaskedNoOperationHaltInvocation<'_, '_>,
+) -> RegisterMaskedNoOperationHaltNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedNoOperationHaltNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedNoOperationHaltNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(
+                RegisterMaskedNoOperationHaltNativeCallFailure::Runner(
+                    Box::new(error),
+                ),
+            );
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedNoOperationHaltNativeCallFailure::Completion)
 }
 
 fn run_register_masked_rotate_prepared<Runner>(

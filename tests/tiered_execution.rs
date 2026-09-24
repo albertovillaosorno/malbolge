@@ -1421,6 +1421,13 @@ type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 type CollapsedNoOperationHaltArtifact =
     en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
 
+#[derive(Debug)]
+struct CollapsedNoOperationHaltNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: CollapsedNoOperationHaltArtifact,
+    ready: en::ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+}
+
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 type DirectFusedSequenceDriftCase = (&'static str, Vec<RegionEffectProgram>);
 type DirectFusedVerifiedObjectAndExit = (
@@ -3256,6 +3263,53 @@ impl RegisterMaskedNoOperationNativeRunner
             '_,
             '_,
         >,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl en::RegisterMaskedNoOperationHaltNativeRunner
+    for FakeRegisterMaskedNoOperationNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation:
+            &mut en::PreparedRegisterMaskedNoOperationHaltNativeInvocation<
+                '_,
+                '_,
+            >,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -30620,6 +30674,28 @@ fn verified_collapsed_no_operation_halt(
     .map_err(|error| error.to_string())
 }
 
+fn collapsed_no_operation_halt_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<CollapsedNoOperationHaltNativeFixture, String> {
+    let artifact =
+        verified_collapsed_no_operation_halt(program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = en::load_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(CollapsedNoOperationHaltNativeFixture { adapter, artifact, ready })
+}
+
 #[test]
 fn aot_register_masked_collapsed_no_operation_halt_lifecycle_retains_identity()
 -> Result<(), String> {
@@ -30938,6 +31014,114 @@ fn aot_register_masked_collapsed_no_operation_halt_binding_is_exact()
         ready,
     )
     .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_loaded_runner_applies()
+-> Result<(), String> {
+    let (_source_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let CollapsedNoOperationHaltNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_halt_native_fixture(&program, 617, 0x70000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("collapsed runner entry missing"))?;
+    let expected = program
+        .effects
+        .last()
+        .map(|effect| effect.after)
+        .ok_or_else(|| String::from("collapsed runner exit missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationHaltInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome =
+        en::execute_loaded_verified_register_masked_no_operation_halt_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+        .map_err(|error| error.to_string())?;
+    let identity_matches = runner.entry_addresses == [ready.entry_address()]
+        && runner.mapping_ids == [ready.mapping().mapping_id()]
+        && runner.state_pointers_non_null == [true];
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory == entry_memory
+        || runner.calls != 1
+        || !identity_matches
+    {
+        return Err(String::from("collapsed loaded runner semantics drifted"));
+    }
+    en::release_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_loaded_runner_rolls_back()
+-> Result<(), String> {
+    let (_source_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let CollapsedNoOperationHaltNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_halt_native_fixture(&program, 618, 0x71000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("collapsed rollback entry missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationHaltInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut runner = FakeRegisterMaskedNoOperationNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(call_failure) =
+        en::execute_loaded_verified_register_masked_no_operation_halt_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("collapsed runner failure was ignored"));
+    };
+    if call_failure.phase() != NativeExecutableExecutionPhase::Run
+        || call_failure.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+    {
+        return Err(String::from("collapsed runner failure did not roll back"));
+    }
+    en::release_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|release_error| release_error.to_string())
 }
 
 #[test]
