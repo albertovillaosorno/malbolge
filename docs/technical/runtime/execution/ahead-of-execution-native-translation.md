@@ -172,6 +172,13 @@ successors, effect continuity, and terminal completion while retaining complete
 canonical v6 identity. This proof grants no host target, object, executable
 memory, or invocation authority.
 
+A second reviewed semantic shape now admits exactly two consecutive v6
+no-operations. It independently rechecks both register-write masks, both
+code-cell live-ins and encryptions, exact effect continuity, both pointer
+successor steps, budget-exhausted completion at two steps, and canonical v6
+identity. This pair admission grants no target, object, executable-memory, or
+call authority.
+
 ### Remaining Scope
 
 The admitted no-operation/halt shape now has its own backend identity and
@@ -194,6 +201,10 @@ existing `MBNPC1` wire, validates the returned mapping/state/buffer evidence
 before semantic completion, and owns the foreign call only inside the isolated
 worker. Real x86-64 POSIX-worker evidence executes and releases the collapsed
 Windows-ABI object without poisoning the session.
+
+The no-operation pair still requires its own backend identity, canonical object
+verification, executable lifecycle, ABI binding, and call authority before it
+can execute as one collapsed native transition.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.

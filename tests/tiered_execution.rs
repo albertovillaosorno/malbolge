@@ -30284,6 +30284,24 @@ fn aot_register_masked_multi_step_fixture()
     Ok((entry, program))
 }
 
+fn aot_register_masked_no_operation_pair_fixture()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let entry = direct_no_operation_pair_sequence_state()?;
+    let profile = entry.profile();
+    let mut machine = ProfileMachine::from_snapshot(entry);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 no-op pair run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("v6 no-op pair outcome drifted: {outcome:?}"));
+    }
+    RegisterMaskedRegionEffectProgram::from_profile_region_traces(
+        profile, &traces, 2, outcome,
+    )
+    .map_err(|error| format!("v6 no-op pair projection: {error:?}"))
+}
+
 fn aot_register_masked_multi_step_graph_claim()
 -> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
     let (entry, program) = aot_register_masked_multi_step_fixture()?;
@@ -31231,6 +31249,86 @@ fn aot_register_masked_collapsed_no_operation_halt_rejects_drift()
         Ok(())
     } else {
         Err(format!("collapsed tamper rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_admits_net_effect()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let admitted = en::admit_register_masked_no_operation_pair(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("collapsed pair identity: {error:?}"))?;
+    let first = admitted.first_live_in();
+    let second = admitted.second_live_in();
+    if admitted.identity() == &identity
+        && admitted.entry_code_pointer() == first.address
+        && admitted.second_code_pointer() == second.address
+        && admitted.entry_code_pointer() != admitted.second_code_pointer()
+        && admitted.second_code_pointer() != admitted.next_code_pointer()
+        && admitted.entry_data_pointer() != admitted.second_data_pointer()
+        && admitted.second_data_pointer() != admitted.next_data_pointer()
+    {
+        Ok(())
+    } else {
+        Err(String::from("collapsed no-op pair admission drifted"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_pair_rejects_drift()
+-> Result<(), String> {
+    let mut program = aot_register_masked_no_operation_pair_fixture()?;
+    let second =
+        program.program.effects.get_mut(1).ok_or_else(|| {
+            String::from("collapsed pair second effect missing")
+        })?;
+    second.after.registers.accumulator =
+        second.after.registers.accumulator.saturating_add(1);
+    let Err(error) = en::admit_register_masked_no_operation_pair(
+        &program,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "tampered collapsed no-op pair unexpectedly admitted",
+        ));
+    };
+    if error.kind()
+        == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        Ok(())
+    } else {
+        Err(format!("collapsed pair tamper rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_shapes_remain_distinct() -> Result<(), String>
+{
+    let pair = aot_register_masked_no_operation_pair_fixture()?;
+    let (_entry, halt) = aot_register_masked_multi_step_fixture()?;
+    let pair_as_halt = en::admit_register_masked_no_operation_halt(
+        &pair,
+        safe_rust_profiled_capability(),
+    );
+    let halt_as_pair = en::admit_register_masked_no_operation_pair(
+        &halt,
+        safe_rust_profiled_capability(),
+    );
+    if pair_as_halt.is_err_and(|error| {
+        error.kind()
+            == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    }) && halt_as_pair.is_err_and(|error| {
+        error.kind()
+            == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    }) {
+        Ok(())
+    } else {
+        Err(String::from("collapsed shape authority overlapped"))
     }
 }
 

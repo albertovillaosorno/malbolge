@@ -120,6 +120,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   v6 no-operation followed by halt. It rechecks masks, both code-cell live-ins,
   encryption, pointer successors, effect continuity, terminal completion, and
   complete canonical v6 identity without granting host-code authority.
+- A second reviewed semantic shape now admits exactly two consecutive v6
+  no-operations. It independently rechecks both write masks, both code-cell
+  live-ins and encryptions, exact continuity, both pointer-successor steps,
+  budget-exhausted completion at two steps, and canonical v6 identity. This
+  pair still has no backend/object/load/invocation authority.
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
@@ -135,7 +140,9 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   evidence before semantic completion, and delegates the foreign call to the
   isolated worker. Real x86-64 POSIX-worker integration executes and releases
   the collapsed Windows-ABI object without poisoning the session.
-- All other multi-step shapes stay fail-closed.
+- The no-operation pair still requires a dedicated backend/object/lifecycle/
+  invocation proof before collapsed native execution; all other multi-step
+  shapes stay fail-closed.
 
 ## Acceptance
 

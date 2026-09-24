@@ -22,12 +22,12 @@
 // - Merge-When:
 //   - Direct v6 admission natively owns reviewed multi-step templates.
 // - Summary:
-//   - Proves the first two-step no-operation/halt collapsed semantic shape.
+//   - Proves reviewed two-step no-operation collapsed semantic shapes.
 // - Description:
-//   - Rechecks masks, both live-ins, continuity, encryption, successors, and
-//     terminal completion before publishing any collapsed-shape authority.
+//   - Rechecks masks, live-ins, continuity, encryption, successors, and exact
+//     bounded outcomes before publishing any collapsed-shape authority.
 // - Usage:
-//   - Consumed before a future byte-canonical native object emitter.
+//   - Consumed by shape-specific native object pipelines only after admission.
 // - Defaults:
 //   - Any profile, mask, effect, live-in, continuity, or outcome drift rejects.
 //
@@ -170,6 +170,23 @@ pub struct VerifiedRegisterMaskedNoOperationHaltAdmission {
     required_memory_words: u64,
 }
 
+/// Proved net effect for two consecutive collapsed no-operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedNoOperationPairAdmission {
+    entry_code_pointer: u32,
+    entry_data_pointer: u32,
+    first_encrypted_value: u32,
+    first_live_in: MemoryLiveIn,
+    identity: RegionEffectIdentity,
+    next_code_pointer: u32,
+    next_data_pointer: u32,
+    required_memory_words: u64,
+    second_code_pointer: u32,
+    second_data_pointer: u32,
+    second_encrypted_value: u32,
+    second_live_in: MemoryLiveIn,
+}
+
 impl VerifiedRegisterMaskedNoOperationHaltAdmission {
     /// Returns the exact entry code-cell live-in.
     #[must_use]
@@ -232,6 +249,80 @@ impl VerifiedRegisterMaskedNoOperationHaltAdmission {
     }
 }
 
+impl VerifiedRegisterMaskedNoOperationPairAdmission {
+    /// Returns the required entry code pointer.
+    #[must_use]
+    pub const fn entry_code_pointer(&self) -> u32 {
+        self.entry_code_pointer
+    }
+
+    /// Returns the required entry data pointer.
+    #[must_use]
+    pub const fn entry_data_pointer(&self) -> u32 {
+        self.entry_data_pointer
+    }
+
+    /// Returns the first code-cell value after self-encryption.
+    #[must_use]
+    pub const fn first_encrypted_value(&self) -> u32 {
+        self.first_encrypted_value
+    }
+
+    /// Returns the first exact code-cell live-in.
+    #[must_use]
+    pub const fn first_live_in(&self) -> MemoryLiveIn {
+        self.first_live_in
+    }
+
+    /// Returns complete canonical v6 identity for the two-step region.
+    #[must_use]
+    pub const fn identity(&self) -> &RegionEffectIdentity {
+        &self.identity
+    }
+
+    /// Returns the code pointer after both no-operations.
+    #[must_use]
+    pub const fn next_code_pointer(&self) -> u32 {
+        self.next_code_pointer
+    }
+
+    /// Returns the data pointer after both no-operations.
+    #[must_use]
+    pub const fn next_data_pointer(&self) -> u32 {
+        self.next_data_pointer
+    }
+
+    /// Returns the exact declared memory capacity bound into this admission.
+    #[must_use]
+    pub const fn required_memory_words(&self) -> u64 {
+        self.required_memory_words
+    }
+
+    /// Returns the code pointer at the second no-operation.
+    #[must_use]
+    pub const fn second_code_pointer(&self) -> u32 {
+        self.second_code_pointer
+    }
+
+    /// Returns the data pointer at the second no-operation.
+    #[must_use]
+    pub const fn second_data_pointer(&self) -> u32 {
+        self.second_data_pointer
+    }
+
+    /// Returns the second code-cell value after self-encryption.
+    #[must_use]
+    pub const fn second_encrypted_value(&self) -> u32 {
+        self.second_encrypted_value
+    }
+
+    /// Returns the second exact code-cell live-in.
+    #[must_use]
+    pub const fn second_live_in(&self) -> MemoryLiveIn {
+        self.second_live_in
+    }
+}
+
 /// Admits exactly one reviewed two-step no-operation then halt net effect.
 ///
 /// This grants semantic collapsed-shape authority only. It does not select a
@@ -268,11 +359,47 @@ pub fn admit_register_masked_no_operation_halt<'requirement>(
         .ok_or_else(RegisterMaskedDirectAdmissionError::unsupported_program)
 }
 
+/// Admits exactly one reviewed two-step no-operation pair net effect.
+///
+/// This grants semantic collapsed-shape authority only. It does not select a
+/// host target, emit bytes, load executable memory, or make the region
+/// callable.
+///
+/// # Errors
+///
+/// Returns the ordinary v6 admission error when profile/identity preflight or
+/// any reviewed pair-shape proof fails.
+pub fn admit_register_masked_no_operation_pair<'requirement>(
+    program: &'requirement RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+) -> Result<
+    VerifiedRegisterMaskedNoOperationPairAdmission,
+    RegisterMaskedDirectAdmissionError<'requirement>,
+> {
+    if !program
+        .profile_requirement
+        .is_canonical_for(&program.profile_id)
+    {
+        return Err(RegisterMaskedDirectAdmissionError::profile_requirement());
+    }
+    preflight_portable_profile_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        program.required_memory_words(),
+        runtime,
+    )
+    .map_err(RegisterMaskedDirectAdmissionError::profile)?;
+    let identity = RegionEffectIdentity::new_register_masked(program)
+        .map_err(RegisterMaskedDirectAdmissionError::identity)?;
+    validate_no_operation_pair(program, identity)
+        .ok_or_else(RegisterMaskedDirectAdmissionError::unsupported_program)
+}
+
 fn validate_no_operation_halt(
     program: &RegisterMaskedRegionEffectProgram,
     identity: RegionEffectIdentity,
 ) -> Option<VerifiedRegisterMaskedNoOperationHaltAdmission> {
-    if !collapsed_header_supported(program) {
+    if !no_operation_halt_header_supported(program) {
         return None;
     }
     let first = *program.effects.first()?;
@@ -288,7 +415,7 @@ fn validate_no_operation_halt(
     let code_live_in = find_live_in(program, entry_code_pointer)?;
     let halt_live_in = find_live_in(program, next_code_pointer)?;
     let encrypted_value = encrypt_profile_cell(code_live_in.value)?;
-    if !first_effect_matches(
+    if !no_operation_effect_matches(
         first,
         code_live_in,
         encrypted_value,
@@ -312,7 +439,82 @@ fn validate_no_operation_halt(
     })
 }
 
-fn collapsed_header_supported(
+fn validate_no_operation_pair(
+    program: &RegisterMaskedRegionEffectProgram,
+    identity: RegionEffectIdentity,
+) -> Option<VerifiedRegisterMaskedNoOperationPairAdmission> {
+    if !no_operation_pair_header_supported(program) {
+        return None;
+    }
+    let first = *program.effects.first()?;
+    let second = *program.effects.get(1)?;
+    let memory_words =
+        u32::try_from(program.profile_requirement.memory_words).ok()?;
+    let entry_code_pointer = first.before.registers.code_pointer;
+    let entry_data_pointer = first.before.registers.data_pointer;
+    let second_code_pointer =
+        profile_pointer_successor(entry_code_pointer, memory_words)?;
+    let second_data_pointer =
+        profile_pointer_successor(entry_data_pointer, memory_words)?;
+    let next_code_pointer =
+        profile_pointer_successor(second_code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(second_data_pointer, memory_words)?;
+    let first_live_in = find_live_in(program, entry_code_pointer)?;
+    let second_live_in = find_live_in(program, second_code_pointer)?;
+    let first_encrypted_value = encrypt_profile_cell(first_live_in.value)?;
+    let second_encrypted_value = encrypt_profile_cell(second_live_in.value)?;
+    if !no_operation_effect_matches(
+        first,
+        first_live_in,
+        first_encrypted_value,
+        (second_code_pointer, second_data_pointer),
+    ) || !no_operation_effect_matches(
+        second,
+        second_live_in,
+        second_encrypted_value,
+        (next_code_pointer, next_data_pointer),
+    ) || first.after != second.before
+    {
+        return None;
+    }
+    Some(VerifiedRegisterMaskedNoOperationPairAdmission {
+        entry_code_pointer,
+        entry_data_pointer,
+        first_encrypted_value,
+        first_live_in,
+        identity,
+        next_code_pointer,
+        next_data_pointer,
+        required_memory_words: program.required_memory_words(),
+        second_code_pointer,
+        second_data_pointer,
+        second_encrypted_value,
+        second_live_in,
+    })
+}
+
+fn no_operation_pair_header_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let entry_reads = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.step_budget == 2
+        && program.effects.len() == 2
+        && program.memory_live_ins.len() == 2
+        && program.register_live_ins == entry_reads
+        && program.register_writes.len() == 2
+        && program.register_writes.first().copied() == Some(entry_reads)
+        && program.register_writes.get(1).copied() == Some(entry_reads)
+        && program.outcome == (RunOutcome::BudgetExhausted { steps: 2 })
+        && program.fits_declared_profile_capacity()
+}
+
+fn no_operation_halt_header_supported(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> bool {
     let entry_reads = ProfileRegisterSet {
@@ -348,7 +550,7 @@ fn find_live_in(
         .find(|live_in| live_in.address == address)
 }
 
-fn first_effect_matches(
+fn no_operation_effect_matches(
     effect: malbolge::EffectOp,
     live_in: MemoryLiveIn,
     encrypted_value: u32,

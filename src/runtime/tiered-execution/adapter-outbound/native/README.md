@@ -1152,14 +1152,21 @@ published, and equal native keys share one mapping. Late load failure releases
 already loaded unique mappings in reverse order; failed cleanup remains exact,
 retryable ready-executable ownership.
 
-A separate collapsed-v6 boundary now proves the first reviewed two-step shape:
-no-operation followed by halt. It rechecks exact masks, live-ins, encryption,
-pointer successors, continuity, terminal completion, and canonical v6 identity.
-The shape owns a distinct backend identity, canonical x86-64/AArch64 Windows
-COFF and byte-exact verification. Its relocation-free load image feeds a typed
-strict-W^X lifecycle with synchronized ready ownership and retryable release.
+A separate collapsed-v6 boundary proves reviewed two-step shapes independently.
+The first is no-operation followed by halt; it rechecks exact masks, live-ins,
+encryption, pointer successors, continuity, terminal completion, and canonical
+v6 identity. That shape owns a distinct backend identity, canonical
+x86-64/AArch64 Windows COFF and byte-exact verification. Its relocation-free
+load image feeds a typed strict-W^X lifecycle with synchronized ready ownership
+and retryable release.
 
-ABI preparation derives the collapsed expected state, permits only dead A/I/O
+The second semantic-only shape is two consecutive no-operations. It rechecks
+both write masks, code-cell live-ins and encryptions, exact continuity, two
+pointer-successor steps, and budget-exhausted completion at two steps. It has no
+backend, object, executable-memory, ABI-binding, or runner authority yet.
+
+ABI preparation derives the no-operation/halt expected state, permits only dead
+A/I/O
 rebasing, and binds to the exact ready image. A caller-owned runner port
 executes only that bound view, with rollback on runner failure and ordinary
 semantic
