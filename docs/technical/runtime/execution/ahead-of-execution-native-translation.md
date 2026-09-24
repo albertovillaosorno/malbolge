@@ -274,8 +274,9 @@ deterministically without changing guest-visible state silently.
   preparation, load/release, one-shot lifecycle, resident transition, and
   interpreter
   timing with median, observed range, inclusive IQR, resource use, source
-  hashes, and zero retained-sample failures. A JIT baseline remains pending
-  because the guarded JIT tier is not yet implemented.
+  hashes, and zero retained-sample failures. Equivalent JIT comparison belongs
+  to the later `guarded-self-modification-jit` milestone, which depends on
+  this AOT work and is not yet implemented.
 ## References
 
 - [Tiered Native Execution](../../adr/tiered-native-execution.md)

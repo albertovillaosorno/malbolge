@@ -177,7 +177,8 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   deterministic verification proves the claimed state effect and cache identity.
 - No fixed speedup is an acceptance criterion. Benchmarks must separate offline
   preparation cost, artifact load cost, transition overhead, and steady-state
-  execution from interpreter and JIT baselines.
+  execution from the interpreter baseline. Once the guarded JIT tier exists,
+  equivalent-workload evidence also compares against that tier.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -205,5 +206,6 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   preparation, load/release, one-shot lifecycle, resident transition, and
   interpreter
   timing with median, observed range, inclusive IQR, resource use, source
-  hashes, and zero retained-sample failures. A JIT baseline remains pending
-  because the guarded JIT tier is not yet implemented.
+  hashes, and zero retained-sample failures. Equivalent JIT comparison is
+  deferred to `guarded-self-modification-jit`, whose milestone depends on
+  this AOT work and is not yet implemented.
