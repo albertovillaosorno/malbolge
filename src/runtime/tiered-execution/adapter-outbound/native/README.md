@@ -1187,7 +1187,12 @@ I/O rebasing. Binding accepts only the exact synchronized executable.
 
 A caller-owned runner receives only that bound view, restores the complete
 rebased entry snapshot after runner failure, and reverifies completion.
-Foreign-call authority remains absent.
+
+The persistent process host projects that exact bound call through existing
+`MBNPC1`, validates returned mapping/state/buffer evidence before semantic
+completion, and leaves the foreign call isolated in the worker. Real x86-64
+POSIX-worker evidence executes and releases the no-operation/rotate object
+without poisoning the session.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

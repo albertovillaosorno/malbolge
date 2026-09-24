@@ -56384,6 +56384,52 @@ fn execute_real_posix_collapsed_no_operation_pair(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn execute_real_posix_collapsed_no_operation_rotate(
+    host: &mut NativeProcessHost,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<bool, String> {
+    let artifact =
+        verified_collapsed_no_operation_rotate(program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let ready = en::load_register_masked_no_operation_rotate_native_executable(
+        host, &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("no-op/rotate process entry missing"))?;
+    let expected = program
+        .effects
+        .last()
+        .map(|effect| effect.after)
+        .ok_or_else(|| String::from("no-op/rotate process exit missing"))?;
+    let mut memory = register_masked_program_memory(program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationRotateInvocation::new(
+        &artifact,
+        program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome =
+        en::execute_loaded_verified_register_masked_no_operation_rotate_native(
+            host, &ready, prepared,
+        )
+        .map_err(|error| error.to_string())?;
+    en::release_register_masked_no_operation_rotate_native_executable(
+        host, ready,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(outcome == NativeRegionInvocationOutcome::Applied(expected))
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_executes_real_posix_collapsed_no_operation_halt()
 -> Result<(), String> {
@@ -56423,6 +56469,29 @@ fn native_process_host_executes_real_posix_collapsed_no_operation_pair()
     } else {
         Err(String::from(
             "collapsed pair POSIX process execution drifted",
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_executes_real_posix_collapsed_no_operation_rotate()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("collapsed_noop_rotate")?;
+    let execution =
+        execute_real_posix_collapsed_no_operation_rotate(&mut host, &program);
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    let applied = execution?;
+    cleanup?;
+    if applied && !session_poisoned {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed no-op/rotate POSIX process execution drifted",
         ))
     }
 }
