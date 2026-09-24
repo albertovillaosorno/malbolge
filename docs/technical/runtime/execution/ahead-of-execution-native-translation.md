@@ -261,6 +261,13 @@ before semantic completion. The foreign call stays isolated in the worker. Real
 x86-64 POSIX-worker evidence executes and releases the no-operation/rotate
 object without poisoning the session.
 
+A fourth semantic shape now admits only the non-aliasing v6 rotate followed by
+no-operation form. It independently rechecks the rotate data/code live-ins,
+both code encryptions, rotation result, register masks, exact continuity,
+pointer successors, and budget-exhausted completion. The internal-alias form
+where rotate rewrites the second instruction remains rejected, and this shape
+has no backend, object, load, ABI, runner, or foreign-call authority.
+
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.
 

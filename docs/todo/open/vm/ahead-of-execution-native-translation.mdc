@@ -152,6 +152,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   evidence before semantic completion. The foreign call stays isolated in the
   worker. Real x86-64 POSIX-worker evidence executes and releases the
   no-operation/rotate object without poisoning the session.
+- A fourth reviewed semantic shape admits only non-aliasing v6 rotate followed
+  by no-operation. It independently rechecks three distinct memory live-ins,
+  rotation and both code encryptions, register masks, exact continuity, pointer
+  successors, and budget-exhausted completion. The internal-alias form remains
+  fail-closed, and no backend/object/load/invocation authority is granted.
+
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.

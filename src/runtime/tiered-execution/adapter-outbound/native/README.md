@@ -1194,6 +1194,13 @@ completion, and leaves the foreign call isolated in the worker. Real x86-64
 POSIX-worker evidence executes and releases the no-operation/rotate object
 without poisoning the session.
 
+
+A fourth collapsed semantic boundary admits only the non-aliasing v6
+rotate/no-operation form. It rechecks three distinct memory live-ins, rotation,
+both code encryptions, masks, continuity, pointer successors, and the bounded
+outcome. The internal-alias form where rotate rewrites the second instruction
+remains rejected; backend and executable authority remain absent.
+
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and
 retryable release. Pair ABI preparation derives both encryptions and the exact

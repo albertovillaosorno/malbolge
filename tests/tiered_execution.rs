@@ -30468,6 +30468,38 @@ fn aot_register_masked_no_operation_rotate_fixture()
     .map_err(|error| format!("v6 no-op/rotate projection: {error:?}"))
 }
 
+fn aot_register_masked_rotate_no_operation_fixture()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    aot_register_masked_rotate_no_operation_from_state(
+        direct_rotate_no_operation_sequence_state()?,
+    )
+}
+
+fn aot_register_masked_rotate_no_operation_alias_fixture()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    aot_register_masked_rotate_no_operation_from_state(
+        direct_rotate_no_operation_alias_state()?,
+    )
+}
+
+fn aot_register_masked_rotate_no_operation_from_state(
+    entry: ProfileMachineState,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let profile = entry.profile();
+    let mut machine = ProfileMachine::from_snapshot(entry);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 rotate/no-op run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("v6 rotate/no-op outcome drifted: {outcome:?}"));
+    }
+    RegisterMaskedRegionEffectProgram::from_profile_region_traces(
+        profile, &traces, 2, outcome,
+    )
+    .map_err(|error| format!("v6 rotate/no-op projection: {error:?}"))
+}
+
 fn aot_register_masked_multi_step_graph_claim()
 -> Result<en::UntrustedAheadOfExecutionRegisterMaskedStateGraph, String> {
     let (entry, program) = aot_register_masked_multi_step_fixture()?;
@@ -32861,6 +32893,120 @@ fn aot_register_masked_collapsed_no_operation_rotate_remains_distinct()
     } else {
         Err(String::from(
             "collapsed no-operation/rotate authority overlapped",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_admits_net_effect()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let admitted = en::admit_register_masked_rotate_no_operation(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| {
+            format!("collapsed rotate/no-op identity: {error:?}")
+        })?;
+    let rotate_code = admitted.rotate_code_live_in();
+    let rotate_data = admitted.rotate_data_live_in();
+    let no_operation = admitted.no_operation_live_in();
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|error| format!("rotate/no-op memory words: {error}"))?;
+    if admitted.identity() == &identity
+        && admitted.entry_code_pointer() == rotate_code.address
+        && admitted.entry_data_pointer() == rotate_data.address
+        && admitted.second_code_pointer() == no_operation.address
+        && admitted.rotated_value()
+            == profile_rotate(rotate_data.value, memory_words)
+        && rotate_code.address != rotate_data.address
+        && rotate_code.address != no_operation.address
+        && rotate_data.address != no_operation.address
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-operation admission drifted",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_rejects_effect_drift()
+-> Result<(), String> {
+    let mut program = aot_register_masked_rotate_no_operation_fixture()?;
+    let second = program.program.effects.get_mut(1).ok_or_else(|| {
+        String::from("collapsed rotate/no-op second effect missing")
+    })?;
+    second.after.registers.accumulator =
+        second.after.registers.accumulator.saturating_add(1);
+    let Err(error) = en::admit_register_masked_rotate_no_operation(
+        &program,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "tampered collapsed rotate/no-operation unexpectedly admitted",
+        ));
+    };
+    if error.kind()
+        == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        Ok(())
+    } else {
+        Err(format!("rotate/no-op tamper rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_rejects_internal_alias()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_alias_fixture()?;
+    let Err(error) = en::admit_register_masked_rotate_no_operation(
+        &program,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "aliased collapsed rotate/no-operation unexpectedly admitted",
+        ));
+    };
+    if program.memory_live_ins.len() == 2
+        && error.kind()
+            == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        Ok(())
+    } else {
+        Err(format!("rotate/no-op alias rejection drifted: {error}"))
+    }
+}
+
+#[test]
+fn aot_register_masked_collapsed_rotate_no_operation_remains_distinct()
+-> Result<(), String> {
+    let rotate_no_operation =
+        aot_register_masked_rotate_no_operation_fixture()?;
+    let no_operation_rotate =
+        aot_register_masked_no_operation_rotate_fixture()?;
+    let first_as_reverse = en::admit_register_masked_no_operation_rotate(
+        &rotate_no_operation,
+        safe_rust_profiled_capability(),
+    );
+    let second_as_reverse = en::admit_register_masked_rotate_no_operation(
+        &no_operation_rotate,
+        safe_rust_profiled_capability(),
+    );
+    if first_as_reverse.is_err_and(|error| {
+        error.kind()
+            == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    }) && second_as_reverse.is_err_and(|error| {
+        error.kind()
+            == RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    }) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-operation authority overlapped",
         ))
     }
 }
