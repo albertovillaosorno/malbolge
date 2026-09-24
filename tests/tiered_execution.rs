@@ -1418,6 +1418,8 @@ struct CoffCompileCase {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
+type CollapsedNoOperationHaltArtifact =
+    en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 type DirectFusedSequenceDriftCase = (&'static str, Vec<RegionEffectProgram>);
@@ -30598,6 +30600,344 @@ fn aot_register_masked_collapsed_no_operation_halt_object_is_canonical()
         }
     }
     Ok(())
+}
+
+fn verified_collapsed_no_operation_halt(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<CollapsedNoOperationHaltArtifact, String> {
+    let candidate = en::emit_direct_register_masked_no_operation_halt_coff(
+        program,
+        safe_rust_profiled_capability(),
+        register_masked_no_operation_halt_target(isa),
+    )
+    .map_err(|error| error.to_string())?;
+    en::verify_direct_register_masked_no_operation_halt(
+        &candidate,
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_lifecycle_retains_identity()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    for (isa, mapping_value, base_value) in [
+        (HostIsa::X86_64, 610u64, 0x6a000usize),
+        (HostIsa::AArch64, 611u64, 0x6b000usize),
+    ] {
+        let artifact = verified_collapsed_no_operation_halt(&program, isa)?;
+        let image =
+            en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+                .map_err(|error| error.to_string())?;
+        let mapping_id = native_executable_mapping_id(mapping_value)?;
+        let base = native_executable_address(base_value)?;
+        let staged =
+            en::StagedRegisterMaskedNoOperationHaltNativeExecutable::stage(
+                &image,
+                NativeExecutableMappingReport::new(
+                    mapping_id,
+                    base,
+                    image.allocation_len(),
+                    NativeExecutablePermission::ReadWrite,
+                ),
+                image.code(),
+            )
+            .map_err(|error| error.to_string())?;
+        let sealed = staged
+            .admit_read_execute(NativeExecutableMappingReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+                NativeExecutablePermission::ReadExecute,
+            ))
+            .map_err(|error| error.to_string())?;
+        let ready = sealed
+            .admit_instruction_sync(NativeInstructionSyncReport::new(
+                mapping_id,
+                base,
+                image.allocation_len(),
+            ))
+            .map_err(|error| error.to_string())?;
+        let release = ready.release_request();
+        if ready.image() != &image
+            || ready.key() != artifact.key()
+            || ready.mapping().mapping_id() != mapping_id
+            || ready.entry_address() != base
+            || ready.target() != artifact.key().target()
+            || ready.target_triple() != artifact.target_triple()
+            || release.mapping_id() != mapping_id
+            || release.base_address() != base
+            || release.mapped_len() != image.allocation_len()
+        {
+            return Err(format!(
+                "collapsed v6 lifecycle identity drifted for {isa:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_lifecycle_rejects_drift()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_halt(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mapping_id = native_executable_mapping_id(612)?;
+    let base = native_executable_address(0x6c000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut changed = image.code().to_vec();
+    let first = changed
+        .first_mut()
+        .ok_or_else(|| String::from("collapsed lifecycle code missing"))?;
+    *first ^= 1;
+    if en::StagedRegisterMaskedNoOperationHaltNativeExecutable::stage(
+        &image, writable, &changed,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("collapsed lifecycle admitted changed code"));
+    }
+    let staged =
+        en::StagedRegisterMaskedNoOperationHaltNativeExecutable::stage(
+            &image,
+            writable,
+            image.code(),
+        )
+        .map_err(|error| error.to_string())?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(613)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from(
+            "collapsed lifecycle admitted mapping identity drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_platform_load_release()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_halt(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(614)?,
+        native_executable_address(0x6d000)?,
+    );
+    let ready = en::load_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("collapsed platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "collapsed platform release evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_release_retry()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_halt(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(615)?,
+        native_executable_address(0x6e000)?,
+    )
+    .with_release_failures(1);
+    let ready = en::load_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        en::release_register_masked_no_operation_halt_native_executable(
+            &mut adapter,
+            ready,
+        )
+    else {
+        return Err(String::from(
+            "collapsed release failure was unexpectedly ignored",
+        ));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "collapsed release failure lost exact ready ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("collapsed release retry count drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_noop_halt_invocation_rebases()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_halt(&program, HostIsa::X86_64)?;
+    let first = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("collapsed first effect missing"))?;
+    let terminal = program
+        .effects
+        .last()
+        .copied()
+        .ok_or_else(|| String::from("collapsed terminal effect missing"))?;
+    let mut entry = first.before;
+    entry.registers.accumulator = 0x5566_7788;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let mut expected = terminal.after;
+    expected.registers.accumulator = entry.registers.accumulator;
+    expected.input_consumed = entry.input_consumed;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    for effect in &program.effects {
+        if let Some(write) = effect.memory_delta.encryption {
+            let address = usize::try_from(write.address)
+                .map_err(|error| format!("collapsed write address: {error}"))?;
+            let cell = expected_memory.get_mut(address).ok_or_else(|| {
+                String::from("collapsed write exceeds invocation memory")
+            })?;
+            *cell = write.after;
+        }
+    }
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let entry_output = output;
+    let mut prepared =
+        en::PreparedRegisterMaskedNoOperationHaltInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if prepared.expected_observation() != expected {
+        return Err(String::from(
+            "collapsed invocation expected observation drifted",
+        ));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != entry_output
+    {
+        return Err(String::from("collapsed invocation application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn aot_register_masked_collapsed_no_operation_halt_binding_is_exact()
+-> Result<(), String> {
+    let (_entry, program) = aot_register_masked_multi_step_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_halt(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationHaltLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(616)?,
+        native_executable_address(0x6f000)?,
+    );
+    let ready = en::load_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("collapsed binding entry missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedNoOperationHaltInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| error.to_string())?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("collapsed bound identity drifted"));
+    }
+    drop(bound);
+    en::release_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[test]

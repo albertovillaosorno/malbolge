@@ -124,8 +124,10 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
   Its dedicated load image proves relocation closure, ISA alignment, and strict
-  W^X without granting executable mapping or call authority.
-- Executable lifecycle, binding, runner, and invocation for the collapsed shape
+  W^X. Typed lifecycle admission now covers exact copy, RW-to-RX, instruction
+  synchronization, retryable release ownership, ABI preparation, dead-state
+  rebasing, and exact synchronized-executable binding.
+- Dedicated runner and actual foreign-call execution for the collapsed shape
   remain open; all other multi-step shapes stay fail-closed.
 
 ## Acceptance

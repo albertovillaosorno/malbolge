@@ -179,11 +179,16 @@ byte-canonical Windows COFF templates for x86-64 and AArch64. Independent
 verification reconstructs semantic admission, exact v6 key/target assumptions,
 COFF structure, and canonical bytes before promoting the object. A dedicated
 load image then proves relocation closure, ISA alignment, and strict RW-to-RX
-W^X policy without granting executable mapping or call authority.
+W^X policy.
 
-Executable lifecycle, binding, runner, and invocation authority for this
-collapsed shape remain open. Additional multi-step shapes stay unsupported
-until each receives an equally explicit semantic and native proof.
+A dedicated typestate lifecycle admits exact copy, RW-to-RX,
+instruction synchronization, and retryable release ownership. ABI preparation
+reconstructs the two-step net effect with dead A/I/O rebasing and binds only to
+the exact synchronized collapsed executable.
+
+Dedicated runner and actual foreign-call execution authority for this collapsed
+shape remain open. Additional multi-step shapes stay unsupported until each
+receives an equally explicit semantic and native proof.
 
 ## Invariants
 

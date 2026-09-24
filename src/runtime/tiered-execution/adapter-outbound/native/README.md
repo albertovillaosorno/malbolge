@@ -1156,8 +1156,12 @@ A separate collapsed-v6 boundary now proves the first reviewed two-step shape:
 no-operation followed by halt. It rechecks exact masks, live-ins, encryption,
 pointer successors, continuity, terminal completion, and canonical v6 identity.
 The shape owns a distinct backend identity, canonical x86-64/AArch64 Windows
-COFF, byte-exact verification, and a relocation-free strict-W^X load image;
-executable mapping, binding, runner, and invocation authority remain separate.
+COFF and byte-exact verification. Its relocation-free load image feeds a typed
+strict-W^X lifecycle with synchronized ready ownership and retryable release.
+
+ABI preparation derives the collapsed expected state, permits only dead A/I/O
+rebasing, and binds to the exact ready image; runner/call authority stays
+separate.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed
