@@ -31279,6 +31279,101 @@ fn aot_register_masked_no_op_rotate_lifecycle_rejects_drift()
 }
 
 #[test]
+fn aot_register_masked_no_op_rotate_platform_lifecycle() -> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_rotate(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(629)?,
+        native_executable_address(0x7a000)?,
+    );
+    let ready = en::load_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    if ready.key() != image.key()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate platform load drifted",
+        ));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if adapter.release_requests == [release] {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed no-op/rotate platform release drifted",
+        ))
+    }
+}
+
+#[test]
+fn aot_register_masked_no_op_rotate_release_retry() -> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let artifact =
+        verified_collapsed_no_operation_rotate(&program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedNoOperationRotateLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(630)?,
+        native_executable_address(0x7b000)?,
+    )
+    .with_release_failures(1);
+    let ready = en::load_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        en::release_register_masked_no_operation_rotate_native_executable(
+            &mut adapter,
+            ready,
+        )
+    else {
+        return Err(String::from(
+            "collapsed no-op/rotate release failure was unexpectedly ignored",
+        ));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "collapsed no-op/rotate release failure lost ready ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed no-op/rotate release retry count drifted",
+        ))
+    }
+}
+
+#[test]
 fn aot_register_masked_collapsed_no_operation_rotate_rejects_byte_drift()
 -> Result<(), String> {
     let program = aot_register_masked_no_operation_rotate_fixture()?;

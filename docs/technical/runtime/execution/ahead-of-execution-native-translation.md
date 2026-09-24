@@ -243,7 +243,9 @@ COFF structure, and canonical bytes before promotion.
 Its dedicated relocation-free load image proves exact extraction, ISA alignment,
 and strict W^X. Shape-specific typestate admits exact copy, same-mapping
 RW-to-RX, complete instruction synchronization, and retained release evidence.
-Platform adapter orchestration, ABI binding, runner, and foreign-call authority
+The platform adapter now transactionally allocates, copies, protects, and
+synchronizes this exact shape, releasing on post-allocation failure; explicit
+release retains retry ownership. ABI binding, runner, and foreign-call authority
 remain absent.
 
 Additional multi-step shapes stay unsupported until each receives equally

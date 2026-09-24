@@ -1177,8 +1177,11 @@ admission, exact v6 key/target assumptions, COFF structure, and canonical bytes
 before promotion. Its dedicated relocation-free load image proves exact
 extraction, ISA alignment, and strict W^X; shape-specific typestate admits exact
 copy, same-mapping RW-to-RX, full synchronization, and retained release
-evidence. Platform load orchestration, ABI, runner, and call authority remain
-absent.
+evidence.
+
+The platform adapter now transactionally allocates, copies, protects,
+synchronizes, and explicitly releases that exact image while preserving cleanup
+and retry ownership. ABI, runner, and call authority remain absent.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and

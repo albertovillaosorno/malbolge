@@ -137,8 +137,11 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - Its dedicated relocation-free load image proves exact extraction, ISA
   alignment, and strict W^X. Shape-specific typestate admits exact copy,
   same-mapping RW-to-RX, complete instruction synchronization, and retained
-  release evidence. Platform load orchestration and ABI/runner/call authority
-  remain absent.
+  release evidence.
+- The platform adapter now transactionally allocates, copies, protects, and
+  synchronizes the exact no-operation/rotate image, with cleanup on
+  post-allocation failure and retryable explicit release. ABI/runner/call
+  authority remains absent.
 - That collapsed shape now has a dedicated backend identity plus canonical
   Windows COFF for x86-64/AArch64. Independent verification reconstructs the
   semantic admission, exact v6 key/target, COFF structure, and canonical bytes.
