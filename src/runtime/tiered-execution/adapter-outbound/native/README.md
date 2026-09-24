@@ -1160,10 +1160,12 @@ x86-64/AArch64 Windows COFF and byte-exact verification. Its relocation-free
 load image feeds a typed strict-W^X lifecycle with synchronized ready ownership
 and retryable release.
 
-The second semantic-only shape is two consecutive no-operations. It rechecks
-both write masks, code-cell live-ins and encryptions, exact continuity, two
-pointer-successor steps, and budget-exhausted completion at two steps. It has no
-backend, object, executable-memory, ABI-binding, or runner authority yet.
+The second reviewed shape is two consecutive no-operations. It rechecks both
+write masks, code-cell live-ins and encryptions, exact continuity, two
+pointer-successor steps, and budget-exhausted completion at two steps. It now
+owns a distinct backend identity plus byte-canonical x86-64/AArch64 Windows
+COFF, with independent semantic/key/target/structure/byte verification. It has
+no load-image, executable-memory, ABI-binding, or runner authority yet.
 
 ABI preparation derives the no-operation/halt expected state, permits only dead
 A/I/O

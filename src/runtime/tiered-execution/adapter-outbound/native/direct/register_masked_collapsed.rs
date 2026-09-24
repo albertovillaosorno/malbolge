@@ -49,7 +49,10 @@ use super::coff::build_minimal_coff;
 use super::{
     CoffAdmissionError, DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_REVISION,
-    DirectRegisterMaskedNoOperationHaltTemplate, HostIsa, HostOperatingSystem,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_REVISION,
+    DirectRegisterMaskedNoOperationHaltTemplate,
+    DirectRegisterMaskedNoOperationPairTemplate, HostIsa, HostOperatingSystem,
     NATIVE_REGION_ABI_REVISION, NativeArtifactKey, NativeIdentityError,
     NativeTargetIdentity, RegionEffectIdentity,
     RegisterMaskedDirectAdmissionError, RegisterMaskedDirectAdmissionErrorKind,
@@ -80,11 +83,74 @@ pub enum DirectRegisterMaskedNoOperationHaltError {
     TargetFormat,
 }
 
+/// Failure while emitting or verifying the collapsed no-operation pair object.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedNoOperationPairError {
+    /// Semantic admission rejected the source v6 region.
+    Admission(RegisterMaskedDirectAdmissionErrorKind),
+    /// Candidate key or target triple differs from reconstructed authority.
+    ArtifactIdentity,
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Complete native identity could not be represented.
+    Identity(NativeIdentityError),
+    /// Candidate bytes differ from the canonical reviewed template.
+    ObjectBytes,
+    /// Target ABI differs from the reviewed native region contract.
+    TargetAbi,
+    /// Target backend identity or revision differs.
+    TargetBackend,
+    /// Target requests unsupported host-code features.
+    TargetFeatures,
+    /// Collapsed direct objects currently require Windows COFF.
+    TargetFormat,
+}
+
 /// Byte-exact verified object for the collapsed v6 no-operation/halt shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
     admission: VerifiedRegisterMaskedNoOperationHaltAdmission,
     artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl Display for DirectRegisterMaskedNoOperationPairError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Admission(_kind) => {
+                "collapsed v6 no-operation pair semantic admission failed"
+            },
+            Self::ArtifactIdentity => {
+                "collapsed v6 no-operation pair artifact identity drifted"
+            },
+            Self::Coff(_error) => {
+                "collapsed v6 no-operation pair COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "collapsed v6 no-operation pair native identity failed"
+            },
+            Self::ObjectBytes => {
+                "collapsed v6 no-operation pair object bytes drifted"
+            },
+            Self::TargetAbi => {
+                "collapsed v6 no-operation pair target ABI is unsupported"
+            },
+            Self::TargetBackend => {
+                "collapsed v6 no-operation pair target backend is unsupported"
+            },
+            Self::TargetFeatures => {
+                "collapsed v6 no-operation pair target features are unsupported"
+            },
+            Self::TargetFormat => {
+                "collapsed v6 no-operation pair backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedNoOperationPairError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
 }
 
 impl Display for DirectRegisterMaskedNoOperationHaltError {
@@ -133,6 +199,41 @@ impl VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
     pub const fn admission(
         &self,
     ) -> &VerifiedRegisterMaskedNoOperationHaltAdmission {
+        &self.admission
+    }
+
+    /// Returns the exact complete v6 native artifact key.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns independently verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact target triple retained by structural admission.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+/// Byte-exact verified object for the collapsed v6 no-operation pair.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact {
+    admission: VerifiedRegisterMaskedNoOperationPairAdmission,
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact {
+    /// Returns independently reconstructed pair semantic admission.
+    #[must_use]
+    pub const fn admission(
+        &self,
+    ) -> &VerifiedRegisterMaskedNoOperationPairAdmission {
         &self.admission
     }
 
@@ -605,6 +706,130 @@ fn second_effect_matches(
             halt_live_in.value,
             effect.before.registers.code_pointer,
         ) == Some(b'v')
+}
+
+/// Emits one untrusted canonical candidate for a collapsed no-operation pair.
+///
+/// # Errors
+///
+/// Returns a pair-object error on semantic admission, target, identity, or
+/// canonical byte construction failure.
+pub fn emit_direct_register_masked_no_operation_pair_coff(
+    program: &RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    target: NativeTargetIdentity,
+) -> Result<
+    UntrustedNativeObjectArtifact,
+    DirectRegisterMaskedNoOperationPairError,
+> {
+    let admission = admit_register_masked_no_operation_pair(program, runtime)
+        .map_err(|error| {
+        DirectRegisterMaskedNoOperationPairError::Admission(error.kind())
+    })?;
+    validate_no_operation_pair_target(&target)?;
+    let key = NativeArtifactKey::new_register_masked(program, target)
+        .map_err(DirectRegisterMaskedNoOperationPairError::Identity)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = canonical_no_operation_pair_coff(&key, &admission)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+/// Promotes only exact canonical collapsed no-operation-pair object bytes.
+///
+/// # Errors
+///
+/// Returns a pair-object error on semantic, identity, target, structural, or
+/// canonical-byte mismatch.
+pub fn verify_direct_register_masked_no_operation_pair(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+) -> Result<
+    VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
+    DirectRegisterMaskedNoOperationPairError,
+> {
+    let admission = admit_register_masked_no_operation_pair(program, runtime)
+        .map_err(|error| {
+        DirectRegisterMaskedNoOperationPairError::Admission(error.kind())
+    })?;
+    validate_no_operation_pair_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )
+    .map_err(DirectRegisterMaskedNoOperationPairError::Identity)?;
+    if artifact.key() != &expected_key
+        || artifact.target_triple()
+            != target_triple(expected_key.target().host_isa())
+    {
+        return Err(DirectRegisterMaskedNoOperationPairError::ArtifactIdentity);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = canonical_no_operation_pair_coff(&expected_key, &admission)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedNoOperationPairError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact {
+        admission,
+        artifact: admitted,
+    })
+}
+
+fn validate_no_operation_pair_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedNoOperationPairError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedNoOperationPairError::TargetFormat);
+    }
+    if target.backend_id()
+        != DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_REVISION
+    {
+        return Err(DirectRegisterMaskedNoOperationPairError::TargetBackend);
+    }
+    if target.native_abi_revision() != NATIVE_REGION_ABI_REVISION {
+        return Err(DirectRegisterMaskedNoOperationPairError::TargetAbi);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedNoOperationPairError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn canonical_no_operation_pair_coff(
+    key: &NativeArtifactKey,
+    admission: &VerifiedRegisterMaskedNoOperationPairAdmission,
+) -> Result<Vec<u8>, DirectRegisterMaskedNoOperationPairError> {
+    let first = admission.first_live_in();
+    let second = admission.second_live_in();
+    let template = DirectRegisterMaskedNoOperationPairTemplate {
+        entry_code_pointer: admission.entry_code_pointer(),
+        entry_data_pointer: admission.entry_data_pointer(),
+        first_encrypted_address: first.address,
+        first_encrypted_value: admission.first_encrypted_value(),
+        first_live_in: first.value,
+        next_code_pointer: admission.next_code_pointer(),
+        next_data_pointer: admission.next_data_pointer(),
+        required_memory_words: admission.required_memory_words(),
+        second_code_pointer: admission.second_code_pointer(),
+        second_encrypted_address: second.address,
+        second_encrypted_value: admission.second_encrypted_value(),
+        second_live_in: second.value,
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_no_operation_pair_code(template)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_no_operation_pair_code(template)
+        },
+    }
+    .ok_or(DirectRegisterMaskedNoOperationPairError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedNoOperationPairError::ObjectBytes)
 }
 
 /// Emits one untrusted canonical candidate for collapsed no-operation/halt.

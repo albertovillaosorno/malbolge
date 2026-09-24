@@ -299,6 +299,11 @@ pub const DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_ID: &str =
     "direct-register-masked-no-operation-halt";
 /// Collapsed v6 no-operation/halt code-generation revision.
 pub const DIRECT_REGISTER_MASKED_NO_OPERATION_HALT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for collapsed v6 two-no-operation execution.
+pub const DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_ID: &str =
+    "direct-register-masked-no-operation-pair";
+/// Collapsed v6 no-operation-pair code-generation revision.
+pub const DIRECT_REGISTER_MASKED_NO_OPERATION_PAIR_BACKEND_REVISION: u32 = 1;
 /// Backend identity for register-masked v6 Crazy execution.
 pub const DIRECT_REGISTER_MASKED_CRAZY_BACKEND_ID: &str =
     "direct-register-masked-crazy";
@@ -409,6 +414,22 @@ pub(super) struct DirectRegisterMaskedNoOperationHaltTemplate {
     pub(super) next_code_pointer: u32,
     pub(super) next_data_pointer: u32,
     pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedNoOperationPairTemplate {
+    pub(super) entry_code_pointer: u32,
+    pub(super) entry_data_pointer: u32,
+    pub(super) first_encrypted_address: u32,
+    pub(super) first_encrypted_value: u32,
+    pub(super) first_live_in: u32,
+    pub(super) next_code_pointer: u32,
+    pub(super) next_data_pointer: u32,
+    pub(super) required_memory_words: u64,
+    pub(super) second_code_pointer: u32,
+    pub(super) second_encrypted_address: u32,
+    pub(super) second_encrypted_value: u32,
+    pub(super) second_live_in: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

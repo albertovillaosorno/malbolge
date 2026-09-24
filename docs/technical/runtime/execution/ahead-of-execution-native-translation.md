@@ -202,9 +202,15 @@ before semantic completion, and owns the foreign call only inside the isolated
 worker. Real x86-64 POSIX-worker evidence executes and releases the collapsed
 Windows-ABI object without poisoning the session.
 
-The no-operation pair still requires its own backend identity, canonical object
-verification, executable lifecycle, ABI binding, and call authority before it
-can execute as one collapsed native transition.
+The no-operation pair now has its own backend identity and byte-canonical
+Windows COFF templates for x86-64 and AArch64. Independent verification
+reconstructs pair semantic admission, exact v6 key/target assumptions, COFF
+structure, and canonical bytes before promoting the object. This still grants
+no executable-memory, ABI-binding, or invocation authority.
+
+The no-operation pair still requires its own load image, executable lifecycle,
+ABI binding, runner, and foreign-call proof before it can execute as one
+collapsed native transition.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.
