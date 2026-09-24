@@ -1174,7 +1174,9 @@ requires the exact synchronized retained image.
 
 A caller-owned pair runner receives only that exact bound view, restores the
 complete entry snapshot on runner failure, and returns through semantic
-completion admission. Foreign-call/process-host authority remains closed.
+completion admission. The persistent process host projects the same bound call
+through `MBNPC1`, validates returned evidence, and confines the foreign
+call to the isolated worker.
 
 ABI preparation derives the no-operation/halt expected state, permits only dead
 A/I/O

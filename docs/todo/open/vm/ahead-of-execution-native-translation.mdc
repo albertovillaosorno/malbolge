@@ -155,9 +155,12 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - A caller-owned pair runner port now receives only the exact bound executable.
   Runner failure restores the complete rebased entry snapshot, and returned
   status/state remains subject to semantic completion admission.
-- The no-operation pair still requires dedicated foreign-call/process-host proof
-  before collapsed native execution; all other multi-step shapes stay
-  fail-closed.
+- The persistent native process host now projects that exact pair call through
+  the existing `MBNPC1` protocol and validates returned mapping,
+  state, and buffer evidence before semantic completion. The foreign call stays
+  isolated in the worker. Real x86-64 POSIX-worker evidence executes and
+  releases the pair object without poisoning the session; all other unreviewed
+  multi-step shapes stay fail-closed.
 
 ## Acceptance
 

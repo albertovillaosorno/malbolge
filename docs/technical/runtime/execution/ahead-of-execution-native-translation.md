@@ -222,8 +222,11 @@ A caller-owned pair runner port now receives only that exact bound executable
 view. Runner failure restores the complete rebased entry snapshot, and returned
 status/state is admitted through the existing semantic completion contract.
 
-The no-operation pair still requires foreign-call/process-host proof before it
-can execute as one collapsed native transition.
+The persistent process host now projects that exact pair call through the
+existing `MBNPC1` protocol, validates returned mapping/state/buffer
+evidence, and delegates the foreign call only to the isolated worker. Real
+x86-64 POSIX-worker evidence executes and releases the collapsed pair object
+without poisoning the session.
 
 Additional multi-step shapes stay unsupported until each receives an equally
 explicit semantic and native proof.

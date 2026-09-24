@@ -37,6 +37,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use super::invocation::{
     PreparedDirectFusedNativeInvocation, PreparedNativeExecutableInvocation,
     PreparedRegisterMaskedNoOperationHaltNativeInvocation,
+    PreparedRegisterMaskedNoOperationPairNativeInvocation,
 };
 use super::lifecycle::{
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
@@ -62,6 +63,7 @@ use super::process_session::{NativeProcessSession, NativeProcessSessionError};
 use super::runner::{
     DirectFusedNativeRunner, NativeExecutableRunner,
     RegisterMaskedNoOperationHaltNativeRunner,
+    RegisterMaskedNoOperationPairNativeRunner,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -334,6 +336,29 @@ impl NativeProcessHost {
             .map_err(NativeProcessHostError::call_response)
     }
 
+    fn exchange_register_masked_no_operation_pair_call(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationPairNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, NativeProcessHostError> {
+        let request = invocation.process_request();
+        let encoded = encode_native_process_call_request(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response_limit = native_process_call_response_byte_limit(&request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        let response = self
+            .session
+            .exchange(&encoded, response_limit)
+            .map_err(NativeProcessHostError::session)?;
+        let decoded = decode_native_process_call_response(&response, &request)
+            .map_err(NativeProcessHostError::call_wire)?;
+        invocation
+            .apply_process_response(&decoded)
+            .map_err(NativeProcessHostError::call_response)
+    }
+
     /// Takes ownership of one already-spawned persistent native child session.
     #[must_use]
     pub const fn new(session: NativeProcessSession) -> Self {
@@ -436,6 +461,20 @@ impl RegisterMaskedNoOperationHaltNativeRunner for NativeProcessHost {
         >,
     ) -> Result<i32, Self::Error> {
         self.exchange_register_masked_no_operation_halt_call(invocation)
+    }
+}
+
+impl RegisterMaskedNoOperationPairNativeRunner for NativeProcessHost {
+    type Error = NativeProcessHostError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNoOperationPairNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, Self::Error> {
+        self.exchange_register_masked_no_operation_pair_call(invocation)
     }
 }
 
