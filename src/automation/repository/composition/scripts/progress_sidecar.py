@@ -1273,10 +1273,7 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     temporary = Path(temporary_name)
     replaced = False
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            _ = stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
+        _write_payload_descriptor(descriptor, payload)
         _ = temporary.replace(destination)
         replaced = True
         _confirm_publication_durability(
@@ -1325,10 +1322,22 @@ def _publish_no_replace(
 
 
 def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
-    with os.fdopen(descriptor, "wb") as stream:
+    stream = os.fdopen(descriptor, "wb")
+    try:
         _ = stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())
+    finally:
+        primary_error = sys.exception()
+        try:
+            stream.close()
+        except OSError as error:
+            if primary_error is not None:
+                primary_error.add_note(
+                    f"payload descriptor close also failed: {error}"
+                )
+            else:
+                raise
 
 
 def _admit_existing_immutable(destination: Path, payload: bytes) -> None:

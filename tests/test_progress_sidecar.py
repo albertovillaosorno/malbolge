@@ -275,6 +275,33 @@ class CrashFixture:
 
 
 @dataclass(slots=True)
+class FailingPayloadStream:
+    """Temporary payload stream with deterministic write and close failures."""
+
+    write_failure: str
+    close_failure: str
+
+    def write(self, payload: bytes) -> int:
+        """Raise the configured primary write failure.
+
+        Raises:
+            OSError: Always, from the configured write failure.
+
+        """
+        del payload
+        raise OSError(self.write_failure)
+
+    def close(self) -> None:
+        """Raise the configured secondary close failure.
+
+        Raises:
+            OSError: Always, from the configured close failure.
+
+        """
+        raise OSError(self.close_failure)
+
+
+@dataclass(slots=True)
 class SequenceClock:
     """Deterministic monotonic-clock fixture."""
 
@@ -1075,6 +1102,40 @@ def test_directory_close_failure_preserves_primary_sync_failure(
     assert str(primary_error) == sync_failure
     expected_note = f"directory descriptor close also failed: {close_failure}"
     assert getattr(primary_error, "__notes__", None) == [expected_note]
+
+
+def test_checkpoint_generation_preserves_write_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable temp-stream close cannot mask its primary write failure."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    write_failure = "injected payload write failure"
+    close_failure = "injected payload close failure"
+
+    def failing_fdopen(descriptor: int, mode: str) -> FailingPayloadStream:
+        del descriptor, mode
+        return FailingPayloadStream(write_failure, close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", failing_fdopen)
+        expected_message = (
+            f"immutable progress payload publication failed: {write_failure}"
+        )
+        with pytest.raises(ERROR, match=expected_message) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    primary_error = captured.value.__context__
+    assert isinstance(primary_error, OSError)
+    assert str(primary_error) == write_failure
+    expected_note = f"payload descriptor close also failed: {close_failure}"
+    assert getattr(primary_error, "__notes__", None) == [expected_note]
+    assert not Path(sidecar.progress_path).exists()
 
 
 def test_checkpoint_generation_reports_committed_durability_failure(
@@ -1950,6 +2011,35 @@ def test_write_atomic_wraps_mutable_publication_oserror(
     monkeypatch.setattr(progress, "_write_atomic_bytes", fail_publication)
     with pytest.raises(ERROR, match="progress sidecar publication failed"):
         _ = progress.write_atomic(candidate)
+
+
+def test_write_atomic_preserves_write_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable temp-stream close cannot mask its primary write failure."""
+    candidate = _sidecar(tmp_path)
+    write_failure = "injected payload write failure"
+    close_failure = "injected payload close failure"
+
+    def failing_fdopen(descriptor: int, mode: str) -> FailingPayloadStream:
+        del descriptor, mode
+        return FailingPayloadStream(write_failure, close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", failing_fdopen)
+        with pytest.raises(
+            ERROR,
+            match=f"progress sidecar publication failed: {write_failure}",
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    primary_error = captured.value.__context__
+    assert isinstance(primary_error, OSError)
+    assert str(primary_error) == write_failure
+    expected_note = f"payload descriptor close also failed: {close_failure}"
+    assert getattr(primary_error, "__notes__", None) == [expected_note]
+    assert not Path(candidate.progress_path).exists()
 
 
 def test_write_atomic_preserves_primary_before_cleanup_failure(
