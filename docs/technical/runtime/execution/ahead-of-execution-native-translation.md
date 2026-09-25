@@ -283,8 +283,13 @@ Binding accepts only the exact synchronized rotate/no-operation executable.
 
 A caller-owned runner now receives only that exact bound view. Runner failure
 restores the complete rebased entry snapshot, and returned status/state is
-admitted through exact semantic completion. Foreign-call authority remains
-absent.
+admitted through exact semantic completion.
+
+The persistent process host projects that exact bound call through the existing
+`MBNPC1` protocol and validates returned mapping/state/buffer evidence before
+semantic completion. The foreign call stays isolated in the worker. Real x86-64
+POSIX-worker evidence executes and releases the rotate/no-operation object
+without poisoning the session; no AArch64 runtime execution is claimed.
 
 Additional multi-step shapes stay unsupported until each receives equally
 explicit semantic and native proof.

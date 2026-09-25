@@ -1452,6 +1452,13 @@ struct CollapsedNoOperationRotateNativeFixture {
     ready: en::ReadyRegisterMaskedNoOperationRotateNativeExecutable,
 }
 
+#[derive(Debug)]
+struct CollapsedRotateNoOperationNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: en::VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+    ready: en::ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+}
+
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 type DirectFusedSequenceDriftCase = (&'static str, Vec<RegionEffectProgram>);
 type DirectFusedVerifiedObjectAndExit = (
@@ -31467,6 +31474,28 @@ fn collapsed_no_operation_rotate_native_fixture(
     Ok(CollapsedNoOperationRotateNativeFixture { adapter, artifact, ready })
 }
 
+fn collapsed_rotate_no_operation_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<CollapsedRotateNoOperationNativeFixture, String> {
+    let artifact =
+        verified_collapsed_rotate_no_operation(program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(CollapsedRotateNoOperationNativeFixture { adapter, artifact, ready })
+}
+
 fn collapsed_rotate_no_operation_rebased_observations(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<CollapsedRotateNoOperationObservations, String> {
@@ -57283,6 +57312,52 @@ fn execute_real_posix_collapsed_no_operation_rotate(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn execute_real_posix_collapsed_rotate_no_operation(
+    host: &mut NativeProcessHost,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<bool, String> {
+    let artifact =
+        verified_collapsed_rotate_no_operation(program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| error.to_string())?;
+    let ready = en::load_register_masked_rotate_no_operation_native_executable(
+        host, &image,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("rotate/no-op process entry missing"))?;
+    let expected = program
+        .effects
+        .last()
+        .map(|effect| effect.after)
+        .ok_or_else(|| String::from("rotate/no-op process exit missing"))?;
+    let mut memory = register_masked_program_memory(program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome =
+        en::execute_loaded_verified_register_masked_rotate_no_operation_native(
+            host, &ready, prepared,
+        )
+        .map_err(|error| error.to_string())?;
+    en::release_register_masked_rotate_no_operation_native_executable(
+        host, ready,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(outcome == NativeRegionInvocationOutcome::Applied(expected))
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_executes_real_posix_collapsed_no_operation_halt()
 -> Result<(), String> {
@@ -57345,6 +57420,29 @@ fn native_process_host_executes_real_posix_collapsed_no_operation_rotate()
     } else {
         Err(String::from(
             "collapsed no-op/rotate POSIX process execution drifted",
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_host_executes_real_posix_collapsed_rotate_no_operation()
+-> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let (directory, mut host) =
+        native_process_posix_worker_fixture("collapsed_rotate_noop")?;
+    let execution =
+        execute_real_posix_collapsed_rotate_no_operation(&mut host, &program);
+    let session_poisoned = host.session_poisoned();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    let applied = execution?;
+    cleanup?;
+    if applied && !session_poisoned {
+        Ok(())
+    } else {
+        Err(String::from(
+            "collapsed rotate/no-op POSIX process execution drifted",
         ))
     }
 }
@@ -57558,6 +57656,66 @@ fn native_process_host_rejects_fused_mapping_drift_before_mutation()
     } else {
         Err(String::from(
             "native process host fused mapping drift mutated buffers",
+        ))
+    }
+}
+
+#[test]
+fn rotate_no_op_process_rejects_mapping_drift() -> Result<(), String> {
+    let program = aot_register_masked_rotate_no_operation_fixture()?;
+    let CollapsedRotateNoOperationNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_rotate_no_operation_native_fixture(&program, 794, 0x1e_0000)?;
+    let entry = program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("rotate/no-op process entry missing"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let entry_output = output;
+    let prepared = en::PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let failure =
+        en::execute_loaded_verified_register_masked_rotate_no_operation_native(
+            &mut host, &ready, prepared,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("rotate/no-op process host admitted mapping drift")
+        })?;
+    let rejected_mapping = failure
+        .runner_error()
+        .copied()
+        .and_then(NativeProcessHostError::call_response_error)
+        == Some(NativeProcessCallResponseError::MappingIdentity);
+    let session_poisoned = host.session_poisoned();
+    en::release_register_masked_rotate_no_operation_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if failure.phase() == NativeExecutableExecutionPhase::Run
+        && rejected_mapping
+        && !session_poisoned
+        && memory == entry_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "rotate/no-op process mapping rejection drifted",
         ))
     }
 }

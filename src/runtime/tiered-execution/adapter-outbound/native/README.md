@@ -1216,7 +1216,13 @@ and I/O rebasing. Binding requires the exact synchronized retained image.
 
 A caller-owned rotate/no-operation runner receives only that bound view,
 restores the complete rebased entry snapshot after runner failure, and
-reverifies completion. Foreign-call authority remains absent.
+reverifies completion.
+
+The persistent process host projects that exact call through existing `MBNPC1`,
+validates returned mapping/state/buffer evidence, and keeps the foreign call in
+the isolated worker. Real Linux x86-64 POSIX-worker evidence executes and
+releases the rotate/no-operation object without poisoning the session. AArch64
+runtime execution remains unclaimed.
 
 Its dedicated relocation-free load image and typestate lifecycle admit
 strict-W^X copy, same-mapping RW-to-RX, instruction synchronization, and
