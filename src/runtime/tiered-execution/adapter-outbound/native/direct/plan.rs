@@ -1401,8 +1401,12 @@ pub fn select_ahead_of_execution_preflighted_tier<'requirement>(
     let prepared =
         select_direct_target(program, host.operating_system, host.isa)
             .prepare(program)?;
-    Ok(aot.entries.get(prepared.key()).map_or(
-        AheadOfExecutionPreflightedTier::Uncovered,
+    Ok(aot.entries.get(prepared.key()).map_or_else(
+        || {
+            AheadOfExecutionPreflightedTier::Uncovered(Box::new(
+                prepared.key().clone(),
+            ))
+        },
         |artifact| {
             AheadOfExecutionPreflightedTier::Direct(Arc::clone(artifact))
         },

@@ -1030,7 +1030,7 @@ pub enum AheadOfExecutionPreflightedTier {
     /// This host has no supported direct object format.
     Interpreter,
     /// This host supports direct artifacts but this exact identity is absent.
-    Uncovered,
+    Uncovered(Box<NativeArtifactKey>),
 }
 
 /// Cache-aware profile-preflighted execution-tier plan.

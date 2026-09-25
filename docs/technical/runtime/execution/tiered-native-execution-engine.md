@@ -2285,9 +2285,9 @@ The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
 Preparation deduplicates complete artifact keys and publishes nothing unless
 every requested variant has a reviewed fast path and passes emission and
-verification. Exact one-step identities return retained native artifacts,
-uncovered identities remain distinguishable for later JIT policy, and ordered
-sequences require complete precompiled coverage without runtime emission.
+verification. Exact one-step identities return retained native artifacts; an
+uncovered result retains its complete `NativeArtifactKey` for later JIT policy.
+Ordered sequences require complete precompiled coverage without runtime emission.
 
 Finite exact-state graph claims are also replay-verified against complete VM
 checkpoints before all graph nodes are transactionally prepared into the same

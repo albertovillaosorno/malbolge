@@ -35,6 +35,7 @@
 
 use std::sync::Arc;
 
+use crate::execution_cache::NativeArtifactKey;
 use crate::execution_native::{
     AheadOfExecutionPreflightedTier, VerifiedDirectNativeArtifact,
 };
@@ -60,6 +61,7 @@ pub struct NativeTierJitRescueSelection {
     artifact: Option<Arc<VerifiedDirectNativeArtifact>>,
     performance_block: Option<NativeTierJitPromotionBlock>,
     route: NativeTierJitRescueRoute,
+    uncovered_key: Option<Box<NativeArtifactKey>>,
 }
 
 impl NativeTierJitRescueSelection {
@@ -82,6 +84,12 @@ impl NativeTierJitRescueSelection {
     pub const fn route(&self) -> NativeTierJitRescueRoute {
         self.route
     }
+
+    /// Returns the exact AOT-miss identity retained for possible JIT rescue.
+    #[must_use]
+    pub fn uncovered_key(&self) -> Option<&NativeArtifactKey> {
+        self.uncovered_key.as_deref()
+    }
 }
 
 /// Applies AOT-first precedence and lazily evaluates JIT rescue performance.
@@ -103,6 +111,7 @@ where
                 artifact: Some(artifact),
                 performance_block: None,
                 route: NativeTierJitRescueRoute::AheadOfExecution,
+                uncovered_key: None,
             }
         },
         AheadOfExecutionPreflightedTier::Interpreter => {
@@ -110,15 +119,17 @@ where
                 artifact: None,
                 performance_block: None,
                 route: NativeTierJitRescueRoute::Interpreter,
+                uncovered_key: None,
             }
         },
-        AheadOfExecutionPreflightedTier::Uncovered => {
+        AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) => {
             match assess_performance() {
                 NativeTierJitPromotionAssessment::Interpreter { reason } => {
                     NativeTierJitRescueSelection {
                         artifact: None,
                         performance_block: Some(reason),
                         route: NativeTierJitRescueRoute::Interpreter,
+                        uncovered_key: Some(uncovered_key),
                     }
                 },
                 NativeTierJitPromotionAssessment::Promote => {
@@ -126,6 +137,7 @@ where
                         artifact: None,
                         performance_block: None,
                         route: NativeTierJitRescueRoute::JitEligible,
+                        uncovered_key: Some(uncovered_key),
                     }
                 },
             }

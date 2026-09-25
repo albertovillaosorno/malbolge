@@ -39,8 +39,9 @@ trust boundary, or ownership rules stated by its governing decisions.
 JIT compilation and dispatch are not implemented. The shared performance-
 admission gate rejects any comparison other than normative interpreter versus
 in-process native execution for one exact cohort. AOT-first rescue composition
-now bypasses that gate for exact AOT hits and host-format interpreter fallback;
-only an uncovered identity can become `JitEligible` after promotion.
+now bypasses that gate for exact AOT hits and host-format interpreter fallback.
+An uncovered result retains its complete native artifact key through promotion,
+so `JitEligible` cannot silently rebuild a different compilation identity.
 
 ## Invariants
 

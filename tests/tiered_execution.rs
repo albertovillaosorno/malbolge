@@ -34267,6 +34267,7 @@ fn aot_first_jit_rescue_bypasses_gate_for_exact_hit() -> Result<(), String> {
     if rescue.route() == NativeTierJitRescueRoute::AheadOfExecution
         && rescue.artifact().is_some()
         && rescue.performance_block().is_none()
+        && rescue.uncovered_key().is_none()
     {
         Ok(())
     } else {
@@ -34298,6 +34299,7 @@ fn aot_first_jit_rescue_bypasses_gate_for_host_fallback() -> Result<(), String>
     if rescue.route() == NativeTierJitRescueRoute::Interpreter
         && rescue.artifact().is_none()
         && rescue.performance_block().is_none()
+        && rescue.uncovered_key().is_none()
     {
         Ok(())
     } else {
@@ -34323,6 +34325,7 @@ fn aot_first_jit_rescue_preserves_performance_rejection() -> Result<(), String>
     if rescue.route() == NativeTierJitRescueRoute::Interpreter
         && rescue.artifact().is_none()
         && rescue.performance_block() == Some(expected_block)
+        && rescue.uncovered_key().is_some()
     {
         Ok(())
     } else {
@@ -34347,6 +34350,7 @@ fn aot_first_jit_rescue_promotes_only_uncovered_identity() -> Result<(), String>
     if rescue.route() == NativeTierJitRescueRoute::JitEligible
         && rescue.artifact().is_none()
         && rescue.performance_block().is_none()
+        && rescue.uncovered_key().is_some()
     {
         Ok(())
     } else {
@@ -34366,8 +34370,11 @@ fn aot_tier_reports_uncovered_without_emission() -> Result<(), String> {
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    if selected == AheadOfExecutionPreflightedTier::Uncovered && aot.is_empty()
-    {
+    let AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) = selected
+    else {
+        return Err(String::from("AOT miss lost uncovered identity"));
+    };
+    if aot.is_empty() && uncovered_key.bucket_digest() != 0 {
         Ok(())
     } else {
         Err(String::from("AOT miss emitted or mutated native cache"))
@@ -34427,6 +34434,13 @@ fn aot_tier_keeps_uncovered_identity_distinct() -> Result<(), String> {
         &aot,
     )
     .map_err(|error| error.to_string())?;
+    let original = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
     let unsupported_host = select_ahead_of_execution_preflighted_tier(
         &program,
         safe_rust_profiled_capability(),
@@ -34434,7 +34448,15 @@ fn aot_tier_keeps_uncovered_identity_distinct() -> Result<(), String> {
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    if uncovered == AheadOfExecutionPreflightedTier::Uncovered
+    let AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) = uncovered
+    else {
+        return Err(String::from("AOT miss lost uncovered identity"));
+    };
+    let AheadOfExecutionPreflightedTier::Direct(original_artifact) = original
+    else {
+        return Err(String::from("seeded AOT identity was not retained"));
+    };
+    if *uncovered_key != *original_artifact.key()
         && unsupported_host == AheadOfExecutionPreflightedTier::Interpreter
         && aot.len() == 1
     {
