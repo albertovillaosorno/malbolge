@@ -79,7 +79,12 @@ but discovery never changes observable Malbolge behavior by itself.
   scaling/statistical summary tied to exact workload and hardware/software
   identity. The implemented shared gate rejects process-native evidence before
   numeric speedup assessment. AOT-first rescue composition also proves exact AOT
-  hits and host fallback bypass the gate. Uncovered results retain their
-  complete
-  native artifact key through `JitEligible` promotion, and require an explicit
-  positive nanosecond/object-byte budget before `JitCompilation` scheduling.
+  hits and host fallback bypass the gate.
+- Uncovered results retain their complete native artifact key through
+  `JitEligible` promotion and require an explicit positive nanosecond/object-
+  byte
+  budget before `JitCompilation` scheduling. A compiler port owns enforcement of
+  both ceilings. Application orchestration rechecks successful reported
+  time/object size and maps every non-candidate outcome to interpreter
+  fallback.
+  Scheduled composition invokes the compiler only for `JitCompilation`.

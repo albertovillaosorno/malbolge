@@ -2309,7 +2309,15 @@ AOT-first rescue composition now consumes the read-only AOT result lazily. Exact
 format `Interpreter` fallback also bypasses the gate, and only `Uncovered`
 identities evaluate performance. A promoted uncovered identity becomes
 `JitEligible`. A caller-owned positive nanosecond/object-byte budget is required
-before scheduling `JitCompilation`; no compiler or executor is invoked here.
+before scheduling `JitCompilation`.
+
+A replaceable compiler port receives the exact retained identity plus both
+ceilings and must enforce them. Application orchestration rechecks successful
+observations and maps every non-candidate outcome to interpreter fallback.
+Scheduled composition invokes the compiler only for `JitCompilation`; AOT and
+interpreter routes bypass it.
+
+Artifact admission and installation remain open.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, durable cache serialization/storage and cross-

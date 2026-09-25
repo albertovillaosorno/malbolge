@@ -44,7 +44,17 @@ now bypasses that gate for exact AOT hits and host-format interpreter fallback.
 An uncovered result retains its complete native artifact key through promotion,
 so `JitEligible` cannot silently rebuild a different compilation identity. A
 caller-owned positive nanosecond/object-byte budget is then mandatory before the
-route can become `JitCompilation`; this scheduling boundary compiles nothing.
+route can become `JitCompilation`.
+
+A replaceable compiler port now receives that exact identity and budget, must
+enforce both ceilings, and returns only compiled, budget-exhausted, cancelled,
+unsupported, or adapter-failure evidence. Application orchestration
+independently rechecks successful time/size claims. Scheduled composition
+invokes
+that compiler
+only for `JitCompilation`; exact AOT and interpreter routes bypass it.
+
+Artifact admission, installation, and execution remain unimplemented.
 
 ## Invariants
 

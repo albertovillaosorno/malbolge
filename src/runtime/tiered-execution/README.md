@@ -25,6 +25,7 @@ It must not bypass another function or architectural kind boundary.
   normalization/refinement, durable merge, assessment, policy
   codec/persistence, ownership, recommendation/request publication, turns,
   cycles, exact interpreter-relative JIT promotion gating, lazy AOT-first JIT
-  rescue eligibility, and explicit pre-compilation resource/time scheduling.
+  rescue eligibility, explicit pre-compilation resource/time scheduling, and
+  bounded JIT compilation fallback orchestration.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
-  and monotonic clock contracts.
+  monotonic clock, and budget-enforcing JIT compiler contracts.

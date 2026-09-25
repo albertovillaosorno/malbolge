@@ -121,12 +121,18 @@ pub mod geometry_native_rotate_sequence;
 pub mod geometry_native_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
+#[path = "../src/runtime/tiered-execution/application/jit_compilation.rs"]
+pub mod jit_compilation;
+#[path = "../src/runtime/tiered-execution/port-outbound/jit_compiler.rs"]
+pub mod jit_compiler_port;
 #[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
 pub mod leased_retry;
 #[path = "../src/runtime/tiered-execution/port-outbound/monotonic_clock.rs"]
 pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/composition/tier/jit_attempt.rs"]
+pub mod native_tier_jit_attempt;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_rescue.rs"]
 pub mod native_tier_jit_rescue;
 #[path = "../src/runtime/tiered-execution/composition/tier/performance_gate.rs"]
@@ -967,6 +973,11 @@ use interpreter_handoff::{
     execution_geometry_continuation_from_cached_native_outcome,
     execution_geometry_continuation_from_native_outcome,
 };
+use jit_compilation::NativeTierJitCompilationFallback;
+use jit_compiler_port::{
+    NativeTierJitCompilationRequest, NativeTierJitCompiler,
+    NativeTierJitCompilerOutcome,
+};
 use leased_retry::{
     NativeContinuationLeasedRetry, NativeContinuationLeasedRetryAdmissionError,
     NativeContinuationLeasedRetryExecutionFailure,
@@ -999,9 +1010,14 @@ use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
 };
+use native_tier_jit_attempt::{
+    NativeTierScheduledJitFallback, NativeTierScheduledJitRoute,
+    attempt_scheduled_jit,
+};
 use native_tier_jit_rescue::{
     NativeTierJitCompilationBudget, NativeTierJitRescueRoute,
-    schedule_aot_first_jit_rescue, select_aot_first_jit_rescue,
+    NativeTierJitRescueSchedule, schedule_aot_first_jit_rescue,
+    select_aot_first_jit_rescue,
 };
 use native_tier_performance_gate::{
     NativeTierJitPromotionAssessment, NativeTierJitPromotionBlock,
@@ -3774,6 +3790,45 @@ struct TestBlobPairStore {
     reclamation_calls: usize,
     replace_calls: usize,
     revision: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestJitCompilerOutcome {
+    Cancelled,
+    Candidate,
+}
+
+#[derive(Debug)]
+struct TestJitCompiler {
+    calls: usize,
+    observed_budget: Option<NativeTierJitCompilationBudget>,
+    observed_identity: Option<NativeArtifactKey>,
+    outcome: TestJitCompilerOutcome,
+}
+
+impl NativeTierJitCompiler<NativeArtifactKey, Vec<u8>, Infallible>
+    for TestJitCompiler
+{
+    fn compile(
+        &mut self,
+        request: NativeTierJitCompilationRequest<'_, NativeArtifactKey>,
+    ) -> Result<NativeTierJitCompilerOutcome<Vec<u8>>, Infallible> {
+        self.calls = self.calls.saturating_add(1);
+        self.observed_budget = Some(request.budget);
+        self.observed_identity = Some(request.identity.clone());
+        match self.outcome {
+            TestJitCompilerOutcome::Cancelled => {
+                Ok(NativeTierJitCompilerOutcome::Cancelled)
+            },
+            TestJitCompilerOutcome::Candidate => {
+                Ok(NativeTierJitCompilerOutcome::Compiled {
+                    artifact: vec![0x6a],
+                    elapsed_nanoseconds: 1,
+                    object_bytes: 1,
+                })
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34244,6 +34299,161 @@ fn aot_preparation_reports_unsupported_host_before_publication()
     }
 }
 
+const fn test_jit_compiler(outcome: TestJitCompilerOutcome) -> TestJitCompiler {
+    TestJitCompiler {
+        calls: 0,
+        observed_budget: None,
+        observed_identity: None,
+        outcome,
+    }
+}
+
+fn test_promoted_jit_schedule() -> Result<NativeTierJitRescueSchedule, String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    Ok(schedule_aot_first_jit_rescue(
+        rescue,
+        NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::new(50_000)
+                .ok_or_else(|| String::from("invalid JIT latency budget"))?,
+            maximum_object_bytes: nonzero_test_limit(
+                4096,
+                "JIT object-byte budget",
+            )?,
+        },
+    ))
+}
+
+#[test]
+fn aot_first_jit_attempt_bypasses_compiler_for_aot_hit() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let aot = cache.seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    if attempt.route() == NativeTierScheduledJitRoute::AheadOfExecution
+        && attempt.candidate().is_none()
+        && attempt.fallback().is_none()
+        && attempt.schedule().artifact().is_some()
+        && compiler.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT hit invoked scheduled JIT compiler"))
+    }
+}
+
+#[test]
+fn aot_first_jit_attempt_bypasses_compiler_for_host_fallback()
+-> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    if attempt.route() == NativeTierScheduledJitRoute::Interpreter
+        && attempt.candidate().is_none()
+        && attempt.fallback().is_none()
+        && compiler.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("host fallback invoked scheduled JIT compiler"))
+    }
+}
+
+#[test]
+fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
+-> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let expected_identity = schedule
+        .uncovered_key()
+        .ok_or_else(|| String::from("scheduled JIT miss lost identity"))?
+        .clone();
+    let expected_budget = schedule
+        .budget()
+        .ok_or_else(|| String::from("scheduled JIT miss lost budget"))?;
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    if attempt.route() == NativeTierScheduledJitRoute::JitCandidate
+        && attempt
+            .candidate()
+            .is_some_and(|candidate| candidate == &[0x6a])
+        && attempt.elapsed_nanoseconds() == Some(1)
+        && attempt.object_bytes() == Some(1)
+        && attempt.fallback().is_none()
+        && compiler.calls == 1
+        && compiler.observed_budget == Some(expected_budget)
+        && compiler.observed_identity.as_ref() == Some(&expected_identity)
+    {
+        Ok(())
+    } else {
+        Err(String::from("scheduled JIT changed exact compiler request"))
+    }
+}
+
+#[test]
+fn jit_attempt_cancellation_falls_back_to_interpreter() -> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Cancelled);
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    let cancelled = matches!(
+        attempt.fallback(),
+        Some(NativeTierScheduledJitFallback::Compilation(
+            NativeTierJitCompilationFallback::Cancelled
+        ))
+    );
+    if attempt.route() == NativeTierScheduledJitRoute::Interpreter
+        && attempt.candidate().is_none()
+        && cancelled
+        && compiler.calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "JIT cancellation did not fall back to interpreter",
+        ))
+    }
+}
+
 #[test]
 fn aot_first_jit_schedule_attaches_budget_only_to_promoted_miss()
 -> Result<(), String> {
@@ -34266,10 +34476,10 @@ fn aot_first_jit_schedule_attaches_budget_only_to_promoted_miss()
         .ok_or_else(|| String::from("invalid test nanosecond budget"))?;
     let maximum_object_bytes =
         nonzero_test_limit(4096, "JIT object-byte budget")?;
-    let budget = NativeTierJitCompilationBudget::new(
+    let budget = NativeTierJitCompilationBudget {
         maximum_nanoseconds,
         maximum_object_bytes,
-    );
+    };
     let scheduled = schedule_aot_first_jit_rescue(rescue, budget);
     if scheduled.route() == NativeTierJitRescueRoute::JitCompilation
         && scheduled.artifact().is_none()
@@ -34300,8 +34510,10 @@ fn aot_first_jit_schedule_drops_budget_for_performance_rejection()
     let rescue = select_aot_first_jit_rescue(selected, || {
         NativeTierJitPromotionAssessment::Interpreter { reason: expected_block }
     });
-    let budget =
-        NativeTierJitCompilationBudget::new(NonZeroU64::MIN, NonZeroUsize::MIN);
+    let budget = NativeTierJitCompilationBudget {
+        maximum_nanoseconds: NonZeroU64::MIN,
+        maximum_object_bytes: NonZeroUsize::MIN,
+    };
     let scheduled = schedule_aot_first_jit_rescue(rescue, budget);
     if scheduled.route() == NativeTierJitRescueRoute::Interpreter
         && scheduled.artifact().is_none()
@@ -34331,10 +34543,11 @@ fn aot_first_jit_schedule_keeps_exact_hit_aot_first() -> Result<(), String> {
     let rescue = select_aot_first_jit_rescue(selected, || {
         NativeTierJitPromotionAssessment::Promote
     });
-    let scheduled = schedule_aot_first_jit_rescue(
-        rescue,
-        NativeTierJitCompilationBudget::new(NonZeroU64::MIN, NonZeroUsize::MIN),
-    );
+    let scheduled =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
     if scheduled.route() == NativeTierJitRescueRoute::AheadOfExecution
         && scheduled.artifact().is_some()
         && scheduled.budget().is_none()
