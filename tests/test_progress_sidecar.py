@@ -91,18 +91,24 @@ AFTER_PARTIAL_PUBLISH = "after-partial-publish"
 AFTER_PARTIAL_SYNC = "after-partial-sync"
 AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
 AFTER_SIDECAR_SYNC = "after-sidecar-sync"
+BEFORE_CHECKPOINT_FILE_SYNC = "before-checkpoint-file-sync"
 BEFORE_CHECKPOINT_PUBLISH = "before-checkpoint-publish"
+BEFORE_PARTIAL_FILE_SYNC = "before-partial-file-sync"
 BEFORE_PARTIAL_PUBLISH = "before-partial-publish"
+BEFORE_SIDECAR_FILE_SYNC = "before-sidecar-file-sync"
 BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
 BEFORE_SIDECAR = "before-sidecar"
 CRASH_BOUNDARIES = (
+    BEFORE_CHECKPOINT_FILE_SYNC,
     BEFORE_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_SYNC,
     AFTER_CHECKPOINT,
+    BEFORE_PARTIAL_FILE_SYNC,
     BEFORE_PARTIAL_PUBLISH,
     AFTER_PARTIAL_PUBLISH,
     AFTER_PARTIAL_SYNC,
+    BEFORE_SIDECAR_FILE_SYNC,
     BEFORE_SIDECAR_REPLACE,
     AFTER_SIDECAR_REPLACE,
     AFTER_SIDECAR_SYNC,
@@ -169,6 +175,7 @@ raise SystemExit(0)
 CRASH_SCRIPT = """
 from pathlib import Path
 import os
+import stat
 import sys
 from scripts import progress_sidecar as progress
 
@@ -180,8 +187,24 @@ boundary = sys.argv[5]
 original_write_immutable = progress._write_immutable
 original_publish_immutable_payload = progress._publish_immutable_payload
 original_confirm_durability = progress._confirm_publication_durability
+original_fsync = os.fsync
 original_replace = Path.replace
 publication_count = 0
+regular_sync_count = 0
+
+def fsync_then_maybe_crash(descriptor):
+    global regular_sync_count
+    mode = os.fstat(descriptor).st_mode
+    if not stat.S_ISREG(mode):
+        return original_fsync(descriptor)
+    regular_sync_count += 1
+    if boundary == "before-checkpoint-file-sync" and regular_sync_count == 1:
+        os._exit(exit_code)
+    if boundary == "before-partial-file-sync" and regular_sync_count == 2:
+        os._exit(exit_code)
+    if boundary == "before-sidecar-file-sync" and regular_sync_count == 3:
+        os._exit(exit_code)
+    return original_fsync(descriptor)
 
 def publish_then_maybe_crash(temporary, destination, payload, *, platform):
     global publication_count
@@ -238,6 +261,7 @@ def replace_then_maybe_crash(source, destination):
 progress._publish_immutable_payload = publish_then_maybe_crash
 progress._confirm_publication_durability = confirm_then_maybe_crash
 progress._write_immutable = write_then_maybe_crash
+os.fsync = fsync_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
 elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
@@ -2486,15 +2510,21 @@ def test_process_crash_preserves_last_committed_generation(
         )
     checkpoint_path = Path(fixture.second.checkpoint_path or "")
     partial_path = Path(fixture.second.partial_path or "")
-    if boundary == BEFORE_CHECKPOINT_PUBLISH:
+    unpublished_checkpoint = {
+        BEFORE_CHECKPOINT_FILE_SYNC,
+        BEFORE_CHECKPOINT_PUBLISH,
+    }
+    if boundary in unpublished_checkpoint:
         assert not checkpoint_path.exists()
     else:
         assert checkpoint_path.read_bytes() == fixture.checkpoint_two
     unpublished_partial = {
+        BEFORE_CHECKPOINT_FILE_SYNC,
         BEFORE_CHECKPOINT_PUBLISH,
         AFTER_CHECKPOINT_PUBLISH,
         AFTER_CHECKPOINT_SYNC,
         AFTER_CHECKPOINT,
+        BEFORE_PARTIAL_FILE_SYNC,
         BEFORE_PARTIAL_PUBLISH,
     }
     if boundary in unpublished_partial:

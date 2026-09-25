@@ -90,8 +90,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes
-  immediately before or after checkpoint/partial atomic publication, after
-  checkpoint/partial directory sync before immutable temporary cleanup, after a
+  after temporary flush but before file sync for checkpoint/partial/sidecar
+  writes, immediately before or after checkpoint/partial atomic publication,
+  after checkpoint/partial directory sync before immutable temporary cleanup,
+  after a
   durable checkpoint, before sidecar publication, immediately before atomic
   sidecar replacement, after replacement before directory durability
   confirmation, immediately after sidecar directory sync,
