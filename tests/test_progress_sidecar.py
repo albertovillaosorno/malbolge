@@ -258,6 +258,14 @@ class ImmutableWriter(Protocol):
         ...
 
 
+class PayloadDescriptorWriter(Protocol):
+    """Typed view of the shared temporary-payload descriptor writer."""
+
+    def __call__(self, descriptor: int, payload: bytes) -> None:
+        """Write one payload and own the supplied descriptor lifecycle."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class CrashFixture:
     """Two committed generations plus child-process input artifacts."""
@@ -1102,6 +1110,41 @@ def test_directory_close_failure_preserves_primary_sync_failure(
     assert str(primary_error) == sync_failure
     expected_note = f"directory descriptor close also failed: {close_failure}"
     assert getattr(primary_error, "__notes__", None) == [expected_note]
+
+
+def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed stream ownership transfer still closes the raw descriptor."""
+    writer = cast(
+        "PayloadDescriptorWriter",
+        vars(progress)["_write_payload_descriptor"],
+    )
+    descriptor = 101
+    binary_mode = "wb"
+    open_failure = "injected payload fdopen failure"
+    close_failure = "injected raw descriptor close failure"
+
+    def fail_fdopen(observed: int, mode: str) -> FailingPayloadStream:
+        assert observed == descriptor
+        assert mode == binary_mode
+        raise OSError(open_failure)
+
+    def fail_close(observed: int) -> None:
+        assert observed == descriptor
+        raise OSError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", fail_fdopen)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(OSError, match=open_failure) as captured:
+            writer(descriptor, b"payload")
+
+    assert str(captured.value) == open_failure
+    expected_note = (
+        f"payload descriptor ownership cleanup also failed: {close_failure}"
+    )
+    assert getattr(captured.value, "__notes__", None) == [expected_note]
 
 
 def test_checkpoint_generation_preserves_write_before_close_failure(

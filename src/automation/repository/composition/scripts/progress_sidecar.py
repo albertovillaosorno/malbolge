@@ -1322,7 +1322,18 @@ def _publish_no_replace(
 
 
 def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
-    stream = os.fdopen(descriptor, "wb")
+    try:
+        stream = os.fdopen(descriptor, "wb")
+    except OSError as error:
+        try:
+            os.close(descriptor)
+        except OSError as close_error:
+            note = (
+                "payload descriptor ownership cleanup also failed: "
+                f"{close_error}"
+            )
+            error.add_note(note)
+        raise
     try:
         _ = stream.write(payload)
         stream.flush()
