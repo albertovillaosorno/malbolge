@@ -69,9 +69,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and pointer replacement, typed fail-closed collision rechecks when an
   immutable target races away, direct-construction type admission,
   referenced-generation
-  validation before pointer replacement, stable read plus writer-lock lifecycle
-  and mutable/immutable publication filesystem failures, fail-closed validation
-  of direct timer state before snapshots, typed containment of injected-clock
+  validation before pointer replacement, stable read plus writer-lock lifecycle,
+  pre-publication filesystem failures, and exact committed-path evidence for
+  post-publication directory-sync failures, fail-closed validation of direct
+  timer state before snapshots, typed containment of injected-clock
   failures, exact immutable checkpoint/partial payload bytes, typed public path
   helper/read admission, rejection of linked components in
   sidecar/lock/checkpoint/partial paths, and an injected monotonic phase timer.
@@ -80,9 +81,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes after
   checkpoint publication, before atomic sidecar replacement, and before the
-  next sidecar publication, cross-process
-  writer-lock exclusion plus stale-candidate revalidation after lock
-  acquisition, linked-parent redirection rejection, direct field and
+  next sidecar publication, committed-but-unconfirmed directory-sync outcomes
+  for mutable and immutable publications, cross-process writer-lock exclusion
+  plus stale-candidate revalidation after lock acquisition, linked-parent
+  redirection rejection, direct field and
   resume-identity mutations, boolean counter/sequence aliases, impossible UTC
   dates, corrupt direct pointer targets, non-callable/failing clocks, mutable
   payload aliases, foreign path arguments, exact-string JSON parser admission,

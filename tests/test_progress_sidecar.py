@@ -932,6 +932,49 @@ def test_checkpoint_generation_wraps_immutable_publication_oserror(
     assert not Path(sidecar.progress_path).exists()
 
 
+def test_checkpoint_generation_reports_committed_durability_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-publication sync failure preserves exact committed evidence."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+
+    def fail_parent_flush(
+        _path: Path,
+        *,
+        platform: str = os.name,
+    ) -> None:
+        del _path, platform
+        message = "injected checkpoint directory sync failure"
+        raise OSError(message)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", fail_parent_flush)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=(
+                "immutable progress payload committed but durability "
+                "confirmation failed"
+            ),
+        ) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    assert captured.value.published_path == checkpoint_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    destination = Path(sidecar.progress_path)
+    assert not destination.exists()
+    assert (
+        progress.write_checkpoint_generation(sidecar, checkpoint) == destination
+    )
+    assert progress.read(destination) == sidecar
+
+
 def test_checkpoint_generation_publishes_payloads_before_pointer(
     tmp_path: Path,
 ) -> None:
@@ -1395,6 +1438,45 @@ def test_write_atomic_wraps_mutable_publication_oserror(
     monkeypatch.setattr(progress, "_write_atomic_bytes", fail_publication)
     with pytest.raises(ERROR, match="progress sidecar publication failed"):
         _ = progress.write_atomic(candidate)
+
+
+def test_write_atomic_reports_committed_durability_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report that atomic replacement committed before pointer sync failed."""
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    candidate = replace(
+        original,
+        active_elapsed_ns=original.active_elapsed_ns + 100,
+        units_completed=original.units_completed + 1,
+        updated_at="2026-08-06T14:00:02Z",
+        wall_elapsed_ns=original.wall_elapsed_ns + 100,
+    )
+
+    def fail_parent_flush(
+        _path: Path,
+        *,
+        platform: str = os.name,
+    ) -> None:
+        del _path, platform
+        message = "injected sidecar directory sync failure"
+        raise OSError(message)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", fail_parent_flush)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=(
+                "progress sidecar committed but durability "
+                "confirmation failed"
+            ),
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    assert captured.value.published_path == destination
+    assert progress.read(destination) == candidate
 
 
 def test_write_atomic_revalidates_stale_candidate_after_lock(

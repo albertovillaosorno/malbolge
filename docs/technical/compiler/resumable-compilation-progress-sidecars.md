@@ -69,6 +69,14 @@ writers cannot both validate against one stale predecessor and then race the
 mutable pointer backward. A caller therefore cannot publish a syntactically
 valid sidecar that points at absent or corrupted generation bytes.
 
+Atomic publication and directory durability confirmation are distinct commit
+phases. Once a mutable sidecar replacement or immutable generation publication
+has committed, a later parent-directory synchronization failure raises
+`ProgressSidecarDurabilityError` with the exact committed `published_path`.
+Callers must treat that outcome as committed-but-not-confirmed-durable rather
+than as rollback. Pre-publication filesystem failures retain the ordinary
+`ProgressSidecarError` behavior and do not gain committed-path evidence.
+
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer
 generations are ignored until a valid sidecar publishes them. `ProgressTimer`
@@ -143,6 +151,10 @@ missing storage rather than escaping as a decoder exception.
   payload/hash/length mismatch never replaces the last valid sidecar. Concurrent
   writers serialize transition validation and pointer replacement through the
   same persistent sibling lock path.
+- Publication commit and parent-directory durability confirmation are separate.
+  A synchronization failure after atomic replacement or immutable publication
+  reports the exact committed path and never claims that the prior state was
+  restored.
 - The final `.malbolge` path is published atomically only after independent
   verification succeeds.
 - Resume compatibility binds source identity, target profile, exact repository
@@ -170,11 +182,14 @@ state and preserves the most recent valid generation. On abrupt process or host
 failure, restart follows only the last atomically committed sidecar pointer.
 Later unreferenced generation files cannot invalidate that pointer. Missing,
 stale, overwritten, or incompatible generation data is rejected with a stable
-diagnostic and never guessed into validity. Sidecar reads, writer-lock
-lifecycle, and mutable or immutable publication failures are likewise translated
-into the
+diagnostic and never guessed into validity.
 
-stable sidecar error boundary rather than leaking host filesystem exceptions.
+Sidecar reads, writer-lock lifecycle, and mutable or immutable pre-publication
+failures are likewise
+translated into the stable sidecar error boundary rather than leaking host
+filesystem exceptions. If directory synchronization fails after publication
+commits, `ProgressSidecarDurabilityError` preserves the committed path so a
+caller can distinguish uncertain durability from failed publication.
 
 If checkpoint persistence fails, the job may continue only when the caller
 explicitly accepts non-resumable execution. Public CLI defaults fail closed for

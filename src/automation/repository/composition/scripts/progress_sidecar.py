@@ -83,6 +83,17 @@ class ProgressSidecarError(ValueError):
     """One progress sidecar is malformed or internally inconsistent."""
 
 
+class ProgressSidecarDurabilityError(ProgressSidecarError):
+    """Publication committed but its directory durability is unconfirmed."""
+
+    published_path: Path
+
+    def __init__(self, message: str, published_path: Path) -> None:
+        """Record the committed path whose durability was not confirmed."""
+        super().__init__(message)
+        self.published_path = published_path
+
+
 class _LockStream(Protocol):
     """Seekable descriptor surface required by platform lock primitives."""
 
@@ -1078,6 +1089,22 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
         os.close(descriptor)
 
 
+def _confirm_publication_durability(
+    published_path: Path,
+    *,
+    context: str,
+    platform: str = os.name,
+) -> None:
+    try:
+        _flush_parent(published_path.parent, platform=platform)
+    except OSError as error:
+        message = (
+            f"{context} committed but durability confirmation failed: "
+            f"{error}"
+        )
+        raise ProgressSidecarDurabilityError(message, published_path) from error
+
+
 def _writer_lock_path(destination: Path) -> Path:
     return Path(f"{destination}.lock")
 
@@ -1160,7 +1187,10 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
             stream.flush()
             os.fsync(stream.fileno())
         _ = temporary.replace(destination)
-        _flush_parent(destination.parent)
+        _confirm_publication_durability(
+            destination,
+            context="progress sidecar",
+        )
     finally:
         temporary.unlink(missing_ok=True)
     return destination
@@ -1254,7 +1284,11 @@ def _write_immutable(
             payload,
             platform=platform,
         )
-        _flush_parent(destination.parent)
+        _confirm_publication_durability(
+            destination,
+            context="immutable progress payload",
+            platform=platform,
+        )
     finally:
         temporary.unlink(missing_ok=True)
     return destination
