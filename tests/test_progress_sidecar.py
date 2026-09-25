@@ -1754,6 +1754,57 @@ def test_write_atomic_wraps_mutable_publication_oserror(
         _ = progress.write_atomic(candidate)
 
 
+def test_write_atomic_preserves_primary_before_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable temp cleanup cannot mask a prepublication replace failure."""
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    candidate = replace(
+        original,
+        active_elapsed_ns=original.active_elapsed_ns + 100,
+        units_completed=original.units_completed + 1,
+        updated_at="2026-08-06T14:00:02Z",
+        wall_elapsed_ns=original.wall_elapsed_ns + 100,
+    )
+    original_unlink = Path.unlink
+    replace_failure = "injected mutable replace failure"
+    cleanup_failure = "injected mutable temporary cleanup failure"
+
+    def fail_replace(path: Path, destination: Path) -> Path:
+        del path, destination
+        raise OSError(replace_failure)
+
+    def fail_temporary_unlink(
+        path: Path,
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if path.name.endswith(".tmp"):
+            raise OSError(cleanup_failure)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "replace", fail_replace)
+        context.setattr(Path, "unlink", fail_temporary_unlink)
+        with pytest.raises(
+            ERROR,
+            match=(
+                "progress sidecar publication failed: "
+                "injected mutable replace failure"
+            ),
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    primary_error = captured.value.__context__
+    assert isinstance(primary_error, OSError)
+    assert str(primary_error) == replace_failure
+    expected_note = f"mutable temporary cleanup also failed: {cleanup_failure}"
+    assert getattr(primary_error, "__notes__", None) == [expected_note]
+    assert progress.read(destination) == original
+
+
 def test_write_atomic_reports_committed_durability_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -78,9 +78,12 @@ failed after publication, so durability is unconfirmed rather than rolled back.
 A writer-lock release or close failure after successful directory sync reports
 the broader committed error because the sidecar is already durable. Immutable
 temporary-file cleanup failure after durable publication does the same. Mutable
-replacement does not unlink the moved temporary pathname after commit. Failures
-before publication retain ordinary `ProgressSidecarError` behavior and do not
-gain committed-path evidence.
+replacement does not unlink the moved temporary pathname after commit. Before
+replacement, mutable temporary-cleanup failure is retained as secondary evidence
+and cannot mask the primary publication failure.
+
+Failures before publication retain ordinary `ProgressSidecarError` behavior and
+do not gain committed-path evidence.
 
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer

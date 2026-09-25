@@ -1196,6 +1196,25 @@ def _writer_publication_lock(destination: Path) -> Generator[None]:
         raise ProgressSidecarCommittedError(message, destination) from error
 
 
+def _cleanup_mutable_temporary(
+    temporary: Path,
+    *,
+    replaced: bool,
+) -> None:
+    if replaced:
+        return
+    primary_error = sys.exception()
+    try:
+        temporary.unlink(missing_ok=True)
+    except OSError as error:
+        if primary_error is not None:
+            primary_error.add_note(
+                f"mutable temporary cleanup also failed: {error}"
+            )
+            return
+        raise
+
+
 def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -1217,8 +1236,10 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
             context="progress sidecar",
         )
     finally:
-        if not replaced:
-            temporary.unlink(missing_ok=True)
+        _cleanup_mutable_temporary(
+            temporary,
+            replaced=replaced,
+        )
     return destination
 
 
