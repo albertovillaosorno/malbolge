@@ -1453,6 +1453,41 @@ def test_checkpoint_read_rejects_link_replacing_published_generation(
     assert foreign.read_bytes() == checkpoint
 
 
+def test_partial_read_rejects_link_replacing_published_generation(
+    tmp_path: Path,
+) -> None:
+    """A post-publication link cannot satisfy a partial payload hash."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    destination = progress.write_checkpoint_generation(
+        sidecar,
+        checkpoint,
+        partial,
+    )
+    partial_path = Path(sidecar.partial_path or "")
+    partial_path.unlink()
+    foreign = tmp_path / "foreign-partial-after-publish"
+    _ = foreign.write_bytes(partial)
+    try:
+        partial_path.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    original_pointer = destination.read_bytes()
+    with pytest.raises(ERROR, match="partial payload path is linked"):
+        _ = progress.read_checkpoint_generation(sidecar)
+    with pytest.raises(ERROR, match="partial payload path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert destination.read_bytes() == original_pointer
+    assert partial_path.is_symlink()
+    assert foreign.read_bytes() == partial
+
+
 def test_checkpoint_generation_rejects_overwrite_hash_and_missing_payload(
     tmp_path: Path,
 ) -> None:
