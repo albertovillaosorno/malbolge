@@ -2307,7 +2307,8 @@ AOT-first rescue composition now consumes the read-only AOT result lazily. Exact
 `Direct` hits retain their artifact without consulting performance policy, host-
 format `Interpreter` fallback also bypasses the gate, and only `Uncovered`
 identities evaluate performance. A promoted uncovered identity becomes
-`JitEligible`; no JIT compilation or execution is implied by that eligibility.
+`JitEligible`. A caller-owned positive nanosecond/object-byte budget is required
+before scheduling `JitCompilation`; no compiler or executor is invoked here.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, durable cache serialization/storage and cross-

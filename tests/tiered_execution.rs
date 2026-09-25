@@ -170,7 +170,7 @@ use std::convert::Infallible;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::resume_unwind;
 use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -1000,7 +1000,8 @@ use native_retry::{
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
 };
 use native_tier_jit_rescue::{
-    NativeTierJitRescueRoute, select_aot_first_jit_rescue,
+    NativeTierJitCompilationBudget, NativeTierJitRescueRoute,
+    schedule_aot_first_jit_rescue, select_aot_first_jit_rescue,
 };
 use native_tier_performance_gate::{
     NativeTierJitPromotionAssessment, NativeTierJitPromotionBlock,
@@ -34240,6 +34241,109 @@ fn aot_preparation_reports_unsupported_host_before_publication()
         Err(String::from(
             "AOT preparation changed target-format failure",
         ))
+    }
+}
+
+#[test]
+fn aot_first_jit_schedule_attaches_budget_only_to_promoted_miss()
+-> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let key_digest = rescue
+        .uncovered_key()
+        .ok_or_else(|| String::from("promoted AOT miss lost exact key"))?
+        .bucket_digest();
+    let maximum_nanoseconds = NonZeroU64::new(50_000)
+        .ok_or_else(|| String::from("invalid test nanosecond budget"))?;
+    let maximum_object_bytes =
+        nonzero_test_limit(4096, "JIT object-byte budget")?;
+    let budget = NativeTierJitCompilationBudget::new(
+        maximum_nanoseconds,
+        maximum_object_bytes,
+    );
+    let scheduled = schedule_aot_first_jit_rescue(rescue, budget);
+    if scheduled.route() == NativeTierJitRescueRoute::JitCompilation
+        && scheduled.artifact().is_none()
+        && scheduled.budget() == Some(budget)
+        && scheduled.performance_block().is_none()
+        && scheduled
+            .uncovered_key()
+            .is_some_and(|key| key.bucket_digest() == key_digest)
+    {
+        Ok(())
+    } else {
+        Err(String::from("promoted AOT miss lost exact JIT schedule"))
+    }
+}
+
+#[test]
+fn aot_first_jit_schedule_drops_budget_for_performance_rejection()
+-> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_block = NativeTierJitPromotionBlock::BelowMinimumSpeedup;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Interpreter { reason: expected_block }
+    });
+    let budget =
+        NativeTierJitCompilationBudget::new(NonZeroU64::MIN, NonZeroUsize::MIN);
+    let scheduled = schedule_aot_first_jit_rescue(rescue, budget);
+    if scheduled.route() == NativeTierJitRescueRoute::Interpreter
+        && scheduled.artifact().is_none()
+        && scheduled.budget().is_none()
+        && scheduled.performance_block() == Some(expected_block)
+        && scheduled.uncovered_key().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("performance rejection acquired JIT budget"))
+    }
+}
+
+#[test]
+fn aot_first_jit_schedule_keeps_exact_hit_aot_first() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let aot = cache.seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let scheduled = schedule_aot_first_jit_rescue(
+        rescue,
+        NativeTierJitCompilationBudget::new(NonZeroU64::MIN, NonZeroUsize::MIN),
+    );
+    if scheduled.route() == NativeTierJitRescueRoute::AheadOfExecution
+        && scheduled.artifact().is_some()
+        && scheduled.budget().is_none()
+        && scheduled.performance_block().is_none()
+        && scheduled.uncovered_key().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT hit acquired a JIT compilation budget"))
     }
 }
 

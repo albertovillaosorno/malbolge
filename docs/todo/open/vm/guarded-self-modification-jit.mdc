@@ -80,4 +80,5 @@ but discovery never changes observable Malbolge behavior by itself.
   identity. The implemented shared gate rejects process-native evidence before
   numeric speedup assessment. AOT-first rescue composition also proves exact AOT
   hits and host fallback bypass the gate. Uncovered results retain their complete
-  native artifact key through `JitEligible` promotion.
+  native artifact key through `JitEligible` promotion, and require an explicit
+  positive nanosecond/object-byte budget before `JitCompilation` scheduling.

@@ -41,7 +41,9 @@ admission gate rejects any comparison other than normative interpreter versus
 in-process native execution for one exact cohort. AOT-first rescue composition
 now bypasses that gate for exact AOT hits and host-format interpreter fallback.
 An uncovered result retains its complete native artifact key through promotion,
-so `JitEligible` cannot silently rebuild a different compilation identity.
+so `JitEligible` cannot silently rebuild a different compilation identity. A
+caller-owned positive nanosecond/object-byte budget is then mandatory before the
+route can become `JitCompilation`; this scheduling boundary compiles nothing.
 
 ## Invariants
 
@@ -82,7 +84,7 @@ deterministically without changing guest-visible state silently.
   `native-x86-64-and-aarch64-backends`,
   `ahead-of-execution-native-translation`,
   `self-modification-state-graph-optimizer`.
-- Performance evidence pending: raw measurements plus a reproducible
+- Performance evidence pending: raw in-process measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
 ## References

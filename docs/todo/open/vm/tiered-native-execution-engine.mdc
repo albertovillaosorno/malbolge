@@ -913,9 +913,10 @@ behavior.
   native, insufficient, mismatched, or overflowing evidence stays interpreted.
   AOT-first rescue composition evaluates that gate only for `Uncovered`; exact
   AOT hits and host-format interpreter fallback bypass it, while only promoted
-  misses become `JitEligible`.
+  misses become `JitEligible`. Explicit positive nanosecond/object-byte ceilings
+  are then required before the route becomes `JitCompilation`.
 - Durable AOT preparation/loading, reduced state-graph artifact admission,
-  native graph-transition dispatch, and scheduler integration of latency-bounded
-  JIT rescue remain unimplemented. Durable cache
+  native graph-transition dispatch, and budget-enforcing JIT compiler/executor
+  integration remain unimplemented. Durable cache
   serialization/storage/eviction, broader platform execution evidence, and
   broader end-to-end tier performance policy also remain open.
