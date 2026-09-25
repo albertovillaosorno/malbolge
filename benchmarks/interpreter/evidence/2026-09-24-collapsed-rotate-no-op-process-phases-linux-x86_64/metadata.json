@@ -1,0 +1,262 @@
+{
+  "benchmark_scope": "collapsed-rotate-no-operation-aot-process-phase-separation-vs-normative-interpreter",
+  "command": "cargo bench --bench native_process_execution",
+  "producer_commit": "14e9282a22724804f9018d15c0537584392f8263",
+  "workload": "current-profile non-aliasing rotate/no-operation two-step normative VM trace",
+  "host_class": "secondary-linux-x86_64",
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "sockets": 1,
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Fedora Linux 44 (Workstation Edition)",
+  "kernel": "7.2.5-200.fc44.x86_64",
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "clang": "clang version 22.1.8 (Fedora 22.1.8-4.fc44)",
+  "modes": [
+    "interpreter",
+    "object-preparation",
+    "load-release",
+    "resident-call",
+    "one-shot-lifecycle"
+  ],
+  "successful_retained_samples": 225,
+  "failed_retained_samples": 0,
+  "machine_code_execution_included": true,
+  "selection_authority": false,
+  "measurement_policy": {
+    "warmup_policy": "one untimed execution per scale and mode",
+    "retained_samples_per_mode_scale": 15,
+    "scales": [
+      1,
+      2,
+      4
+    ],
+    "ordering": "forward/reverse five-mode order by retained sample parity",
+    "preparation_timer": "collapsed semantic admission + canonical COFF emission + independent verification; regenerated key/bytes checked after timer",
+    "load_release_timer": "verified rotate/no-operation executable load + release; zero guest calls",
+    "interpreter_timer": "two-step ProfileMachine run only",
+    "interpreter_setup": "complete entry checkpoints cloned before timer",
+    "resident_timer": "repeated verified process calls only",
+    "resident_setup": "exact mapping load and caller-buffer preparation before timer; release after timer",
+    "lifecycle_timer": "caller-buffer preparation + verified load + process call + semantic admission + release",
+    "semantic_validation": "exact final observation, memory, and output checked for every call-bearing retained execution",
+    "stopping_rule": "exactly 15 retained samples per mode and scale",
+    "outlier_policy": "retain-all"
+  },
+  "statistics_policy": {
+    "center": "median",
+    "dispersion": [
+      "inclusive-IQR",
+      "min-max"
+    ],
+    "uncertainty": "observed-range; descriptive, not a confidence interval",
+    "primary_comparison": "resident median divided by interpreter median within identical scale",
+    "secondary_comparison": "one-shot lifecycle median divided by interpreter median within identical scale"
+  },
+  "resource_usage": {
+    "accelerator": "none",
+    "scope": "enclosing cargo bench invocation, including release rebuild",
+    "release_build_state": "Finished `bench` profile [optimized] target(s) in 20.73s",
+    "wall_seconds": 30.49,
+    "user_seconds": 50.77,
+    "system_seconds": 7.06,
+    "max_rss_kib": 742284,
+    "process_exit_status": 0
+  },
+  "execution_invariants": {
+    "object_bytes": 636,
+    "resident_mapped_bytes": 189,
+    "call_bearing_completed_calls_equal_scale": true,
+    "preparation_and_load_release_completed_calls": 0,
+    "session_poisoned": false,
+    "interpreter_full_state_checked": true,
+    "native_semantic_completion_checked": true,
+    "preparation_artifact_identity_checked": true,
+    "internal_alias_shape_excluded": true
+  },
+  "summary": [
+    {
+      "scale": 1,
+      "samples_per_mode": 15,
+      "phases": {
+        "interpreter": {
+          "median_ns": 1557,
+          "min_ns": 1331,
+          "max_ns": 2132,
+          "q1_ns": 1490,
+          "q3_ns": 1656.5,
+          "iqr_ns": 166.5,
+          "median_ns_per_unit": 1557.0
+        },
+        "object-preparation": {
+          "median_ns": 35630,
+          "min_ns": 24298,
+          "max_ns": 46737,
+          "q1_ns": 25882,
+          "q3_ns": 39203.5,
+          "iqr_ns": 13321.5,
+          "median_ns_per_unit": 35630.0
+        },
+        "load-release": {
+          "median_ns": 118930,
+          "min_ns": 77015,
+          "max_ns": 159975,
+          "q1_ns": 81942.5,
+          "q3_ns": 126104,
+          "iqr_ns": 44161.5,
+          "median_ns_per_unit": 118930.0
+        },
+        "resident-call": {
+          "median_ns": 23695,
+          "min_ns": 21925,
+          "max_ns": 41149,
+          "q1_ns": 22810.5,
+          "q3_ns": 25537.5,
+          "iqr_ns": 2727,
+          "median_ns_per_unit": 23695.0,
+          "over_interpreter_ratio": 15.218368657675017
+        },
+        "one-shot-lifecycle": {
+          "median_ns": 109061,
+          "min_ns": 98629,
+          "max_ns": 187830,
+          "q1_ns": 104523.5,
+          "q3_ns": 126089.5,
+          "iqr_ns": 21566,
+          "median_ns_per_unit": 109061.0,
+          "over_interpreter_ratio": 70.04560051380861
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "samples_per_mode": 15,
+      "phases": {
+        "interpreter": {
+          "median_ns": 1900,
+          "min_ns": 1785,
+          "max_ns": 2696,
+          "q1_ns": 1856,
+          "q3_ns": 2170,
+          "iqr_ns": 314,
+          "median_ns_per_unit": 950.0
+        },
+        "object-preparation": {
+          "median_ns": 58195,
+          "min_ns": 42602,
+          "max_ns": 88238,
+          "q1_ns": 45071,
+          "q3_ns": 61241,
+          "iqr_ns": 16170,
+          "median_ns_per_unit": 29097.5
+        },
+        "load-release": {
+          "median_ns": 202119,
+          "min_ns": 147375,
+          "max_ns": 311101,
+          "q1_ns": 173417,
+          "q3_ns": 226962.5,
+          "iqr_ns": 53545.5,
+          "median_ns_per_unit": 101059.5
+        },
+        "resident-call": {
+          "median_ns": 44496,
+          "min_ns": 41137,
+          "max_ns": 68596,
+          "q1_ns": 42462,
+          "q3_ns": 56717.5,
+          "iqr_ns": 14255.5,
+          "median_ns_per_unit": 22248.0,
+          "over_interpreter_ratio": 23.41894736842105
+        },
+        "one-shot-lifecycle": {
+          "median_ns": 230209,
+          "min_ns": 196737,
+          "max_ns": 313898,
+          "q1_ns": 210921.5,
+          "q3_ns": 277535,
+          "iqr_ns": 66613.5,
+          "median_ns_per_unit": 115104.5,
+          "over_interpreter_ratio": 121.16263157894737
+        }
+      }
+    },
+    {
+      "scale": 4,
+      "samples_per_mode": 15,
+      "phases": {
+        "interpreter": {
+          "median_ns": 2758,
+          "min_ns": 2511,
+          "max_ns": 4310,
+          "q1_ns": 2571.5,
+          "q3_ns": 2946.5,
+          "iqr_ns": 375,
+          "median_ns_per_unit": 689.5
+        },
+        "object-preparation": {
+          "median_ns": 97961,
+          "min_ns": 84379,
+          "max_ns": 129415,
+          "q1_ns": 88924,
+          "q3_ns": 102478.5,
+          "iqr_ns": 13554.5,
+          "median_ns_per_unit": 24490.25
+        },
+        "load-release": {
+          "median_ns": 394482,
+          "min_ns": 279067,
+          "max_ns": 489475,
+          "q1_ns": 325072.5,
+          "q3_ns": 452233,
+          "iqr_ns": 127160.5,
+          "median_ns_per_unit": 98620.5
+        },
+        "resident-call": {
+          "median_ns": 86393,
+          "min_ns": 77353,
+          "max_ns": 118090,
+          "q1_ns": 80101.5,
+          "q3_ns": 110800.5,
+          "iqr_ns": 30699,
+          "median_ns_per_unit": 21598.25,
+          "over_interpreter_ratio": 31.324510514865846
+        },
+        "one-shot-lifecycle": {
+          "median_ns": 475349,
+          "min_ns": 385881,
+          "max_ns": 566166,
+          "q1_ns": 401948,
+          "q3_ns": 538430.5,
+          "iqr_ns": 136482.5,
+          "median_ns_per_unit": 118837.25,
+          "over_interpreter_ratio": 172.35279187817258
+        }
+      }
+    }
+  ],
+  "benchmark_source": {
+    "sha256": "6d14df83da234d152bb84d4055d0fbc2dae8fa50e4858ad6768c6cdfdc29188b"
+  },
+  "worker_source": {
+    "sha256": "c2473d074bdadae2bdd1ed87d6349302a7f4120c7c2d950d8596dcf589c6940f"
+  },
+  "protocol_source": {
+    "sha256": "6d973a38f9ead44dd7441dd857cd82c31501bbc8dd40bcae758d078f7212699a"
+  },
+  "call_contract_source": {
+    "sha256": "6ee2545014cf82e667032b22d62a3b42424f94374003df93b7542af2797ff5f1"
+  },
+  "raw": {
+    "sha256": "de321ba504153b552b490ed93e8b53315d1f5a46e7c259790f352b9c83a9f0f7"
+  },
+  "limitations": [
+    "Measurements apply only to the reviewed non-aliasing two-step rotate/no-operation micro-workload.",
+    "No host-real AArch64 or Windows execution.",
+    "Observed ranges and IQR are descriptive, not confidence intervals.",
+    "Resident process-native execution includes IPC and semantic completion admission.",
+    "The guarded JIT tier is not implemented, so no JIT baseline exists.",
+    "This evidence does not define a general VM speedup or tiering policy."
+  ]
+}

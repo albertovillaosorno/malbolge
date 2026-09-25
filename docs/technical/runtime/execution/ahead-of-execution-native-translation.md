@@ -340,6 +340,17 @@ deterministically without changing guest-visible state silently.
   hashes, and zero retained-sample failures. Equivalent JIT comparison belongs
   to the later `guarded-self-modification-jit` milestone, which depends on
   this AOT work and is not yet implemented.
+- Retained collapsed rotate/no-operation Linux x86-64 phase evidence binds
+  225 raw samples to clean producer `14e9282a` under
+  `benchmarks/interpreter/evidence/`, in the
+  `2026-09-24-collapsed-rotate-no-op-process-phases-linux-x86_64/` bundle.
+  The five-mode protocol separates semantic/object preparation, load/release,
+  resident process calls, one-shot lifecycle, and the exact two-step
+  `ProfileMachine` baseline at scales 1/2/4. Metadata retains median,
+  inclusive IQR, observed range, resource use, content hashes, and zero
+  retained-sample failures. The measured process boundary is slower than direct
+  interpretation for this micro-workload; no native speedup is claimed, and JIT
+  comparison remains deferred until that dependent tier exists.
 ## References
 
 - [Tiered Native Execution](../../adr/tiered-native-execution.md)
