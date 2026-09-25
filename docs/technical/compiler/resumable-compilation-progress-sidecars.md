@@ -75,9 +75,13 @@ a failure is reported only after publication crossed its commit point. Its
 `ProgressSidecarDurabilityError` subtype means parent-directory synchronization
 failed after publication, so durability is unconfirmed rather than rolled back.
 
-A writer-lock release or close failure after successful directory sync reports
-the broader committed error because the sidecar is already durable. Immutable
-temporary-file cleanup failure after durable publication does the same. Mutable
+A directory-descriptor close failure after successful directory sync reports the
+broader committed error because durability is already confirmed. If sync and
+close both fail, the sync failure remains primary and close failure is secondary
+evidence.
+
+Writer-lock release/close and immutable temporary-file cleanup failure after
+durable publication follow the same committed-evidence principle. Mutable
 replacement does not unlink the moved temporary pathname after commit. Before
 replacement, mutable temporary-cleanup failure is retained as secondary evidence
 and cannot mask the primary publication failure.

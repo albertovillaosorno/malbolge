@@ -991,6 +991,92 @@ def test_checkpoint_generation_wraps_immutable_publication_oserror(
     assert not Path(sidecar.progress_path).exists()
 
 
+def test_directory_close_after_sync_reports_committed_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Directory close failure cannot make confirmed durability uncertain."""
+    published_path = tmp_path / PROGRESS_NAME
+    descriptor = 71
+    calls: list[tuple[str, int]] = []
+    confirm = cast(
+        "Callable[..., None]",
+        vars(progress)["_confirm_publication_durability"],
+    )
+
+    def open_directory(path: Path, flags: int) -> int:
+        del path, flags
+        return descriptor
+
+    def sync_directory(observed: int) -> None:
+        calls.append(("sync", observed))
+
+    def fail_close(observed: int) -> None:
+        calls.append(("close", observed))
+        message = "injected directory close failure"
+        raise OSError(message)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", open_directory)
+        context.setattr(os, "fsync", sync_directory)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but directory close failed",
+        ) as captured:
+            confirm(published_path, context="progress sidecar")
+
+    assert not isinstance(
+        captured.value,
+        progress.ProgressSidecarDurabilityError,
+    )
+    assert captured.value.published_path == published_path
+    assert calls == [("sync", descriptor), ("close", descriptor)]
+
+
+def test_directory_close_failure_preserves_primary_sync_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Directory close failure remains secondary to failed durability sync."""
+    published_path = tmp_path / PROGRESS_NAME
+    descriptor = 73
+    sync_failure = "injected directory sync failure"
+    close_failure = "injected directory close failure"
+    confirm = cast(
+        "Callable[..., None]",
+        vars(progress)["_confirm_publication_durability"],
+    )
+
+    def open_directory(path: Path, flags: int) -> int:
+        del path, flags
+        return descriptor
+
+    def fail_sync(observed: int) -> None:
+        del observed
+        raise OSError(sync_failure)
+
+    def fail_close(observed: int) -> None:
+        del observed
+        raise OSError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", open_directory)
+        context.setattr(os, "fsync", fail_sync)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=sync_failure,
+        ) as captured:
+            confirm(published_path, context="progress sidecar")
+
+    primary_error = captured.value.__cause__
+    assert isinstance(primary_error, OSError)
+    assert str(primary_error) == sync_failure
+    expected_note = f"directory descriptor close also failed: {close_failure}"
+    assert getattr(primary_error, "__notes__", None) == [expected_note]
+
+
 def test_checkpoint_generation_reports_committed_durability_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

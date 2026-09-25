@@ -98,6 +98,10 @@ class ProgressSidecarDurabilityError(ProgressSidecarCommittedError):
     """Publication committed but its directory durability is unconfirmed."""
 
 
+class _DirectoryCloseAfterSyncError(OSError):
+    """Directory durability succeeded before descriptor cleanup failed."""
+
+
 class _LockStream(Protocol):
     """Seekable descriptor surface required by platform lock primitives."""
 
@@ -1087,10 +1091,24 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
     if platform == WINDOWS_PLATFORM:
         return
     descriptor = os.open(path, os.O_RDONLY)
+    sync_error: OSError | None = None
     try:
-        os.fsync(descriptor)
+        try:
+            os.fsync(descriptor)
+        except OSError as error:
+            sync_error = error
+            raise
     finally:
-        os.close(descriptor)
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            if sync_error is not None:
+                sync_error.add_note(
+                    f"directory descriptor close also failed: {error}"
+                )
+            else:
+                message = f"directory descriptor close failed: {error}"
+                raise _DirectoryCloseAfterSyncError(message) from error
 
 
 def _confirm_publication_durability(
@@ -1101,6 +1119,12 @@ def _confirm_publication_durability(
 ) -> None:
     try:
         _flush_parent(published_path.parent, platform=platform)
+    except _DirectoryCloseAfterSyncError as error:
+        message = (
+            f"{context} committed durably but directory close failed: "
+            f"{error}"
+        )
+        raise ProgressSidecarCommittedError(message, published_path) from error
     except OSError as error:
         message = (
             f"{context} committed but durability confirmation failed: "
