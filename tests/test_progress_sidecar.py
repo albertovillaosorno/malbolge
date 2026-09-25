@@ -1604,6 +1604,73 @@ def test_writer_lock_wraps_descriptor_close_oserror(
         pass
 
 
+def test_write_atomic_reports_committed_lock_release_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock-release failure cannot hide a durably committed pointer."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    original_acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+
+    def acquire_with_failing_release(stream: object) -> Callable[[], None]:
+        release = original_acquire(stream)
+
+        def release_then_fail() -> None:
+            release()
+            message = "injected post-commit writer lock release failure"
+            raise OSError(message)
+
+        return release_then_fail
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "_acquire_writer_lock",
+            acquire_with_failing_release,
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but writer lock cleanup failed",
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    assert captured.value.published_path == destination
+    assert progress.read(destination) == candidate
+
+
+def test_write_atomic_reports_committed_lock_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock-close failure cannot hide a durably committed pointer."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    original_close = cast(
+        "Callable[[object], None]",
+        vars(progress)["_close_writer_lock_stream"],
+    )
+
+    def close_then_fail(stream: object) -> None:
+        original_close(stream)
+        message = "progress writer lock cannot be closed: injected failure"
+        raise progress.ProgressSidecarError(message)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_close_writer_lock_stream", close_then_fail)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but writer lock cleanup failed",
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    assert captured.value.published_path == destination
+    assert progress.read(destination) == candidate
+
+
 def test_write_atomic_wraps_mutable_publication_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -83,15 +83,19 @@ class ProgressSidecarError(ValueError):
     """One progress sidecar is malformed or internally inconsistent."""
 
 
-class ProgressSidecarDurabilityError(ProgressSidecarError):
-    """Publication committed but its directory durability is unconfirmed."""
+class ProgressSidecarCommittedError(ProgressSidecarError):
+    """Publication committed before a later operation reported failure."""
 
     published_path: Path
 
     def __init__(self, message: str, published_path: Path) -> None:
-        """Record the committed path whose durability was not confirmed."""
+        """Record the exact path known to have crossed publication commit."""
         super().__init__(message)
         self.published_path = published_path
+
+
+class ProgressSidecarDurabilityError(ProgressSidecarCommittedError):
+    """Publication committed but its directory durability is unconfirmed."""
 
 
 class _LockStream(Protocol):
@@ -1173,6 +1177,25 @@ def _writer_lock(destination: Path) -> Generator[None]:
         _close_writer_lock_stream(stream)
 
 
+@contextmanager
+def _writer_publication_lock(destination: Path) -> Generator[None]:
+    publication_completed = False
+    try:
+        with _writer_lock(destination):
+            yield
+            publication_completed = True
+    except ProgressSidecarCommittedError:
+        raise
+    except ProgressSidecarError as error:
+        if not publication_completed:
+            raise
+        message = (
+            "progress sidecar committed durably but writer lock cleanup "
+            f"failed: {error}"
+        )
+        raise ProgressSidecarCommittedError(message, destination) from error
+
+
 def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -1380,7 +1403,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     validated = validate(sidecar)
     destination = Path(validated.progress_path)
     _reject_path_redirect(destination, "progress sidecar")
-    with _writer_lock(destination):
+    with _writer_publication_lock(destination):
         _reject_path_redirect(destination, "progress sidecar")
         if destination.exists():
             _ = validate_transition(read(destination), validated)

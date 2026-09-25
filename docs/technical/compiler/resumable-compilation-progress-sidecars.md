@@ -70,12 +70,15 @@ mutable pointer backward. A caller therefore cannot publish a syntactically
 valid sidecar that points at absent or corrupted generation bytes.
 
 Atomic publication and directory durability confirmation are distinct commit
-phases. Once a mutable sidecar replacement or immutable generation publication
-has committed, a later parent-directory synchronization failure raises
-`ProgressSidecarDurabilityError` with the exact committed `published_path`.
-Callers must treat that outcome as committed-but-not-confirmed-durable rather
-than as rollback. Pre-publication filesystem failures retain the ordinary
-`ProgressSidecarError` behavior and do not gain committed-path evidence.
+phases. `ProgressSidecarCommittedError` carries the exact `published_path` when
+a failure is reported only after publication crossed its commit point. Its
+`ProgressSidecarDurabilityError` subtype means parent-directory synchronization
+failed after publication, so durability is unconfirmed rather than rolled back.
+
+A writer-lock release or close failure after successful directory sync reports
+the broader committed error because the sidecar is already durable. Failures
+before publication retain ordinary `ProgressSidecarError` behavior and do not
+gain committed-path evidence.
 
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer
@@ -186,11 +189,11 @@ stale, overwritten, or incompatible generation data is rejected with a stable
 diagnostic and never guessed into validity.
 
 Sidecar reads, writer-lock lifecycle, and mutable or immutable pre-publication
-failures are likewise
-translated into the stable sidecar error boundary rather than leaking host
-filesystem exceptions. If directory synchronization fails after publication
-commits, `ProgressSidecarDurabilityError` preserves the committed path so a
-caller can distinguish uncertain durability from failed publication.
+failures are likewise translated into the stable sidecar error boundary rather
+than leaking host filesystem exceptions. Post-commit failures preserve the
+committed path through `ProgressSidecarCommittedError`; directory-sync failures
+use its `ProgressSidecarDurabilityError` subtype, while later lock cleanup
+failures report that the pointer committed durably before cleanup failed.
 
 If checkpoint persistence fails, the job may continue only when the caller
 explicitly accepts non-resumable execution. Public CLI defaults fail closed for
