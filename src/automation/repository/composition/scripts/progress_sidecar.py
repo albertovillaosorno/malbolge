@@ -327,6 +327,102 @@ class ProgressTimer:
         return timing
 
 
+@dataclass(slots=True)
+class ProgressWriteLimiter:
+    """Bound routine sidecar publications with an injectable monotonic clock."""
+
+    _clock: Callable[[], int]
+    _minimum_interval_ns: int
+    _started_ns: int
+    _last_committed_write_ns: int | None = None
+
+    @classmethod
+    def start(
+        cls,
+        minimum_interval_ns: int,
+        clock: Callable[[], int] = monotonic_ns,
+    ) -> ProgressWriteLimiter:
+        """Create one caller-local publication limiter.
+
+        Returns:
+            Limiter whose first valid publication is immediately eligible.
+
+        """
+        if type(minimum_interval_ns) is not int or minimum_interval_ns <= 0:
+            _fail("progress write interval must be a positive integer")
+        now = _sample_clock(clock)
+        return cls(
+            _clock=clock,
+            _minimum_interval_ns=minimum_interval_ns,
+            _started_ns=now,
+        )
+
+    def _validate_state(self) -> None:
+        if not callable(self._clock):
+            _fail("monotonic clock must be callable")
+        if (
+            type(self._minimum_interval_ns) is not int
+            or self._minimum_interval_ns <= 0
+        ):
+            _fail("progress write interval must be a positive integer")
+        _ = _nonnegative_integer(self._started_ns, "progress write start")
+        if self._last_committed_write_ns is None:
+            return
+        _ = _nonnegative_integer(
+            self._last_committed_write_ns,
+            "progress write last commit",
+        )
+        if self._last_committed_write_ns < self._started_ns:
+            _fail("progress write last commit precedes limiter start")
+
+    def _sample(self) -> int:
+        self._validate_state()
+        now = _sample_clock(self._clock)
+        reference = (
+            self._started_ns
+            if self._last_committed_write_ns is None
+            else self._last_committed_write_ns
+        )
+        if now < reference:
+            _fail("progress write monotonic clock moved backward")
+        return now
+
+    def publish(self, sidecar: ProgressSidecar) -> Path | None:
+        """Publish one sidecar only when its lifecycle requires or permits it.
+
+        Routine queued/running updates are suppressed until the configured
+        interval has elapsed since the previous committed write. Checkpointed
+        and terminal states always attempt publication.
+
+        Returns:
+            Canonical progress path when published, otherwise ``None``.
+
+        Raises:
+            ProgressSidecarCommittedError: If publication commits before a
+                later durability or cleanup failure.
+
+        """
+        validated = validate(sidecar)
+        now = self._sample()
+        mandatory = (
+            validated.status is ProgressStatus.CHECKPOINTED
+            or validated.status.value in TERMINAL_STATUSES
+        )
+        if (
+            self._last_committed_write_ns is not None
+            and not mandatory
+            and now - self._last_committed_write_ns < self._minimum_interval_ns
+        ):
+            return None
+        try:
+            destination = write_atomic(validated)
+        except ProgressSidecarCommittedError:
+            self._last_committed_write_ns = now
+            raise
+        self._last_committed_write_ns = now
+        return destination
+
+
 @dataclass(frozen=True, slots=True)
 class ResumeIdentity:
     """Backend-neutral identity required to reuse a checkpoint."""

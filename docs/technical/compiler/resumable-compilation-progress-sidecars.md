@@ -99,7 +99,15 @@ the previously referenced generation intact and resumable. Unreferenced newer
 generations are ignored until a valid sidecar publishes them. `ProgressTimer`
 uses an injectable monotonic nanosecond clock and exclusive active, paused,
 verification, serialization, and checkpoint phases to construct the exact timing
-fields without UTC arithmetic. Child-process crash fixtures now terminate
+fields without UTC arithmetic.
+
+`ProgressWriteLimiter` accepts one explicit
+positive monotonic interval: routine queued/running updates are suppressed until
+that interval passes, while checkpointed and terminal evidence always attempts
+publication. Only successful or post-commit-failing writes consume the limiter
+window, so a prepublication failure can retry immediately.
+
+Child-process crash fixtures now terminate
 publication immediately before or after checkpoint/partial atomic publication,
 after checkpoint/partial directory durability confirmation but before immutable
 temporary cleanup, after a durable checkpoint, immediately before sidecar
@@ -192,8 +200,11 @@ missing storage rather than escaping as a decoder exception.
   exclusive nanosecond counters exactly partition `wall_elapsed_ns`.
 - The sidecar is evidence and recovery state, not semantic authority. Source,
   target profile, compiler, verifier, and accepted artifact determine meaning.
-- Progress writes are rate-limited and bounded so checkpointing does not become
-  an unmeasured dominant cost.
+- Routine progress writes are rate-limited by an explicit positive monotonic
+  interval so checkpointing does not become an unmeasured dominant cost. The
+  first routine write is eligible immediately; checkpointed and terminal states
+  bypass suppression, and only attempts that cross publication commit start a
+  new rate window.
 
 ## Failure Behavior
 

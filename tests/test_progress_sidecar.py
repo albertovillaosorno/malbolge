@@ -2547,6 +2547,174 @@ def test_inspector_rejects_invalid_utf8_as_stable_failure(
     assert INSPECTION_FAILED_PREFIX in captured.err
 
 
+def test_progress_write_limiter_bounds_routine_publication(
+    tmp_path: Path,
+) -> None:
+    """Routine progress writes respect one explicit monotonic interval."""
+    clock = SequenceClock([100, 100, 109, 110, 111])
+    limiter = progress.ProgressWriteLimiter.start(10, clock=clock)
+    original = _sidecar(tmp_path)
+    destination = Path(original.progress_path)
+    assert limiter.publish(original) == destination
+
+    boolean_alias = True
+    malformed = replace(original, units_completed=cast("int", boolean_alias))
+    with pytest.raises(ERROR, match="non-negative integer"):
+        _ = limiter.publish(malformed)
+
+    early = replace(
+        original,
+        active_elapsed_ns=601,
+        updated_at="2026-08-06T14:00:03Z",
+        units_completed=15,
+        wall_elapsed_ns=761,
+    )
+    assert limiter.publish(early) is None
+    assert progress.read(destination) == original
+
+    due = replace(
+        early,
+        active_elapsed_ns=602,
+        updated_at="2026-08-06T14:00:04Z",
+        units_completed=16,
+        wall_elapsed_ns=762,
+    )
+    assert limiter.publish(due) == destination
+    assert progress.read(destination) == due
+
+    completed = replace(
+        due,
+        completed_at="2026-08-06T14:00:05Z",
+        status=progress.ProgressStatus.COMPLETED,
+        updated_at="2026-08-06T14:00:05Z",
+    )
+    assert limiter.publish(completed) == destination
+    assert progress.read(destination) == completed
+
+
+def test_progress_write_limiter_always_admits_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """Checkpoint evidence bypasses the routine progress interval."""
+    checkpoint = b"rate-limited-checkpoint"
+    clock = SequenceClock([100, 100, 101])
+    limiter = progress.ProgressWriteLimiter.start(10, clock=clock)
+    running = _sidecar(tmp_path)
+    destination = Path(running.progress_path)
+    assert limiter.publish(running) == destination
+
+    checkpointed = _checkpointed(
+        running,
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    checkpoint_path = Path(checkpointed.checkpoint_path or "")
+    _ = checkpoint_path.write_bytes(checkpoint)
+    assert limiter.publish(checkpointed) == destination
+    assert progress.read(destination) == checkpointed
+
+
+def test_progress_write_limiter_counts_committed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-commit failure consumes the routine publication window."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    calls: list[str] = []
+    committed_failure = progress.ProgressSidecarDurabilityError(
+        "injected committed write failure",
+        destination,
+    )
+
+    def commit_then_fail(sidecar: progress.ProgressSidecar) -> Path:
+        del sidecar
+        calls.append("committed")
+        raise committed_failure
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([0, 0, 1]),
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", commit_then_fail)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="injected committed write failure",
+        ):
+            _ = limiter.publish(candidate)
+        assert limiter.publish(candidate) is None
+    assert calls == ["committed"]
+
+
+def test_progress_write_limiter_retries_prepublication_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prepublication failure does not consume the routine write window."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    failure_message = "injected prepublication failure"
+    expected_attempts = 2
+    attempts = 0
+
+    def fail_before_commit(sidecar: progress.ProgressSidecar) -> Path:
+        nonlocal attempts
+        del sidecar
+        attempts += 1
+        if attempts == 1:
+            raise progress.ProgressSidecarError(failure_message)
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([20, 20, 21]),
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", fail_before_commit)
+        with pytest.raises(ERROR, match=failure_message):
+            _ = limiter.publish(candidate)
+        assert limiter.publish(candidate) == destination
+    assert attempts == expected_attempts
+
+
+def test_progress_write_limiter_fails_closed_on_invalid_timing(
+    tmp_path: Path,
+) -> None:
+    """Cadence configuration and monotonic samples reject invalid values."""
+    for interval in (0, -1, True):
+        with pytest.raises(ERROR, match="positive integer"):
+            _ = progress.ProgressWriteLimiter.start(
+                cast("int", interval),
+                clock=SequenceClock([0]),
+            )
+
+    candidate = _sidecar(tmp_path)
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([100, 99]),
+    )
+    with pytest.raises(ERROR, match="monotonic clock moved backward"):
+        _ = limiter.publish(candidate)
+
+    corrupt_interval = progress.ProgressWriteLimiter(
+        _clock=SequenceClock([0]),
+        _minimum_interval_ns=0,
+        _started_ns=0,
+    )
+    with pytest.raises(ERROR, match="positive integer"):
+        _ = corrupt_interval.publish(candidate)
+
+    corrupt_commit = progress.ProgressWriteLimiter(
+        _clock=SequenceClock([10]),
+        _minimum_interval_ns=10,
+        _started_ns=10,
+        _last_committed_write_ns=9,
+    )
+    with pytest.raises(ERROR, match="precedes limiter start"):
+        _ = corrupt_commit.publish(candidate)
+
+
 def test_monotonic_timer_separates_every_scientific_phase() -> None:
     """Exclusive phases sum to wall time without UTC arithmetic."""
     clock = SequenceClock([100, 150, 170, 200, 230, 250, 290])
