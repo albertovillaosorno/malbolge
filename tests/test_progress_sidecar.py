@@ -1080,6 +1080,72 @@ def test_partial_generation_reports_committed_durability_failure(
     assert progress.read(destination) == sidecar
 
 
+def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable temp cleanup cannot hide a durable generation member."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    original_unlink = Path.unlink
+
+    def fail_temporary_unlink(
+        path: Path,
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if path.name.endswith(".tmp"):
+            message = "injected immutable temporary cleanup failure"
+            raise OSError(message)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", fail_temporary_unlink)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but temporary cleanup failed",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    assert captured.value.published_path == checkpoint_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    destination = Path(sidecar.progress_path)
+    assert not destination.exists()
+    assert (
+        progress.write_checkpoint_generation(sidecar, checkpoint) == destination
+    )
+
+
+def test_write_atomic_skips_cleanup_after_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A moved mutable temporary path is never cleaned up after commit."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    original_unlink = Path.unlink
+
+    def reject_temporary_unlink(
+        path: Path,
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if path.name.endswith(".tmp"):
+            message = "mutable temporary path was unlinked after replacement"
+            raise OSError(message)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", reject_temporary_unlink)
+        assert progress.write_atomic(candidate) == destination
+    assert progress.read(destination) == candidate
+
+
 def test_checkpoint_generation_publishes_payloads_before_pointer(
     tmp_path: Path,
 ) -> None:

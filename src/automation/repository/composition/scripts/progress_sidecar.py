@@ -1204,18 +1204,21 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
         suffix=".tmp",
     )
     temporary = Path(temporary_name)
+    replaced = False
     try:
         with os.fdopen(descriptor, "wb") as stream:
             _ = stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         _ = temporary.replace(destination)
+        replaced = True
         _confirm_publication_durability(
             destination,
             context="progress sidecar",
         )
     finally:
-        temporary.unlink(missing_ok=True)
+        if not replaced:
+            temporary.unlink(missing_ok=True)
     return destination
 
 
@@ -1284,6 +1287,30 @@ def _publish_immutable_payload(
         _fail(f"immutable progress payload publication failed: {error}")
 
 
+def _cleanup_immutable_temporary(
+    temporary: Path,
+    destination: Path,
+    *,
+    durable: bool,
+) -> None:
+    primary_error = sys.exception()
+    try:
+        temporary.unlink(missing_ok=True)
+    except OSError as error:
+        if primary_error is not None:
+            primary_error.add_note(
+                f"immutable temporary cleanup also failed: {error}"
+            )
+            return
+        if durable:
+            message = (
+                "immutable progress payload committed durably but temporary "
+                f"cleanup failed: {error}"
+            )
+            raise ProgressSidecarCommittedError(message, destination) from error
+        raise
+
+
 def _write_immutable(
     destination: Path,
     payload: bytes,
@@ -1299,6 +1326,7 @@ def _write_immutable(
         suffix=".tmp",
     )
     temporary = Path(temporary_name)
+    durable = False
     try:
         _write_payload_descriptor(descriptor, payload)
         _publish_immutable_payload(
@@ -1312,8 +1340,13 @@ def _write_immutable(
             context="immutable progress payload",
             platform=platform,
         )
+        durable = True
     finally:
-        temporary.unlink(missing_ok=True)
+        _cleanup_immutable_temporary(
+            temporary,
+            destination,
+            durable=durable,
+        )
     return destination
 
 

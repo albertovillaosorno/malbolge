@@ -71,8 +71,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   referenced-generation
   validation before pointer replacement, stable read plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
-  post-publication directory-sync failures, and durable-pointer evidence when
-  writer-lock cleanup fails after commit, fail-closed validation of direct
+  post-publication directory-sync failures, durable-pointer evidence when
+  writer-lock or immutable temporary cleanup fails after commit, and no mutable
+  temp unlink after replacement, fail-closed validation of direct
   timer state before snapshots, typed containment of injected-clock
   failures, exact immutable checkpoint/partial payload bytes, typed public path
   helper/read admission, rejection of linked components in
@@ -86,8 +87,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   checkpoint, before sidecar publication, immediately before atomic sidecar
   replacement, and after replacement before directory durability
   confirmation, committed-but-unconfirmed directory-sync outcomes for sidecar,
-  checkpoint, and partial publications, committed writer-lock release/close
-  failures, cross-process writer-lock exclusion plus stale-candidate
+  checkpoint, and partial publications, committed writer-lock release/close and
+  immutable temporary-cleanup failures, mutable post-replace cleanup avoidance,
+  cross-process writer-lock exclusion plus stale-candidate
   revalidation after lock acquisition, linked-parent
   redirection rejection, durable cancellation/completion publication with
   rejected terminal restart, direct field and resume-identity mutations,
