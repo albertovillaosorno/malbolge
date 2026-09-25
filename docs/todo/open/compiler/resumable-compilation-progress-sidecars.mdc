@@ -103,8 +103,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   mutable prepublication cleanup failure without primary-error masking,
   cross-process writer-lock exclusion plus stale-candidate
   revalidation after lock acquisition, linked-parent
-  redirection rejection, durable cancellation/completion publication with
-  rejected terminal restart, direct field and resume-identity mutations,
+  redirection rejection, durable cancellation/failure/completion publication
+  with rejected terminal restart, direct field and resume-identity mutations,
   boolean counter/sequence aliases, impossible UTC dates, corrupt direct pointer
   targets, non-callable/failing clocks, mutable
   payload aliases, foreign path arguments, exact-string JSON parser admission,

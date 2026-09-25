@@ -1574,6 +1574,50 @@ def test_cancelled_job_persists_resume_and_rejects_restart(
     assert progress.read(destination) == cancelled
 
 
+def test_failed_job_persists_resume_and_rejects_restart(
+    tmp_path: Path,
+) -> None:
+    """Handled failure preserves its latest resumable generation."""
+    checkpoint = b"failed-checkpoint"
+    partial = b"failed-partial"
+    running = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    destination = progress.write_checkpoint_generation(
+        running,
+        checkpoint,
+        partial,
+    )
+    failed = replace(
+        running,
+        completed_at="2026-08-06T14:00:03Z",
+        diagnostic_code="MALBOLGE-JOB-002",
+        diagnostic_message="verification failed",
+        status=progress.ProgressStatus.FAILED,
+        updated_at="2026-08-06T14:00:03Z",
+    )
+    assert progress.write_atomic(failed) == destination
+    assert progress.read(destination) == failed
+    assert progress.read_checkpoint_generation(failed) == (
+        checkpoint,
+        partial,
+    )
+
+    reopened = replace(
+        failed,
+        completed_at=None,
+        diagnostic_code=None,
+        diagnostic_message=None,
+        status=progress.ProgressStatus.RUNNING,
+        updated_at="2026-08-06T14:00:04Z",
+    )
+    with pytest.raises(ERROR, match="failed->running"):
+        _ = progress.write_atomic(reopened)
+    assert progress.read(destination) == failed
+
+
 def test_completed_job_persists_terminal_pointer_and_rejects_restart(
     tmp_path: Path,
 ) -> None:

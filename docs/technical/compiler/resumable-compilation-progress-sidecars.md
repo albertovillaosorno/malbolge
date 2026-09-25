@@ -232,8 +232,9 @@ jobs that requested resumability.
   exact committed path as evidence.
 - Resume tests cover unchanged jobs, monotonic transitions, exact repository
   revision and source/profile/toolchain mismatch, overwritten or missing
-  generations, durable cancellation/completion publication, and rejected
-  terminal-job reopening. Two-process fixtures prove both lock exclusion and
+  generations, durable cancellation/failure/completion publication, and
+  rejected terminal-job reopening. Two-process fixtures prove both lock
+  exclusion and
   post-lock revalidation: a stale candidate that
   waited behind a newer commit is rejected before mutable-pointer replacement.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
