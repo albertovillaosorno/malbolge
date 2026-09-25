@@ -2294,14 +2294,27 @@ checkpoints before all graph nodes are transactionally prepared into the same
 sealed AOT boundary. Claimed one-step IR and successor checkpoints have no
 independent authority.
 
+A pure JIT performance gate now owns interpreter-relative promotion evidence.
+It requires exact cohort identity, equal positive sample counts, a caller-owned
+minimum sample gate, and exact aggregate latency totals. The repository floor is
+11/10 (1.1x) speedup, while stricter caller ratios are admitted and weak,
+mismatched, or overflowing evidence stays on the interpreter. This gate does
+not schedule, compile, or invoke native code; product integration remains open.
+
 Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, host-real AArch64 and Windows native-worker
-execution, durable cache serialization/storage and cross-process leasing,
-durable AOT preparation/loading, reduced state-graph artifact admission, native
-graph-transition dispatch, and latency-bounded JIT rescue beyond verified direct
+asynchronous/product scheduling, host-real AArch64 native-worker execution,
+durable cache serialization/storage and cross-process leasing, durable AOT
+preparation/loading, reduced state-graph artifact admission, native graph-
+transition dispatch, and latency-bounded JIT rescue beyond verified direct
 process-local lookup remain open, alongside broader end-to-end performance
-policy. The interpreter
-remains the only normative execution authority and the guaranteed fallback.
+policy.
+
+Windows host-real worker execution is explicitly deferred and does not block
+this milestone. Warning-clean x86-64/AArch64 COFF plus exact Win32 import/object
+admission remains the current Windows portability evidence; it is not host-real
+execution evidence. A future Windows execution failure remains a compatibility
+defect to fix. The interpreter remains the only normative execution authority
+and the guaranteed fallback.
 
 ## Invariants
 
@@ -2309,7 +2322,9 @@ remains the only normative execution authority and the guaranteed fallback.
   VM contract; disabling every native tier produces the same guest behavior.
 - Tier selection is AOT-first for exact admitted code-state identity. JIT
   compilation is reserved for uncovered mutable states and must have a bounded
-  synchronous resource/time budget before interpreter fallback.
+  synchronous resource/time budget before interpreter fallback. Promotion also
+  requires paired equivalent evidence proving at least 1.1x interpreter-
+  relative speedup; callers may require a stricter ratio but never a weaker one.
 - A verifier-proven finite closed self-modification graph may execute as an
   automaton of precompiled native code-state variants, but a state outside that
   graph fails closed to lower tiers rather than guessing a transition.

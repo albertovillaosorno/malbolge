@@ -618,8 +618,11 @@ Pinned Clang cross-compiles that source warning-clean into x86-64 and AArch64
 Windows COFF worker objects. The regression checks both COFF machine IDs and
 requires the exact 13-symbol Win32 undefined-import set on each target while
 rejecting accidental compiler-runtime or CRT dependencies. Host-real AArch64
-and Windows execution remain pending; cross-compilation is not treated as
-execution evidence.
+execution remains pending.
+
+Windows host-real execution is explicitly deferred and non-blocking; cross-
+compilation is not treated as execution evidence. A future Windows execution
+failure remains a compatibility defect to fix.
 
 `native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
 magic, command/outcome tags, fixed sizes, field offsets, and little-endian
@@ -1805,6 +1808,17 @@ deterministically without changing guest-visible state silently.
   the current process-native boundary is slower for this micro-workload.
   This negative result is not generalized to larger regions, in-process calls,
   future JIT/AOT policy, AArch64, or Windows.
+
+  The tiered runtime now has an exact 1.1x minimum JIT-promotion gate for paired
+  aggregate latency evidence. Summing the 15 retained raw samples per mode gives
+  interpreter/resident totals of 34,236/466,215, 46,159/755,040, and
+  64,447/1,538,451 ns at scales 1, 2, and 4. Every paired aggregate therefore
+  fails the exact 11/10 promotion gate, matching the negative median result.
+
+- Host-real Windows execution is intentionally deferred as a non-blocking
+  portability follow-up. Warning-clean x86-64/AArch64 COFF generation plus exact
+  machine/import admission remains the current Windows evidence boundary; this
+  is not represented as host-real execution. Host-real AArch64 remains open.
 
 ## References
 

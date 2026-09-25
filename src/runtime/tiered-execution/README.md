@@ -23,7 +23,7 @@ It must not bypass another function or architectural kind boundary.
   exact telemetry summaries, caller-ordered count retention, typed atomic-pair
   CAS plus ordered count/latency persistence and reconciliation, latency
   normalization/refinement, durable merge, assessment, policy
-  codec/persistence, ownership, recommendation/request publication, turns, and
-  cycles.
+  codec/persistence, ownership, recommendation/request publication, turns,
+  cycles, and exact interpreter-relative JIT promotion gating.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
   and monotonic clock contracts.

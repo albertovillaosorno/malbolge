@@ -127,6 +127,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/composition/tier/performance_gate.rs"]
+pub mod native_tier_performance_gate;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention.rs"]
 pub mod pair_retention_journal;
 #[path = "../src/runtime/tiered-execution/composition/pair_reclaim.rs"]

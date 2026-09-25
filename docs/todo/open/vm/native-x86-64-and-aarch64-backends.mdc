@@ -445,8 +445,13 @@ A distinct single-resident lease cache
   Clang cross-compiles it warning-clean into both x86-64 and AArch64 Windows
   COFF objects. The Rust regression verifies the expected machine IDs and exact
   13-symbol Win32 undefined-import set on both targets, rejecting accidental
-  compiler-runtime or CRT dependencies. Host-real AArch64 and Windows execution
-  remain pending.
+  compiler-runtime or CRT dependencies. Host-real AArch64 execution remains
+  pending.
+
+  Windows host-real execution is explicitly deferred and non-blocking. The
+  current Windows claim remains exact object/import admission, not host-real
+  execution; any later Windows execution failure remains a compatibility defect
+  to fix.
 
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
@@ -1518,5 +1523,12 @@ input/jump-code, input/jump-data, input/no-operation,
   lifecycle modes with exact state checks and no process-session poisoning.
   Resident/native median time is 14.219x, 17.559x, and 26.492x the direct
   interpreter median at scales 1, 2, and 4, so this current process boundary
-  is slower for the measured micro-workload. Larger regions, in-process call
-  designs, AOT/JIT policy, and host-real AArch64/Windows remain open.
+  is slower for the measured micro-workload.
+
+  A pure tiered JIT gate now requires paired aggregate latency evidence proving
+  at least 11/10 (1.1x) interpreter-relative speedup. Exact totals from the 15
+  retained raw samples per mode fail that gate at scales 1, 2, and 4, and a
+  deterministic regression freezes those three negative promotion decisions.
+  Larger regions, in-process call designs, gate-to-scheduler integration, and
+  host-real AArch64 remain open; host-real Windows is deferred as described
+  above.
