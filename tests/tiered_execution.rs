@@ -3803,19 +3803,30 @@ struct TestJitCompiler {
     calls: usize,
     observed_budget: Option<NativeTierJitCompilationBudget>,
     observed_identity: Option<NativeArtifactKey>,
+    observed_program: Option<RegionEffectProgram>,
     outcome: TestJitCompilerOutcome,
 }
 
-impl NativeTierJitCompiler<NativeArtifactKey, Vec<u8>, Infallible>
-    for TestJitCompiler
+impl
+    NativeTierJitCompiler<
+        NativeArtifactKey,
+        RegionEffectProgram,
+        Vec<u8>,
+        Infallible,
+    > for TestJitCompiler
 {
     fn compile(
         &mut self,
-        request: NativeTierJitCompilationRequest<'_, NativeArtifactKey>,
+        request: NativeTierJitCompilationRequest<
+            '_,
+            NativeArtifactKey,
+            RegionEffectProgram,
+        >,
     ) -> Result<NativeTierJitCompilerOutcome<Vec<u8>>, Infallible> {
         self.calls = self.calls.saturating_add(1);
         self.observed_budget = Some(request.budget);
         self.observed_identity = Some(request.identity.clone());
+        self.observed_program = Some(request.program.clone());
         match self.outcome {
             TestJitCompilerOutcome::Cancelled => {
                 Ok(NativeTierJitCompilerOutcome::Cancelled)
@@ -34304,6 +34315,7 @@ const fn test_jit_compiler(outcome: TestJitCompilerOutcome) -> TestJitCompiler {
         calls: 0,
         observed_budget: None,
         observed_identity: None,
+        observed_program: None,
         outcome,
     }
 }
@@ -34417,6 +34429,10 @@ fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
     let expected_budget = schedule
         .budget()
         .ok_or_else(|| String::from("scheduled JIT miss lost budget"))?;
+    let expected_program = schedule
+        .uncovered_program()
+        .ok_or_else(|| String::from("scheduled JIT miss lost program"))?
+        .clone();
     let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
     let mut clock = TestMonotonicClock {
         elapsed_nanoseconds: 1,
@@ -34433,6 +34449,7 @@ fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
         && compiler.calls == 1
         && compiler.observed_budget == Some(expected_budget)
         && compiler.observed_identity.as_ref() == Some(&expected_identity)
+        && compiler.observed_program.as_ref() == Some(&expected_program)
         && clock.starts == 1
         && clock.finishes == 1
     {
@@ -34750,30 +34767,38 @@ fn aot_first_jit_rescue_promotes_only_uncovered_identity() -> Result<(), String>
         && rescue.artifact().is_none()
         && rescue.performance_block().is_none()
         && rescue.uncovered_key().is_some()
+        && rescue.uncovered_program().is_some()
     {
         Ok(())
     } else {
         Err(String::from(
-            "promoted AOT miss did not become JIT eligible",
+            "promoted AOT miss did not retain JIT compilation input",
         ))
     }
 }
 
 #[test]
 fn aot_tier_reports_uncovered_without_emission() -> Result<(), String> {
+    let program = direct_initial_halt_program();
     let aot = VerifiedDirectNativeCache::default().seal();
     let selected = select_ahead_of_execution_preflighted_tier(
-        &direct_initial_halt_program(),
+        &program,
         safe_rust_profiled_capability(),
         DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    let AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) = selected
+    let AheadOfExecutionPreflightedTier::Uncovered {
+        key: uncovered_key,
+        program: uncovered_program,
+    } = selected
     else {
-        return Err(String::from("AOT miss lost uncovered identity"));
+        return Err(String::from("AOT miss lost uncovered compilation input"));
     };
-    if aot.is_empty() && uncovered_key.bucket_digest() != 0 {
+    if aot.is_empty()
+        && uncovered_key.bucket_digest() != 0
+        && *uncovered_program == program
+    {
         Ok(())
     } else {
         Err(String::from("AOT miss emitted or mutated native cache"))
@@ -34847,15 +34872,19 @@ fn aot_tier_keeps_uncovered_identity_distinct() -> Result<(), String> {
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    let AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) = uncovered
+    let AheadOfExecutionPreflightedTier::Uncovered {
+        key: uncovered_key,
+        program: uncovered_program,
+    } = uncovered
     else {
-        return Err(String::from("AOT miss lost uncovered identity"));
+        return Err(String::from("AOT miss lost uncovered compilation input"));
     };
     let AheadOfExecutionPreflightedTier::Direct(original_artifact) = original
     else {
         return Err(String::from("seeded AOT identity was not retained"));
     };
     if *uncovered_key != *original_artifact.key()
+        && *uncovered_program == variant
         && unsupported_host == AheadOfExecutionPreflightedTier::Interpreter
         && aot.len() == 1
     {

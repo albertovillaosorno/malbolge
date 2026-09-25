@@ -72,20 +72,27 @@ enum FakeCompilerOutcome {
 struct FakeCompiler {
     calls: usize,
     expected_identity: u64,
+    expected_program: u32,
     observed_budget: Option<Budget>,
+    observed_program: Option<u32>,
     outcome: FakeCompilerOutcome,
 }
 
-impl NativeTierJitCompiler<u64, Vec<u8>, FakeCompilerError> for FakeCompiler {
+impl NativeTierJitCompiler<u64, u32, Vec<u8>, FakeCompilerError>
+    for FakeCompiler
+{
     fn compile(
         &mut self,
-        request: Request<'_, u64>,
+        request: Request<'_, u64, u32>,
     ) -> Result<Outcome<Vec<u8>>, FakeCompilerError> {
         self.calls = self.calls.saturating_add(1);
-        if *request.identity != self.expected_identity {
+        if *request.identity != self.expected_identity
+            || *request.program != self.expected_program
+        {
             return Err(FakeCompilerError::Failed);
         }
         self.observed_budget = Some(request.budget);
+        self.observed_program = Some(*request.program);
         match &self.outcome {
             FakeCompilerOutcome::BudgetExhausted(elapsed_nanoseconds) => {
                 Ok(Outcome::BudgetExhausted {
@@ -119,7 +126,9 @@ const fn compiler(outcome: FakeCompilerOutcome) -> FakeCompiler {
     FakeCompiler {
         calls: 0,
         expected_identity: 7,
+        expected_program: 13,
         observed_budget: None,
+        observed_program: None,
         outcome,
     }
 }
@@ -136,7 +145,7 @@ fn bounded_jit_candidate_preserves_exact_request() {
         elapsed_nanoseconds: 49,
         object_bytes: 64,
     });
-    let attempt = attempt_jit_compilation(&mut compiler, &7, budget);
+    let attempt = attempt_jit_compilation(&mut compiler, &7, &13, budget);
     assert_eq!(attempt, Attempt::Candidate {
         artifact: vec![1, 2, 3],
         elapsed_nanoseconds: 49,
@@ -144,6 +153,7 @@ fn bounded_jit_candidate_preserves_exact_request() {
     });
     assert_eq!(compiler.calls, 1);
     assert_eq!(compiler.observed_budget, Some(budget));
+    assert_eq!(compiler.observed_program, Some(13));
 }
 
 #[test]
@@ -163,7 +173,7 @@ fn compiler_non_candidate_outcomes_stay_interpreted() {
     for (outcome, expected) in cases {
         let mut compiler = compiler(outcome);
         assert_eq!(
-            attempt_jit_compilation(&mut compiler, &7, budget()),
+            attempt_jit_compilation(&mut compiler, &7, &13, budget()),
             Attempt::Interpreter { reason: expected }
         );
     }
@@ -177,7 +187,7 @@ fn compiled_claim_over_latency_limit_stays_interpreted() {
         object_bytes: 1,
     });
     assert_eq!(
-        attempt_jit_compilation(&mut compiler, &7, budget()),
+        attempt_jit_compilation(&mut compiler, &7, &13, budget()),
         Attempt::Interpreter {
             reason: Fallback::LatencyLimit {
                 maximum_nanoseconds: NonZeroU64::MIN,
@@ -195,7 +205,7 @@ fn compiled_claim_over_object_limit_stays_interpreted() {
         object_bytes: 2,
     });
     assert_eq!(
-        attempt_jit_compilation(&mut compiler, &7, budget()),
+        attempt_jit_compilation(&mut compiler, &7, &13, budget()),
         Attempt::Interpreter {
             reason: Fallback::ObjectByteLimit {
                 maximum_bytes: NonZeroUsize::MIN,

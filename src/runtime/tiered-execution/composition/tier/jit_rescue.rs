@@ -35,6 +35,8 @@
 
 use std::sync::Arc;
 
+use malbolge::RegionEffectProgram;
+
 use crate::execution_cache::NativeArtifactKey;
 use crate::execution_native::{
     AheadOfExecutionPreflightedTier, VerifiedDirectNativeArtifact,
@@ -65,6 +67,7 @@ pub struct NativeTierJitRescueSchedule {
     performance_block: Option<NativeTierJitPromotionBlock>,
     route: NativeTierJitRescueRoute,
     uncovered_key: Option<Box<NativeArtifactKey>>,
+    uncovered_program: Option<Box<RegionEffectProgram>>,
 }
 
 /// AOT-first result retaining optional artifact or performance-rejection
@@ -75,6 +78,7 @@ pub struct NativeTierJitRescueSelection {
     performance_block: Option<NativeTierJitPromotionBlock>,
     route: NativeTierJitRescueRoute,
     uncovered_key: Option<Box<NativeArtifactKey>>,
+    uncovered_program: Option<Box<RegionEffectProgram>>,
 }
 
 impl NativeTierJitRescueSchedule {
@@ -109,6 +113,12 @@ impl NativeTierJitRescueSchedule {
     pub fn uncovered_key(&self) -> Option<&NativeArtifactKey> {
         self.uncovered_key.as_deref()
     }
+
+    /// Returns the exact AOT-miss IR retained for compilation/admission.
+    #[must_use]
+    pub fn uncovered_program(&self) -> Option<&RegionEffectProgram> {
+        self.uncovered_program.as_deref()
+    }
 }
 
 impl NativeTierJitRescueSelection {
@@ -137,6 +147,12 @@ impl NativeTierJitRescueSelection {
     pub fn uncovered_key(&self) -> Option<&NativeArtifactKey> {
         self.uncovered_key.as_deref()
     }
+
+    /// Returns the exact AOT-miss IR retained for compilation/admission.
+    #[must_use]
+    pub fn uncovered_program(&self) -> Option<&RegionEffectProgram> {
+        self.uncovered_program.as_deref()
+    }
 }
 
 /// Attaches one explicit compilation budget only to a promoted AOT miss.
@@ -163,6 +179,7 @@ pub fn schedule_aot_first_jit_rescue(
         performance_block: selection.performance_block,
         route,
         uncovered_key: selection.uncovered_key,
+        uncovered_program: selection.uncovered_program,
     }
 }
 
@@ -186,6 +203,7 @@ where
                 performance_block: None,
                 route: NativeTierJitRescueRoute::AheadOfExecution,
                 uncovered_key: None,
+                uncovered_program: None,
             }
         },
         AheadOfExecutionPreflightedTier::Interpreter => {
@@ -194,16 +212,18 @@ where
                 performance_block: None,
                 route: NativeTierJitRescueRoute::Interpreter,
                 uncovered_key: None,
+                uncovered_program: None,
             }
         },
-        AheadOfExecutionPreflightedTier::Uncovered(uncovered_key) => {
+        AheadOfExecutionPreflightedTier::Uncovered { key, program } => {
             match assess_performance() {
                 NativeTierJitPromotionAssessment::Interpreter { reason } => {
                     NativeTierJitRescueSelection {
                         artifact: None,
                         performance_block: Some(reason),
                         route: NativeTierJitRescueRoute::Interpreter,
-                        uncovered_key: Some(uncovered_key),
+                        uncovered_key: Some(key),
+                        uncovered_program: Some(program),
                     }
                 },
                 NativeTierJitPromotionAssessment::Promote => {
@@ -211,7 +231,8 @@ where
                         artifact: None,
                         performance_block: None,
                         route: NativeTierJitRescueRoute::JitEligible,
-                        uncovered_key: Some(uncovered_key),
+                        uncovered_key: Some(key),
+                        uncovered_program: Some(program),
                     }
                 },
             }

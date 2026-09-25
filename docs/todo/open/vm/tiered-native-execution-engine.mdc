@@ -901,9 +901,10 @@ behavior.
   evidence is sufficient for acceptance; any later hardware execution failure
   remains a compatibility defect to fix.
 - Process-local AOT-first lookup now consumes a sealed verified artifact set:
-  exact direct identities reuse retained artifacts, uncovered identities retain
-  the complete `NativeArtifactKey` for later JIT policy, and ordered sequences
-  require complete precompiled coverage without runtime emission.
+  exact direct identities reuse retained artifacts, while uncovered identities
+  retain both the complete `NativeArtifactKey` and exact `RegionEffectProgram`
+  for later JIT compilation/admission. Ordered sequences require complete
+  precompiled coverage without runtime emission.
 - Finite exact-state graph claims now require normative replay, exact successor
   checkpoints, closed reachable topology, and all-or-nothing native preparation.
 - A pure JIT promotion gate requires exact cohort identity, equal positive

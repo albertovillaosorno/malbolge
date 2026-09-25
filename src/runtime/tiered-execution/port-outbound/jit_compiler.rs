@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Select AOT/JIT policy, interpret guest semantics, or admit artifacts.
 // - Allows:
-//   - Inputs: exact identity plus positive time/object-byte ceilings.
+//   - Inputs: exact identity/program plus positive time/object-byte ceilings.
 //   - Outputs: compiled candidate or exact non-compilation outcome.
 //   - Side effects: delegated entirely to the selected compiler adapter.
 // - Split-When:
@@ -46,11 +46,13 @@ pub struct NativeTierJitCompilationBudget {
 
 /// Immutable request for one exact bounded JIT compilation attempt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NativeTierJitCompilationRequest<'identity, Identity> {
+pub struct NativeTierJitCompilationRequest<'input, Identity, Program> {
     /// Exact caller-owned compilation budget.
     pub budget: NativeTierJitCompilationBudget,
     /// Exact identity that the compiler may specialize.
-    pub identity: &'identity Identity,
+    pub identity: &'input Identity,
+    /// Exact portable program that must be compiled under that identity.
+    pub program: &'input Program,
 }
 
 /// Compiler-reported outcome before independent artifact admission.
@@ -81,7 +83,7 @@ pub type NativeTierJitCompilerResult<Artifact, CompilerError> =
     Result<NativeTierJitCompilerOutcome<Artifact>, CompilerError>;
 
 /// Replaceable synchronous compiler that must enforce supplied ceilings.
-pub trait NativeTierJitCompiler<Identity, Artifact, CompilerError> {
+pub trait NativeTierJitCompiler<Identity, Program, Artifact, CompilerError> {
     /// Attempts one exact compilation while enforcing both positive ceilings.
     ///
     /// `BudgetExhausted`, `Cancelled`, `Unsupported`, and `Err` must publish no
@@ -93,6 +95,6 @@ pub trait NativeTierJitCompiler<Identity, Artifact, CompilerError> {
     /// Returns only adapter-local failures for which no candidate is published.
     fn compile(
         &mut self,
-        request: NativeTierJitCompilationRequest<'_, Identity>,
+        request: NativeTierJitCompilationRequest<'_, Identity, Program>,
     ) -> NativeTierJitCompilerResult<Artifact, CompilerError>;
 }

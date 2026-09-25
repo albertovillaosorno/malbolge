@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Select tier policy, admit native semantics, install code, or execute it.
 // - Allows:
-//   - Inputs: exact identity, explicit budget, and replaceable compiler port.
+//   - Inputs: exact identity/program, explicit budget, and compiler port.
 //   - Outputs: untrusted candidate or exact interpreter-fallback evidence.
 //   - Side effects: one delegated bounded compiler attempt.
 // - Split-When:
@@ -99,15 +99,26 @@ pub type NativeTierJitCompilationResult<Artifact, CompilerError> =
 /// and object-size ceilings. This application boundary independently rejects a
 /// `Compiled` claim whose reported observations exceed either ceiling.
 #[must_use]
-pub fn attempt_jit_compilation<Identity, Artifact, CompilerError, Compiler>(
+pub fn attempt_jit_compilation<
+    Identity,
+    Program,
+    Artifact,
+    CompilerError,
+    Compiler,
+>(
     compiler: &mut Compiler,
     identity: &Identity,
+    program: &Program,
     budget: NativeTierJitCompilationBudget,
 ) -> NativeTierJitCompilationResult<Artifact, CompilerError>
 where
-    Compiler: NativeTierJitCompiler<Identity, Artifact, CompilerError>,
+    Compiler: NativeTierJitCompiler<Identity, Program, Artifact, CompilerError>,
 {
-    let request = NativeTierJitCompilationRequest { budget, identity };
+    let request = NativeTierJitCompilationRequest {
+        budget,
+        identity,
+        program,
+    };
     let outcome = match compiler.compile(request) {
         Ok(outcome) => outcome,
         Err(error) => {

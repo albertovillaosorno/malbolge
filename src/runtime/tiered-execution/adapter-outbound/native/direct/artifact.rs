@@ -34,7 +34,8 @@
 
 use super::{
     Arc, HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
-    RegionEffectIdentity, StructurallyAdmittedNativeObjectArtifact,
+    RegionEffectIdentity, RegionEffectProgram,
+    StructurallyAdmittedNativeObjectArtifact,
 };
 
 /// Direct native template selected for one portable IR program.
@@ -1030,7 +1031,12 @@ pub enum AheadOfExecutionPreflightedTier {
     /// This host has no supported direct object format.
     Interpreter,
     /// This host supports direct artifacts but this exact identity is absent.
-    Uncovered(Box<NativeArtifactKey>),
+    Uncovered {
+        /// Complete native identity already checked by read-only AOT lookup.
+        key: Box<NativeArtifactKey>,
+        /// Exact portable IR required by JIT compilation and later admission.
+        program: Box<RegionEffectProgram>,
+    },
 }
 
 /// Cache-aware profile-preflighted execution-tier plan.

@@ -37,6 +37,8 @@
 
 use std::num::NonZeroU64;
 
+use malbolge::RegionEffectProgram;
+
 use crate::execution_cache::NativeArtifactKey;
 use crate::jit_compilation::{
     NativeTierJitCompilationAttempt, NativeTierJitCompilationFallback,
@@ -140,7 +142,12 @@ pub fn attempt_scheduled_jit<Artifact, CompilerError, Compiler, Clock>(
 ) -> NativeTierScheduledJitAttempt<Artifact, CompilerError, Clock::Error>
 where
     Clock: NativeContinuationMonotonicClock,
-    Compiler: NativeTierJitCompiler<NativeArtifactKey, Artifact, CompilerError>,
+    Compiler: NativeTierJitCompiler<
+            NativeArtifactKey,
+            RegionEffectProgram,
+            Artifact,
+            CompilerError,
+        >,
 {
     match schedule.route() {
         NativeTierJitRescueRoute::AheadOfExecution => bypass_attempt(
@@ -164,15 +171,23 @@ fn attempt_scheduled_compilation<Artifact, CompilerError, Compiler, Clock>(
 ) -> NativeTierScheduledJitAttempt<Artifact, CompilerError, Clock::Error>
 where
     Clock: NativeContinuationMonotonicClock,
-    Compiler: NativeTierJitCompiler<NativeArtifactKey, Artifact, CompilerError>,
+    Compiler: NativeTierJitCompiler<
+            NativeArtifactKey,
+            RegionEffectProgram,
+            Artifact,
+            CompilerError,
+        >,
 {
-    let (Some(identity), Some(budget)) =
-        (schedule.uncovered_key(), schedule.budget())
-    else {
+    let (Some(identity), Some(program), Some(budget)) = (
+        schedule.uncovered_key(),
+        schedule.uncovered_program(),
+        schedule.budget(),
+    ) else {
         return invalid_schedule(schedule);
     };
     let started = clock.begin();
-    let compilation = attempt_jit_compilation(compiler, identity, budget);
+    let compilation =
+        attempt_jit_compilation(compiler, identity, program, budget);
     let measured = clock.elapsed_nanoseconds(started);
     match compilation {
         NativeTierJitCompilationAttempt::Candidate {

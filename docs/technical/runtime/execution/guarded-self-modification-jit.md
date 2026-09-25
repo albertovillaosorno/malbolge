@@ -41,10 +41,11 @@ admission gate rejects any comparison other than normative interpreter versus
 in-process native execution for one exact cohort. AOT-first rescue composition
 now bypasses that gate for exact AOT hits and host-format interpreter fallback.
 
-An uncovered result retains its complete native artifact key through promotion,
-so `JitEligible` cannot silently rebuild a different compilation identity. A
-caller-owned positive nanosecond/object-byte budget is then mandatory before the
-route can become `JitCompilation`.
+An uncovered result retains its complete native artifact key and exact portable
+IR through promotion. The compiler therefore receives the same semantic program
+that produced the AOT miss, and later admission need not reconstruct IR from a
+hash/cache identity. A caller-owned positive nanosecond/object-byte budget is
+then mandatory before the route can become `JitCompilation`.
 
 A replaceable compiler port now receives that exact identity and budget, must
 enforce both ceilings, and returns only compiled, budget-exhausted, cancelled,
