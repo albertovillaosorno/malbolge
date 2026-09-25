@@ -81,8 +81,10 @@ close both fail, the sync failure remains primary and close failure is secondary
 evidence.
 
 Writer-lock release/close and immutable temporary-file cleanup failure after
-durable publication follow the same committed-evidence principle. Mutable
-replacement does not unlink the moved temporary pathname after commit. Before
+durable publication follow the same committed-evidence principle. During lock
+unwinding, a later release or close failure is secondary evidence when an
+acquisition, body, or release failure is already active. Mutable replacement
+does not unlink the moved temporary pathname after commit. Before
 replacement, mutable temporary-cleanup failure is retained as secondary evidence
 and cannot mask the primary publication failure.
 

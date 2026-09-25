@@ -1756,6 +1756,79 @@ def test_writer_lock_wraps_descriptor_close_oserror(
         pass
 
 
+def test_writer_lock_preserves_acquire_failure_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock-stream close cleanup cannot mask acquisition failure."""
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    acquire_failure = "injected writer lock acquisition failure"
+    close_failure = "injected writer lock close failure"
+
+    def fail_acquire(stream: object) -> Callable[[], None]:
+        del stream
+        raise OSError(acquire_failure)
+
+    def fail_close(stream: object) -> None:
+        del stream
+        raise progress.ProgressSidecarError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", fail_acquire)
+        context.setattr(progress, "_close_writer_lock_stream", fail_close)
+        with (
+            pytest.raises(
+                ERROR,
+                match=f"writer lock cannot be acquired: {acquire_failure}",
+            ) as captured,
+            writer_lock(tmp_path / PROGRESS_NAME),
+        ):
+            pytest.fail(
+                "writer lock body executed after acquisition failure"
+            )
+
+    expected_note = f"writer lock close also failed: {close_failure}"
+    assert getattr(captured.value, "__notes__", None) == [expected_note]
+
+
+def test_writer_lock_preserves_body_failure_before_teardown_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep release and close cleanup secondary to a lock-body failure.
+
+    Raises:
+        ProgressSidecarError: Injected and captured inside the regression.
+
+    """
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    body_failure = "injected writer lock body failure"
+    release_failure = "injected writer lock release failure"
+    close_failure = "injected writer lock close failure"
+
+    def fail_release(release: Callable[[], None]) -> None:
+        del release
+        raise progress.ProgressSidecarError(release_failure)
+
+    def fail_close(stream: object) -> None:
+        del stream
+        raise progress.ProgressSidecarError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_release_writer_lock", fail_release)
+        context.setattr(progress, "_close_writer_lock_stream", fail_close)
+        with (
+            pytest.raises(ERROR, match=body_failure) as captured,
+            writer_lock(tmp_path / PROGRESS_NAME),
+        ):
+            raise progress.ProgressSidecarError(body_failure)
+
+    assert getattr(captured.value, "__notes__", None) == [
+        f"writer lock release also failed: {release_failure}",
+        f"writer lock close also failed: {close_failure}",
+    ]
+
+
 def test_write_atomic_reports_committed_lock_release_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1791,6 +1864,45 @@ def test_write_atomic_reports_committed_lock_release_failure(
             _ = progress.write_atomic(candidate)
 
     assert captured.value.published_path == destination
+    assert progress.read(destination) == candidate
+
+
+def test_write_atomic_preserves_release_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-commit lock close cleanup cannot mask release failure."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    release_failure = "injected writer lock release failure"
+    close_failure = "injected writer lock close failure"
+
+    def fail_release(release: Callable[[], None]) -> None:
+        del release
+        raise progress.ProgressSidecarError(release_failure)
+
+    def fail_close(stream: object) -> None:
+        del stream
+        raise progress.ProgressSidecarError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_release_writer_lock", fail_release)
+        context.setattr(progress, "_close_writer_lock_stream", fail_close)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=(
+                "committed durably but writer lock cleanup failed: "
+                f"{release_failure}"
+            ),
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    assert captured.value.published_path == destination
+    primary_error = captured.value.__cause__
+    assert isinstance(primary_error, progress.ProgressSidecarError)
+    assert str(primary_error) == release_failure
+    expected_note = f"writer lock close also failed: {close_failure}"
+    assert getattr(primary_error, "__notes__", None) == [expected_note]
     assert progress.read(destination) == candidate
 
 

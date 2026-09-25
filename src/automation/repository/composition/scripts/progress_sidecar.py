@@ -1185,6 +1185,30 @@ def _close_writer_lock_stream(stream: _LockStream) -> None:
         _fail(f"progress writer lock cannot be closed: {error}")
 
 
+def _release_writer_lock_preserving_primary(
+    release: Callable[[], None],
+) -> None:
+    primary_error = sys.exception()
+    try:
+        _release_writer_lock(release)
+    except ProgressSidecarError as error:
+        if primary_error is not None:
+            primary_error.add_note(f"writer lock release also failed: {error}")
+            return
+        raise
+
+
+def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
+    primary_error = sys.exception()
+    try:
+        _close_writer_lock_stream(stream)
+    except ProgressSidecarError as error:
+        if primary_error is not None:
+            primary_error.add_note(f"writer lock close also failed: {error}")
+            return
+        raise
+
+
 @contextmanager
 def _writer_lock(destination: Path) -> Generator[None]:
     stream = _open_writer_lock_stream(_writer_lock_path(destination))
@@ -1196,9 +1220,9 @@ def _writer_lock(destination: Path) -> Generator[None]:
         try:
             yield
         finally:
-            _release_writer_lock(release)
+            _release_writer_lock_preserving_primary(release)
     finally:
-        _close_writer_lock_stream(stream)
+        _close_writer_lock_preserving_primary(stream)
 
 
 @contextmanager

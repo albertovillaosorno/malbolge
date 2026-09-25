@@ -74,8 +74,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   post-publication directory-sync failures, committed evidence when directory
   close fails after successful sync, primary-sync preservation when close also
   fails, durable-pointer evidence when writer-lock or immutable temporary
-  cleanup fails after commit, no mutable temp
-  unlink after replacement, and primary-error preservation when mutable
+  cleanup fails after commit, writer-lock teardown preserves an earlier
+  acquisition/body/release failure as primary, no mutable temp unlink after
+  replacement, and primary-error preservation when mutable
   prepublication cleanup also fails, fail-closed validation of direct
   timer state before snapshots, typed containment of injected-clock
   failures, exact immutable checkpoint/partial payload bytes, typed public path
@@ -91,8 +92,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   replacement, and after replacement before directory durability
   confirmation, committed-but-unconfirmed directory-sync outcomes for sidecar,
   checkpoint, and partial publications, directory close after sync plus combined
-  sync/close failure ordering, committed writer-lock release/close and immutable
-  temporary-cleanup failures, mutable post-replace cleanup avoidance,
+  sync/close failure ordering, committed writer-lock release/close, combined
+  acquisition/close, body/release/close, and release/close ordering, immutable
+  temporary-cleanup
+  failures, mutable post-replace cleanup avoidance,
   mutable prepublication cleanup failure without primary-error masking,
   cross-process writer-lock exclusion plus stale-candidate
   revalidation after lock acquisition, linked-parent
