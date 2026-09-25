@@ -173,6 +173,7 @@ use shape::{
     validate_register_masked_crazy_target,
     validate_register_masked_halt_fetch_program,
     validate_register_masked_halt_fetch_target,
+    validate_register_masked_input_program,
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,

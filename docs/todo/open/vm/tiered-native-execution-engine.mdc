@@ -877,7 +877,12 @@ behavior.
   shrink active FIFO authority through the same release-or-retire path while
   prior limits remain published on blockage or release failure.
 
-  Mask-aware input and jump instruction coverage remains open.
+  V6 input now has host-independent semantic admission for both byte and EOF
+  traces. Exact C/D entry reads and A/C/D committed writes are verified before
+  the existing VM-owned input derivation is reused; complete v6 identity is
+  retained without granting a host target, object, mapping, or call authority.
+  Register-masked input object/lifecycle coverage and both jump instruction
+  families remain open.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

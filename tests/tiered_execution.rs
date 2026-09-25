@@ -4415,6 +4415,27 @@ fn canonical_register_masked_no_operation_program()
         .map_err(|error| format!("v6 no-op projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_input_program(
+    input: Vec<u8>,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Crazy),
+        input,
+    )?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 input fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 input fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 input trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 input projection failed: {error:?}"))
+}
+
 fn canonical_register_masked_output_programs()
 -> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_output_pair_sequence_state()?;
@@ -6507,6 +6528,111 @@ fn register_masked_v6_no_operation_admission_uses_normative_masks()
         return Err(String::from("v6 no-op dead state lost masked identity"));
     }
     assert_register_masked_no_operation_mask_rejections(&program)
+}
+
+fn assert_register_masked_input_mask_rejections(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let mut invented_read = program.clone();
+    invented_read.register_live_ins.accumulator = true;
+    let Err(read_error) = admit_register_masked_direct_native(
+        &invented_read,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 input admitted invented accumulator read",
+        ));
+    };
+    if read_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 input read mask failed at wrong boundary",
+        ));
+    }
+
+    let mut missing_write = program.clone();
+    let writes = missing_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 input write mask missing"))?;
+    writes.accumulator = false;
+    let Err(write_error) = admit_register_masked_direct_native(
+        &missing_write,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 input admitted missing accumulator write",
+        ));
+    };
+    if write_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from(
+            "v6 input write mask failed at wrong boundary",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_admission_tracks_masks() -> TieredTestResult {
+    for input in [vec![0x41], Vec::new()] {
+        let program = canonical_register_masked_input_program(input)?;
+        let expected_reads = ProfileRegisterSet {
+            accumulator: false,
+            code_pointer: true,
+            data_pointer: true,
+        };
+        let expected_writes = ProfileRegisterSet {
+            accumulator: true,
+            code_pointer: true,
+            data_pointer: true,
+        };
+        if program.register_live_ins != expected_reads
+            || program.register_writes.as_slice() != [expected_writes]
+        {
+            return Err(String::from("v6 input trace masks drifted"));
+        }
+        let admission = admit_register_masked_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+        )
+        .map_err(|error| format!("v6 input admission failed: {error}"))?;
+        let identity = RegionEffectIdentity::new_register_masked(&program)
+            .map_err(|error| format!("v6 input identity failed: {error:?}"))?;
+        if admission.kind() != DirectNativeKind::Input
+            || admission.identity() != &identity
+        {
+            return Err(String::from(
+                "v6 input admission lost semantic identity",
+            ));
+        }
+        let mut dead_accumulator = program.clone();
+        let effect = dead_accumulator
+            .program
+            .effects
+            .first_mut()
+            .ok_or_else(|| String::from("v6 input effect missing"))?;
+        effect.before.registers.accumulator =
+            effect.before.registers.accumulator.wrapping_add(1);
+        let variant = admit_register_masked_direct_native(
+            &dead_accumulator,
+            safe_rust_profiled_capability(),
+        )
+        .map_err(|error| {
+            format!("v6 input dead accumulator rejected: {error}")
+        })?;
+        if variant.kind() != DirectNativeKind::Input
+            || variant.identity() == admission.identity()
+        {
+            return Err(String::from(
+                "v6 input dead state lost complete identity",
+            ));
+        }
+        assert_register_masked_input_mask_rejections(&program)?;
+    }
+    Ok(())
 }
 
 fn assert_register_masked_output_mask_rejections(

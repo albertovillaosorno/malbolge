@@ -2272,8 +2272,14 @@ immediately. Invalidation, release-all, explicit lease return, retired
 reconciliation, and limit reconfiguration preserve keyed cleanup retry
 ownership.
 
-Broader register-masked template coverage remains open and unsupported v6
-execution remains fail-closed.
+Host-independent v6 semantic admission now also covers Input byte and EOF
+steps. Admission requires the normative trace masks (C/D reads and A/C/D
+writes), retains complete register-masked identity, and reuses the VM-owned
+input derivation with the v6 profile capacity supplied explicitly. It grants no
+host target, object, executable-memory, or invocation authority.
+
+Register-masked Input object/lifecycle coverage and both JumpCode and JumpData
+families remain open; unsupported v6 execution remains fail-closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
