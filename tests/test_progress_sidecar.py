@@ -85,11 +85,13 @@ POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
+AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
 BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
 BEFORE_SIDECAR = "before-sidecar"
 CRASH_BOUNDARIES = (
     AFTER_CHECKPOINT,
     BEFORE_SIDECAR_REPLACE,
+    AFTER_SIDECAR_REPLACE,
     BEFORE_SIDECAR,
 )
 CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
@@ -179,12 +181,15 @@ def crash_before_sidecar(_sidecar):
 def replace_then_maybe_crash(source, destination):
     if boundary == "before-sidecar-replace":
         os._exit(exit_code)
-    return original_replace(source, destination)
+    result = original_replace(source, destination)
+    if boundary == "after-sidecar-replace":
+        os._exit(exit_code)
+    return result
 
 progress._write_immutable = write_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
-elif boundary == "before-sidecar-replace":
+elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
     Path.replace = replace_then_maybe_crash
 progress.write_checkpoint_generation(sidecar, checkpoint, partial)
 raise AssertionError("configured crash boundary was not reached")
@@ -1583,7 +1588,7 @@ def test_process_crash_preserves_last_committed_generation(
     tmp_path: Path,
     boundary: str,
 ) -> None:
-    """A child-process crash cannot publish or corrupt the next pointer."""
+    """A child crash preserves the sidecar pointer that crossed commit."""
     fixture = _crash_fixture(tmp_path)
     completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [
@@ -1605,11 +1610,18 @@ def test_process_crash_preserves_last_committed_generation(
     assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
         errors="replace"
     )
-    assert progress.read(fixture.destination) == fixture.first
-    assert progress.read_checkpoint_generation(fixture.first) == (
-        fixture.checkpoint_one,
-        fixture.partial_one,
-    )
+    if boundary == AFTER_SIDECAR_REPLACE:
+        assert progress.read(fixture.destination) == fixture.second
+        assert progress.read_checkpoint_generation(fixture.second) == (
+            fixture.checkpoint_two,
+            fixture.partial_two,
+        )
+    else:
+        assert progress.read(fixture.destination) == fixture.first
+        assert progress.read_checkpoint_generation(fixture.first) == (
+            fixture.checkpoint_one,
+            fixture.partial_one,
+        )
     checkpoint_path = Path(fixture.second.checkpoint_path or "")
     partial_path = Path(fixture.second.partial_path or "")
     assert checkpoint_path.read_bytes() == fixture.checkpoint_two
