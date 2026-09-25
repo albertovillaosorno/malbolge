@@ -1719,6 +1719,10 @@ def write_checkpoint_generation(
     Returns:
         Canonical progress path after all durable writes complete.
 
+    Raises:
+        ProgressSidecarCommittedError: If an immutable generation member or
+            sidecar pointer commits before a later operation fails.
+
     """
     validated = validate(sidecar)
     _preflight_generation_destination(validated)
@@ -1728,7 +1732,27 @@ def write_checkpoint_generation(
         partial,
     )
     _publish_generation_payloads(validated, checkpoint_payload, partial_payload)
-    return write_atomic(validated)
+    last_member_value = (
+        validated.partial_path
+        if partial_payload is not None
+        else validated.checkpoint_path
+    )
+    if last_member_value is None:
+        _fail("checkpoint generation requires a committed generation path")
+    last_member_path = Path(last_member_value)
+    try:
+        return write_atomic(validated)
+    except ProgressSidecarCommittedError:
+        raise
+    except ProgressSidecarError as error:
+        message = (
+            "generation payload committed durably but progress sidecar "
+            f"publication failed: {error}"
+        )
+        raise ProgressSidecarCommittedError(
+            message,
+            last_member_path,
+        ) from error
 
 
 def read_checkpoint_generation(

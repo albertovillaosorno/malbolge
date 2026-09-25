@@ -83,7 +83,9 @@ evidence.
 Writer-lock release/close and immutable temporary-file cleanup failure after
 durable publication follow the same committed-evidence principle. If a durable
 checkpoint member commits before a later partial member fails prepublication,
-the failure reports the checkpoint as the exact last committed path.
+the failure reports the checkpoint as the exact last committed path. After all
+generation members commit, a mutable sidecar prepublication failure likewise
+reports the last committed member until the pointer itself crosses commit.
 
 During lock unwinding, a later release or close failure is secondary evidence
 when an

@@ -1388,6 +1388,58 @@ def test_partial_collision_reports_committed_checkpoint(tmp_path: Path) -> None:
     assert not Path(sidecar.progress_path).exists()
 
 
+def test_sidecar_file_sync_failure_reports_committed_partial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pointer prepublication failure retains the last generation member."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    original_fsync = os.fsync
+    regular_syncs, sidecar_sync_number = 0, 3
+    failure_message = "injected sidecar temporary file sync failure"
+
+    def fail_sidecar_file_sync(descriptor: int) -> None:
+        nonlocal regular_syncs
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            regular_syncs += 1
+            if regular_syncs == sidecar_sync_number:
+                raise OSError(failure_message)
+        original_fsync(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", fail_sidecar_file_sync)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=(
+                "generation payload committed durably but progress sidecar "
+                "publication failed"
+            ),
+        ) as captured:
+            _ = progress.write_checkpoint_generation(
+                sidecar,
+                checkpoint,
+                partial,
+            )
+
+    assert captured.value.published_path == partial_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert partial_path.read_bytes() == partial
+    assert not Path(sidecar.progress_path).exists()
+    assert progress.write_checkpoint_generation(
+        sidecar,
+        checkpoint,
+        partial,
+    ) == Path(sidecar.progress_path)
+
+
 def test_partial_generation_reports_committed_durability_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
