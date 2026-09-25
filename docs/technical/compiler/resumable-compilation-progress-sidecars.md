@@ -238,6 +238,9 @@ jobs that requested resumability.
   before directory durability confirmation, and immediately after sidecar
   directory durability confirmation. Restart observes the last pointer
   that actually crossed atomic replacement at each boundary.
+- Prepublication durability tests inject temporary-file synchronization failure
+  for immutable checkpoint and mutable sidecar writes, prove no canonical path
+  crosses commit, clean the temporary pathname, and preserve any prior pointer.
 - Durability-failure tests inject parent-directory synchronization failure
   after checkpoint, partial, and mutable sidecar publication and retain the
   exact committed path as evidence.

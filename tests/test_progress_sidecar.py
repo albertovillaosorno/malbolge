@@ -1204,6 +1204,41 @@ def test_checkpoint_generation_preserves_write_before_close_failure(
     assert not Path(sidecar.progress_path).exists()
 
 
+def test_checkpoint_generation_file_sync_failure_is_prepublication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Temporary checkpoint file sync failure cannot publish generation data."""
+    checkpoint = b"checkpoint-file-sync-failure"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    failure_message = "injected temporary file sync failure"
+
+    def fail_file_sync(descriptor: int) -> None:
+        del descriptor
+        raise OSError(failure_message)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", fail_file_sync)
+        expected_message = (
+            f"immutable progress payload publication failed: {failure_message}"
+        )
+        with pytest.raises(ERROR, match=expected_message) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    committed_error = progress.ProgressSidecarCommittedError
+    assert not isinstance(captured.value, committed_error)
+    assert not checkpoint_path.exists()
+    assert not Path(sidecar.progress_path).exists()
+    assert not tuple(
+        checkpoint_path.parent.glob(f".{checkpoint_path.name}.*.tmp")
+    )
+
+
 def test_checkpoint_generation_reports_committed_durability_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2236,6 +2271,40 @@ def test_write_atomic_preserves_primary_before_cleanup_failure(
     expected_note = f"mutable temporary cleanup also failed: {cleanup_failure}"
     assert getattr(primary_error, "__notes__", None) == [expected_note]
     assert progress.read(destination) == original
+
+
+def test_write_atomic_file_sync_failure_preserves_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Temporary pointer file sync failure cannot replace committed state."""
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    candidate = replace(
+        original,
+        active_elapsed_ns=original.active_elapsed_ns + 1,
+        updated_at="2026-08-06T14:00:03Z",
+        units_completed=original.units_completed + 1,
+        wall_elapsed_ns=original.wall_elapsed_ns + 1,
+    )
+    failure_message = "injected temporary file sync failure"
+
+    def fail_file_sync(descriptor: int) -> None:
+        del descriptor
+        raise OSError(failure_message)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", fail_file_sync)
+        with pytest.raises(
+            ERROR,
+            match=f"progress sidecar publication failed: {failure_message}",
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+
+    committed_error = progress.ProgressSidecarCommittedError
+    assert not isinstance(captured.value, committed_error)
+    assert progress.read(destination) == original
+    assert not tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
 
 
 def test_write_atomic_reports_committed_durability_failure(

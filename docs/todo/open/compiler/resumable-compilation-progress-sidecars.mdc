@@ -95,8 +95,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   durable checkpoint, before sidecar publication, immediately before atomic
   sidecar replacement, after replacement before directory durability
   confirmation, immediately after sidecar directory sync,
-  committed-but-unconfirmed directory-sync outcomes for sidecar,
-  checkpoint, and partial publications, directory close after sync plus combined
+  temporary-file sync failure before immutable/mutable publication,
+  committed-but-unconfirmed directory-sync outcomes for sidecar, checkpoint,
+  and partial publications, directory close after sync plus combined
   sync/close failure ordering, committed writer-lock release/close, combined
   acquisition/close, body/release/close, and release/close ordering, payload
   stream-open ownership cleanup, mutable and immutable payload write/close
