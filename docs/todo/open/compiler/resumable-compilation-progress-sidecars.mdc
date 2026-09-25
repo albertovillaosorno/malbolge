@@ -82,8 +82,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   input, source/repository identity mismatches, child-process crashes after
   checkpoint publication, before sidecar publication, immediately before atomic
   sidecar replacement, and after replacement before directory durability
-  confirmation, committed-but-unconfirmed directory-sync outcomes for mutable
-  and immutable publications, cross-process writer-lock exclusion
+  confirmation, committed-but-unconfirmed directory-sync outcomes for sidecar,
+  checkpoint, and partial publications, cross-process writer-lock exclusion
   plus stale-candidate revalidation after lock acquisition, linked-parent
   redirection rejection, durable cancellation/completion publication with
   rejected terminal restart, direct field and resume-identity mutations,

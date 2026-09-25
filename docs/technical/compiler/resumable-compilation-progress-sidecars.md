@@ -205,6 +205,9 @@ jobs that requested resumability.
   file is flushed but before atomic pointer replacement, and after replacement
   but before directory durability confirmation. Restart observes the last
   pointer that actually crossed atomic replacement at each boundary.
+- Durability-failure tests inject parent-directory synchronization failure
+  after checkpoint, partial, and mutable sidecar publication and retain the
+  exact committed path as evidence.
 - Resume tests cover unchanged jobs, monotonic transitions, exact repository
   revision and source/profile/toolchain mismatch, overwritten or missing
   generations, durable cancellation/completion publication, and rejected

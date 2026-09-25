@@ -263,6 +263,32 @@ class SequenceClock:
         return self.values.pop(0)
 
 
+@dataclass(slots=True)
+class FlushFailure:
+    """Inject one filesystem sync failure on an exact callback invocation."""
+
+    fail_on: int
+    message: str
+    calls: int = 0
+
+    def __call__(
+        self,
+        _path: Path,
+        *,
+        platform: str = os.name,
+    ) -> None:
+        """Fail on the configured invocation and otherwise accept the flush.
+
+        Raises:
+            OSError: When this is the configured failing invocation.
+
+        """
+        del _path, platform
+        self.calls += 1
+        if self.calls == self.fail_on:
+            raise OSError(self.message)
+
+
 def _sidecar(
     tmp_path: Path,
     *,
@@ -976,6 +1002,52 @@ def test_checkpoint_generation_reports_committed_durability_failure(
     assert not destination.exists()
     assert (
         progress.write_checkpoint_generation(sidecar, checkpoint) == destination
+    )
+    assert progress.read(destination) == sidecar
+
+
+def test_partial_generation_reports_committed_durability_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partial-member sync failure reports that member as committed."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    fail_partial_flush = FlushFailure(
+        fail_on=2,
+        message="injected partial directory sync failure",
+    )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", fail_partial_flush)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=(
+                "immutable progress payload committed but durability "
+                "confirmation failed"
+            ),
+        ) as captured:
+            _ = progress.write_checkpoint_generation(
+                sidecar,
+                checkpoint,
+                partial,
+            )
+
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    assert captured.value.published_path == partial_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert partial_path.read_bytes() == partial
+    destination = Path(sidecar.progress_path)
+    assert not destination.exists()
+    assert (
+        progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+        == destination
     )
     assert progress.read(destination) == sidecar
 
