@@ -24,6 +24,7 @@ It must not bypass another function or architectural kind boundary.
   CAS plus ordered count/latency persistence and reconciliation, latency
   normalization/refinement, durable merge, assessment, policy
   codec/persistence, ownership, recommendation/request publication, turns,
-  cycles, and exact interpreter-relative JIT promotion gating.
+  cycles, exact interpreter-relative JIT promotion gating, and lazy AOT-first
+  JIT rescue eligibility.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
   and monotonic clock contracts.

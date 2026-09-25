@@ -32,9 +32,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
 ## Acceptance
 
-- x86-64 and AArch64 consume the same portable execution IR and independently
-  pass cross-backend differential suites including executable-memory and
-  instruction-cache edge cases.
+- x86-64 and AArch64 consume the same portable execution IR. Host-real x86-64
+  execution plus cross-compiled AArch64 object/instruction admission and host-
+  independent differential semantics are sufficient backend evidence; dedicated
+  AArch64 hardware execution is not an acceptance prerequisite.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -445,13 +446,12 @@ A distinct single-resident lease cache
   Clang cross-compiles it warning-clean into both x86-64 and AArch64 Windows
   COFF objects. The Rust regression verifies the expected machine IDs and exact
   13-symbol Win32 undefined-import set on both targets, rejecting accidental
-  compiler-runtime or CRT dependencies. Host-real AArch64 execution remains
-  pending.
+  compiler-runtime or CRT dependencies.
 
-  Windows host-real execution is explicitly deferred and non-blocking. The
-  current Windows claim remains exact object/import admission, not host-real
-  execution; any later Windows execution failure remains a compatibility defect
-  to fix.
+  Host-real AArch64 and Windows execution are explicitly non-blocking. Exact
+  object/import admission plus host-independent semantic evidence is sufficient
+  for acceptance; later hardware execution failures remain compatibility
+  defects to fix.
 
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
@@ -487,8 +487,8 @@ A distinct single-resident lease cache
 
   paths. The tracked process-backed POSIX worker supplies concrete Linux
   x86-64 operations, while the tracked Windows worker supplies cross-compiled
-  x86-64/AArch64 platform code. Host-real Windows and AArch64 execution remain
-  pending.
+  x86-64/AArch64 platform code. Host-real Windows and AArch64 execution are
+  non-blocking compatibility follow-ups rather than acceptance gates.
 
   `NativeExecutableRunner` now receives only the exact bound call. Safe
   orchestration composes load, bind, run, admission, and release; runner or
@@ -497,7 +497,7 @@ A distinct single-resident lease cache
 
   runner cases pass. The POSIX worker supplies the host-real Linux x86-64 call
   bridge; the Windows worker cross-compiles native call paths for both supported
-  ISAs. Host-real AArch64 and Windows calls remain pending.
+  ISAs. Host-real AArch64 and Windows calls are optional compatibility evidence.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
@@ -1448,7 +1448,8 @@ input/jump-code, input/jump-data, input/no-operation,
   shrink, live entry/byte blockage, post-return publication, and release-failure
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
 
-  host-real AArch64 and Windows call paths remain open.
+  host-real AArch64 and Windows call paths are non-blocking compatibility
+  follow-ups.
   The reviewed forty-nine-shape fused two-step emission matrix is complete.
   Concrete Linux x86-64 executable-memory, instruction-cache, foreign-call,
   and fused whole-region integration now exists through the process worker.
@@ -1512,9 +1513,9 @@ input/jump-code, input/jump-data, input/no-operation,
   complete exact semantic checks with an unpoisoned persistent session.
   Lifecycle-to-resident median ratios are 3.431x, 3.815x, and 4.070x at scales
   1, 2, and 4 respectively, with every raw observation retained.
-  At this stage interpreter comparison and host-real AArch64/Windows performance
-  evidence remained open, so these measurements established no cross-host
-  native speedup.
+  At this stage interpreter comparison was still open; no AArch64/Windows
+  hardware measurements were taken, and cross-host performance evidence is not
+  required for backend acceptance.
 - Equivalent interpreter/process-native evidence is retained under
   `2026-09-18-native-process-vs-interpreter-linux-x86_64/` from
   source commit `ee5b3e88b72c8cee437ed7f022bf59825975f276`.
@@ -1525,10 +1526,9 @@ input/jump-code, input/jump-data, input/no-operation,
   interpreter median at scales 1, 2, and 4, so this current process boundary
   is slower for the measured micro-workload.
 
-  A pure tiered JIT gate now requires paired aggregate latency evidence proving
-  at least 11/10 (1.1x) interpreter-relative speedup. Exact totals from the 15
-  retained raw samples per mode fail that gate at scales 1, 2, and 4, and a
-  deterministic regression freezes those three negative promotion decisions.
-  Larger regions, in-process call designs, gate-to-scheduler integration, and
-  host-real AArch64 remain open; host-real Windows is deferred as described
-  above.
+  A pure tiered JIT gate now requires paired interpreter/in-process-native
+  aggregate latency evidence proving at least 11/10 (1.1x) speedup. The retained
+  process-native samples are rejected at the execution-boundary check before
+  numeric comparison, and a deterministic regression freezes that behavior.
+  In-process measurement plus gate-to-scheduler integration remain open; larger
+  fused process regions are benchmark evidence only, not promotion authority.

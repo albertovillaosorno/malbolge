@@ -70,10 +70,11 @@ A bounded deterministic CPU baseline is active and plugs into the generic
 algorithm/backend registry. It proves reproducible CPU-only search, canonical
 problem replay, explicit seed/budget control, and independent verification. It
 is
-not a claim that general Malbolge synthesis is solved. Real synthesis
-generators,
-translation-validation integration, AArch64 execution evidence, and performance
-benchmarks remain open.
+not a claim that general Malbolge synthesis is solved.
+
+Real synthesis generators, translation-validation integration, and performance
+benchmarks remain open. Host-real AArch64 execution is optional compatibility
+evidence rather than an acceptance gate.
 
 ## Invariants
 

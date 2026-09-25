@@ -36,7 +36,11 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+JIT compilation and dispatch are not implemented. The shared performance-
+admission gate rejects any comparison other than normative interpreter versus
+in-process native execution for one exact cohort. AOT-first rescue composition
+now bypasses that gate for exact AOT hits and host-format interpreter fallback;
+only an uncovered identity can become `JitEligible` after promotion.
 
 ## Invariants
 
@@ -48,7 +52,12 @@ Not implemented. This proposed contract does not claim executable support yet.
 - Synchronous compilation has an explicit resource/time budget. Exhaustion,
   cancellation, or unsupported specialization falls back to the interpreter.
 - Tail latency, compilation/admission cost, and steady-state execution are
-  measured separately; no fixed speedup is assumed by this contract.
+  measured separately. Promotion requires paired equivalent interpreter and
+  in-process-native aggregate latency evidence proving at least 11/10 (1.1x)
+  speedup; callers may require a stricter ratio but never a weaker one.
+- Process/IPC native measurements never authorize JIT promotion, even if a
+  larger fused region amortizes IPC enough to exceed the numeric speedup gate.
+  Such measurements remain pipeline and benchmark evidence only.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample

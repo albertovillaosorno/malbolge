@@ -44,6 +44,7 @@ use performance_gate::{
     NativeTierJitPromotionBlock as Block,
     NativeTierJitPromotionPolicy as Policy,
     NativeTierJitPromotionPolicyError as PolicyError,
+    NativeTierPerformanceBoundary as Boundary,
     NativeTierPerformanceEvidence as Evidence, assess_jit_promotion,
 };
 
@@ -51,11 +52,13 @@ const COHORT: [u8; 32] = [0x5a; 32];
 const OTHER_COHORT: [u8; 32] = [0xa5; 32];
 
 fn evidence(
+    boundary: Boundary,
     cohort: [u8; 32],
     samples: usize,
     total_nanoseconds: u128,
 ) -> Result<Evidence, String> {
     Ok(Evidence::new(
+        boundary,
         cohort,
         nonzero_usize(samples)?,
         nonzero_u128(total_nanoseconds)?,
@@ -81,8 +84,10 @@ fn nonzero_usize(value: usize) -> Result<NonZeroUsize, String> {
 fn arithmetic_overflow_stays_interpreted() -> Result<(), String> {
     let maximum = NonZeroU128::MAX;
     let samples = nonzero_usize(15)?;
-    let interpreter = Evidence::new(COHORT, samples, maximum);
-    let native = Evidence::new(COHORT, samples, maximum);
+    let interpreter =
+        Evidence::new(Boundary::Interpreter, COHORT, samples, maximum);
+    let native =
+        Evidence::new(Boundary::InProcessNative, COHORT, samples, maximum);
     let policy = Policy::minimum(samples);
     let expected = Assessment::Interpreter {
         reason: Block::ArithmeticOverflow,
@@ -95,8 +100,8 @@ fn arithmetic_overflow_stays_interpreted() -> Result<(), String> {
 
 #[test]
 fn exact_one_point_one_speedup_promotes_jit() -> Result<(), String> {
-    let interpreter = evidence(COHORT, 15, 16_500)?;
-    let native = evidence(COHORT, 15, 15_000)?;
+    let interpreter = evidence(Boundary::Interpreter, COHORT, 15, 16_500)?;
+    let native = evidence(Boundary::InProcessNative, COHORT, 15, 15_000)?;
     let policy = Policy::minimum(nonzero_usize(15)?);
     if assess_jit_promotion(interpreter, native, policy) != Assessment::Promote
     {
@@ -127,8 +132,8 @@ fn jit_policy_enforces_repository_speedup_floor() -> Result<(), String> {
 
 #[test]
 fn marginal_native_speedup_stays_interpreted() -> Result<(), String> {
-    let interpreter = evidence(COHORT, 15, 16_499)?;
-    let native = evidence(COHORT, 15, 15_000)?;
+    let interpreter = evidence(Boundary::Interpreter, COHORT, 15, 16_499)?;
+    let native = evidence(Boundary::InProcessNative, COHORT, 15, 15_000)?;
     let policy = Policy::minimum(nonzero_usize(15)?);
     let expected = Assessment::Interpreter {
         reason: Block::BelowMinimumSpeedup,
@@ -141,14 +146,33 @@ fn marginal_native_speedup_stays_interpreted() -> Result<(), String> {
 
 #[test]
 fn mismatched_cohort_identity_stays_interpreted() -> Result<(), String> {
-    let interpreter = evidence(COHORT, 15, 16_500)?;
-    let native = evidence(OTHER_COHORT, 15, 15_000)?;
+    let interpreter = evidence(Boundary::Interpreter, COHORT, 15, 16_500)?;
+    let native = evidence(Boundary::InProcessNative, OTHER_COHORT, 15, 15_000)?;
     let policy = Policy::minimum(nonzero_usize(15)?);
     let expected = Assessment::Interpreter {
         reason: Block::CohortMismatch,
     };
     if assess_jit_promotion(interpreter, native, policy) != expected {
         return Err(String::from("mismatched cohort promoted JIT"));
+    }
+    Ok(())
+}
+
+#[test]
+fn process_native_speedup_never_authorizes_jit() -> Result<(), String> {
+    let policy = Policy::minimum(nonzero_usize(15)?);
+    let assessment = assess_jit_promotion(
+        evidence(Boundary::Interpreter, COHORT, 15, 30_000)?,
+        evidence(Boundary::ProcessNative, COHORT, 15, 10_000)?,
+        policy,
+    );
+    let expected = Assessment::Interpreter {
+        reason: Block::ExecutionBoundaryMismatch,
+    };
+    if assessment != expected {
+        return Err(String::from(
+            "process-native speedup crossed the in-process JIT boundary",
+        ));
     }
     Ok(())
 }
@@ -163,16 +187,16 @@ fn retained_two_step_process_totals_stay_interpreted() -> Result<(), String> {
     ];
     for (cohort, interpreter_total, native_total) in retained {
         let assessment = assess_jit_promotion(
-            evidence(cohort, 15, interpreter_total)?,
-            evidence(cohort, 15, native_total)?,
+            evidence(Boundary::Interpreter, cohort, 15, interpreter_total)?,
+            evidence(Boundary::ProcessNative, cohort, 15, native_total)?,
             policy,
         );
         let expected = Assessment::Interpreter {
-            reason: Block::BelowMinimumSpeedup,
+            reason: Block::ExecutionBoundaryMismatch,
         };
         if assessment != expected {
             return Err(String::from(
-                "retained two-step process evidence promoted JIT",
+                "retained process evidence crossed the in-process JIT boundary",
             ));
         }
     }
@@ -183,8 +207,8 @@ fn retained_two_step_process_totals_stay_interpreted() -> Result<(), String> {
 fn weak_or_unpaired_samples_stay_interpreted() -> Result<(), String> {
     let policy = Policy::minimum(nonzero_usize(15)?);
     let insufficient = assess_jit_promotion(
-        evidence(COHORT, 14, 15_400)?,
-        evidence(COHORT, 14, 14_000)?,
+        evidence(Boundary::Interpreter, COHORT, 14, 15_400)?,
+        evidence(Boundary::InProcessNative, COHORT, 14, 14_000)?,
         policy,
     );
     let expected_insufficient = Assessment::Interpreter {
@@ -194,8 +218,8 @@ fn weak_or_unpaired_samples_stay_interpreted() -> Result<(), String> {
         return Err(String::from("insufficient evidence promoted JIT"));
     }
     let unpaired = assess_jit_promotion(
-        evidence(COHORT, 16, 17_600)?,
-        evidence(COHORT, 15, 15_000)?,
+        evidence(Boundary::Interpreter, COHORT, 16, 17_600)?,
+        evidence(Boundary::InProcessNative, COHORT, 15, 15_000)?,
         policy,
     );
     let expected_unpaired = Assessment::Interpreter {

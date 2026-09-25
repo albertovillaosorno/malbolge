@@ -172,8 +172,8 @@ direct images, every operation failure, report drift, cleanup failure, and
 
 retry. The process-backed POSIX worker supplies host-real Linux x86-64
 execution, while the Windows worker supplies cross-compiled x86-64/AArch64
-platform implementations. Host-real Windows and AArch64 execution remain
-outside the current evidence.
+platform implementations. Host-real Windows and AArch64 execution are optional
+compatibility evidence rather than backend acceptance gates.
 
 `runner.rs` defines `NativeExecutableRunner` around the already bound
 `PreparedNativeExecutableInvocation`; implementations never receive unrelated

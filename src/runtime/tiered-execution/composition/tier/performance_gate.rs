@@ -13,8 +13,8 @@
 // - Must-Not:
 //   - Read clocks, benchmark workloads, compile code, or select AOT artifacts.
 // - Allows:
-//   - Inputs: equivalent interpreter/native latency evidence and explicit
-//     policy.
+//   - Inputs: equivalent interpreter/in-process-native latency evidence and
+//     explicit policy.
 //   - Outputs: one exact promote-or-interpreter assessment with stable reason.
 //   - Side effects: none.
 // - Split-When:
@@ -38,9 +38,21 @@ use std::num::{NonZeroU64, NonZeroU128, NonZeroUsize};
 const MINIMUM_JIT_SPEEDUP_DENOMINATOR: u64 = 10;
 const MINIMUM_JIT_SPEEDUP_NUMERATOR: u64 = 11;
 
-/// Exact aggregate latency evidence for one benchmark cohort.
+/// Execution boundary represented by one aggregate latency observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeTierPerformanceBoundary {
+    /// Native execution without a process/IPC boundary in the timed region.
+    InProcessNative,
+    /// Normative interpreter execution for the same exact cohort.
+    Interpreter,
+    /// Native execution whose timed region crosses the process/IPC boundary.
+    ProcessNative,
+}
+
+/// Exact aggregate latency evidence for one benchmark cohort and boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeTierPerformanceEvidence {
+    boundary: NativeTierPerformanceBoundary,
     cohort_identity: [u8; 32],
     samples: NonZeroUsize,
     total_nanoseconds: NonZeroU128,
@@ -70,6 +82,8 @@ pub enum NativeTierJitPromotionBlock {
     BelowMinimumSpeedup,
     /// Interpreter and native evidence do not describe the same exact cohort.
     CohortMismatch,
+    /// Evidence does not compare interpreter with in-process native execution.
+    ExecutionBoundaryMismatch,
     /// One or both evidence sets have not reached the positive sample gate.
     InsufficientSamples,
     /// Equivalent evidence has different sample counts.
@@ -150,6 +164,12 @@ impl NativeTierJitPromotionPolicy {
 }
 
 impl NativeTierPerformanceEvidence {
+    /// Returns the exact execution boundary represented by this evidence.
+    #[must_use]
+    pub const fn boundary(self) -> NativeTierPerformanceBoundary {
+        self.boundary
+    }
+
     /// Returns the caller-bound exact cohort identity.
     #[must_use]
     pub const fn cohort_identity(self) -> [u8; 32] {
@@ -159,11 +179,13 @@ impl NativeTierPerformanceEvidence {
     /// Constructs exact aggregate latency evidence for one canonical cohort.
     #[must_use]
     pub const fn new(
+        boundary: NativeTierPerformanceBoundary,
         cohort_identity: [u8; 32],
         samples: NonZeroUsize,
         total_nanoseconds: NonZeroU128,
     ) -> Self {
         Self {
+            boundary,
             cohort_identity,
             samples,
             total_nanoseconds,
@@ -191,6 +213,11 @@ pub fn assess_jit_promotion(
     native: NativeTierPerformanceEvidence,
     policy: NativeTierJitPromotionPolicy,
 ) -> NativeTierJitPromotionAssessment {
+    if interpreter.boundary() != NativeTierPerformanceBoundary::Interpreter
+        || native.boundary() != NativeTierPerformanceBoundary::InProcessNative
+    {
+        return blocked(NativeTierJitPromotionBlock::ExecutionBoundaryMismatch);
+    }
     if interpreter.cohort_identity() != native.cohort_identity() {
         return blocked(NativeTierJitPromotionBlock::CohortMismatch);
     }

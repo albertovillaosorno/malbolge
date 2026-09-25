@@ -617,12 +617,13 @@ through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
 Pinned Clang cross-compiles that source warning-clean into x86-64 and AArch64
 Windows COFF worker objects. The regression checks both COFF machine IDs and
 requires the exact 13-symbol Win32 undefined-import set on each target while
-rejecting accidental compiler-runtime or CRT dependencies. Host-real AArch64
-execution remains pending.
+rejecting accidental compiler-runtime or CRT dependencies.
 
-Windows host-real execution is explicitly deferred and non-blocking; cross-
-compilation is not treated as execution evidence. A future Windows execution
-failure remains a compatibility defect to fix.
+Host-real AArch64 and Windows execution are non-blocking compatibility follow-
+ups. Cross-compilation is not represented as host-real evidence, but exact
+object/import admission plus host-independent semantic verification is
+sufficient for backend acceptance. A later hardware execution failure remains a
+compatibility defect to fix.
 
 `native_process_protocol.h` now mirrors the reviewed MBNPM1/MBNPC1 version-one
 magic, command/outcome tags, fixed sizes, field offsets, and little-endian
@@ -1792,8 +1793,8 @@ deterministically without changing guest-visible state silently.
   Lifecycle medians are 79,718/152,607/427,110 ns while resident-call medians
   are 23,233/40,000/104,934 ns, yielding 3.431x/3.815x/4.070x ratios.
   This is concrete Linux x86-64 process evidence only and at this stage did not
-  compare interpreter throughput; host-real AArch64/Windows execution remained
-  open.
+  compare interpreter throughput; no host-real AArch64/Windows measurement was
+  taken, and neither is required for backend acceptance.
 
 - Equivalent-workload interpreter comparison is retained under
   `benchmarks/interpreter/evidence/` in

@@ -127,6 +127,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/composition/tier/jit_rescue.rs"]
+pub mod native_tier_jit_rescue;
 #[path = "../src/runtime/tiered-execution/composition/tier/performance_gate.rs"]
 pub mod native_tier_performance_gate;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention.rs"]
@@ -162,6 +164,7 @@ pub mod retry_router;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
 pub mod retry_turn;
 
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::ffi::OsString;
@@ -995,6 +998,12 @@ use monotonic_clock::NativeContinuationMonotonicClock;
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
+};
+use native_tier_jit_rescue::{
+    NativeTierJitRescueRoute, select_aot_first_jit_rescue,
+};
+use native_tier_performance_gate::{
+    NativeTierJitPromotionAssessment, NativeTierJitPromotionBlock,
 };
 use pair_retention_journal::{
     NativeContinuationFileBlobPairRetentionJournalCas,
@@ -34230,6 +34239,119 @@ fn aot_preparation_reports_unsupported_host_before_publication()
     } else {
         Err(String::from(
             "AOT preparation changed target-format failure",
+        ))
+    }
+}
+
+#[test]
+fn aot_first_jit_rescue_bypasses_gate_for_exact_hit() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let aot = cache.seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let assessed = Cell::new(false);
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        assessed.set(true);
+        NativeTierJitPromotionAssessment::Promote
+    });
+    if assessed.get() {
+        return Err(String::from("AOT hit consulted JIT performance gate"));
+    }
+    if rescue.route() == NativeTierJitRescueRoute::AheadOfExecution
+        && rescue.artifact().is_some()
+        && rescue.performance_block().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT hit did not retain AOT-first precedence"))
+    }
+}
+
+#[test]
+fn aot_first_jit_rescue_bypasses_gate_for_host_fallback() -> Result<(), String>
+{
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let assessed = Cell::new(false);
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        assessed.set(true);
+        NativeTierJitPromotionAssessment::Promote
+    });
+    if assessed.get() {
+        return Err(String::from(
+            "host fallback consulted JIT performance gate",
+        ));
+    }
+    if rescue.route() == NativeTierJitRescueRoute::Interpreter
+        && rescue.artifact().is_none()
+        && rescue.performance_block().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("host fallback changed tier during JIT rescue"))
+    }
+}
+
+#[test]
+fn aot_first_jit_rescue_preserves_performance_rejection() -> Result<(), String>
+{
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_block = NativeTierJitPromotionBlock::ExecutionBoundaryMismatch;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Interpreter { reason: expected_block }
+    });
+    if rescue.route() == NativeTierJitRescueRoute::Interpreter
+        && rescue.artifact().is_none()
+        && rescue.performance_block() == Some(expected_block)
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT miss lost JIT performance rejection"))
+    }
+}
+
+#[test]
+fn aot_first_jit_rescue_promotes_only_uncovered_identity() -> Result<(), String>
+{
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    if rescue.route() == NativeTierJitRescueRoute::JitEligible
+        && rescue.artifact().is_none()
+        && rescue.performance_block().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "promoted AOT miss did not become JIT eligible",
         ))
     }
 }

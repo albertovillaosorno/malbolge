@@ -30,9 +30,13 @@ target x86-64 and AArch64.
 A guarded JIT is a secondary rescue tier for hot mutable states absent from the
 admitted AOT/native-cache set. Exact AOT hits take precedence, and synchronous
 JIT work has a bounded resource/time budget before interpreter fallback. JIT
-promotion additionally requires paired equivalent interpreter/native latency
-evidence proving at least 1.1x speedup by exact arithmetic. Callers may require
-a stricter speedup, while weak or mismatched evidence stays on the interpreter.
+promotion additionally requires paired equivalent interpreter/in-process-native
+latency evidence proving at least 1.1x speedup by exact arithmetic. Process/IPC
+native measurements are benchmark evidence only and can never authorize JIT
+promotion, even when a larger fused region amortizes that boundary.
+
+Callers may require a stricter speedup, while weak or mismatched evidence stays
+interpreted.
 
 Every specialization states its code/data assumptions. Failed guards deoptimize
 to an equivalent interpreter state. Native caches include every semantic

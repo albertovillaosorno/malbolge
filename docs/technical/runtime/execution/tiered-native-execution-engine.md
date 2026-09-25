@@ -253,9 +253,9 @@ full `NativeProcessHost` transaction.
 A separate tracked Windows C23 worker now owns the corresponding
 `VirtualAlloc`/copy/`VirtualProtect`/`FlushInstructionCache`/call/`VirtualFree`
 boundary and cross-compiles warning-clean for both x86-64 and AArch64 Windows
-targets. That is object-level portability evidence only: host-real AArch64 and
-Windows worker execution remain open rather than being inferred from
-cross-compilation.
+targets. That object-level portability evidence is sufficient for AArch64 and
+Windows acceptance; host-real execution is a non-blocking compatibility follow-
+up, and any later hardware failure is a defect to fix.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output
@@ -2296,24 +2296,31 @@ independent authority.
 
 A pure JIT performance gate now owns interpreter-relative promotion evidence.
 It requires exact cohort identity, equal positive sample counts, a caller-owned
-minimum sample gate, and exact aggregate latency totals. The repository floor is
-11/10 (1.1x) speedup, while stricter caller ratios are admitted and weak,
-mismatched, or overflowing evidence stays on the interpreter. This gate does
-not schedule, compile, or invoke native code; product integration remains open.
+minimum sample gate, exact aggregate latency totals, and the execution boundary
+pair `Interpreter` plus `InProcessNative`. The repository floor is 11/10 (1.1x)
+speedup, while stricter caller ratios are admitted and weak, mismatched,
+process-native, or overflowing evidence stays on the interpreter. Process/IPC
+evidence cannot authorize promotion even when a larger fused region amortizes
+IPC.
+
+AOT-first rescue composition now consumes the read-only AOT result lazily. Exact
+`Direct` hits retain their artifact without consulting performance policy, host-
+format `Interpreter` fallback also bypasses the gate, and only `Uncovered`
+identities evaluate performance. A promoted uncovered identity becomes
+`JitEligible`; no JIT compilation or execution is implied by that eligibility.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, host-real AArch64 native-worker execution,
-durable cache serialization/storage and cross-process leasing, durable AOT
-preparation/loading, reduced state-graph artifact admission, native graph-
-transition dispatch, and latency-bounded JIT rescue beyond verified direct
-process-local lookup remain open, alongside broader end-to-end performance
-policy.
+asynchronous/product scheduling, durable cache serialization/storage and cross-
+process leasing, durable AOT preparation/loading, reduced state-graph artifact
+admission, native graph-transition dispatch, and latency-bounded JIT rescue
+beyond verified direct process-local lookup remain open, alongside broader end-
+to-end performance policy.
 
-Windows host-real worker execution is explicitly deferred and does not block
-this milestone. Warning-clean x86-64/AArch64 COFF plus exact Win32 import/object
-admission remains the current Windows portability evidence; it is not host-real
-execution evidence. A future Windows execution failure remains a compatibility
-defect to fix. The interpreter remains the only normative execution authority
+Host-real AArch64 and Windows worker execution are explicitly non-blocking
+compatibility follow-ups. Cross-compiled x86-64/AArch64 objects, independent
+instruction/structure admission, and host-independent semantic evidence are the
+acceptance boundary; future hardware execution failures remain compatibility
+defects to fix. The interpreter remains the only normative execution authority
 and the guaranteed fallback.
 
 ## Invariants
@@ -2323,8 +2330,9 @@ and the guaranteed fallback.
 - Tier selection is AOT-first for exact admitted code-state identity. JIT
   compilation is reserved for uncovered mutable states and must have a bounded
   synchronous resource/time budget before interpreter fallback. Promotion also
-  requires paired equivalent evidence proving at least 1.1x interpreter-
-  relative speedup; callers may require a stricter ratio but never a weaker one.
+  requires paired equivalent interpreter/in-process-native evidence proving at
+  least 1.1x speedup; callers may require a stricter ratio but never a weaker
+  one, and process/IPC evidence is never promotion authority.
 - A verifier-proven finite closed self-modification graph may execute as an
   automaton of precompiled native code-state variants, but a state outside that
   graph fails closed to lower tiers rather than guessing a transition.

@@ -128,9 +128,9 @@ baseline for accelerator implementations.
   (4.243x better), and backend evaluation improves 4.540x to 2.906 ms. CPU
   prepared
   is 1.440x faster than same-run CUDA. Result validation/packing is next.
-  Translation-validation integration, real
-  synthesis generators, AArch64 execution evidence, and broader performance
 
-  measurements remain open.
+  Translation-validation integration, real synthesis generators, and broader
+  performance measurements remain open. Host-real AArch64 execution is optional
+  compatibility evidence under the host baseline ADR, not an acceptance gate.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.

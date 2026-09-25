@@ -49,7 +49,10 @@ but discovery never changes observable Malbolge behavior by itself.
   cancellation, or unsupported specialization returns to the interpreter rather
   than extending guest critical-path latency without bound.
 - Benchmarks report tail latency and compile/admission cost separately from
-  steady-state execution; no fixed speedup is assumed by this TODO.
+  steady-state execution. JIT promotion requires equivalent interpreter and
+  in-process-native aggregate evidence proving at least 11/10 (1.1x) speedup.
+  Process/IPC native evidence is never promotion authority, even when larger
+  fused regions amortize that boundary.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -72,6 +75,9 @@ but discovery never changes observable Malbolge behavior by itself.
   `native-x86-64-and-aarch64-backends`,
   `ahead-of-execution-native-translation`,
   `self-modification-state-graph-optimizer`.
-- Performance evidence pending: raw measurements plus a reproducible
+- Performance evidence pending: raw in-process measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+  identity. The implemented shared gate rejects process-native evidence before
+  numeric speedup assessment. AOT-first rescue composition also proves exact AOT
+  hits and host fallback bypass the gate, while only an uncovered promoted state
+  becomes `JitEligible`.

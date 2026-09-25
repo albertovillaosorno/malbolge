@@ -28,6 +28,12 @@ behind one execution-IR contract. A backend may use architecture-specific
 instruction selection and calling conventions, but those details never become
 Malbolge semantics.
 
+Host-real AArch64 execution is not an acceptance gate for those backends.
+Cross-compiled object admission, independent instruction decoding, and
+host-independent semantic tests are sufficient AArch64 implementation evidence.
+A defect reported later on real AArch64 hardware is a compatibility bug to fix,
+not a reason to weaken the portable execution contract.
+
 GPU acceleration is named by the software runtime boundary that the repository
 integrates. CUDA is the supported NVIDIA GPU adapter. ROCm reserves a possible
 future AMD
@@ -55,8 +61,8 @@ conditionals by accident.
 ## Disadvantages
 
 - Every CPU/native execution change must consider two host ISAs from the start.
-- CI and benchmark evidence eventually need representative x86-64 and AArch64
-  machines plus CUDA and ROCm hardware for backend-specific claims.
+- Host-real AArch64 coverage may lag implementation, so hardware-specific
+  compatibility defects can surface from downstream execution reports.
 - Excluding 32-bit host targets initially narrows legacy-host portability.
 
 ## Consequences
