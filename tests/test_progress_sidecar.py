@@ -85,8 +85,13 @@ POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
+BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
 BEFORE_SIDECAR = "before-sidecar"
-CRASH_BOUNDARIES = (AFTER_CHECKPOINT, BEFORE_SIDECAR)
+CRASH_BOUNDARIES = (
+    AFTER_CHECKPOINT,
+    BEFORE_SIDECAR_REPLACE,
+    BEFORE_SIDECAR,
+)
 CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
 PARTIAL_BEFORE_CRASH = b"partial-before-crash"
 CHECKPOINT_AFTER_CRASH = b"checkpoint-after-crash"
@@ -157,6 +162,7 @@ partial = Path(sys.argv[3]).read_bytes()
 exit_code = int(sys.argv[4])
 boundary = sys.argv[5]
 original_write_immutable = progress._write_immutable
+original_replace = Path.replace
 publication_count = 0
 
 def write_then_maybe_crash(destination, payload):
@@ -170,9 +176,16 @@ def write_then_maybe_crash(destination, payload):
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
+def replace_then_maybe_crash(source, destination):
+    if boundary == "before-sidecar-replace":
+        os._exit(exit_code)
+    return original_replace(source, destination)
+
 progress._write_immutable = write_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
+elif boundary == "before-sidecar-replace":
+    Path.replace = replace_then_maybe_crash
 progress.write_checkpoint_generation(sidecar, checkpoint, partial)
 raise AssertionError("configured crash boundary was not reached")
 """.strip()

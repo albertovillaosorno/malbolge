@@ -79,7 +79,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes after
-  checkpoint publication and before the next sidecar pointer, cross-process
+  checkpoint publication, before atomic sidecar replacement, and before the
+  next sidecar publication, cross-process
   writer-lock exclusion plus stale-candidate revalidation after lock
   acquisition, linked-parent redirection rejection, direct field and
   resume-identity mutations, boolean counter/sequence aliases, impossible UTC

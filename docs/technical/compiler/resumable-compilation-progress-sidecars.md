@@ -75,7 +75,9 @@ generations are ignored until a valid sidecar publishes them. `ProgressTimer`
 uses an injectable monotonic nanosecond clock and exclusive active, paused,
 verification, serialization, and checkpoint phases to construct the exact timing
 fields without UTC arithmetic. Child-process crash fixtures now terminate
-publication after the checkpoint and immediately before the sidecar commit.
+publication after the checkpoint, after the mutable sidecar temporary file is
+durable but before atomic pointer replacement, and immediately before sidecar
+publication.
 Product CLI/compiler integration, portable compiler-state serialization, broader
 
 power-loss injection, and CPU/CUDA resume equivalence remain unimplemented.
@@ -182,9 +184,11 @@ jobs that requested resumability.
 
 - Schema tests validate every required field, status transition, and unknown-
   total representation.
-- Crash fixtures terminate a child process after checkpoint publication and
-  immediately before sidecar replacement, proving the previous pointer remains
-  readable and resumable across torn next-generation state.
+- Crash fixtures terminate a child process after checkpoint publication, after
+  the mutable sidecar temporary file is flushed but before atomic pointer
+  replacement, and immediately before sidecar publication. The previous
+  pointer remains readable and resumable across every torn next-generation
+  boundary.
 - Resume tests cover unchanged jobs, monotonic transitions, exact repository
   revision and source/profile/toolchain mismatch, overwritten or missing
   generations, cancellation, and terminal-job reopening. Two-process fixtures
