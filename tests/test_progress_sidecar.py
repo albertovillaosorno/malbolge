@@ -86,8 +86,11 @@ EMPTY_PAYLOAD = b""
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
+AFTER_CHECKPOINT_SYNC = "after-checkpoint-sync"
 AFTER_PARTIAL_PUBLISH = "after-partial-publish"
+AFTER_PARTIAL_SYNC = "after-partial-sync"
 AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
+AFTER_SIDECAR_SYNC = "after-sidecar-sync"
 BEFORE_CHECKPOINT_PUBLISH = "before-checkpoint-publish"
 BEFORE_PARTIAL_PUBLISH = "before-partial-publish"
 BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
@@ -95,11 +98,14 @@ BEFORE_SIDECAR = "before-sidecar"
 CRASH_BOUNDARIES = (
     BEFORE_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_PUBLISH,
+    AFTER_CHECKPOINT_SYNC,
     AFTER_CHECKPOINT,
     BEFORE_PARTIAL_PUBLISH,
     AFTER_PARTIAL_PUBLISH,
+    AFTER_PARTIAL_SYNC,
     BEFORE_SIDECAR_REPLACE,
     AFTER_SIDECAR_REPLACE,
+    AFTER_SIDECAR_SYNC,
     BEFORE_SIDECAR,
 )
 CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
@@ -173,6 +179,7 @@ exit_code = int(sys.argv[4])
 boundary = sys.argv[5]
 original_write_immutable = progress._write_immutable
 original_publish_immutable_payload = progress._publish_immutable_payload
+original_confirm_durability = progress._confirm_publication_durability
 original_replace = Path.replace
 publication_count = 0
 
@@ -202,6 +209,21 @@ def write_then_maybe_crash(destination, payload):
         os._exit(exit_code)
     return result
 
+def confirm_then_maybe_crash(published_path, *, context, platform=os.name):
+    result = original_confirm_durability(
+        published_path,
+        context=context,
+        platform=platform,
+    )
+    if context == "immutable progress payload":
+        if boundary == "after-checkpoint-sync" and publication_count == 1:
+            os._exit(exit_code)
+        if boundary == "after-partial-sync" and publication_count == 2:
+            os._exit(exit_code)
+    if context == "progress sidecar" and boundary == "after-sidecar-sync":
+        os._exit(exit_code)
+    return result
+
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
@@ -214,6 +236,7 @@ def replace_then_maybe_crash(source, destination):
     return result
 
 progress._publish_immutable_payload = publish_then_maybe_crash
+progress._confirm_publication_durability = confirm_then_maybe_crash
 progress._write_immutable = write_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
@@ -2301,7 +2324,7 @@ def test_process_crash_preserves_last_committed_generation(
     assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
         errors="replace"
     )
-    if boundary == AFTER_SIDECAR_REPLACE:
+    if boundary in {AFTER_SIDECAR_REPLACE, AFTER_SIDECAR_SYNC}:
         assert progress.read(fixture.destination) == fixture.second
         assert progress.read_checkpoint_generation(fixture.second) == (
             fixture.checkpoint_two,
@@ -2322,6 +2345,7 @@ def test_process_crash_preserves_last_committed_generation(
     unpublished_partial = {
         BEFORE_CHECKPOINT_PUBLISH,
         AFTER_CHECKPOINT_PUBLISH,
+        AFTER_CHECKPOINT_SYNC,
         AFTER_CHECKPOINT,
         BEFORE_PARTIAL_PUBLISH,
     }

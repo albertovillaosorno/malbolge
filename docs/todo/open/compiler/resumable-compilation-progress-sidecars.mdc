@@ -88,11 +88,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes
-  immediately before or after checkpoint/partial atomic publication, after a
-  durable
-  checkpoint, before sidecar publication, immediately before atomic sidecar
-  replacement, and after replacement before directory durability
-  confirmation, committed-but-unconfirmed directory-sync outcomes for sidecar,
+  immediately before or after checkpoint/partial atomic publication, after
+  checkpoint/partial directory sync before immutable temporary cleanup, after a
+  durable checkpoint, before sidecar publication, immediately before atomic
+  sidecar replacement, after replacement before directory durability
+  confirmation, immediately after sidecar directory sync,
+  committed-but-unconfirmed directory-sync outcomes for sidecar,
   checkpoint, and partial publications, directory close after sync plus combined
   sync/close failure ordering, committed writer-lock release/close, combined
   acquisition/close, body/release/close, and release/close ordering, payload
