@@ -83,10 +83,11 @@ generations are ignored until a valid sidecar publishes them. `ProgressTimer`
 uses an injectable monotonic nanosecond clock and exclusive active, paused,
 verification, serialization, and checkpoint phases to construct the exact timing
 fields without UTC arithmetic. Child-process crash fixtures now terminate
-publication after the checkpoint, immediately before sidecar publication, after
-the mutable sidecar temporary file is durable but before atomic pointer
-replacement, and after replacement but before directory durability
-confirmation.
+publication after checkpoint or partial atomic publication but before directory
+durability confirmation, after a durable checkpoint, immediately before sidecar
+publication, after the mutable sidecar temporary file is durable but before
+atomic pointer replacement, and after replacement but before directory
+durability confirmation.
 Product CLI/compiler integration, portable compiler-state serialization, broader
 
 power-loss injection, and CPU/CUDA resume equivalence remain unimplemented.
@@ -200,11 +201,12 @@ jobs that requested resumability.
 
 - Schema tests validate every required field, status transition, and unknown-
   total representation.
-- Crash fixtures terminate a child process after checkpoint publication,
-  immediately before sidecar publication, after the mutable sidecar temporary
-  file is flushed but before atomic pointer replacement, and after replacement
-  but before directory durability confirmation. Restart observes the last
-  pointer that actually crossed atomic replacement at each boundary.
+- Crash fixtures terminate a child process after checkpoint or partial atomic
+  publication but before directory durability confirmation, after a durable
+  checkpoint, immediately before sidecar publication, after the mutable sidecar
+  temporary file is flushed but before atomic pointer replacement, and after
+  replacement but before directory durability confirmation. Restart observes
+  the last pointer that actually crossed atomic replacement at each boundary.
 - Durability-failure tests inject parent-directory synchronization failure
   after checkpoint, partial, and mutable sidecar publication and retain the
   exact committed path as evidence.

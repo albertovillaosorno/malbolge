@@ -85,11 +85,15 @@ POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
+AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
+AFTER_PARTIAL_PUBLISH = "after-partial-publish"
 AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
 BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
 BEFORE_SIDECAR = "before-sidecar"
 CRASH_BOUNDARIES = (
+    AFTER_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT,
+    AFTER_PARTIAL_PUBLISH,
     BEFORE_SIDECAR_REPLACE,
     AFTER_SIDECAR_REPLACE,
     BEFORE_SIDECAR,
@@ -164,13 +168,27 @@ partial = Path(sys.argv[3]).read_bytes()
 exit_code = int(sys.argv[4])
 boundary = sys.argv[5]
 original_write_immutable = progress._write_immutable
+original_publish_immutable_payload = progress._publish_immutable_payload
 original_replace = Path.replace
 publication_count = 0
 
-def write_then_maybe_crash(destination, payload):
+def publish_then_maybe_crash(temporary, destination, payload, *, platform):
     global publication_count
-    result = original_write_immutable(destination, payload)
+    result = original_publish_immutable_payload(
+        temporary,
+        destination,
+        payload,
+        platform=platform,
+    )
     publication_count += 1
+    if boundary == "after-checkpoint-publish" and publication_count == 1:
+        os._exit(exit_code)
+    if boundary == "after-partial-publish" and publication_count == 2:
+        os._exit(exit_code)
+    return result
+
+def write_then_maybe_crash(destination, payload):
+    result = original_write_immutable(destination, payload)
     if boundary == "after-checkpoint" and publication_count == 1:
         os._exit(exit_code)
     return result
@@ -186,6 +204,7 @@ def replace_then_maybe_crash(source, destination):
         os._exit(exit_code)
     return result
 
+progress._publish_immutable_payload = publish_then_maybe_crash
 progress._write_immutable = write_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
@@ -1773,7 +1792,7 @@ def test_process_crash_preserves_last_committed_generation(
     checkpoint_path = Path(fixture.second.checkpoint_path or "")
     partial_path = Path(fixture.second.partial_path or "")
     assert checkpoint_path.read_bytes() == fixture.checkpoint_two
-    if boundary == AFTER_CHECKPOINT:
+    if boundary in {AFTER_CHECKPOINT_PUBLISH, AFTER_CHECKPOINT}:
         assert not partial_path.exists()
     else:
         assert partial_path.read_bytes() == fixture.partial_two

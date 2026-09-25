@@ -80,7 +80,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes after
-  checkpoint publication, before sidecar publication, immediately before atomic
+  checkpoint or partial atomic publication before directory durability, after a
+  durable checkpoint, before sidecar publication, immediately before atomic
   sidecar replacement, and after replacement before directory durability
   confirmation, committed-but-unconfirmed directory-sync outcomes for sidecar,
   checkpoint, and partial publications, cross-process writer-lock exclusion
