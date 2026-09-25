@@ -1082,6 +1082,7 @@ cache and publishes a sealed read-only AOT set only after every
 requested region has a reviewed direct fast path and passes profile preflight,
 emission, and semantic verification. Exact duplicate keys are emitted once. A
 read-only miss retains its complete key for higher-level JIT rescue policy.
+
 Empty input, deoptimization-only variants, unsupported target formats, and any
 indexed preparation failure publish no partial set. This is process-local
 startup/offline preparation only; durable storage remains a separate boundary.
