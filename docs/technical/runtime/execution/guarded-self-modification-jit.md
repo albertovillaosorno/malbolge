@@ -48,11 +48,13 @@ route can become `JitCompilation`.
 
 A replaceable compiler port now receives that exact identity and budget, must
 enforce both ceilings, and returns only compiled, budget-exhausted, cancelled,
-unsupported, or adapter-failure evidence. Application orchestration
-independently rechecks successful time/size claims. Scheduled composition
-invokes
-that compiler
-only for `JitCompilation`; exact AOT and interpreter routes bypass it.
+unsupported, or adapter-failure evidence. Application orchestration rechecks
+successful time/size claims before exposing an untrusted candidate.
+
+Scheduled composition invokes that compiler only for `JitCompilation`; exact
+AOT and interpreter routes bypass it. Candidate-producing attempts are also
+wrapped in the runtime monotonic clock. Clock failure or an independently
+measured outer latency beyond the caller ceiling discards the candidate.
 
 Artifact admission, installation, and execution remain unimplemented.
 

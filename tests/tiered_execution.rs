@@ -34355,12 +34355,15 @@ fn aot_first_jit_attempt_bypasses_compiler_for_aot_hit() -> Result<(), String> {
             maximum_object_bytes: NonZeroUsize::MIN,
         });
     let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
-    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
     if attempt.route() == NativeTierScheduledJitRoute::AheadOfExecution
         && attempt.candidate().is_none()
         && attempt.fallback().is_none()
         && attempt.schedule().artifact().is_some()
         && compiler.calls == 0
+        && clock.starts == 0
+        && clock.finishes == 0
     {
         Ok(())
     } else {
@@ -34388,11 +34391,14 @@ fn aot_first_jit_attempt_bypasses_compiler_for_host_fallback()
             maximum_object_bytes: NonZeroUsize::MIN,
         });
     let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
-    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
     if attempt.route() == NativeTierScheduledJitRoute::Interpreter
         && attempt.candidate().is_none()
         && attempt.fallback().is_none()
         && compiler.calls == 0
+        && clock.starts == 0
+        && clock.finishes == 0
     {
         Ok(())
     } else {
@@ -34412,7 +34418,11 @@ fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
         .budget()
         .ok_or_else(|| String::from("scheduled JIT miss lost budget"))?;
     let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
-    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
     if attempt.route() == NativeTierScheduledJitRoute::JitCandidate
         && attempt
             .candidate()
@@ -34423,6 +34433,8 @@ fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
         && compiler.calls == 1
         && compiler.observed_budget == Some(expected_budget)
         && compiler.observed_identity.as_ref() == Some(&expected_identity)
+        && clock.starts == 1
+        && clock.finishes == 1
     {
         Ok(())
     } else {
@@ -34431,10 +34443,78 @@ fn aot_first_jit_attempt_compiles_exact_scheduled_identity()
 }
 
 #[test]
+fn jit_attempt_clock_failure_rejects_candidate() -> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
+    let mut clock = TestMonotonicClock {
+        fail_finish: true,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let clock_failed = matches!(
+        attempt.fallback(),
+        Some(NativeTierScheduledJitFallback::Clock(
+            TestMonotonicClockError::Finish
+        ))
+    );
+    if attempt.route() == NativeTierScheduledJitRoute::Interpreter
+        && attempt.candidate().is_none()
+        && clock_failed
+        && compiler.calls == 1
+        && clock.starts == 1
+        && clock.finishes == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("clock failure exposed a JIT candidate"))
+    }
+}
+
+#[test]
+fn jit_attempt_outer_latency_rejects_underreported_candidate()
+-> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let maximum_nanoseconds = schedule
+        .budget()
+        .ok_or_else(|| String::from("scheduled JIT miss lost budget"))?
+        .maximum_nanoseconds;
+    let observed_nanoseconds = maximum_nanoseconds.get().saturating_add(1);
+    let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Candidate);
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: observed_nanoseconds,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let overrun = match attempt.fallback() {
+        Some(NativeTierScheduledJitFallback::OuterLatencyLimit {
+            maximum_nanoseconds: maximum,
+            observed_nanoseconds: observed,
+        }) => {
+            *maximum == maximum_nanoseconds && *observed == observed_nanoseconds
+        },
+        _ => false,
+    };
+    if attempt.route() == NativeTierScheduledJitRoute::Interpreter
+        && attempt.candidate().is_none()
+        && overrun
+        && compiler.calls == 1
+        && clock.starts == 1
+        && clock.finishes == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "outer JIT latency overrun exposed a candidate",
+        ))
+    }
+}
+
+#[test]
 fn jit_attempt_cancellation_falls_back_to_interpreter() -> Result<(), String> {
     let schedule = test_promoted_jit_schedule()?;
     let mut compiler = test_jit_compiler(TestJitCompilerOutcome::Cancelled);
-    let attempt = attempt_scheduled_jit(schedule, &mut compiler);
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
     let cancelled = matches!(
         attempt.fallback(),
         Some(NativeTierScheduledJitFallback::Compilation(
@@ -34445,6 +34525,8 @@ fn jit_attempt_cancellation_falls_back_to_interpreter() -> Result<(), String> {
         && attempt.candidate().is_none()
         && cancelled
         && compiler.calls == 1
+        && clock.starts == 1
+        && clock.finishes == 1
     {
         Ok(())
     } else {

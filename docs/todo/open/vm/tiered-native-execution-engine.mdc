@@ -914,9 +914,12 @@ behavior.
 - AOT-first rescue evaluates that gate only for `Uncovered`; exact AOT hits and
   host-format interpreter fallback bypass it. Promoted misses become
   `JitEligible` and require positive nanosecond/object-byte ceilings before
-  `JitCompilation`. A compiler port enforces those ceilings. Application
-  orchestration rechecks successful observations and maps every non-candidate
-  outcome back to interpreter authority.
+  `JitCompilation`. A compiler port enforces those ceilings.
+
+  Application orchestration rechecks successful observations, while scheduled
+  composition independently measures candidate latency with the runtime
+  monotonic clock. Clock failure, outer overrun, and every non-candidate outcome
+  retain interpreter authority.
 - Durable AOT preparation/loading, reduced state-graph artifact admission,
   native graph-transition dispatch, JIT artifact admission/installation, and
   executable in-process dispatch remain unimplemented. Durable cache

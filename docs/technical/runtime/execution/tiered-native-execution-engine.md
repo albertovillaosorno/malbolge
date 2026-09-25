@@ -2313,9 +2313,13 @@ before scheduling `JitCompilation`.
 
 A replaceable compiler port receives the exact retained identity plus both
 ceilings and must enforce them. Application orchestration rechecks successful
-observations and maps every non-candidate outcome to interpreter fallback.
+reported observations and maps every non-candidate outcome to interpreter
+fallback.
+
 Scheduled composition invokes the compiler only for `JitCompilation`; AOT and
-interpreter routes bypass it.
+interpreter routes bypass it. A monotonic outer measurement additionally gates
+candidate exposure, so clock failure or measured latency beyond the caller
+ceiling fails closed even when a compiler reports an in-budget candidate.
 
 Artifact admission and installation remain open.
 
