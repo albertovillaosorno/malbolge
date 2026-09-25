@@ -74,7 +74,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   post-publication directory-sync failures, committed evidence when directory
   close fails after successful sync, primary-sync preservation when close also
   fails, durable-pointer evidence when writer-lock or immutable temporary
-  cleanup fails after commit, writer-lock teardown preserves an earlier
+  cleanup fails after commit, exact committed-checkpoint evidence when a later
+  partial member fails prepublication, writer-lock teardown preserves an earlier
   acquisition/body/release failure as primary, shared mutable/immutable payload
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
@@ -97,7 +98,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   durable checkpoint, before sidecar publication, immediately before atomic
   sidecar replacement, after replacement before directory durability
   confirmation, immediately after sidecar directory sync,
-  temporary-file sync failure before immutable/mutable publication,
+  temporary-file sync failure before immutable/mutable publication, committed
+  checkpoint evidence when later partial file sync fails prepublication,
   committed-but-unconfirmed directory-sync outcomes for sidecar, checkpoint,
   and partial publications, directory close after sync plus combined
   sync/close failure ordering, committed writer-lock release/close, combined

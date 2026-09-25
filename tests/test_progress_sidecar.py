@@ -42,6 +42,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import time
@@ -1304,6 +1305,87 @@ def test_checkpoint_generation_reports_committed_durability_failure(
         progress.write_checkpoint_generation(sidecar, checkpoint) == destination
     )
     assert progress.read(destination) == sidecar
+
+
+def test_partial_file_sync_failure_reports_committed_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retain the committed checkpoint across partial prepublication failure."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    original_fsync = os.fsync
+    regular_syncs, partial_sync_number = 0, 2
+    failure_message = "injected partial temporary file sync failure"
+
+    def fail_partial_file_sync(descriptor: int) -> None:
+        nonlocal regular_syncs
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            regular_syncs += 1
+            if regular_syncs == partial_sync_number:
+                raise OSError(failure_message)
+        original_fsync(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", fail_partial_file_sync)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=(
+                "checkpoint progress payload committed durably but later "
+                "generation member publication failed"
+            ),
+        ) as captured:
+            _ = progress.write_checkpoint_generation(
+                sidecar,
+                checkpoint,
+                partial,
+            )
+
+    assert captured.value.published_path == checkpoint_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert not partial_path.exists()
+    assert not Path(sidecar.progress_path).exists()
+    assert progress.write_checkpoint_generation(
+        sidecar,
+        checkpoint,
+        partial,
+    ) == Path(sidecar.progress_path)
+
+
+def test_partial_collision_reports_committed_checkpoint(tmp_path: Path) -> None:
+    """A divergent partial collision retains the committed checkpoint path."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    foreign_partial = b"foreign-partial-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    _ = partial_path.write_bytes(foreign_partial)
+
+    with pytest.raises(
+        progress.ProgressSidecarCommittedError,
+        match=(
+            "checkpoint progress payload committed durably but later "
+            "generation member publication failed"
+        ),
+    ) as captured:
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+
+    assert captured.value.published_path == checkpoint_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert partial_path.read_bytes() == foreign_partial
+    assert not Path(sidecar.progress_path).exists()
 
 
 def test_partial_generation_reports_committed_durability_failure(

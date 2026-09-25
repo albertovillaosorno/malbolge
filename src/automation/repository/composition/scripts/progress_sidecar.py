@@ -1667,6 +1667,25 @@ def _validated_generation_payloads(
     return checkpoint_payload, partial_payload
 
 
+def _raise_generation_publication_failure(
+    error: ProgressSidecarError | OSError,
+    *,
+    checkpoint_path: Path,
+    checkpoint_committed: bool,
+) -> Never:
+    if isinstance(error, ProgressSidecarCommittedError):
+        raise error
+    if checkpoint_committed:
+        message = (
+            "checkpoint progress payload committed durably but later "
+            f"generation member publication failed: {error}"
+        )
+        raise ProgressSidecarCommittedError(message, checkpoint_path) from error
+    if isinstance(error, ProgressSidecarError):
+        raise error
+    _fail(f"immutable progress payload publication failed: {error}")
+
+
 def _publish_generation_payloads(
     sidecar: ProgressSidecar,
     checkpoint: bytes,
@@ -1675,12 +1694,19 @@ def _publish_generation_payloads(
     checkpoint_path_value = sidecar.checkpoint_path
     if checkpoint_path_value is None:
         _fail("checkpoint generation requires checkpoint path")
+    checkpoint_path = Path(checkpoint_path_value)
+    checkpoint_committed = False
     try:
-        _ = _write_immutable(Path(checkpoint_path_value), checkpoint)
+        _ = _write_immutable(checkpoint_path, checkpoint)
+        checkpoint_committed = True
         if partial is not None and sidecar.partial_path is not None:
             _ = _write_immutable(Path(sidecar.partial_path), partial)
-    except OSError as error:
-        _fail(f"immutable progress payload publication failed: {error}")
+    except (ProgressSidecarError, OSError) as error:
+        _raise_generation_publication_failure(
+            error,
+            checkpoint_path=checkpoint_path,
+            checkpoint_committed=checkpoint_committed,
+        )
 
 
 def write_checkpoint_generation(
