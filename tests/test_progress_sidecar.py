@@ -88,11 +88,15 @@ AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
 AFTER_PARTIAL_PUBLISH = "after-partial-publish"
 AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
+BEFORE_CHECKPOINT_PUBLISH = "before-checkpoint-publish"
+BEFORE_PARTIAL_PUBLISH = "before-partial-publish"
 BEFORE_SIDECAR_REPLACE = "before-sidecar-replace"
 BEFORE_SIDECAR = "before-sidecar"
 CRASH_BOUNDARIES = (
+    BEFORE_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT,
+    BEFORE_PARTIAL_PUBLISH,
     AFTER_PARTIAL_PUBLISH,
     BEFORE_SIDECAR_REPLACE,
     AFTER_SIDECAR_REPLACE,
@@ -174,13 +178,18 @@ publication_count = 0
 
 def publish_then_maybe_crash(temporary, destination, payload, *, platform):
     global publication_count
+    publication_number = publication_count + 1
+    if boundary == "before-checkpoint-publish" and publication_number == 1:
+        os._exit(exit_code)
+    if boundary == "before-partial-publish" and publication_number == 2:
+        os._exit(exit_code)
     result = original_publish_immutable_payload(
         temporary,
         destination,
         payload,
         platform=platform,
     )
-    publication_count += 1
+    publication_count = publication_number
     if boundary == "after-checkpoint-publish" and publication_count == 1:
         os._exit(exit_code)
     if boundary == "after-partial-publish" and publication_count == 2:
@@ -1791,8 +1800,17 @@ def test_process_crash_preserves_last_committed_generation(
         )
     checkpoint_path = Path(fixture.second.checkpoint_path or "")
     partial_path = Path(fixture.second.partial_path or "")
-    assert checkpoint_path.read_bytes() == fixture.checkpoint_two
-    if boundary in {AFTER_CHECKPOINT_PUBLISH, AFTER_CHECKPOINT}:
+    if boundary == BEFORE_CHECKPOINT_PUBLISH:
+        assert not checkpoint_path.exists()
+    else:
+        assert checkpoint_path.read_bytes() == fixture.checkpoint_two
+    unpublished_partial = {
+        BEFORE_CHECKPOINT_PUBLISH,
+        AFTER_CHECKPOINT_PUBLISH,
+        AFTER_CHECKPOINT,
+        BEFORE_PARTIAL_PUBLISH,
+    }
+    if boundary in unpublished_partial:
         assert not partial_path.exists()
     else:
         assert partial_path.read_bytes() == fixture.partial_two
