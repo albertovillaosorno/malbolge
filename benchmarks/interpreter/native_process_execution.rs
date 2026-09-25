@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Generalize host results or bypass normative/native semantic admission.
 // - Allows:
-//   - Inputs: one normative VM-derived two-step rotate/output workload.
+//   - Inputs: one normative VM-derived collapsed rotate/no-operation workload.
 //   - Outputs: raw interpreter/lifecycle/resident timing and call counters.
 //   - Side effects: compile/spawn a temporary tracked POSIX worker and stdout.
 // - Split-When:
@@ -30,7 +30,7 @@
 //   - Uses 15 samples, one warmup per mode, alternation, and scales 1/2/4.
 //
 
-//! Raw interpreter and host-real fused process execution measurements.
+//! Raw interpreter and collapsed rotate/no-op process execution measurements.
 
 #[path = "../../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
@@ -46,20 +46,30 @@ use std::process::{Command, id as process_id};
 use std::time::Instant;
 
 use malbolge::{
-    ProfileMachine, ProfileMachineIoState, ProfileMachineState,
-    ProfileRegisters, ProfileStepTrace, RegionEffectProgram, RunOutcome,
-    current_profile, decode_profile_instruction, safe_rust_profiled_capability,
+    ProfileMachine, ProfileMachineIoState, ProfileMachineObservation,
+    ProfileMachineState, ProfileRegisters, ProfileStepTrace,
+    RegisterMaskedRegionEffectProgram, RunOutcome, current_profile,
+    decode_profile_instruction, profile_cell_decodes_to_no_operation,
+    safe_rust_profiled_capability,
 };
 
-use crate::execution_cache::{HostIsa, HostOperatingSystem};
+use crate::execution_cache::{
+    HostIsa, HostOperatingSystem, NativeTargetConfig, NativeTargetIdentity,
+};
 use crate::execution_native::{
-    DirectFusedNativeExecutableOwner, NativeProcessHost,
-    NativeProcessSessionConfig, NativeRegionBuffers,
-    NativeRegionInvocationOutcome, PreparedDirectFusedInvocation,
-    VerifiedDirectFusedSequenceObjectArtifact, admit_fused_direct_sequence,
-    emit_fused_direct_sequence_coff,
-    execute_verified_direct_fused_native_with_host,
-    select_verified_direct_sequence, verify_fused_direct_sequence,
+    DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_REVISION,
+    NATIVE_REGION_ABI_REVISION, NativeProcessHost, NativeProcessSessionConfig,
+    NativeRegionBuffers, NativeRegionInvocationOutcome,
+    PreparedRegisterMaskedRotateNoOperationInvocation,
+    ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+    VerifiedRegisterMaskedRotateNoOperationLoadImage,
+    VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+    emit_direct_register_masked_rotate_no_operation_coff,
+    execute_loaded_verified_register_masked_rotate_no_operation_native,
+    load_register_masked_rotate_no_operation_native_executable,
+    release_register_masked_rotate_no_operation_native_executable,
+    verify_direct_register_masked_rotate_no_operation,
 };
 
 const CLANG_ARGS: [&str; 20] = [
@@ -97,7 +107,8 @@ enum ExecutionMode {
 }
 
 struct ExecutionFixture {
-    artifact: VerifiedDirectFusedSequenceObjectArtifact,
+    artifact: VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+    expected_observation: ProfileMachineObservation,
     final_memory: Vec<u32>,
     final_output: Vec<u8>,
     initial_memory: Vec<u32>,
@@ -105,7 +116,8 @@ struct ExecutionFixture {
     input: Vec<u8>,
     interpreter_entry: ProfileMachineState,
     interpreter_exit: ProfileMachineState,
-    programs: Vec<RegionEffectProgram>,
+    load_image: VerifiedRegisterMaskedRotateNoOperationLoadImage,
+    program: RegisterMaskedRegionEffectProgram,
 }
 
 struct NativeCallBuffers {
@@ -184,17 +196,20 @@ fn workload_state() -> IoResult<ProfileMachineState> {
         ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
             .map_err(|error| io_error("native execution base load", error))?;
     let mut memory = base.snapshot_state().memory().to_vec();
+    let rotate_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 5) == Some(b'*'))
+        .ok_or_else(|| IoError::other("phase-five rotate cell missing"))?;
     *memory.get_mut(5).ok_or_else(|| {
-        IoError::other("native execution code cell 5 missing")
-    })? = 34;
-    let output_cell = (33u32..=126u32)
-        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'<'))
-        .ok_or_else(|| IoError::other("phase-six output cell missing"))?;
+        IoError::other("native execution rotate code cell missing")
+    })? = rotate_cell;
+    let no_operation_cell = (33u32..=126u32)
+        .find(|cell| profile_cell_decodes_to_no_operation(*cell, 6))
+        .ok_or_else(|| IoError::other("phase-six no-operation cell missing"))?;
     *memory.get_mut(6).ok_or_else(|| {
-        IoError::other("native execution code cell 6 missing")
-    })? = output_cell;
+        IoError::other("native execution no-operation code cell missing")
+    })? = no_operation_cell;
     *memory.get_mut(7).ok_or_else(|| {
-        IoError::other("native execution data cell 7 missing")
+        IoError::other("native execution rotate data cell missing")
     })? = 10;
     let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
         .map_err(|error| io_error("native execution IO", error))?;
@@ -211,26 +226,63 @@ fn workload_state() -> IoResult<ProfileMachineState> {
     .map_err(|error| io_error("native execution state", error))
 }
 
-fn verified_fused_artifact(
-    programs: &[RegionEffectProgram],
-) -> IoResult<VerifiedDirectFusedSequenceObjectArtifact> {
-    let plan = select_verified_direct_sequence(
-        programs,
+fn rotate_no_operation_target() -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_ID,
+        ),
+        backend_revision:
+            DIRECT_REGISTER_MASKED_ROTATE_NO_OPERATION_BACKEND_REVISION,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn verified_rotate_no_operation_artifact(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> IoResult<VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact> {
+    let candidate = emit_direct_register_masked_rotate_no_operation_coff(
+        program,
         safe_rust_profiled_capability(),
-        HostOperatingSystem::Windows,
-        HostIsa::X86_64,
+        rotate_no_operation_target(),
     )
-    .map_err(|error| io_error("native execution select", error))?;
-    let admission = admit_fused_direct_sequence(&plan)
-        .map_err(|error| io_error("native execution admission", error))?;
-    let candidate = emit_fused_direct_sequence_coff(&admission)
-        .map_err(|error| io_error("native execution emission", error))?;
-    verify_fused_direct_sequence(&candidate, &admission)
-        .map_err(|error| io_error("native execution verification", error))
+    .map_err(|error| io_error("native execution emission", error))?;
+    verify_direct_register_masked_rotate_no_operation(
+        &candidate,
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| io_error("native execution verification", error))
+}
+
+fn bounded_memory(
+    memory: &[u32],
+    required: usize,
+    context: &str,
+) -> IoResult<Vec<u32>> {
+    memory
+        .get(..required)
+        .map(<[u32]>::to_vec)
+        .ok_or_else(|| IoError::other(context))
+}
+
+fn terminal_observation(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> IoResult<ProfileMachineObservation> {
+    program
+        .effects
+        .last()
+        .map(|effect| effect.after)
+        .ok_or_else(|| {
+            IoError::other("native execution terminal effect missing")
+        })
 }
 
 fn execution_fixture() -> IoResult<ExecutionFixture> {
     let state = workload_state()?;
+    let profile = state.profile();
     let full_initial_memory = state.memory().to_vec();
     let input = state.io().input().to_vec();
     let interpreter_entry = state.clone();
@@ -242,44 +294,39 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
     if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
         return Err(IoError::other("two-step benchmark outcome drifted"));
     }
-    let programs = traces
-        .iter()
-        .map(RegionEffectProgram::from_profile_step_trace)
-        .collect::<Result<Vec<_>, _>>()
+    let program =
+        RegisterMaskedRegionEffectProgram::from_profile_region_traces(
+            profile, &traces, 2, outcome,
+        )
         .map_err(|error| {
             io_debug_error("native execution projection", error)
         })?;
-    let artifact = verified_fused_artifact(&programs)?;
-    let required =
-        usize::try_from(artifact.admission().program().required_memory_words())
-            .map_err(|error| {
-                io_error("native execution memory footprint", error)
-            })?;
-    let initial_memory = full_initial_memory
-        .get(..required)
-        .ok_or_else(|| {
-            IoError::other("native execution initial memory too short")
-        })?
-        .to_vec();
-    let final_memory = machine
-        .memory()
-        .get(..required)
-        .ok_or_else(|| {
-            IoError::other("native execution final memory too short")
-        })?
-        .to_vec();
+    let artifact = verified_rotate_no_operation_artifact(&program)?;
+    let load_image =
+        VerifiedRegisterMaskedRotateNoOperationLoadImage::new(&artifact)
+            .map_err(|error| io_error("native execution load image", error))?;
+    let required = usize::try_from(
+        artifact.admission().required_memory_words(),
+    )
+    .map_err(|error| io_error("native execution memory footprint", error))?;
+    let initial_memory = bounded_memory(
+        &full_initial_memory,
+        required,
+        "native execution initial memory too short",
+    )?;
+    let final_memory = bounded_memory(
+        machine.memory(),
+        required,
+        "native execution final memory too short",
+    )?;
     let interpreter_exit = machine.snapshot_state();
-    let output_capacity = machine.output().len().max(1);
+    let output_capacity = machine.output().len();
     let initial_output = vec![0u8; output_capacity];
-    let mut final_output = initial_output.clone();
-    final_output
-        .get_mut(..machine.output().len())
-        .ok_or_else(|| {
-            IoError::other("native execution output exceeds capacity")
-        })?
-        .copy_from_slice(machine.output());
+    let final_output = machine.output().to_vec();
+    let expected_observation = terminal_observation(&program)?;
     Ok(ExecutionFixture {
         artifact,
+        expected_observation,
         final_memory,
         final_output,
         initial_memory,
@@ -287,7 +334,8 @@ fn execution_fixture() -> IoResult<ExecutionFixture> {
         input,
         interpreter_entry,
         interpreter_exit,
-        programs,
+        load_image,
+        program,
     })
 }
 
@@ -297,7 +345,8 @@ fn validate_result(
     memory: &[u32],
     output: &[u8],
 ) -> IoResult<()> {
-    if matches!(outcome, NativeRegionInvocationOutcome::Applied(_))
+    if outcome
+        == NativeRegionInvocationOutcome::Applied(fixture.expected_observation)
         && memory == fixture.final_memory
         && output == fixture.final_output
     {
@@ -315,33 +364,66 @@ fn execute_one_shot(
 ) -> IoResult<()> {
     let mut memory = fixture.initial_memory.clone();
     let mut output = fixture.initial_output.clone();
-    let prepared = PreparedDirectFusedInvocation::new(
+    let ready = load_register_masked_rotate_no_operation_native_executable(
+        host,
+        &fixture.load_image,
+    )
+    .map_err(|error| io_error("native execution one-shot load", error))?;
+    let entry = fixture
+        .program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| IoError::other("native execution entry missing"))?;
+    let prepared = PreparedRegisterMaskedRotateNoOperationInvocation::new(
         &fixture.artifact,
+        &fixture.program,
+        entry,
         NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
     )
     .map_err(|error| io_error("native execution one-shot prepare", error))?;
-    let outcome =
-        execute_verified_direct_fused_native_with_host(host, prepared)
-            .map_err(|error| io_error("native execution one-shot", error))?;
+    let execution =
+        execute_loaded_verified_register_masked_rotate_no_operation_native(
+            host, &ready, prepared,
+        )
+        .map_err(|error| io_error("native execution one-shot", error));
+    let release =
+        release_register_masked_rotate_no_operation_native_executable(
+            host, ready,
+        )
+        .map_err(|error| io_error("native execution one-shot release", error));
+    let outcome = execution?;
+    release?;
     validate_result(fixture, outcome, &memory, &output)
 }
 
 fn execute_resident(
     fixture: &ExecutionFixture,
     host: &mut NativeProcessHost,
-    owner: &DirectFusedNativeExecutableOwner,
+    ready: &ReadyRegisterMaskedRotateNoOperationNativeExecutable,
     buffers: &mut NativeCallBuffers,
 ) -> IoResult<NativeRegionInvocationOutcome> {
-    owner
-        .execute(
-            host,
-            NativeRegionBuffers::new(
-                &mut buffers.memory,
-                &fixture.input,
-                &mut buffers.output,
-            ),
-        )
-        .map_err(|error| io_error("native execution resident call", error))
+    let entry = fixture
+        .program
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| IoError::other("native execution entry missing"))?;
+    let prepared = PreparedRegisterMaskedRotateNoOperationInvocation::new(
+        &fixture.artifact,
+        &fixture.program,
+        entry,
+        NativeRegionBuffers::new(
+            &mut buffers.memory,
+            &fixture.input,
+            &mut buffers.output,
+        ),
+    )
+    .map_err(|error| io_error("native execution resident prepare", error))?;
+    execute_loaded_verified_register_masked_rotate_no_operation_native(
+        host, ready, prepared,
+    )
+    .map_err(|error| io_error("native execution resident call", error))
 }
 
 fn native_call_buffers(fixture: &ExecutionFixture) -> NativeCallBuffers {
@@ -422,12 +504,15 @@ fn measure_load_release(
     let start = Instant::now();
     let mut cycle = 0u8;
     while cycle < scale {
-        let owner =
-            DirectFusedNativeExecutableOwner::load(host, &fixture.artifact)
-                .map_err(|error| {
-                    io_error("native execution load-only load", error)
-                })?;
-        owner.release(host).map_err(|error| {
+        let ready = load_register_masked_rotate_no_operation_native_executable(
+            host,
+            &fixture.load_image,
+        )
+        .map_err(|error| io_error("native execution load-only load", error))?;
+        release_register_masked_rotate_no_operation_native_executable(
+            host, ready,
+        )
+        .map_err(|error| {
             io_error("native execution load-only release", error)
         })?;
         cycle = cycle.saturating_add(1);
@@ -443,7 +528,9 @@ fn measure_preparation(
     let mut prepared = Vec::with_capacity(usize::from(scale));
     let mut cycle = 0u8;
     while cycle < scale {
-        prepared.push(verified_fused_artifact(black_box(&fixture.programs))?);
+        prepared.push(verified_rotate_no_operation_artifact(black_box(
+            &fixture.program,
+        ))?);
         cycle = cycle.saturating_add(1);
     }
     let nanoseconds = start.elapsed().as_nanos();
@@ -464,9 +551,12 @@ fn measure_resident(
     host: &mut NativeProcessHost,
     scale: u8,
 ) -> IoResult<(u128, usize)> {
-    let owner = DirectFusedNativeExecutableOwner::load(host, &fixture.artifact)
-        .map_err(|error| io_error("native execution resident load", error))?;
-    let mapped_bytes = owner.resident_weight().mapped_bytes();
+    let ready = load_register_masked_rotate_no_operation_native_executable(
+        host,
+        &fixture.load_image,
+    )
+    .map_err(|error| io_error("native execution resident load", error))?;
+    let mapped_bytes = ready.mapping().mapped_len();
     let mut buffers = Vec::with_capacity(usize::from(scale));
     for _index in 0..scale {
         buffers.push(native_call_buffers(fixture));
@@ -478,7 +568,7 @@ fn measure_resident(
             outcomes.push(execute_resident(
                 black_box(fixture),
                 host,
-                &owner,
+                &ready,
                 call_buffers,
             )?);
         }
@@ -493,8 +583,10 @@ fn measure_resident(
             &call_buffers.output,
         )?;
     }
-    let release = owner
-        .release(host)
+    let release =
+        release_register_masked_rotate_no_operation_native_executable(
+            host, ready,
+        )
         .map_err(|error| io_error("native execution resident release", error));
     result?;
     release?;
@@ -543,7 +635,7 @@ fn emit_sample(
 ) -> IoResult<()> {
     writeln!(
         output,
-        "native-fused-process-execution,{},{},{},{},{},{},{},{}",
+        "collapsed-rotate-no-op-process,{},{},{},{},{},{},{},{}",
         mode_label(sample.mode),
         sample.scale,
         sample.sample,
