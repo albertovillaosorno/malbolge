@@ -1151,6 +1151,82 @@ def test_terminal_status_controls_metadata(tmp_path: Path) -> None:
         )
 
 
+def test_cancelled_job_persists_resume_and_rejects_restart(
+    tmp_path: Path,
+) -> None:
+    """Orderly cancellation preserves its latest resumable generation."""
+    checkpoint = b"cancelled-checkpoint"
+    partial = b"cancelled-partial"
+    running = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    destination = progress.write_checkpoint_generation(
+        running,
+        checkpoint,
+        partial,
+    )
+    cancelled = replace(
+        running,
+        completed_at="2026-08-06T14:00:03Z",
+        diagnostic_code="MALBOLGE-JOB-001",
+        diagnostic_message="cancelled",
+        status=progress.ProgressStatus.CANCELLED,
+        updated_at="2026-08-06T14:00:03Z",
+    )
+    assert progress.write_atomic(cancelled) == destination
+    assert progress.read(destination) == cancelled
+    assert progress.read_checkpoint_generation(cancelled) == (
+        checkpoint,
+        partial,
+    )
+
+    reopened = replace(
+        cancelled,
+        completed_at=None,
+        diagnostic_code=None,
+        diagnostic_message=None,
+        status=progress.ProgressStatus.RUNNING,
+        updated_at="2026-08-06T14:00:04Z",
+    )
+    with pytest.raises(ERROR, match="cancelled->running"):
+        _ = progress.write_atomic(reopened)
+    assert progress.read(destination) == cancelled
+
+
+def test_completed_job_persists_terminal_pointer_and_rejects_restart(
+    tmp_path: Path,
+) -> None:
+    """Completed publication remains terminal across durable reload."""
+    checkpoint = b"completed-checkpoint"
+    running = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    destination = progress.write_checkpoint_generation(running, checkpoint)
+    completed = replace(
+        running,
+        completed_at="2026-08-06T14:00:03Z",
+        status=progress.ProgressStatus.COMPLETED,
+        updated_at="2026-08-06T14:00:03Z",
+    )
+    assert progress.write_atomic(completed) == destination
+    assert progress.read(destination) == completed
+    assert progress.read_checkpoint_generation(completed) == (checkpoint, None)
+
+    reopened = replace(
+        completed,
+        completed_at=None,
+        status=progress.ProgressStatus.RUNNING,
+        updated_at="2026-08-06T14:00:04Z",
+    )
+    with pytest.raises(ERROR, match="completed->running"):
+        _ = progress.write_atomic(reopened)
+    assert progress.read(destination) == completed
+
+
 def test_transition_validation_is_monotonic_and_terminal(
     tmp_path: Path,
 ) -> None:
