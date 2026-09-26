@@ -72,11 +72,20 @@ budget, or Driver rejection preserve exact synchronous fallback. Retained eviden
 under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` records matched window-1/8
 speedups of 1.003x/1.012x with 14/15 and 15/15 paired wins, while retained memory
 and setup roughly double. It is therefore opt-in; no kernel overlap or semantic
-authority changes. `work_ports.py` now defines hardware-neutral candidate evaluation, search
+authority changes.
 
-execution, verification-assist, and trusted-admission boundaries. CPU callback
-adapters provide mandatory candidate/search execution capacity while search
-proposals and verification hints remain untrusted. `submission.py` adds
+`work_ports.py` now defines hardware-neutral candidate evaluation, search
+execution, verification-assist, and trusted-admission boundaries.
+`search_checkpoint.py` adds `evaluated-search-prefix-evidence-v1`: canonical
+backend-neutral JSON binds one exact search request, exact candidate-batch
+fingerprint, and immutable completed evidence prefix. It carries no backend or
+device identity and grants no candidate acceptance authority. The codec restores
+state only against the same request and batch.
+
+Executor-level suffix scheduling and result recombination remain separate work.
+
+CPU callback adapters provide mandatory candidate/search execution capacity
+while search proposals and verification hints remain untrusted. `submission.py` adds
 `validated-candidate-submission-v1`: an exact candidate batch is bound to one
 optional ticket and a deferred CPU reference route. Results remain unpublished
 until `wait()` validates capability, evaluator identity, count, and request order.

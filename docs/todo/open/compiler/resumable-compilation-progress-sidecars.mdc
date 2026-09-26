@@ -125,9 +125,17 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, and exact operator-facing
   elapsed-time summaries.
-- Product CLI, concrete compiler/search state codecs, broader power-loss
-  injection, and CPU/CUDA resume equivalence remain open; this TODO is therefore
-  active.
+- `src/optimization/accelerator/application/accelerator/search_checkpoint.py`
+  implements
+  `evaluated-search-prefix-evidence-v1`, canonical backend-neutral state binding
+  exact request identity, exact candidate-batch fingerprint, and immutable
+  request-order completed evidence. `tests/optimizer/test_search_checkpoint.py`
+  covers empty/partial prefixes, packed candidate storage, request/batch drift,
+  malformed/noncanonical JSON, mutable aliases, and absence of backend/device
+  identity.
+- Product CLI, compiler-state codecs, evaluated-search resume execution, broader
+  power-loss injection, and CPU/CUDA resume equivalence remain open; this TODO
+  is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

@@ -451,6 +451,11 @@ parts:
     kind: adapter-outbound
     language: python
     responsibility: Bind outbound capabilities to external systems.
+  - id: part-0085
+    path: application/accelerator/search_checkpoint.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
 projects: []
 tests: []
 graph:

@@ -124,6 +124,17 @@ state.
 The envelope does not define compiler-stage semantics; concrete compiler/search
 state codecs remain owned by their producing subsystems.
 
+The accelerator application now supplies one concrete search codec,
+`evaluated-search-prefix-evidence-v1`. It canonically binds the exact
+`SearchRequest`, a fingerprint over evaluator identity plus every candidate
+identity/payload byte, total candidate count, and an immutable request-order
+prefix of completed `CandidateEvidence`. Backend and device identity are
+omitted, so byte-identical CPU/CUDA evidence has one durable representation.
+Restore requires the current request and batch to match exactly.
+
+The codec does not yet schedule the remaining suffix or combine resumed evidence
+into a final search result; that execution integration remains open.
+
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
 immediately before or after checkpoint/partial atomic publication; after
@@ -132,9 +143,9 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Product CLI/compiler integration, concrete compiler/search state codecs, broader
-
-power-loss injection, and CPU/CUDA resume equivalence remain unimplemented.
+Product CLI/compiler integration, compiler-state codecs, evaluated-search
+resume execution, broader power-loss injection, and CPU/CUDA resume equivalence
+remain unimplemented.
 
 ### Sidecar Schema
 
@@ -276,6 +287,9 @@ jobs that requested resumability.
 - Portable-checkpoint tests prove that identical opaque state produces
   byte-exact checkpoint envelopes for CPU and CUDA sidecars and that identity,
   position, codec, payload, and canonical-encoding drift fail closed.
+- Evaluated-search checkpoint tests cover empty and partial prefixes, packed
+  candidate storage, exact request/batch drift, malformed/noncanonical JSON,
+  mutable aliases, and explicit absence of backend/device identity.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
