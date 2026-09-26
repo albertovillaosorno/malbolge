@@ -925,8 +925,13 @@ behavior.
   byte verification; deoptimization-only candidates are rejected. Scheduled
   admission now preserves AOT/interpreter bypass and exposes native authority
   only as `VerifiedDirectNativeArtifact`.
-- Durable AOT preparation/loading, reduced state-graph artifact admission,
-  native graph-transition dispatch, JIT executable installation, and executable
-  in-process dispatch remain unimplemented. Durable cache
-  serialization/storage/eviction, broader platform execution evidence, and
-  broader end-to-end tier performance policy also remain open.
+- Durable AOT preparation/loading, reduced state-graph artifact admission, and
+  native graph-transition dispatch remain unimplemented. Scheduled JIT artifacts
+  now install through the existing strict W^X loader only after semantic
+  admission. Success retains verified artifact, exact IR, and ready executable;
+  AOT/interpreter routes bypass installation and failures retain exact cleanup
+  evidence. Concrete same-process memory/runner wiring and JIT guest dispatch
+  remain open.
+
+  Durable cache serialization/storage/eviction, broader platform execution
+  evidence, and broader end-to-end tier performance policy also remain open.

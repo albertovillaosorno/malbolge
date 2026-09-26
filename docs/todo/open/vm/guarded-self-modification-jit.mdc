@@ -98,4 +98,10 @@ but discovery never changes observable Malbolge behavior by itself.
 
   Scheduled admission preserves exact AOT bypass, keeps prior interpreter
   fallbacks unchanged, and returns semantic rejection to the interpreter.
-  Installation/dispatch remain open.
+  Verified JIT artifacts now install only through the shared strict W^X loader:
+  RW allocation/copy, RX transition, and instruction synchronization. AOT and
+  interpreter routes perform no installation work. Successful installation
+  retains verified artifact, exact IR, and ready executable; loader failure
+  preserves artifact, IR, and exact cleanup evidence.
+
+  Concrete same-process memory/runner wiring and guest dispatch remain open.

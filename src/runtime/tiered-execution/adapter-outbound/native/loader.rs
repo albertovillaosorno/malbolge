@@ -1685,7 +1685,12 @@ impl VerifiedDirectLoadImage {
     }
 
     /// Extracts one immutable relocation-free image from a verified artifact.
-    pub(super) fn new(
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn new(
         artifact: &VerifiedDirectNativeArtifact,
     ) -> Result<Self, VerifiedDirectLoadError> {
         Self::from_object(artifact, artifact.object())

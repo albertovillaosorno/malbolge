@@ -37,7 +37,7 @@
 
 use std::sync::Arc;
 
-use malbolge::RuntimeCapability;
+use malbolge::{RegionEffectProgram, RuntimeCapability};
 
 use crate::execution_native::{
     DirectJitCandidateAdmissionError, VerifiedDirectNativeArtifact,
@@ -68,7 +68,12 @@ pub enum NativeTierScheduledJitAdmission<'attempt> {
         rejection: Option<NativeTierScheduledJitAdmissionRejection<'attempt>>,
     },
     /// Compiler bytes crossed the reviewed direct semantic verifier.
-    VerifiedJit(Box<VerifiedDirectNativeArtifact>),
+    VerifiedJit {
+        /// Exact semantically admitted native artifact.
+        artifact: Box<VerifiedDirectNativeArtifact>,
+        /// Exact portable IR authority retained from the original AOT miss.
+        program: Box<RegionEffectProgram>,
+    },
 }
 
 type ScheduledJitAdmission<'attempt> =
@@ -115,8 +120,9 @@ fn admit_jit_candidate<'attempt, CompilerError, ClockError>(
         return invalid_attempt();
     };
     match admit_direct_jit_candidate(program, runtime, key, candidate.clone()) {
-        Ok(artifact) => {
-            NativeTierScheduledJitAdmission::VerifiedJit(Box::new(artifact))
+        Ok(artifact) => NativeTierScheduledJitAdmission::VerifiedJit {
+            artifact: Box::new(artifact),
+            program: Box::new(program.clone()),
         },
         Err(error) => NativeTierScheduledJitAdmission::Interpreter {
             rejection: Some(

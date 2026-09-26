@@ -67,7 +67,15 @@ composition now invokes that admission only for `JitCandidate`; AOT remains
 untouched, prior interpreter fallbacks stay interpreted, and admission rejection
 returns to the interpreter with typed evidence.
 
-Executable installation and JIT dispatch remain unimplemented.
+Scheduled JIT installation now accepts only `VerifiedDirectNativeArtifact`,
+derives the shared relocation-free `VerifiedDirectLoadImage`, and delegates the
+existing strict RW-copy/RX/synchronize lifecycle through the caller-owned native
+memory adapter. Successful installation retains verified artifact, exact IR, and
+ready executable together. Exact AOT/interpreter routes bypass memory work; load
+failure preserves verified-artifact, IR, and loader evidence without dispatch.
+
+A concrete same-process memory adapter/runner and JIT guest dispatch remain
+unimplemented.
 
 ## Invariants
 

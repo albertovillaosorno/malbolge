@@ -135,6 +135,8 @@ pub mod native_retry;
 pub mod native_tier_jit_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_attempt.rs"]
 pub mod native_tier_jit_attempt;
+#[path = "../src/runtime/tiered-execution/composition/tier/jit_installation.rs"]
+pub mod native_tier_jit_installation;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_rescue.rs"]
 pub mod native_tier_jit_rescue;
 #[path = "../src/runtime/tiered-execution/composition/tier/performance_gate.rs"]
@@ -1020,6 +1022,10 @@ use native_tier_jit_admission::{
 use native_tier_jit_attempt::{
     NativeTierScheduledJitFallback, NativeTierScheduledJitRoute,
     attempt_scheduled_jit,
+};
+use native_tier_jit_installation::{
+    NativeTierScheduledJitInstallation,
+    NativeTierScheduledJitInstallationRejection, install_scheduled_jit,
 };
 use native_tier_jit_rescue::{
     NativeTierJitCompilationBudget, NativeTierJitRescueRoute,
@@ -34585,8 +34591,10 @@ fn scheduled_jit_admission_promotes_verified_candidate() -> Result<(), String> {
     );
     if matches!(
         admission,
-        NativeTierScheduledJitAdmission::VerifiedJit(artifact)
-            if *artifact == canonical
+        NativeTierScheduledJitAdmission::VerifiedJit {
+            artifact,
+            program: retained,
+        } if *artifact == canonical && *retained == program
     ) && compiler.calls == 1
         && attempt.route() == NativeTierScheduledJitRoute::JitCandidate
     {
@@ -34728,6 +34736,232 @@ fn scheduled_jit_admission_preserves_interpreter() -> Result<(), String> {
         Err(String::from(
             "scheduled JIT admission changed interpreter fallback",
         ))
+    }
+}
+
+#[test]
+fn scheduled_jit_installation_installs_only_verified_candidate()
+-> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let program = schedule
+        .uncovered_program()
+        .ok_or_else(|| String::from("JIT installation lost program"))?
+        .clone();
+    let canonical = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: canonical.object().to_vec(),
+    };
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    let mapping_id = native_executable_mapping_id(9_001)?;
+    let base_address = native_executable_address(0x90_000)?;
+    let mut adapter =
+        FakeNativeExecutableAdapter::new(mapping_id, base_address);
+    let installation = install_scheduled_jit(admission, &mut adapter);
+    let NativeTierScheduledJitInstallation::InstalledJit(installed) =
+        installation
+    else {
+        return Err(String::from("verified JIT candidate was not installed"));
+    };
+    if installed.artifact() == &canonical
+        && installed.program() == &program
+        && installed.executable().key() == canonical.key()
+        && installed.executable().mapping().mapping_id() == mapping_id
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("installed JIT authority drifted"))
+    }
+}
+
+#[test]
+fn scheduled_jit_installation_preserves_aot_without_memory_work()
+-> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &cache.seal(),
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = match &selected {
+        AheadOfExecutionPreflightedTier::Direct(artifact) => {
+            artifact.key().clone()
+        },
+        AheadOfExecutionPreflightedTier::Interpreter
+        | AheadOfExecutionPreflightedTier::Uncovered { .. } => {
+            return Err(String::from("AOT install fixture did not hit"));
+        },
+    };
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: Vec::new(),
+    };
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(9_002)?,
+        native_executable_address(0x91_000)?,
+    );
+    let installed = install_scheduled_jit(admission, &mut adapter);
+    if matches!(
+        installed,
+        NativeTierScheduledJitInstallation::AheadOfExecution(artifact)
+            if artifact.key() == &expected_key
+    ) && adapter.operations.is_empty()
+        && compiler.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT bypass performed JIT installation work"))
+    }
+}
+
+#[test]
+fn scheduled_jit_installation_preserves_interpreter_without_memory_work()
+-> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: Vec::new(),
+    };
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(9_003)?,
+        native_executable_address(0x92_000)?,
+    );
+    let installed = install_scheduled_jit(admission, &mut adapter);
+    if matches!(installed, NativeTierScheduledJitInstallation::Interpreter {
+        rejection: None
+    }) && adapter.operations.is_empty()
+        && compiler.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "interpreter fallback performed JIT installation",
+        ))
+    }
+}
+
+#[test]
+fn scheduled_jit_installation_retains_verified_artifact_on_load_failure()
+-> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let program = schedule
+        .uncovered_program()
+        .cloned()
+        .ok_or_else(|| String::from("JIT install program missing"))?;
+    let canonical = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: canonical.object().to_vec(),
+    };
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(9_004)?,
+        native_executable_address(0x93_000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let installed = install_scheduled_jit(admission, &mut adapter);
+    let NativeTierScheduledJitInstallation::Interpreter {
+        rejection:
+            Some(NativeTierScheduledJitInstallationRejection::Load {
+                artifact,
+                error,
+                program: retained,
+            }),
+    } = installed
+    else {
+        return Err(String::from(
+            "JIT load failure exposed executable authority",
+        ));
+    };
+    if artifact.as_ref() == &canonical
+        && retained.as_ref() == &program
+        && error.phase() == NativeExecutableLoadPhase::Copy
+        && error.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
+        && !error.cleanup_pending()
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("JIT load failure evidence drifted"))
     }
 }
 

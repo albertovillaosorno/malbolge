@@ -2332,7 +2332,14 @@ A dedicated scheduled-admission composition preserves AOT and existing
 interpreter routes without admission work, promotes only verified JIT bytes, and
 maps admission rejection back to interpreter authority.
 
-Executable installation and JIT dispatch remain open.
+Scheduled JIT installation now consumes only verified JIT authority and reuses
+the existing relocation-free load-image plus strict RW-copy/RX/instruction-sync
+lifecycle. Successful installation retains verified artifact, exact IR, and
+ready executable as one authority. AOT/interpreter routes bypass executable-
+memory work; load failure retains artifact, IR, and exact cleanup evidence.
+
+Concrete same-process native memory/runner integration and JIT guest dispatch
+remain open.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, durable cache serialization/storage and cross-
