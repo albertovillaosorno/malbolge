@@ -144,12 +144,22 @@ Rotate-target and crazy-target expose target-owned resume factories that reuse
 the exact ordinary strategy definitions rather than reconstructing selection
 behavior at the call site.
 
-Focused differential evidence includes byte-identical CPU/CUDA rotate checkpoint
-payloads, CPU-produced checkpoint resume on CUDA, CUDA-produced checkpoint
-resume on CPU, and equality with uninterrupted CPU proposals. This establishes
-the retained rotate workload in both directions; it is not yet broad CPU/CUDA
-resume equivalence for every search strategy. Prepared-search resume is also not
-yet implemented.
+Focused differential evidence now covers both accelerator-backed search
+strategies. Rotate-target and crazy-target each produce byte-identical CPU/CUDA
+checkpoint payloads, resume CPU-produced state on CUDA, resume CUDA-produced
+state on CPU, and match uninterrupted CPU proposals. Prepared-search resume and
+compiler/non-search CPU/CUDA resume equivalence are not yet implemented.
+
+The external optimizer runner now accepts `--resume-checkpoint PATH` for
+rotate-target and crazy-target evaluated-search checkpoint payloads. It
+preserves
+configured-versus-actual backend identity, retries accelerator execution failure
+through the CPU reference route, rejects unsupported algorithms and incompatible
+checkpoint state, and records checkpoint SHA-256 plus
+`evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
+unchanged. The command currently consumes the inner evaluated-search state
+payload; direct `malbolge-progress-v1` sidecar/portable-envelope discovery and
+compiler CLI integration remain open.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -159,9 +169,9 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Product CLI/compiler integration, compiler-state codecs, prepared-search
-resume, broader power-loss injection, and broader CPU/CUDA resume equivalence
-remain unimplemented.
+Sidecar-aware product/compiler CLI integration, compiler-state codecs,
+prepared-search resume, broader power-loss injection, and compiler/non-search
+CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -308,8 +318,12 @@ jobs that requested resumability.
   mutable aliases, and explicit absence of backend/device identity.
 - Resumed-search tests compare interrupted and uninterrupted execution, preserve
   indexed suffix storage, materialize packed suffix evidence safely, reject
-  backend/proposal drift, and exercise CPU-to-CUDA plus CUDA-to-CPU rotate
-  resume with byte-identical checkpoint payloads and matching proposals.
+  backend/proposal drift, and exercise CPU-to-CUDA plus CUDA-to-CPU rotate and
+  crazy-target resume with byte-identical checkpoints and matching proposals.
+- Search CLI tests cover CPU resume, unavailable-CUDA fallback, live CUDA
+  resume,
+  unsupported-algorithm rejection, checkpoint file loading, malformed-state
+  rejection, and resumed JSON checkpoint/executor provenance.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

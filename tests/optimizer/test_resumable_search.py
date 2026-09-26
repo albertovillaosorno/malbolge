@@ -43,11 +43,13 @@ from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
 from accelerator.evaluated_search import EvaluatedSearchStrategy
 from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.resumable_search import RESUMABLE_EVALUATED_SEARCH_ID
 from accelerator.resumable_search import ResumableEvaluatedSearchExecution
+from accelerator.resumable_search import execute_resumed_search
 from accelerator.resumable_search import resumable_evaluated_search_id
 from accelerator.search_checkpoint import encode_search_checkpoint
 from accelerator.work_ports import CandidateEvaluationBatch
@@ -67,6 +69,7 @@ from optimizer.crazy_target import CrazyTargetProblem
 from optimizer.crazy_target import build_crazy_target_batch
 from optimizer.crazy_target import cpu_crazy_target_resume_execution
 from optimizer.crazy_target import cpu_crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_resume_execution
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import build_rotate_target_batch
@@ -225,6 +228,25 @@ class _RecordingEvaluator:
         )
 
 
+@final
+class _FailingEvaluator:
+    """Evaluator that exposes a valid capability but fails execution."""
+
+    def __init__(self) -> None:
+        self._capability = RESUME_CAPABILITY
+
+    def capability(self) -> AcceleratorCapability:
+        return self._capability
+
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        _ = (self.capability(), batch.validated())
+        message = "synthetic preferred resume failure"
+        raise AcceleratorExecutionError(message)
+
+
 def _strategy(
     batch_builder: SearchBatchBuilder = _tuple_batch,
     selector: SearchProposalSelector = _select_last_exact_evidence,
@@ -292,6 +314,39 @@ def test_partial_resume_materializes_packed_suffix_evidence() -> None:
     assert result.proposals == (
         CandidateProposal(logical_id="candidate-2", payload=b"c"),
     )
+
+
+def test_preferred_resume_execution_failure_falls_back_to_reference() -> None:
+    """Preferred execution failure retries the checkpoint on reference."""
+    request = _request()
+    batch = _tuple_batch(request).validated()
+    checkpoint = encode_search_checkpoint(
+        request,
+        batch,
+        _evidence_for(batch, 1),
+    )
+    reference_evaluator = _RecordingEvaluator()
+
+    reference = ResumableEvaluatedSearchExecution(
+        ALGORITHM_ID,
+        reference_evaluator,
+        _strategy(),
+    )
+    preferred = ResumableEvaluatedSearchExecution(
+        ALGORITHM_ID,
+        _FailingEvaluator(),
+        _strategy(),
+    )
+
+    result = execute_resumed_search(
+        request,
+        checkpoint,
+        reference=reference,
+        preferred=preferred,
+    )
+
+    assert result.capability == RESUME_CAPABILITY
+    assert reference_evaluator.calls == [("candidate-1", "candidate-2")]
 
 
 def test_completed_resume_performs_no_candidate_evaluation() -> None:
@@ -440,8 +495,7 @@ def test_cuda_checkpoint_bytes_resume_on_cpu_without_drift() -> None:
     assert observed == expected
 
 
-def test_cpu_crazy_resume_factory_matches_uninterrupted_search() -> None:
-    """Crazy-target resume factory shares ordinary search semantics."""
+def _cpu_crazy_checkpoint() -> tuple[SearchRequest, bytes, SearchResult]:
     problem = CrazyTargetProblem(
         accumulator=0,
         target=CRAZY_ALL_ONES,
@@ -459,10 +513,61 @@ def test_cpu_crazy_resume_factory_matches_uninterrupted_search() -> None:
         PrimitiveKind.CRAZY,
     )
     checkpoint = _primitive_prefix_checkpoint(request, batch, evaluator)
+    expected = cpu_crazy_target_search_adapter().search(request)
+    return request, checkpoint, expected
+
+
+def test_cpu_crazy_resume_factory_matches_uninterrupted_search() -> None:
+    """Crazy-target resume factory shares ordinary search semantics."""
+    request, checkpoint, expected = _cpu_crazy_checkpoint()
 
     observed = cpu_crazy_target_resume_execution().resume(request, checkpoint)
-    expected = cpu_crazy_target_search_adapter().search(request)
 
+    assert observed == expected
+
+
+def test_cpu_crazy_checkpoint_resumes_on_cuda_without_drift() -> None:
+    """CPU crazy-target state resumes on CUDA with identical proposals."""
+    request, checkpoint, expected = _cpu_crazy_checkpoint()
+    try:
+        cuda = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with cuda:
+        observed = crazy_target_resume_execution(cuda).resume(
+            request,
+            checkpoint,
+        )
+
+    assert observed.proposals == expected.proposals
+    assert observed.seed == expected.seed
+    assert observed.capability.backend_id == CUDA_BACKEND
+
+
+def test_cuda_crazy_checkpoint_bytes_resume_on_cpu_without_drift() -> None:
+    """CUDA crazy evidence encodes identically and resumes through CPU."""
+    request, cpu_checkpoint, expected = _cpu_crazy_checkpoint()
+    batch = build_crazy_target_batch(request).validated()
+    try:
+        cuda = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with cuda:
+        evaluator = PrimitiveCandidateEvaluationAdapter(
+            cuda,
+            PrimitiveKind.CRAZY,
+        )
+        cuda_checkpoint = _primitive_prefix_checkpoint(
+            request,
+            batch,
+            evaluator,
+        )
+    observed = cpu_crazy_target_resume_execution().resume(
+        request,
+        cuda_checkpoint,
+    )
+
+    assert cuda_checkpoint == cpu_checkpoint
     assert observed == expected
 
 

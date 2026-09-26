@@ -110,8 +110,18 @@ identity. Unsupported pairs such as deterministic corpus enumeration plus CUDA
 fail explicitly instead of changing strategy. Malformed typed command arguments
 return the same stable configuration-error status instead of terminating an
 
-embedded `main(argv)` caller through `argparse`. The first retained side-by-side
-performance record uses the complete 59,049-word classic domain with 15 retained
+embedded `main(argv)` caller through `argparse`.
+
+The same command accepts `--resume-checkpoint PATH` for rotate-target and
+crazy-target durable evaluated-search state. Resumed execution keeps configured
+and actual backend identity separate, falls back from accelerator execution
+failure to CPU reference, and records checkpoint SHA-256 plus resume executor
+identity in JSON. Unsupported algorithms, malformed checkpoints, and request or
+batch drift fail explicitly. The current flag consumes the inner search-state
+payload rather than discovering a progress sidecar or portable outer envelope.
+
+The first retained side-by-side performance record uses the complete 59,049-word
+classic domain with 15 retained
 samples per backend, one warmup, fixed CPU-then-CUDA interleaving, retain-all
 outlier policy, exact proposal equality, and independent CPU admission. On the
 RTX 4060, CPU median is 401.185 ms and CUDA median is 412.570 ms, producing a

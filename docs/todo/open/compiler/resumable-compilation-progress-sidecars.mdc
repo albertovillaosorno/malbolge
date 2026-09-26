@@ -141,11 +141,19 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   crazy-target fresh/resume factories share one strategy definition per target.
   `tests/optimizer/test_resumable_search.py` covers interrupted/uninterrupted
   equivalence, completed checkpoints, packed evidence, failure paths, and live
-  CPU-to-CUDA plus CUDA-to-CPU rotate resume with byte-identical checkpoint
-  bytes and matching proposals.
-- Product CLI, compiler-state codecs, prepared-search resume, broader power-loss
-  injection, and broader CPU/CUDA resume equivalence remain open; this TODO is
-  therefore active.
+  CPU-to-CUDA plus CUDA-to-CPU rotate and crazy-target resume with
+  byte-identical
+  checkpoint bytes and matching proposals.
+- `optimizer.cli` accepts `--resume-checkpoint` for rotate/crazy inner search
+  state, preserves configured/actual backend identity and accelerator-failure
+  fallback, rejects malformed/unsupported resume state, and emits checkpoint
+  SHA-256 plus resume-executor provenance. `tests/optimizer/test_search_cli.py`
+  covers CPU, unavailable-CUDA fallback, live CUDA, file loading, malformed
+  state, and unsupported algorithms. Direct progress-sidecar/portable-envelope
+  discovery is not yet wired into the product CLI.
+- Sidecar-aware product/compiler CLI integration, compiler-state codecs,
+  prepared-search resume, broader power-loss injection, and compiler/non-search
+  CPU/CUDA resume equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

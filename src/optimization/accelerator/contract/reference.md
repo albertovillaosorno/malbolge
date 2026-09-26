@@ -86,7 +86,8 @@ state only against the same request and batch.
 exact ordinary candidate batch, decodes the bound checkpoint, evaluates only the
 unfinished suffix through the currently selected backend, recombines ordered
 evidence, reruns the ordinary proposal selector, and revalidates exact candidate
-membership. `candidate_work_items_suffix()` preserves fixed-width indexed storage
+membership. `candidate_work_items_suffix()` preserves fixed-width indexed
+storage
 for resumed suffixes rather than forcing per-item materialization.
 
 Restored evidence and resumed proposals remain untrusted; independent
@@ -97,6 +98,11 @@ Rotate-target and crazy-target search now construct fresh and resumed execution
 from the same target-owned strategy definitions. Their CPU resume factories and
 backend-parametric resume factories therefore share candidate generation and
 proposal-selection semantics with ordinary search.
+
+`execute_resumed_search()` preserves preferred-backend failure fallback for
+resumed work: accelerator execution failures retry the same canonical checkpoint
+on the reference route. Checkpoint incompatibility is not treated as backend
+unavailability and therefore fails closed instead of silently falling back.
 
 CPU callback adapters provide mandatory candidate/search execution capacity
 while search proposals and verification hints remain untrusted. `submission.py` adds

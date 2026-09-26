@@ -49,21 +49,30 @@ from typing import override
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorError
+from accelerator.resumable_search import ResumableEvaluatedSearchExecution
+from accelerator.resumable_search import execute_resumed_search
+from accelerator.resumable_search import resumable_evaluated_search_id
 from accelerator.search_config import load_search_configuration
 from accelerator.search_selection import CPU_REFERENCE_BACKEND
 from accelerator.search_selection import SearchAdapterBinding
+from accelerator.search_selection import SearchExecutionRecord
+from accelerator.search_selection import SearchRunIdentity
 from accelerator.search_selection import SearchSelectionError
 from accelerator.search_selection import resolve_search_execution
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
 
 from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import cpu_crazy_target_resume_execution
 from optimizer.crazy_target import cpu_crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_resume_execution
 from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.enumerative import ENUMERATIVE_ALGORITHM_ID
 from optimizer.enumerative import cpu_enumerative_adapter
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
+from optimizer.rotate_target import cpu_rotate_target_resume_execution
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_resume_execution
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
@@ -71,7 +80,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from accelerator.search_config import SearchConfiguration
-    from accelerator.search_selection import SearchExecutionRecord
     from accelerator.search_selection import SearchSelection
     from accelerator.work_ports import SearchResult
 
@@ -113,6 +121,7 @@ class SearchRunOptions:
     seed: int = 0
     algorithm_override: str | None = None
     backend_override: str | None = None
+    resume_checkpoint: bytes | None = None
 
 
 class _Arguments(argparse.Namespace):
@@ -121,6 +130,7 @@ class _Arguments(argparse.Namespace):
     budget: int
     config: Path
     problem: Path
+    resume_checkpoint: Path | None
     seed: int
 
     def __init__(self) -> None:
@@ -131,6 +141,7 @@ class _Arguments(argparse.Namespace):
         self.budget = 0
         self.config = Path()
         self.problem = Path()
+        self.resume_checkpoint = None
         self.seed = 0
 
 
@@ -203,6 +214,14 @@ def _parser() -> argparse.ArgumentParser:
         "--backend",
         help="Explicit search backend override.",
     )
+    _ = parser.add_argument(
+        "--resume-checkpoint",
+        type=Path,
+        help=(
+            "Canonical evaluated-search checkpoint payload to resume. "
+            "Supported for rotate/crazy target search."
+        ),
+    )
     return parser
 
 
@@ -239,6 +258,18 @@ def run_configured_search(
         seed=options.seed,
     ).validated()
     with ExitStack() as stack:
+        if options.resume_checkpoint is not None:
+            routes = _resume_routes(
+                selection,
+                stack,
+                cuda_factory=cuda_factory,
+            )
+            return _run_resumed_search(
+                selection,
+                request,
+                options.resume_checkpoint,
+                routes=routes,
+            )
         bindings = list(_cpu_bindings())
         _extend_optional_bindings(
             bindings,
@@ -257,6 +288,8 @@ def search_record_json(
     configuration: SearchConfiguration,
     problem: bytes,
     record: SearchExecutionRecord,
+    *,
+    resume_checkpoint: bytes | None = None,
 ) -> str:
     """Serialize one search record as deterministic JSON evidence.
 
@@ -285,6 +318,11 @@ def search_record_json(
             for proposal in record.result.proposals
         ],
     }
+    if resume_checkpoint is not None:
+        payload["resume_checkpoint_sha256"] = sha256(
+            resume_checkpoint
+        ).hexdigest()
+        payload["resume_execution_id"] = resumable_evaluated_search_id()
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
@@ -343,6 +381,98 @@ def _cuda_search_adapter(
     raise SearchCliError(message)
 
 
+type ResumeRoutes = tuple[
+    ResumableEvaluatedSearchExecution,
+    ResumableEvaluatedSearchExecution | None,
+]
+
+
+def _run_resumed_search(
+    selection: SearchSelection,
+    request: SearchRequest,
+    checkpoint: bytes,
+    *,
+    routes: ResumeRoutes,
+) -> SearchExecutionRecord:
+    reference, preferred = routes
+    result = execute_resumed_search(
+        request,
+        checkpoint,
+        reference=reference,
+        preferred=preferred,
+    )
+    capability = result.capability
+    identity = SearchRunIdentity(
+        actual_backend_id=capability.backend_id,
+        algorithm_id=request.algorithm_id,
+        configured_backend_id=selection.backend_id,
+        device_arch=capability.device_arch,
+        device_name=capability.device_name,
+        evaluation_budget=request.evaluation_budget,
+        seed=request.seed,
+    )
+    return SearchExecutionRecord(identity=identity, result=result)
+
+
+def _resume_routes(
+    selection: SearchSelection,
+    stack: ExitStack,
+    *,
+    cuda_factory: CudaAdapterFactory,
+) -> ResumeRoutes:
+    reference = _cpu_resume_execution(selection.algorithm_id)
+    preferred = _preferred_resume_execution(
+        selection,
+        stack,
+        cuda_factory=cuda_factory,
+    )
+    return reference, preferred
+
+
+def _cpu_resume_execution(
+    algorithm_id: str,
+) -> ResumableEvaluatedSearchExecution:
+    if algorithm_id == CRAZY_TARGET_ALGORITHM_ID:
+        return cpu_crazy_target_resume_execution()
+    if algorithm_id == ROTATE_TARGET_ALGORITHM_ID:
+        return cpu_rotate_target_resume_execution()
+    message = f"unsupported resumable search algorithm: {algorithm_id}"
+    raise SearchCliError(message)
+
+
+def _preferred_resume_execution(
+    selection: SearchSelection,
+    stack: ExitStack,
+    *,
+    cuda_factory: CudaAdapterFactory,
+) -> ResumableEvaluatedSearchExecution | None:
+    if selection.backend_id == CPU_REFERENCE_BACKEND:
+        return None
+    if selection.backend_id != CUDA_BACKEND:
+        message = (
+            "unsupported resumable search algorithm/backend: "
+            f"{selection.algorithm_id} / {selection.backend_id}"
+        )
+        raise SearchCliError(message)
+    try:
+        cuda = stack.enter_context(cuda_factory())
+    except AcceleratorError:
+        return None
+    return _cuda_resume_execution(selection.algorithm_id, cuda)
+
+
+def _cuda_resume_execution(
+    algorithm_id: str,
+    cuda: CudaExactPrimitiveAdapter,
+) -> ResumableEvaluatedSearchExecution:
+    if algorithm_id == CRAZY_TARGET_ALGORITHM_ID:
+        return crazy_target_resume_execution(cuda)
+    if algorithm_id == ROTATE_TARGET_ALGORITHM_ID:
+        return rotate_target_resume_execution(cuda)
+    message = f"unsupported CUDA resumable search algorithm: {algorithm_id}"
+    raise SearchCliError(message)
+
+
 def _write_error(error: object) -> None:
     _ = sys.stderr.write(f"error: {error}\n")
 
@@ -350,14 +480,25 @@ def _write_error(error: object) -> None:
 def _execute_arguments(arguments: _Arguments) -> str:
     configuration = load_search_configuration(arguments.config)
     problem = arguments.problem.read_bytes()
+    resume_checkpoint = (
+        None
+        if arguments.resume_checkpoint is None
+        else arguments.resume_checkpoint.read_bytes()
+    )
     options = SearchRunOptions(
         algorithm_override=arguments.algorithm,
         backend_override=arguments.backend,
         evaluation_budget=arguments.budget,
+        resume_checkpoint=resume_checkpoint,
         seed=arguments.seed,
     )
     record = run_configured_search(configuration, problem, options)
-    return search_record_json(configuration, problem, record)
+    return search_record_json(
+        configuration,
+        problem,
+        record,
+        resume_checkpoint=resume_checkpoint,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
