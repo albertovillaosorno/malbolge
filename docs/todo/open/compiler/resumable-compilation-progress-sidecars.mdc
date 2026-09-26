@@ -62,7 +62,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 
 - `scripts/progress_sidecar.py` implements the flat v1 reference schema,
   canonical backend-neutral resume fingerprint binding the exact Git revision,
-  duplicate-key rejection, exact lifecycle/timing validation, monotonic
+  canonical `malbolge-checkpoint-v1` envelopes that bind exact resume identity,
+  checkpoint position, caller-owned state codec, payload digest, and canonical
+  payload bytes without backend/device identity, duplicate-key rejection, exact
+  lifecycle/timing validation, monotonic
   transitions, immutable sequence-addressed checkpoint/partial generations,
   sidecar-last atomic
   publication, process-shared writer serialization around transition validation
@@ -118,9 +121,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   targets, non-callable/failing clocks, mutable
   payload aliases, foreign path arguments, exact-string JSON parser admission,
   bounded routine-write cadence with committed/prepublication retry semantics,
-  and exact operator-facing elapsed-time summaries.
-- Product CLI, compiler-state serialization, broader power-loss injection,
-  and CPU/CUDA resume equivalence remain open; this TODO is therefore active.
+  backend-neutral checkpoint round trips plus identity/position/codec/canonical
+  payload rejection, and exact operator-facing elapsed-time summaries.
+- Product CLI, concrete compiler/search state codecs, broader power-loss
+  injection, and CPU/CUDA resume equivalence remain open; this TODO is therefore
+  active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

@@ -499,6 +499,180 @@ def _checkpointed(
     )
 
 
+def _resume_identity() -> progress.ResumeIdentity:
+    return progress.ResumeIdentity(
+        algorithm_id="search.enumerative",
+        algorithm_version="1",
+        repository_revision=REPOSITORY_REVISION,
+        schema=progress.SCHEMA_ID,
+        seed=7,
+        source_sha256=SOURCE_HASH,
+        target_profile_fingerprint=PROFILE_HASH,
+        target_profile_id="malbolge-2026",
+        toolchain_fingerprint=TOOLCHAIN_HASH,
+    )
+
+
+def test_portable_checkpoint_is_backend_neutral_and_durable(
+    tmp_path: Path,
+) -> None:
+    """CPU/CUDA routes share one canonical opaque checkpoint envelope."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    cuda = replace(checkpointed, backend="cuda", device="cuda-device-0")
+    state = b"typed-ir-state-v1\x00\xff"
+    codec = "compiler.typed-ir-state-v1"
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        checkpointed.checkpoint_sequence,
+        checkpointed.stage,
+        checkpointed.units_completed,
+        codec,
+        state,
+    )
+    encoded_cuda = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        cuda.checkpoint_sequence,
+        cuda.stage,
+        cuda.units_completed,
+        codec,
+        state,
+    )
+
+    assert encoded_cuda == encoded
+    assert (
+        progress.decode_portable_checkpoint(checkpointed, codec, encoded)
+        == state
+    )
+    assert progress.decode_portable_checkpoint(cuda, codec, encoded) == state
+
+    durable = replace(checkpointed, checkpoint_sha256=_digest(encoded))
+    destination = progress.write_checkpoint_generation(durable, encoded, None)
+    restored_sidecar = progress.read(destination)
+    restored, partial = progress.read_checkpoint_generation(restored_sidecar)
+
+    assert partial is None
+    assert restored == encoded
+    assert (
+        progress.decode_portable_checkpoint(durable, codec, restored)
+        == state
+    )
+
+
+def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
+    tmp_path: Path,
+) -> None:
+    """Resume admission binds portable state to exact durable job position."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "compiler.typed-ir-state-v1"
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        checkpointed.checkpoint_sequence,
+        checkpointed.stage,
+        checkpointed.units_completed,
+        codec,
+        b"state",
+    )
+    foreign_identity = replace(
+        _resume_identity(),
+        source_sha256="sha256:" + ("4" * 64),
+    )
+    mismatches = (
+        replace(
+            checkpointed,
+            source_sha256=foreign_identity.source_sha256,
+            compatibility_fingerprint=(
+                progress.resume_compatibility_fingerprint(foreign_identity)
+            ),
+        ),
+        replace(
+            checkpointed,
+            checkpoint_sequence=2,
+            checkpoint_path=str(
+                progress.checkpoint_path(checkpointed.output_path, 2)
+            ),
+        ),
+        replace(checkpointed, stage="verification"),
+        replace(
+            checkpointed,
+            units_completed=checkpointed.units_completed + 1,
+        ),
+    )
+    for candidate in mismatches:
+        with pytest.raises(ERROR):
+            _ = progress.decode_portable_checkpoint(
+                candidate,
+                codec,
+                encoded,
+            )
+    with pytest.raises(ERROR, match="state codec"):
+        _ = progress.decode_portable_checkpoint(
+            checkpointed,
+            "compiler.other-state-v1",
+            encoded,
+        )
+
+
+def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
+    tmp_path: Path,
+) -> None:
+    """Checkpoint JSON, payload bytes, and canonical encoding fail closed."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "compiler.typed-ir-state-v1"
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        checkpointed.checkpoint_sequence,
+        checkpointed.stage,
+        checkpointed.units_completed,
+        codec,
+        b"state",
+    )
+    document = cast("dict[str, object]", json.loads(encoded))
+    document["payload_base64"] = "***"
+    malformed = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    with pytest.raises(ERROR, match="payload_base64"):
+        _ = progress.decode_portable_checkpoint(
+            checkpointed,
+            codec,
+            malformed,
+        )
+
+    digest_drift = cast("dict[str, object]", json.loads(encoded))
+    digest_drift["payload_base64"] = "b3RoZXI="
+    changed_payload = (
+        json.dumps(digest_drift, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    with pytest.raises(ERROR, match="digest"):
+        _ = progress.decode_portable_checkpoint(
+            checkpointed,
+            codec,
+            changed_payload,
+        )
+
+    noncanonical = json.dumps(
+        cast("dict[str, object]", json.loads(encoded)),
+        sort_keys=True,
+        indent=2,
+    ).encode()
+    with pytest.raises(ERROR, match="not canonical"):
+        _ = progress.decode_portable_checkpoint(
+            checkpointed,
+            codec,
+            noncanonical,
+        )
+
+    with pytest.raises(ERROR, match="exact immutable bytes"):
+        _ = progress.encode_portable_checkpoint(
+            _resume_identity(),
+            1,
+            checkpointed.stage,
+            checkpointed.units_completed,
+            codec,
+            cast("bytes", bytearray(b"state")),
+        )
+
+
 def test_resume_fingerprint_rejects_invalid_direct_identity() -> None:
     """Fingerprinting validates resume identity before hashing."""
     identity = progress.ResumeIdentity(

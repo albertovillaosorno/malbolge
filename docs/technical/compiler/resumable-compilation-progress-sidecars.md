@@ -113,6 +113,15 @@ that interval passes, while checkpointed and terminal evidence always attempts
 publication. Only successful or post-commit-failing writes consume the limiter
 window, so a prepublication failure can retry immediately.
 
+`malbolge-checkpoint-v1` now supplies a canonical backend-neutral envelope for
+opaque resumable state. The envelope binds the sidecar compatibility fingerprint,
+checkpoint sequence, stage, completed-unit count, caller-owned versioned state
+codec, payload SHA-256, and canonical base64 payload while intentionally omitting
+CPU/CUDA backend identity. Decoding revalidates all of those fields against the
+sidecar and rejects malformed, noncanonical, or differently identified state.
+The envelope does not define compiler-stage semantics; concrete compiler/search
+state codecs remain owned by their producing subsystems.
+
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
 immediately before or after checkpoint/partial atomic publication; after
@@ -198,7 +207,9 @@ missing storage rather than escaping as a decoder exception.
   Any mismatch is rejected unless an explicit reviewed migration exists.
 - Device-local memory is never the only copy of resumable state. GPU jobs emit a
   backend-neutral durable checkpoint sufficient for CPU inspection and exact
-  compatibility checks.
+  compatibility checks. `malbolge-checkpoint-v1` carries no backend or device
+  identity; backend-specific state must be normalized by the owning state codec
+  before publication.
 - `active_elapsed_ns` is accumulated from monotonic clock segments. UTC wall
   timestamps provide chronology but never replace monotonic duration
   measurement.
@@ -260,6 +271,9 @@ jobs that requested resumability.
   exclusion and
   post-lock revalidation: a stale candidate that
   waited behind a newer commit is rejected before mutable-pointer replacement.
+- Portable-checkpoint tests prove that identical opaque state produces byte-exact
+  checkpoint envelopes for CPU and CUDA sidecars and that identity, position,
+  codec, payload, and canonical-encoding drift fail closed.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

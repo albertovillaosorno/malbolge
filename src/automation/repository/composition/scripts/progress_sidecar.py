@@ -35,6 +35,9 @@
 
 from __future__ import annotations
 
+from base64 import b64decode
+from base64 import b64encode
+from binascii import Error as BinasciiError
 from contextlib import contextmanager
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -62,6 +65,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 SCHEMA_ID: Final = "malbolge-progress-v1"
+CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
 WINDOWS_PLATFORM: Final = "nt"
@@ -439,6 +443,20 @@ class ResumeIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class PortableCheckpoint:
+    """Backend-neutral envelope for one opaque resumable state payload."""
+
+    checkpoint_sequence: int
+    compatibility_fingerprint: str
+    payload_base64: str
+    payload_sha256: str
+    schema: str
+    stage: str
+    state_codec: str
+    units_completed: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProgressSidecar:
     """One exact `malbolge-progress-v1` document."""
 
@@ -531,6 +549,170 @@ def partial_path(output: str | Path, sequence: int) -> Path:
     if type(sequence) is not int or sequence <= 0:
         _fail("partial sequence must be a positive integer")
     return Path(f"{_output_path_text(output)}.partial.{sequence:020d}")
+
+
+def _portable_checkpoint_document(
+    identity: ResumeIdentity,
+    checkpoint_sequence: int,
+    stage: str,
+    units_completed: int,
+    state_codec: str,
+    payload: bytes,
+) -> JsonObject:
+    validated_identity = _validate_resume_identity(identity)
+    sequence = _nonnegative_integer(
+        checkpoint_sequence,
+        "checkpoint sequence",
+    )
+    if sequence == 0:
+        _fail("portable checkpoint requires a positive checkpoint sequence")
+    _identifier(stage, "checkpoint stage")
+    completed = _nonnegative_integer(
+        units_completed,
+        "checkpoint completed units",
+    )
+    _identifier(state_codec, "checkpoint state codec")
+    if type(payload) is not bytes:
+        _fail("checkpoint state payload must use exact immutable bytes")
+    encoded = b64encode(payload).decode("ascii")
+    return {
+        "checkpoint_sequence": sequence,
+        "compatibility_fingerprint": resume_compatibility_fingerprint(
+            validated_identity,
+        ),
+        "payload_base64": encoded,
+        "payload_sha256": "sha256:" + sha256(payload).hexdigest(),
+        "schema": CHECKPOINT_SCHEMA_ID,
+        "stage": stage,
+        "state_codec": state_codec,
+        "units_completed": completed,
+    }
+
+
+def encode_portable_checkpoint(
+    identity: ResumeIdentity,
+    checkpoint_sequence: int,
+    stage: str,
+    units_completed: int,
+    state_codec: str,
+    payload: bytes,
+) -> bytes:
+    """Encode opaque resumable state in one canonical backend-neutral envelope.
+
+    Returns:
+        Sorted compact UTF-8 JSON with one trailing newline.
+
+    """
+    document = _portable_checkpoint_document(
+        identity,
+        checkpoint_sequence,
+        stage,
+        units_completed,
+        state_codec,
+        payload,
+    )
+    text = json.dumps(
+        document,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return (text + "\n").encode("utf-8")
+
+
+def _portable_checkpoint_from_document(
+    document: JsonObject,
+) -> PortableCheckpoint:
+    expected = frozenset(field.name for field in fields(PortableCheckpoint))
+    actual = frozenset(document)
+    missing = sorted(expected - actual)
+    unknown = sorted(actual - expected)
+    if missing:
+        _fail("missing checkpoint keys: " + ",".join(missing))
+    if unknown:
+        _fail("unknown checkpoint keys: " + ",".join(unknown))
+    return PortableCheckpoint(
+        checkpoint_sequence=_int_field(document, "checkpoint_sequence"),
+        compatibility_fingerprint=_str_field(
+            document,
+            "compatibility_fingerprint",
+        ),
+        payload_base64=_str_field(document, "payload_base64"),
+        payload_sha256=_str_field(document, "payload_sha256"),
+        schema=_str_field(document, "schema"),
+        stage=_str_field(document, "stage"),
+        state_codec=_str_field(document, "state_codec"),
+        units_completed=_int_field(document, "units_completed"),
+    )
+
+
+def decode_portable_checkpoint(
+    sidecar: ProgressSidecar,
+    state_codec: str,
+    checkpoint: bytes,
+) -> bytes:
+    """Validate and decode one canonical backend-neutral checkpoint envelope.
+
+    Returns:
+        Exact opaque state bytes after identity, position, codec, and digest
+        validation.
+
+    """
+    validated = validate(sidecar)
+    _identifier(state_codec, "checkpoint state codec")
+    if type(checkpoint) is not bytes:
+        _fail("portable checkpoint must use exact immutable bytes")
+    try:
+        text = checkpoint.decode("utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid checkpoint UTF-8: {error}")
+    try:
+        parsed = cast(
+            "object",
+            json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
+        )
+    except ProgressSidecarError:
+        raise
+    except ValueError as error:
+        _fail(f"invalid checkpoint JSON: {error}")
+    envelope = _portable_checkpoint_from_document(
+        _mapping(parsed, "portable checkpoint"),
+    )
+    if envelope.schema != CHECKPOINT_SCHEMA_ID:
+        _fail(f"unsupported checkpoint schema: {envelope.schema}")
+    if (
+        envelope.compatibility_fingerprint
+        != validated.compatibility_fingerprint
+    ):
+        _fail("checkpoint compatibility fingerprint does not match sidecar")
+    if envelope.checkpoint_sequence != validated.checkpoint_sequence:
+        _fail("checkpoint sequence does not match sidecar")
+    if envelope.stage != validated.stage:
+        _fail("checkpoint stage does not match sidecar")
+    if envelope.units_completed != validated.units_completed:
+        _fail("checkpoint completed units do not match sidecar")
+    if envelope.state_codec != state_codec:
+        _fail("checkpoint state codec does not match requested codec")
+    _digest(envelope.payload_sha256, "checkpoint payload_sha256")
+    try:
+        payload = b64decode(envelope.payload_base64, validate=True)
+    except (BinasciiError, ValueError) as error:
+        _fail(f"checkpoint payload_base64 is invalid: {error}")
+    if b64encode(payload).decode("ascii") != envelope.payload_base64:
+        _fail("checkpoint payload_base64 is not canonical")
+    if "sha256:" + sha256(payload).hexdigest() != envelope.payload_sha256:
+        _fail("checkpoint payload digest does not match encoded state")
+    canonical = encode_portable_checkpoint(
+        _resume_identity(validated),
+        envelope.checkpoint_sequence,
+        envelope.stage,
+        envelope.units_completed,
+        state_codec,
+        payload,
+    )
+    if canonical != checkpoint:
+        _fail("portable checkpoint is not canonical")
+    return payload
 
 
 def resume_compatibility_fingerprint(identity: ResumeIdentity) -> str:
