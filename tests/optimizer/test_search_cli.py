@@ -39,6 +39,10 @@ from contextlib import redirect_stdout
 from hashlib import sha256
 from io import StringIO
 import json
+import os
+from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from typing import TYPE_CHECKING
 from typing import cast
 from unittest import SkipTest
@@ -50,6 +54,7 @@ from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.resumable_search import resumable_evaluated_search_id
 from accelerator.search_checkpoint import encode_search_checkpoint
+from accelerator.search_checkpoint import search_checkpoint_codec_id
 from accelerator.search_config import parse_search_configuration
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import SearchRequest
@@ -67,10 +72,9 @@ from optimizer.enumerative import EnumerationProblem
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import build_rotate_target_batch
+from scripts import progress_sidecar as progress
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from accelerator.cuda import CudaExactPrimitiveAdapter as CudaAdapter
     from accelerator.search_config import SearchConfiguration
 
@@ -88,6 +92,11 @@ INVALID_INTEGER = "invalid int value"
 UNSUPPORTED_RESUME = "unsupported resumable search algorithm"
 TWO_PROPOSALS = 2
 CRAZY_PROPOSALS = 4
+ROTATE_ONE_PAYLOAD_HEX = (1).to_bytes(4, "little").hex()
+REPOSITORY_REVISION = "a" * 40
+PROFILE_HASH = "malbolge-profile-v1:sha256:" + ("3" * 64)
+TOOLCHAIN_HASH = "sha256:" + ("2" * 64)
+SEARCH_CHECKPOINT_CODEC = search_checkpoint_codec_id()
 
 
 def _configuration(
@@ -185,6 +194,89 @@ def _crazy_resume_checkpoint(
         PrimitiveKind.CRAZY,
         completed=completed,
     )
+
+
+def _published_progress_sidecar(
+    tmp_path: Path,
+    problem: bytes,
+    checkpoint: bytes,
+) -> Path:
+    output = tmp_path / "program.malbolge"
+    source_sha256 = "sha256:" + sha256(problem).hexdigest()
+    identity = progress.ResumeIdentity(
+        algorithm_id=ROTATE_TARGET_ALGORITHM_ID,
+        algorithm_version="1",
+        repository_revision=REPOSITORY_REVISION,
+        schema=progress.SCHEMA_ID,
+        seed=0,
+        source_sha256=source_sha256,
+        target_profile_fingerprint=PROFILE_HASH,
+        target_profile_id="malbolge-2026",
+        toolchain_fingerprint=TOOLCHAIN_HASH,
+    )
+    position = progress.PortableCheckpointPosition(
+        checkpoint_sequence=1,
+        stage="candidate-search",
+        units_completed=1,
+    )
+    envelope = progress.encode_portable_checkpoint(
+        identity,
+        position,
+        SEARCH_CHECKPOINT_CODEC,
+        payload=checkpoint,
+    )
+    sidecar = progress.ProgressSidecar(
+        active_elapsed_ns=700,
+        algorithm_id=identity.algorithm_id,
+        algorithm_version=identity.algorithm_version,
+        backend="cpu",
+        checkpoint_elapsed_ns=30,
+        checkpoint_path=str(progress.checkpoint_path(output, 1)),
+        checkpoint_sequence=1,
+        checkpoint_sha256="sha256:" + sha256(envelope).hexdigest(),
+        compatibility_fingerprint=progress.resume_compatibility_fingerprint(
+            identity
+        ),
+        completed_at=None,
+        device=None,
+        diagnostic_code=None,
+        diagnostic_message=None,
+        operation_id="search-resume-0001",
+        output_path=str(output),
+        partial_bytes=None,
+        partial_path=None,
+        partial_sha256=None,
+        paused_elapsed_ns=100,
+        progress_path=str(progress.progress_path(output)),
+        repository_revision=identity.repository_revision,
+        schema=identity.schema,
+        seed=identity.seed,
+        serialization_elapsed_ns=10,
+        source_path=str(tmp_path / "problem.bin"),
+        source_sha256=identity.source_sha256,
+        stage=position.stage,
+        started_at="2026-09-26T20:00:00Z",
+        status=progress.ProgressStatus.CHECKPOINTED,
+        target_profile_fingerprint=identity.target_profile_fingerprint,
+        target_profile_id=identity.target_profile_id,
+        toolchain_fingerprint=identity.toolchain_fingerprint,
+        units_completed=position.units_completed,
+        units_total=5,
+        updated_at="2026-09-26T20:00:01Z",
+        verification_elapsed_ns=30,
+        wall_elapsed_ns=870,
+    )
+    return progress.write_checkpoint_generation(sidecar, envelope)
+
+
+def _subprocess_environment(*paths: Path) -> dict[str, str]:
+    environment = dict(os.environ)
+    existing = environment.get("PYTHONPATH")
+    values = [str(path) for path in paths]
+    if existing:
+        values.append(existing)
+    environment["PYTHONPATH"] = os.pathsep.join(values)
+    return environment
 
 
 def _resume_cli_inputs(
@@ -636,6 +728,102 @@ def test_main_reads_resume_checkpoint_and_records_provenance(
     assert payload[RESUME_EXECUTION_FIELD] == resumable_evaluated_search_id()
     assert payload["actual_backend_id"] == CPU_BACKEND
     assert not stderr.getvalue()
+
+
+def _extract_progress_checkpoint(root: Path, sidecar_path: Path) -> bytes:
+    progress_module = progress.__file__
+    assert progress_module is not None
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            progress_module,
+            "--extract-checkpoint",
+            SEARCH_CHECKPOINT_CODEC,
+            str(sidecar_path),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(
+            root / "src/automation/repository/composition"
+        ),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    return completed.stdout
+
+
+def _run_optimizer_resume_subprocess(
+    root: Path,
+    tmp_path: Path,
+    problem: bytes,
+    *,
+    checkpoint: bytes,
+) -> dict[str, object]:
+    config, problem_path, checkpoint_path, _ = _resume_cli_inputs(tmp_path)
+    _ = problem_path.write_bytes(problem)
+    _ = checkpoint_path.write_bytes(checkpoint)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-m",
+            "optimizer.cli",
+            "--config",
+            str(config),
+            "--problem",
+            str(problem_path),
+            "--budget",
+            "5",
+            "--resume-checkpoint",
+            str(checkpoint_path),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(
+            root / "src/optimization/accelerator/application",
+            root / "src/optimization/accelerator/adapter-outbound",
+            root / "src/optimization/optimizer/application",
+        ),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    return _json_object(completed.stdout.decode())
+
+
+def test_progress_extraction_bridges_to_optimizer_resume_cli(
+    tmp_path: Path,
+) -> None:
+    """Verified sidecar extraction feeds the product-facing resume flag."""
+    root = Path(__file__).resolve().parents[2]
+    problem = RotateTargetProblem(
+        target=ROTATE_ONE,
+        candidates=(0, 1, 2, 1, 4),
+    )
+    problem_bytes = problem.encode()
+    checkpoint = _rotate_resume_checkpoint(problem, budget=5)
+    sidecar_path = _published_progress_sidecar(
+        tmp_path,
+        problem_bytes,
+        checkpoint,
+    )
+
+    extracted = _extract_progress_checkpoint(root, sidecar_path)
+    payload = _run_optimizer_resume_subprocess(
+        root,
+        tmp_path,
+        problem_bytes,
+        checkpoint=extracted,
+    )
+
+    assert extracted == checkpoint
+    assert payload[RESUME_CHECKPOINT_SHA_FIELD] == sha256(
+        checkpoint
+    ).hexdigest()
+    assert payload["actual_backend_id"] == CPU_BACKEND
+    assert payload["proposals"] == [
+        {"logical_id": "corpus-1", "payload_hex": ROTATE_ONE_PAYLOAD_HEX}
+    ]
 
 
 def test_main_rejects_malformed_resume_checkpoint(tmp_path: Path) -> None:

@@ -123,8 +123,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   payload aliases, foreign path arguments, exact-string JSON parser admission,
   bounded routine-write cadence with committed/prepublication retry semantics,
   backend-neutral checkpoint round trips plus outer-digest,
-  identity/position/codec/canonical-payload rejection, and exact operator-facing
-  elapsed-time summaries.
+  identity/position/codec/canonical-payload rejection, crash-boundary recovery
+  using real portable envelopes, exact binary checkpoint extraction, and exact
+  operator-facing elapsed-time summaries.
 - `src/optimization/accelerator/application/accelerator/search_checkpoint.py`
   implements
   `evaluated-search-prefix-evidence-v1`, canonical backend-neutral state binding
@@ -149,11 +150,15 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   fallback, rejects malformed/unsupported resume state, and emits checkpoint
   SHA-256 plus resume-executor provenance. `tests/optimizer/test_search_cli.py`
   covers CPU, unavailable-CUDA fallback, live CUDA, file loading, malformed
-  state, and unsupported algorithms. Direct progress-sidecar/portable-envelope
-  discovery is not yet wired into the product CLI.
-- Sidecar-aware product/compiler CLI integration, compiler-state codecs,
-  prepared-search resume, broader power-loss injection, and compiler/non-search
-  CPU/CUDA resume equivalence remain open; this TODO is therefore active.
+  state, and unsupported algorithms. `progress_sidecar.py --extract-checkpoint`
+  now provides a verified operator bridge from a durable progress sidecar to
+  that inner checkpoint input without coupling optimizer runtime code to
+  repository automation. An end-to-end subprocess regression publishes the
+  outer envelope, extracts the inner state, and resumes the optimizer CLI.
+- Single-command product/compiler sidecar discovery, compiler-state codecs,
+  prepared-search resume, broader non-search power-loss injection, and
+  compiler/non-search CPU/CUDA resume equivalence remain open; this TODO is
+  therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

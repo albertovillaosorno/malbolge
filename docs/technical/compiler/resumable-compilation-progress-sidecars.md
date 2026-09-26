@@ -157,9 +157,17 @@ configured-versus-actual backend identity, retries accelerator execution failure
 through the CPU reference route, rejects unsupported algorithms and incompatible
 checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
-unchanged. The command currently consumes the inner evaluated-search state
-payload; direct `malbolge-progress-v1` sidecar/portable-envelope discovery and
-compiler CLI integration remain open.
+unchanged.
+
+The progress-sidecar inspector now provides
+`--extract-checkpoint STATE_CODEC PROGRESS.json`. It validates the mutable
+sidecar, immutable generation bytes, outer checkpoint digest, resume identity,
+position, state codec, canonical envelope, and inner payload digest before
+emitting the exact opaque state bytes to stdout. This supplies a fail-closed
+operator bridge from `malbolge-progress-v1` into the optimizer's
+`--resume-checkpoint` file input without adding an optimizer dependency on
+repository-automation modules. Direct one-command sidecar discovery and compiler
+CLI integration remain open.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -169,9 +177,9 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Sidecar-aware product/compiler CLI integration, compiler-state codecs,
-prepared-search resume, broader power-loss injection, and compiler/non-search
-CPU/CUDA resume equivalence remain unimplemented.
+Single-command sidecar discovery in the product/compiler CLI, compiler-state
+codecs, prepared-search resume, broader non-search power-loss injection, and
+compiler/non-search CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -215,6 +223,20 @@ progress/checkpoint/partial paths. The JSON sidecar remains the machine-readable
 authority; this line is an operator view over the same validated record. Invalid
 UTF-8 is converted to the same stable inspection failure as malformed schema or
 missing storage rather than escaping as a decoder exception.
+
+A verified inner checkpoint payload can be extracted without trusting the
+mutable pointer or outer envelope directly:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  src/automation/repository/composition/scripts/progress_sidecar.py `
+  --extract-checkpoint evaluated-search-prefix-evidence-v1 `
+  output.malbolge.progress.json > search.resume.json
+```
+
+The output bytes are exact and binary-safe. Extraction emits nothing when the
+sidecar, referenced generation, outer digest, resume position, state codec,
+canonical encoding, or inner payload digest is invalid.
 
 ## Invariants
 
@@ -321,9 +343,13 @@ jobs that requested resumability.
   backend/proposal drift, and exercise CPU-to-CUDA plus CUDA-to-CPU rotate and
   crazy-target resume with byte-identical checkpoints and matching proposals.
 - Search CLI tests cover CPU resume, unavailable-CUDA fallback, live CUDA
-  resume,
-  unsupported-algorithm rejection, checkpoint file loading, malformed-state
-  rejection, and resumed JSON checkpoint/executor provenance.
+  resume, unsupported-algorithm rejection, checkpoint file loading,
+  malformed-state rejection, resumed JSON checkpoint/executor provenance, and
+  the sidecar-extraction-to-optimizer subprocess bridge.
+- Progress-sidecar recovery tests inject every publication crash boundary using
+  real portable checkpoint envelopes and prove that recovery decodes only the
+  last sidecar-committed inner state. Operator extraction tests also prove exact
+  binary stdout, help discovery, and fail-closed state-codec mismatch handling.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

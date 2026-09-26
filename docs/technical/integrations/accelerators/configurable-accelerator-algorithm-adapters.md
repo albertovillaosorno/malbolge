@@ -117,8 +117,16 @@ crazy-target durable evaluated-search state. Resumed execution keeps configured
 and actual backend identity separate, falls back from accelerator execution
 failure to CPU reference, and records checkpoint SHA-256 plus resume executor
 identity in JSON. Unsupported algorithms, malformed checkpoints, and request or
-batch drift fail explicitly. The current flag consumes the inner search-state
-payload rather than discovering a progress sidecar or portable outer envelope.
+batch drift fail explicitly.
+
+The progress-sidecar inspector provides
+`--extract-checkpoint STATE_CODEC PROGRESS.json` as the composition bridge from
+a durable `malbolge-progress-v1` pointer and portable outer envelope into that
+inner search-state file. Extraction validates the referenced generation, outer
+digest, resume identity/position, requested codec, canonical envelope, and inner
+payload digest before writing exact binary state to stdout. The optimizer does
+not import repository-automation modules; one-command sidecar discovery remains
+separate integration work.
 
 The first retained side-by-side performance record uses the complete 59,049-word
 classic domain with 15 retained

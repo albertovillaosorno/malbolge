@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import replace
 from hashlib import sha256
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -81,6 +82,9 @@ SUMMARY_FIELDS = (
     "checkpoint_ns=30",
 )
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
+EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
+WRONG_CODEC_DIAGNOSTIC = b"checkpoint state codec"
+BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
 WINDOWS_PAYLOAD = b"windows-payload"
 POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
@@ -119,6 +123,9 @@ CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
 PARTIAL_BEFORE_CRASH = b"partial-before-crash"
 CHECKPOINT_AFTER_CRASH = b"checkpoint-after-crash"
 PARTIAL_AFTER_CRASH = b"partial-after-crash"
+PORTABLE_CRASH_CODEC = "search.evaluated-prefix-v1"
+PORTABLE_STATE_BEFORE_CRASH = b"portable-state-before-crash"
+PORTABLE_STATE_AFTER_CRASH = b"portable-state-after-crash"
 LOCK_ACQUIRED = "acquired"
 LOCK_CRASH_EXIT = 74
 WRITER_LOCK_SCRIPT = """
@@ -575,6 +582,121 @@ def test_portable_checkpoint_is_backend_neutral_and_durable(
         progress.decode_portable_checkpoint(durable, codec, restored)
         == state
     )
+
+
+def test_progress_cli_extracts_verified_portable_checkpoint_payload(
+    tmp_path: Path,
+) -> None:
+    """Operator extraction emits only validated opaque checkpoint state."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    state = b"operator-resume-state\x00\xff"
+    codec = "search.evaluated-prefix-v1"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=state,
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    module_file = progress.__file__
+    assert module_file is not None
+
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            module_file,
+            "--extract-checkpoint",
+            codec,
+            str(destination),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    assert completed.stdout == state
+    assert not completed.stderr
+
+
+def test_progress_cli_rejects_wrong_portable_checkpoint_codec(
+    tmp_path: Path,
+) -> None:
+    """Operator extraction fails closed before emitting mismatched state."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "search.evaluated-prefix-v1"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=b"state",
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    module_file = progress.__file__
+    assert module_file is not None
+
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            module_file,
+            "--extract-checkpoint",
+            "search.other-state-v1",
+            str(destination),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert not completed.stdout
+    assert WRONG_CODEC_DIAGNOSTIC in completed.stderr
+
+
+def test_progress_cli_extraction_fails_closed_without_binary_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Embedded text-only stdout cannot receive opaque checkpoint bytes."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "search.evaluated-prefix-v1"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=b"state",
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    text_stdout = StringIO()
+    monkeypatch.setattr(sys, "stdout", text_stdout)
+    status = progress.main([
+        "--extract-checkpoint",
+        codec,
+        str(destination),
+    ])
+    captured = capsys.readouterr()
+
+    assert status == 1
+    assert not text_stdout.getvalue()
+    assert BINARY_STDOUT_DIAGNOSTIC in captured.err
+
+
+def test_progress_cli_help_advertises_checkpoint_extraction(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator help exposes the verified checkpoint extraction mode."""
+    assert progress.main(["--help"]) == 0
+    captured = capsys.readouterr()
+    assert EXTRACT_HELP in captured.out
+    assert not captured.err
 
 
 def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
@@ -2785,6 +2907,66 @@ def test_writer_lock_is_released_after_process_death(tmp_path: Path) -> None:
         _terminate_child(contender)
 
 
+def _portable_checkpointed(
+    sidecar: progress.ProgressSidecar,
+    *,
+    sequence: int,
+    state: bytes,
+    partial: bytes | None,
+) -> tuple[progress.ProgressSidecar, bytes]:
+    provisional = _checkpointed(
+        sidecar,
+        sequence=sequence,
+        checkpoint=b"portable-checkpoint-placeholder",
+        partial=partial,
+    )
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(provisional),
+        PORTABLE_CRASH_CODEC,
+        payload=state,
+    )
+    return _with_checkpoint_bytes(provisional, checkpoint), checkpoint
+
+
+def _portable_crash_fixture(tmp_path: Path) -> CrashFixture:
+    first, checkpoint_one = _portable_checkpointed(
+        _sidecar(tmp_path),
+        sequence=1,
+        state=PORTABLE_STATE_BEFORE_CRASH,
+        partial=PARTIAL_BEFORE_CRASH,
+    )
+    destination = progress.write_checkpoint_generation(
+        first,
+        checkpoint_one,
+        PARTIAL_BEFORE_CRASH,
+    )
+    second, checkpoint_two = _portable_checkpointed(
+        first,
+        sequence=2,
+        state=PORTABLE_STATE_AFTER_CRASH,
+        partial=PARTIAL_AFTER_CRASH,
+    )
+    sidecar_input = tmp_path / "pending-portable-sidecar.json"
+    checkpoint_input = tmp_path / "pending-portable-checkpoint.bin"
+    partial_input = tmp_path / "pending-portable-partial.bin"
+    _ = sidecar_input.write_bytes(progress.encode(second))
+    _ = checkpoint_input.write_bytes(checkpoint_two)
+    _ = partial_input.write_bytes(PARTIAL_AFTER_CRASH)
+    return CrashFixture(
+        checkpoint_input=checkpoint_input,
+        checkpoint_one=checkpoint_one,
+        checkpoint_two=checkpoint_two,
+        destination=destination,
+        first=first,
+        partial_input=partial_input,
+        partial_one=PARTIAL_BEFORE_CRASH,
+        partial_two=PARTIAL_AFTER_CRASH,
+        second=second,
+        sidecar_input=sidecar_input,
+    )
+
+
 def _crash_fixture(tmp_path: Path) -> CrashFixture:
     first = _checkpointed(
         _sidecar(tmp_path),
@@ -2820,6 +3002,54 @@ def _crash_fixture(tmp_path: Path) -> CrashFixture:
         second=second,
         sidecar_input=sidecar_input,
     )
+
+
+@pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
+def test_portable_checkpoint_recovers_across_process_crash_boundaries(
+    tmp_path: Path,
+    boundary: str,
+) -> None:
+    """Every injected crash recovers the last sidecar-bound portable state."""
+    fixture = _portable_crash_fixture(tmp_path)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-c",
+            CRASH_SCRIPT,
+            str(fixture.sidecar_input),
+            str(fixture.checkpoint_input),
+            str(fixture.partial_input),
+            str(CRASH_EXIT),
+            boundary,
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
+        errors="replace"
+    )
+    committed = progress.read(fixture.destination)
+    state, partial = progress.read_portable_checkpoint_generation(
+        committed,
+        PORTABLE_CRASH_CODEC,
+    )
+    committed_second = boundary in {
+        AFTER_SIDECAR_REPLACE,
+        AFTER_SIDECAR_SYNC,
+    }
+    expected_state = (
+        PORTABLE_STATE_AFTER_CRASH
+        if committed_second
+        else PORTABLE_STATE_BEFORE_CRASH
+    )
+    expected_partial = (
+        PARTIAL_AFTER_CRASH if committed_second else PARTIAL_BEFORE_CRASH
+    )
+    assert state == expected_state
+    assert partial == expected_partial
 
 
 @pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)

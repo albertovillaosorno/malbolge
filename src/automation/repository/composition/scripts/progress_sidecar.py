@@ -15,7 +15,8 @@
 # - Allows:
 #   - Inputs: one explicit progress record and same-filesystem output path.
 #   - Outputs: canonical JSON, validated records, exact timing summaries,
-#     immutable generations, and atomic sidecar replacement.
+#     verified portable state bytes, immutable generations, and atomic sidecar
+#     replacement.
 #   - Side effects: immutable generation creation and atomic sidecar update.
 # - Split-When:
 #   - Product compiler or accelerator adapters gain independent persistence.
@@ -26,7 +27,8 @@
 # - Description:
 #   - Validates identity, timing, checkpoint, and publication invariants.
 # - Usage:
-#   - Construct, validate, encode, inspect, or durably write one sidecar.
+#   - Construct, validate, encode, inspect, extract, or durably write one
+#     sidecar/checkpoint generation.
 # - Defaults:
 #   - Unknown keys, duplicate keys, stale fingerprints, and torn pairs fail.
 #
@@ -47,6 +49,7 @@ from datetime import datetime
 from enum import Enum
 from hashlib import sha256
 from importlib import import_module
+from io import TextIOWrapper
 import json
 import os
 from pathlib import Path
@@ -68,6 +71,8 @@ SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
+_EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
+_EXTRACT_ARGUMENT_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -130,6 +135,18 @@ class _WindowsLockModule(Protocol):
 
     def locking(self, fd: int, mode: int, nbytes: int) -> None:
         """Lock or unlock one file region."""
+        ...
+
+
+class _BinaryOutput(Protocol):
+    """Binary stdout surface used by checkpoint extraction."""
+
+    def write(self, payload: bytes) -> int:
+        """Write payload bytes and return the accepted byte count."""
+        ...
+
+    def flush(self) -> None:
+        """Flush buffered payload bytes."""
         ...
 
 
@@ -2043,6 +2060,21 @@ def read_checkpoint_generation(
     return checkpoint, partial
 
 
+def read_portable_checkpoint_generation(
+    sidecar: ProgressSidecar,
+    state_codec: str,
+) -> tuple[bytes, bytes | None]:
+    """Read one durable generation and decode its portable checkpoint state.
+
+    Returns:
+        Opaque state payload plus the optional verified partial-output bytes.
+
+    """
+    checkpoint, partial = read_checkpoint_generation(sidecar)
+    payload = decode_portable_checkpoint(sidecar, state_codec, checkpoint)
+    return payload, partial
+
+
 def render_summary(sidecar: ProgressSidecar) -> str:
     """Render one exact operator-facing progress and timing summary.
 
@@ -2071,6 +2103,37 @@ def render_summary(sidecar: ProgressSidecar) -> str:
     return " ".join(fields) + "\n"
 
 
+def _binary_stdout() -> _BinaryOutput:
+    if not isinstance(sys.stdout, TextIOWrapper):
+        _fail("binary stdout is unavailable")
+    return cast("_BinaryOutput", cast("object", sys.stdout.buffer))
+
+
+def _write_binary_stdout(payload: bytes) -> None:
+    stream = _binary_stdout()
+    written = stream.write(payload)
+    if written != len(payload):
+        _fail("portable checkpoint extraction wrote incomplete stdout")
+    stream.flush()
+
+
+def _portable_payload_from_path(path: Path, state_codec: str) -> bytes:
+    sidecar = read(path)
+    payload, _ = read_portable_checkpoint_generation(sidecar, state_codec)
+    return payload
+
+
+def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
+    try:
+        payload = _portable_payload_from_path(path, state_codec)
+        _write_binary_stdout(payload)
+    except (OSError, ProgressSidecarError) as error:
+        message = f"portable checkpoint extraction failed: {error}\n"
+        _ = sys.stderr.write(message)
+        return 1
+    return 0
+
+
 def _inspect_path(path: Path) -> int:
     try:
         sidecar = read(path)
@@ -2083,22 +2146,31 @@ def _inspect_path(path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Inspect one progress sidecar from the command line.
+    """Inspect a sidecar or extract one verified portable checkpoint payload.
 
     Returns:
-        Process-style status code: zero on valid inspection, nonzero otherwise.
+        Process-style status code: zero on valid output, nonzero otherwise.
 
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
-    usage = "usage: progress_sidecar.py PROGRESS.json\n"
+    usage = (
+        "usage: progress_sidecar.py PROGRESS.json\n"
+        "       progress_sidecar.py --extract-checkpoint "
+        "STATE_CODEC PROGRESS.json\n"
+    )
     if arguments in (["-h"], ["--help"]):
         _ = sys.stdout.write(usage)
         status = 0
-    elif len(arguments) != 1:
+    elif (
+        len(arguments) == _EXTRACT_ARGUMENT_COUNT
+        and arguments[0] == _EXTRACT_CHECKPOINT_FLAG
+    ):
+        status = _extract_checkpoint_path(Path(arguments[2]), arguments[1])
+    elif len(arguments) == 1:
+        status = _inspect_path(Path(arguments[0]))
+    else:
         _ = sys.stderr.write(usage)
         status = 2
-    else:
-        status = _inspect_path(Path(arguments[0]))
     return status
 
 
