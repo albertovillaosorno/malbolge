@@ -117,9 +117,10 @@ window, so a prepublication failure can retry immediately.
 opaque resumable state. The envelope binds the sidecar compatibility
 fingerprint, checkpoint sequence, stage, completed-unit count, caller-owned
 versioned state codec, payload SHA-256, and canonical base64 payload while
-intentionally omitting CPU/CUDA backend identity. Decoding revalidates all of
-those fields against the sidecar and rejects malformed, noncanonical, or
-differently identified state.
+intentionally omitting CPU/CUDA backend identity. Decoding first requires the
+envelope bytes to match the sidecar checkpoint digest, then revalidates all of
+those fields and rejects malformed, noncanonical, or differently identified
+state.
 The envelope does not define compiler-stage semantics; concrete compiler/search
 state codecs remain owned by their producing subsystems.
 

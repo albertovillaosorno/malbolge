@@ -645,13 +645,16 @@ def _portable_checkpoint_from_document(
         _fail("missing checkpoint keys: " + ",".join(missing))
     if unknown:
         _fail("unknown checkpoint keys: " + ",".join(unknown))
+    payload_base64 = document["payload_base64"]
+    if type(payload_base64) is not str:
+        _fail("payload_base64 must use the exact string type")
     return PortableCheckpoint(
         checkpoint_sequence=_int_field(document, "checkpoint_sequence"),
         compatibility_fingerprint=_str_field(
             document,
             "compatibility_fingerprint",
         ),
-        payload_base64=_str_field(document, "payload_base64"),
+        payload_base64=payload_base64,
         payload_sha256=_str_field(document, "payload_sha256"),
         schema=_str_field(document, "schema"),
         stage=_str_field(document, "stage"),
@@ -735,6 +738,17 @@ def _checkpoint_position_from_envelope(
     )
 
 
+def _validate_sidecar_checkpoint_digest(
+    sidecar: ProgressSidecar,
+    checkpoint: bytes,
+) -> None:
+    if type(checkpoint) is not bytes:
+        _fail("portable checkpoint must use exact immutable bytes")
+    checkpoint_digest = "sha256:" + sha256(checkpoint).hexdigest()
+    if sidecar.checkpoint_sha256 != checkpoint_digest:
+        _fail("portable checkpoint digest does not match sidecar")
+
+
 def decode_portable_checkpoint(
     sidecar: ProgressSidecar,
     state_codec: str,
@@ -749,6 +763,7 @@ def decode_portable_checkpoint(
     """
     validated = validate(sidecar)
     _identifier(state_codec, "checkpoint state codec")
+    _validate_sidecar_checkpoint_digest(validated, checkpoint)
     envelope = _decode_portable_checkpoint_document(checkpoint)
     _validate_checkpoint_envelope(validated, state_codec, envelope)
     payload = _decode_checkpoint_payload(envelope)

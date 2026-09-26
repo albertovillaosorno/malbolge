@@ -523,6 +523,13 @@ def _checkpoint_position(
     )
 
 
+def _with_checkpoint_bytes(
+    sidecar: progress.ProgressSidecar,
+    checkpoint: bytes,
+) -> progress.ProgressSidecar:
+    return replace(sidecar, checkpoint_sha256=_digest(checkpoint))
+
+
 def test_portable_checkpoint_is_backend_neutral_and_durable(
     tmp_path: Path,
 ) -> None:
@@ -546,13 +553,17 @@ def test_portable_checkpoint_is_backend_neutral_and_durable(
         )
         == encoded
     )
+    durable = _with_checkpoint_bytes(checkpointed, encoded)
+    durable_cuda = _with_checkpoint_bytes(cuda, encoded)
     assert (
-        progress.decode_portable_checkpoint(checkpointed, codec, encoded)
+        progress.decode_portable_checkpoint(durable, codec, encoded)
         == state
     )
-    assert progress.decode_portable_checkpoint(cuda, codec, encoded) == state
+    assert (
+        progress.decode_portable_checkpoint(durable_cuda, codec, encoded)
+        == state
+    )
 
-    durable = replace(checkpointed, checkpoint_sha256=_digest(encoded))
     destination = progress.write_checkpoint_generation(durable, encoded, None)
     restored, partial = progress.read_checkpoint_generation(
         progress.read(destination)
@@ -578,6 +589,7 @@ def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
         codec,
         payload=b"state",
     )
+    checkpointed = _with_checkpoint_bytes(checkpointed, encoded)
     foreign_identity = replace(
         _resume_identity(),
         source_sha256="sha256:" + ("4" * 64),
@@ -618,6 +630,37 @@ def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
         )
 
 
+def test_portable_checkpoint_accepts_empty_state_and_binds_outer_digest(
+    tmp_path: Path,
+) -> None:
+    """Empty state is valid only when the sidecar names the exact envelope."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "compiler.empty-state-v1"
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=EMPTY_PAYLOAD,
+    )
+
+    with pytest.raises(ERROR, match="checkpoint digest does not match sidecar"):
+        _ = progress.decode_portable_checkpoint(checkpointed, codec, encoded)
+    with pytest.raises(ERROR, match="exact immutable bytes"):
+        _ = progress.decode_portable_checkpoint(
+            checkpointed,
+            codec,
+            cast("bytes", cast("object", bytearray(encoded))),
+        )
+    assert (
+        progress.decode_portable_checkpoint(
+            _with_checkpoint_bytes(checkpointed, encoded),
+            codec,
+            encoded,
+        )
+        == EMPTY_PAYLOAD
+    )
+
+
 def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
     tmp_path: Path,
 ) -> None:
@@ -637,7 +680,7 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
     ).encode()
     with pytest.raises(ERROR, match="payload_base64"):
         _ = progress.decode_portable_checkpoint(
-            checkpointed,
+            _with_checkpoint_bytes(checkpointed, malformed),
             codec,
             malformed,
         )
@@ -649,7 +692,7 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
     ).encode()
     with pytest.raises(ERROR, match="digest"):
         _ = progress.decode_portable_checkpoint(
-            checkpointed,
+            _with_checkpoint_bytes(checkpointed, changed_payload),
             codec,
             changed_payload,
         )
@@ -661,7 +704,7 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
     ).encode()
     with pytest.raises(ERROR, match="not canonical"):
         _ = progress.decode_portable_checkpoint(
-            checkpointed,
+            _with_checkpoint_bytes(checkpointed, noncanonical),
             codec,
             noncanonical,
         )
