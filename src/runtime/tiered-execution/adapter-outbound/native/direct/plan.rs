@@ -72,16 +72,17 @@ use super::{
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
-    DirectSelectionError, Display, ExecutionGeometryDirectNativeKind,
-    ExecutionGeometryRegionEffectProgram, FormatResult, Formatter, HostIsa,
-    HostOperatingSystem, NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
-    NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
-    PreflightedExecutionTier, RegionEffectIdentity, RegionEffectProgram,
+    DirectInitialHaltError, DirectInputError, DirectJitCandidateAdmissionError,
+    DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
+    DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
+    DirectRotateError, DirectSelectionError, Display,
+    ExecutionGeometryDirectNativeKind, ExecutionGeometryRegionEffectProgram,
+    FormatResult, Formatter, HostIsa, HostOperatingSystem,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactKey, NativeIdentityError,
+    NativeTargetConfig, NativeTargetIdentity, PreflightedExecutionTier,
+    RegionEffectIdentity, RegionEffectProgram,
     RegisterMaskedDirectAdmissionError, RegisterMaskedRegionEffectProgram,
-    RuntimeCapability, TargetProfileRequirement,
+    RuntimeCapability, TargetProfileRequirement, UntrustedNativeObjectArtifact,
     VerifiedAheadOfExecutionNativeSet, VerifiedDirectNativeArtifact,
     VerifiedDirectNativeCache, VerifiedExecutionGeometryNativeArtifact,
     VerifiedExecutionGeometryNativeCache,
@@ -141,6 +142,14 @@ use super::{
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_rotate,
 };
+
+macro_rules! admit_direct_candidate {
+    ($verified:expr, $kind:ident) => {
+        $verified
+            .map(VerifiedDirectNativeArtifact::$kind)
+            .map_err(|error| DirectSelectionError::$kind(Box::new(error)))
+    };
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SelectedDirectTarget {
@@ -411,6 +420,68 @@ impl PreparedExecutionGeometryDirectTarget {
 }
 
 impl PreparedDirectTarget {
+    fn admit_verified_candidate(
+        self,
+        program: &RegionEffectProgram,
+        object: Vec<u8>,
+    ) -> VerifiedDirectSelectionResult<'_> {
+        let artifact = UntrustedNativeObjectArtifact::from_emitter_output(
+            self.key().clone(),
+            object,
+            target_triple(self.key().target().host_isa()),
+        );
+        match self {
+            Self::Crazy(_key) => admit_direct_candidate!(
+                verify_direct_crazy(&artifact, program),
+                Crazy
+            ),
+            Self::Deopt(_key) => admit_direct_candidate!(
+                verify_direct_deopt_stub(&artifact),
+                Deopt
+            ),
+            Self::HaltFetch(_key) => admit_direct_candidate!(
+                verify_direct_halt_fetch(&artifact, program),
+                HaltFetch
+            ),
+            Self::HaltRegisters(_key) => admit_direct_candidate!(
+                verify_direct_halt_registers(&artifact, program),
+                HaltRegisters
+            ),
+            Self::InitialHalt(_key) => admit_direct_candidate!(
+                verify_direct_initial_halt(&artifact, program),
+                InitialHalt
+            ),
+            Self::Input(_key) => admit_direct_candidate!(
+                verify_direct_input(&artifact, program),
+                Input
+            ),
+            Self::JumpCode(_key) => admit_direct_candidate!(
+                verify_direct_jump_code(&artifact, program),
+                JumpCode
+            ),
+            Self::JumpData(_key) => admit_direct_candidate!(
+                verify_direct_jump_data(&artifact, program),
+                JumpData
+            ),
+            Self::NonGraphical(_key) => admit_direct_candidate!(
+                verify_direct_non_graphical(&artifact, program),
+                NonGraphical
+            ),
+            Self::NoOperation(_key) => admit_direct_candidate!(
+                verify_direct_no_operation(&artifact, program),
+                NoOperation
+            ),
+            Self::Output(_key) => admit_direct_candidate!(
+                verify_direct_output(&artifact, program),
+                Output
+            ),
+            Self::Rotate(_key) => admit_direct_candidate!(
+                verify_direct_rotate(&artifact, program),
+                Rotate
+            ),
+        }
+    }
+
     pub(super) fn emit_verified(
         self,
         program: &RegionEffectProgram,
@@ -1334,6 +1405,51 @@ pub fn select_verified_direct_native<'requirement>(
 ) -> VerifiedDirectSelectionResult<'requirement> {
     prepare_verified_direct_target(program, runtime, host_os, host_isa)?
         .emit_verified(program)
+}
+
+/// Admits compiler-produced object bytes only through the reviewed direct
+/// verifier.
+///
+/// The supplied key is a claim, not authority. Profile/runtime preflight and
+/// deterministic direct-template selection are repeated from the exact portable
+/// program. Admission then requires that selected key to equal the claim before
+/// any candidate bytes can be promoted to [`VerifiedDirectNativeArtifact`].
+///
+/// # Errors
+///
+/// Returns [`DirectJitCandidateAdmissionError::CandidateIdentity`] when the
+/// claimed key differs from the program-selected target,
+/// [`DirectJitCandidateAdmissionError::Deoptimization`] when the program has no
+/// reviewed fast path, or wraps exact preflight/verification failure otherwise.
+pub fn admit_direct_jit_candidate<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    key: &NativeArtifactKey,
+    object: Vec<u8>,
+) -> Result<
+    VerifiedDirectNativeArtifact,
+    DirectJitCandidateAdmissionError<'requirement>,
+> {
+    let prepared = prepare_verified_direct_target(
+        program,
+        runtime,
+        key.target().host_os(),
+        key.target().host_isa(),
+    )
+    .map_err(|error| {
+        DirectJitCandidateAdmissionError::Direct(Box::new(error))
+    })?;
+    if prepared.key() != key {
+        return Err(DirectJitCandidateAdmissionError::CandidateIdentity);
+    }
+    if prepared.is_deoptimization() {
+        return Err(DirectJitCandidateAdmissionError::Deoptimization);
+    }
+    prepared
+        .admit_verified_candidate(program, object)
+        .map_err(|error| {
+            DirectJitCandidateAdmissionError::Direct(Box::new(error))
+        })
 }
 
 pub(super) fn prepare_verified_direct_target<'requirement>(

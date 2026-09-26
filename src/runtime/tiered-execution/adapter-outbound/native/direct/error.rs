@@ -1642,6 +1642,31 @@ impl Display for RegisterMaskedDirectAdmissionError<'_> {
     }
 }
 
+/// Failure while admitting one compiler-produced direct JIT candidate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DirectJitCandidateAdmissionError<'requirement> {
+    /// Candidate identity differs from the exact program-selected native key.
+    CandidateIdentity,
+    /// Program selects only the direct deoptimization stub, not a fast path.
+    Deoptimization,
+    /// Profile, target selection, or semantic object verification failed.
+    Direct(Box<DirectSelectionError<'requirement>>),
+}
+
+impl Display for DirectJitCandidateAdmissionError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::CandidateIdentity => f.write_str(
+                "JIT candidate identity differs from selected direct target",
+            ),
+            Self::Deoptimization => f.write_str(
+                "JIT candidate has no reviewed direct native fast path",
+            ),
+            Self::Direct(error) => Display::fmt(error, f),
+        }
+    }
+}
+
 /// Failure while selecting/emitting/verifying one direct native template.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectSelectionError<'requirement> {

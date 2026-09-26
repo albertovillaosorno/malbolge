@@ -444,10 +444,11 @@ use execution_native::{
     DirectFusedNativeYieldTarget, DirectFusedSequenceAdmissionError,
     DirectFusedSequenceObjectError, DirectFusedSequenceSourcePlan,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError, DirectRegisterMaskedCrazyError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectInitialHaltError, DirectInputError, DirectJitCandidateAdmissionError,
+    DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
+    DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
+    DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateError, DirectSelectionError,
     DirectSequenceError, ExecutionGeometryDirectNativeKind,
@@ -651,10 +652,10 @@ use execution_native::{
     VerifiedRegisterMaskedRotateNativeObjectArtifact,
     acquire_direct_fused_native_sequence,
     acquire_direct_fused_native_sequence_transactionally,
-    admit_cached_fused_direct_sequence, admit_fused_direct_sequence,
-    admit_register_masked_direct_native, compile_preflighted_clang_c23,
-    decode_native_process_call_request, decode_native_process_call_response,
-    decode_native_process_memory_request,
+    admit_cached_fused_direct_sequence, admit_direct_jit_candidate,
+    admit_fused_direct_sequence, admit_register_masked_direct_native,
+    compile_preflighted_clang_c23, decode_native_process_call_request,
+    decode_native_process_call_response, decode_native_process_memory_request,
     decode_native_process_memory_response, emit_direct_crazy_coff,
     emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
@@ -34317,6 +34318,179 @@ const fn test_jit_compiler(outcome: TestJitCompilerOutcome) -> TestJitCompiler {
         observed_identity: None,
         observed_program: None,
         outcome,
+    }
+}
+
+fn direct_jit_fast_path_cases() -> Vec<(RegionEffectProgram, DirectNativeKind)>
+{
+    vec![
+        (direct_initial_halt_program(), DirectNativeKind::InitialHalt),
+        (
+            direct_halt_registers_program(),
+            DirectNativeKind::HaltRegisters,
+        ),
+        (direct_halt_fetch_program(), DirectNativeKind::HaltFetch),
+        (
+            direct_non_graphical_program(),
+            DirectNativeKind::NonGraphical,
+        ),
+        (direct_jump_code_program(), DirectNativeKind::JumpCode),
+        (direct_jump_data_program(), DirectNativeKind::JumpData),
+        (direct_crazy_program(), DirectNativeKind::Crazy),
+        (direct_rotate_program(), DirectNativeKind::Rotate),
+        (direct_input_byte_program(), DirectNativeKind::Input),
+        (direct_output_program(), DirectNativeKind::Output),
+        (direct_no_operation_program(), DirectNativeKind::NoOperation),
+    ]
+}
+
+#[test]
+fn jit_candidate_admission_reuses_each_direct_verifier() -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        for (program, expected_kind) in direct_jit_fast_path_cases() {
+            let canonical = select_verified_direct_native(
+                &program,
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                isa,
+            )
+            .map_err(|error| error.to_string())?;
+            if canonical.kind() != expected_kind {
+                return Err(String::from(
+                    "JIT admission fixture selected unexpected direct kind",
+                ));
+            }
+            let admitted = admit_direct_jit_candidate(
+                &program,
+                safe_rust_profiled_capability(),
+                canonical.key(),
+                canonical.object().to_vec(),
+            )
+            .map_err(|error| error.to_string())?;
+            if admitted != canonical {
+                return Err(String::from(
+                    "JIT admission changed a canonical direct artifact",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn jit_candidate_admission_rejects_object_byte_mutation() -> Result<(), String>
+{
+    let program = direct_initial_halt_program();
+    let canonical = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = canonical.object().to_vec();
+    let last = object
+        .last_mut()
+        .ok_or_else(|| String::from("canonical JIT fixture was empty"))?;
+    *last ^= 1;
+    let result = admit_direct_jit_candidate(
+        &program,
+        safe_rust_profiled_capability(),
+        canonical.key(),
+        object,
+    );
+    if matches!(
+        result,
+        Err(DirectJitCandidateAdmissionError::Direct(error))
+            if matches!(*error, DirectSelectionError::InitialHalt(_))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "JIT admission promoted mutated native object bytes",
+        ))
+    }
+}
+
+#[test]
+fn jit_candidate_admission_rejects_identity_drift() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let other = select_verified_direct_native(
+        &direct_output_program(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    if admit_direct_jit_candidate(
+        &program,
+        safe_rust_profiled_capability(),
+        other.key(),
+        other.object().to_vec(),
+    ) == Err(DirectJitCandidateAdmissionError::CandidateIdentity)
+    {
+        Ok(())
+    } else {
+        Err(String::from("JIT admission accepted native identity drift"))
+    }
+}
+
+#[test]
+fn jit_candidate_admission_rejects_deoptimization_stub() -> Result<(), String> {
+    let program = native_program();
+    let deopt = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    if deopt.kind() != DirectNativeKind::Deopt {
+        return Err(String::from("JIT deopt fixture selected a fast path"));
+    }
+    if admit_direct_jit_candidate(
+        &program,
+        safe_rust_profiled_capability(),
+        deopt.key(),
+        deopt.object().to_vec(),
+    ) == Err(DirectJitCandidateAdmissionError::Deoptimization)
+    {
+        Ok(())
+    } else {
+        Err(String::from("JIT admission promoted deoptimization stub"))
+    }
+}
+
+#[test]
+fn jit_candidate_admission_preflights_profile_before_identity()
+-> Result<(), String> {
+    let canonical_program = direct_initial_halt_program();
+    let canonical = select_verified_direct_native(
+        &canonical_program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut forged = canonical_program;
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    let result = admit_direct_jit_candidate(
+        &forged,
+        safe_rust_profiled_capability(),
+        canonical.key(),
+        canonical.object().to_vec(),
+    );
+    if matches!(
+        result,
+        Err(DirectJitCandidateAdmissionError::Direct(error))
+            if *error == DirectSelectionError::ProfileRequirement
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "JIT admission did not preserve profile-preflight precedence",
+        ))
     }
 }
 

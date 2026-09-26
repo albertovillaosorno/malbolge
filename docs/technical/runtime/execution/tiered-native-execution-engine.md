@@ -2323,7 +2323,13 @@ interpreter routes bypass it. A monotonic outer measurement additionally gates
 candidate exposure, so clock failure or measured latency beyond the caller
 ceiling fails closed even when a compiler reports an in-budget candidate.
 
-Artifact admission and installation remain open.
+Direct JIT artifact admission now treats the compiler output as an untrusted
+claim. It repeats profile/runtime preflight from the retained IR, reconstructs
+the reviewed direct target, rejects complete-key drift and deoptimization-only
+selection, then reuses that target's existing byte-canonical semantic verifier.
+Only the resulting `VerifiedDirectNativeArtifact` has native artifact authority.
+
+Executable installation and JIT dispatch remain open.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, durable cache serialization/storage and cross-

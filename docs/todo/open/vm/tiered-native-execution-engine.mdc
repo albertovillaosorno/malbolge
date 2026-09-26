@@ -920,9 +920,11 @@ behavior.
   Application orchestration rechecks successful observations, while scheduled
   composition independently measures candidate latency with the runtime
   monotonic clock. Clock failure, outer overrun, and every non-candidate outcome
-  retain interpreter authority.
+  retain interpreter authority. Direct JIT candidate admission repeats profile
+  preflight, exact target selection, complete-key equality, and existing direct
+  byte verification; deoptimization-only candidates are rejected.
 - Durable AOT preparation/loading, reduced state-graph artifact admission,
-  native graph-transition dispatch, JIT artifact admission/installation, and
-  executable in-process dispatch remain unimplemented. Durable cache
+  native graph-transition dispatch, JIT executable installation, and executable
+  in-process dispatch remain unimplemented. Durable cache
   serialization/storage/eviction, broader platform execution evidence, and
   broader end-to-end tier performance policy also remain open.

@@ -90,3 +90,8 @@ but discovery never changes observable Malbolge behavior by itself.
   Scheduled composition invokes the compiler only for `JitCompilation` and
   measures candidate attempts with the runtime monotonic clock; clock failure or
   outer latency beyond the caller ceiling also returns to the interpreter.
+  Direct candidate admission then repeats profile/runtime preflight and
+  reconstructs the reviewed direct target from retained IR. It rejects key
+  drift/deoptimization,
+  and reuses the existing byte-canonical semantic verifier before granting
+  `VerifiedDirectNativeArtifact` authority. Installation/dispatch remain open.

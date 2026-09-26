@@ -122,7 +122,8 @@ use malbolge::{
 };
 use plan::target_triple;
 pub use plan::{
-    ExecutionGeometryDirectSelectionError, admit_register_masked_direct_native,
+    ExecutionGeometryDirectSelectionError, admit_direct_jit_candidate,
+    admit_register_masked_direct_native,
     select_ahead_of_execution_preflighted_tier,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,

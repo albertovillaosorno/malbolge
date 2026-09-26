@@ -57,7 +57,14 @@ AOT and interpreter routes bypass it. Candidate-producing attempts are also
 wrapped in the runtime monotonic clock. Clock failure or an independently
 measured outer latency beyond the caller ceiling discards the candidate.
 
-Artifact admission, installation, and execution remain unimplemented.
+Direct JIT candidate admission now repeats profile/runtime preflight from the
+retained `RegionEffectProgram`, deterministically selects the reviewed direct
+template, and requires its complete `NativeArtifactKey` to equal the compiler
+claim. Candidates selecting only the deoptimization stub are rejected. Object
+bytes remain untrusted until the existing byte-canonical direct verifier for the
+selected template promotes them to `VerifiedDirectNativeArtifact`.
+
+Executable installation and JIT dispatch remain unimplemented.
 
 ## Invariants
 
