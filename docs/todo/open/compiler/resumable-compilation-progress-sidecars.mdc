@@ -133,9 +133,19 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   covers empty/partial prefixes, packed candidate storage, request/batch drift,
   malformed/noncanonical JSON, mutable aliases, and absence of backend/device
   identity.
-- Product CLI, compiler-state codecs, evaluated-search resume execution, broader
-  power-loss injection, and CPU/CUDA resume equivalence remain open; this TODO
-  is therefore active.
+- `src/optimization/accelerator/application/accelerator/resumable_search.py`
+  implements `evaluated-search-prefix-resume-v1`: it validates the exact search
+  again, preserves packed indexed suffix storage, evaluates only unfinished
+  candidates, recombines evidence, reruns selection, and revalidates candidate
+  membership without granting acceptance authority. Rotate-target and
+  crazy-target fresh/resume factories share one strategy definition per target.
+  `tests/optimizer/test_resumable_search.py` covers interrupted/uninterrupted
+  equivalence, completed checkpoints, packed evidence, failure paths, and live
+  CPU-to-CUDA plus CUDA-to-CPU rotate resume with byte-identical checkpoint
+  bytes and matching proposals.
+- Product CLI, compiler-state codecs, prepared-search resume, broader power-loss
+  injection, and broader CPU/CUDA resume equivalence remain open; this TODO is
+  therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

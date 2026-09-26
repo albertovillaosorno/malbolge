@@ -61,6 +61,7 @@ from accelerator.primitive_candidates import (
     prepared_primitive_reference_word_count,
 )
 from accelerator.primitive_candidates import primitive_evidence_value_at
+from accelerator.resumable_search import ResumableEvaluatedSearchExecution
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
@@ -219,6 +220,26 @@ class RotateTargetProblem:
         return target
 
 
+def _rotate_target_strategy(
+    evaluator: PrimitiveCandidateEvaluationAdapter,
+) -> EvaluatedSearchStrategy:
+    return EvaluatedSearchStrategy(
+        batch_builder=build_rotate_target_batch,
+        proposal_selector=select_rotate_target_proposals,
+        prepared_execution=PreparedCandidateExecution(
+            batch_preparer=None,
+            evaluator=evaluator.evaluate_prepared,
+            selection_aware_preparer=prepare_projected_rotate_candidate_batch,
+            state_count=prepared_primitive_reference_word_count,
+        ),
+        prepared_selection=PreparedProposalSelection(
+            state_preparer=prepare_rotate_target_selection,
+            selector=select_prepared_rotate_target_proposals,
+            state_count=count_prepared_rotate_target_positions,
+        ),
+    )
+
+
 def rotate_target_search_adapter(
     primitive: ExactPrimitiveAdapter,
 ) -> EvaluatedSearchExecutionAdapter:
@@ -235,23 +256,27 @@ def rotate_target_search_adapter(
     return EvaluatedSearchExecutionAdapter(
         ROTATE_TARGET_ALGORITHM_ID,
         evaluator,
-        EvaluatedSearchStrategy(
-            batch_builder=build_rotate_target_batch,
-            proposal_selector=select_rotate_target_proposals,
-            prepared_execution=PreparedCandidateExecution(
-                batch_preparer=None,
-                evaluator=evaluator.evaluate_prepared,
-                selection_aware_preparer=(
-                    prepare_projected_rotate_candidate_batch
-                ),
-                state_count=prepared_primitive_reference_word_count,
-            ),
-            prepared_selection=PreparedProposalSelection(
-                state_preparer=prepare_rotate_target_selection,
-                selector=select_prepared_rotate_target_proposals,
-                state_count=count_prepared_rotate_target_positions,
-            ),
-        ),
+        _rotate_target_strategy(evaluator),
+    )
+
+
+def rotate_target_resume_execution(
+    primitive: ExactPrimitiveAdapter,
+) -> ResumableEvaluatedSearchExecution:
+    """Bind rotate-target checkpoint resume to one exact primitive backend.
+
+    Returns:
+        Resume execution using the same ordinary strategy as fresh search.
+
+    """
+    evaluator = PrimitiveCandidateEvaluationAdapter(
+        primitive,
+        PrimitiveKind.ROTATE,
+    )
+    return ResumableEvaluatedSearchExecution(
+        ROTATE_TARGET_ALGORITHM_ID,
+        evaluator,
+        _rotate_target_strategy(evaluator),
     )
 
 
@@ -263,6 +288,16 @@ def cpu_rotate_target_search_adapter() -> EvaluatedSearchExecutionAdapter:
 
     """
     return rotate_target_search_adapter(CpuExactPrimitiveAdapter())
+
+
+def cpu_rotate_target_resume_execution() -> ResumableEvaluatedSearchExecution:
+    """Construct the mandatory scalar rotate-target resume execution.
+
+    Returns:
+        CPU-backed rotate-target checkpoint resume execution.
+
+    """
+    return rotate_target_resume_execution(CpuExactPrimitiveAdapter())
 
 
 def build_rotate_target_batch(

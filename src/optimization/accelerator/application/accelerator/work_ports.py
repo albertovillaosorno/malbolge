@@ -316,6 +316,41 @@ type CandidateWorkItems = (
 )
 
 
+def candidate_work_items_suffix(
+    items: CandidateWorkItems,
+    start: int,
+) -> CandidateWorkItems:
+    """Return one validated request-order suffix without needless unpacking.
+
+    Returns:
+        Exact suffix preserving fixed-width indexed storage when available.
+
+    Raises:
+        InvalidAcceleratorWorkError: If storage or start position is invalid.
+
+    """
+    _validate_candidate_items(items)
+    if type(start) is not int or not 0 <= start <= len(items):
+        message = "candidate suffix start outside candidate items"
+        raise InvalidAcceleratorWorkError(message)
+    if isinstance(items, IndexedCandidateWorkItems):
+        pivot = items.logical_rotation_pivot
+        suffix_pivot = None if pivot is None else max(pivot - start, 0)
+        index_offset = start * _U32_BYTES
+        payload_offset = start * items.payload_width
+        suffix = IndexedCandidateWorkItems(
+            logical_id_prefix=items.logical_id_prefix,
+            logical_indices_u32le=items.logical_indices_u32le[index_offset:],
+            payload_width=items.payload_width,
+            payloads=items.payloads[payload_offset:],
+            logical_rotation_pivot=suffix_pivot,
+            _proof=_INDEXED_CANDIDATE_ITEMS_PROOF,
+        )
+        _validate_indexed_storage(suffix)
+        return suffix
+    return items[start:]
+
+
 @dataclass(frozen=True, slots=True)
 class CandidateEvaluationBatch:
     """Candidate evidence request independent from accelerator hardware."""

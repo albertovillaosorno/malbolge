@@ -132,8 +132,24 @@ prefix of completed `CandidateEvidence`. Backend and device identity are
 omitted, so byte-identical CPU/CUDA evidence has one durable representation.
 Restore requires the current request and batch to match exactly.
 
-The codec does not yet schedule the remaining suffix or combine resumed evidence
-into a final search result; that execution integration remains open.
+`evaluated-search-prefix-resume-v1` now consumes that codec for ordinary
+evaluated search. It rebuilds and validates the exact candidate batch, evaluates
+only the unfinished request-order suffix through the selected backend, combines
+restored and fresh evidence, reruns the ordinary selector, and checks proposal
+membership. Fixed-width indexed candidate storage remains packed across suffix
+projection. Restored evidence remains untrusted and does not bypass independent
+verification.
+
+Rotate-target and crazy-target expose target-owned resume factories that reuse
+the exact ordinary strategy definitions rather than reconstructing selection
+behavior at the call site.
+
+Focused differential evidence includes byte-identical CPU/CUDA rotate checkpoint
+payloads, CPU-produced checkpoint resume on CUDA, CUDA-produced checkpoint
+resume on CPU, and equality with uninterrupted CPU proposals. This establishes
+the retained rotate workload in both directions; it is not yet broad CPU/CUDA
+resume equivalence for every search strategy. Prepared-search resume is also not
+yet implemented.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -143,8 +159,8 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Product CLI/compiler integration, compiler-state codecs, evaluated-search
-resume execution, broader power-loss injection, and CPU/CUDA resume equivalence
+Product CLI/compiler integration, compiler-state codecs, prepared-search
+resume, broader power-loss injection, and broader CPU/CUDA resume equivalence
 remain unimplemented.
 
 ### Sidecar Schema
@@ -290,6 +306,10 @@ jobs that requested resumability.
 - Evaluated-search checkpoint tests cover empty and partial prefixes, packed
   candidate storage, exact request/batch drift, malformed/noncanonical JSON,
   mutable aliases, and explicit absence of backend/device identity.
+- Resumed-search tests compare interrupted and uninterrupted execution, preserve
+  indexed suffix storage, materialize packed suffix evidence safely, reject
+  backend/proposal drift, and exercise CPU-to-CUDA plus CUDA-to-CPU rotate
+  resume with byte-identical checkpoint payloads and matching proposals.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

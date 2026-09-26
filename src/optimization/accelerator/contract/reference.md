@@ -82,7 +82,21 @@ fingerprint, and immutable completed evidence prefix. It carries no backend or
 device identity and grants no candidate acceptance authority. The codec restores
 state only against the same request and batch.
 
-Executor-level suffix scheduling and result recombination remain separate work.
+`resumable_search.py` adds `evaluated-search-prefix-resume-v1`. It rebuilds the
+exact ordinary candidate batch, decodes the bound checkpoint, evaluates only the
+unfinished suffix through the currently selected backend, recombines ordered
+evidence, reruns the ordinary proposal selector, and revalidates exact candidate
+membership. `candidate_work_items_suffix()` preserves fixed-width indexed storage
+for resumed suffixes rather than forcing per-item materialization.
+
+Restored evidence and resumed proposals remain untrusted; independent
+verification keeps acceptance authority. Prepared-search resume remains separate
+work.
+
+Rotate-target and crazy-target search now construct fresh and resumed execution
+from the same target-owned strategy definitions. Their CPU resume factories and
+backend-parametric resume factories therefore share candidate generation and
+proposal-selection semantics with ordinary search.
 
 CPU callback adapters provide mandatory candidate/search execution capacity
 while search proposals and verification hints remain untrusted. `submission.py` adds

@@ -62,6 +62,7 @@ from accelerator.primitive_candidates import (
     prepared_primitive_reference_word_count,
 )
 from accelerator.primitive_candidates import primitive_evidence_value_at
+from accelerator.resumable_search import ResumableEvaluatedSearchExecution
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
@@ -471,6 +472,26 @@ def crazy_target_full_domain_accumulator_classes(
     return tuple(classes)
 
 
+def _crazy_target_strategy(
+    evaluator: PrimitiveCandidateEvaluationAdapter,
+) -> EvaluatedSearchStrategy:
+    return EvaluatedSearchStrategy(
+        batch_builder=build_crazy_target_batch,
+        proposal_selector=select_crazy_target_proposals,
+        prepared_execution=PreparedCandidateExecution(
+            batch_preparer=None,
+            evaluator=evaluator.evaluate_prepared,
+            selection_aware_preparer=prepare_projected_crazy_candidate_batch,
+            state_count=prepared_primitive_reference_word_count,
+        ),
+        prepared_selection=PreparedProposalSelection(
+            state_preparer=prepare_crazy_target_selection,
+            selector=select_prepared_crazy_target_proposals,
+            state_count=count_prepared_crazy_target_positions,
+        ),
+    )
+
+
 def crazy_target_search_adapter(
     primitive: ExactPrimitiveAdapter,
 ) -> EvaluatedSearchExecutionAdapter:
@@ -487,23 +508,27 @@ def crazy_target_search_adapter(
     return EvaluatedSearchExecutionAdapter(
         CRAZY_TARGET_ALGORITHM_ID,
         evaluator,
-        EvaluatedSearchStrategy(
-            batch_builder=build_crazy_target_batch,
-            proposal_selector=select_crazy_target_proposals,
-            prepared_execution=PreparedCandidateExecution(
-                batch_preparer=None,
-                evaluator=evaluator.evaluate_prepared,
-                selection_aware_preparer=(
-                    prepare_projected_crazy_candidate_batch
-                ),
-                state_count=prepared_primitive_reference_word_count,
-            ),
-            prepared_selection=PreparedProposalSelection(
-                state_preparer=prepare_crazy_target_selection,
-                selector=select_prepared_crazy_target_proposals,
-                state_count=count_prepared_crazy_target_positions,
-            ),
-        ),
+        _crazy_target_strategy(evaluator),
+    )
+
+
+def crazy_target_resume_execution(
+    primitive: ExactPrimitiveAdapter,
+) -> ResumableEvaluatedSearchExecution:
+    """Bind crazy-target checkpoint resume to one exact primitive backend.
+
+    Returns:
+        Resume execution using the same ordinary strategy as fresh search.
+
+    """
+    evaluator = PrimitiveCandidateEvaluationAdapter(
+        primitive,
+        PrimitiveKind.CRAZY,
+    )
+    return ResumableEvaluatedSearchExecution(
+        CRAZY_TARGET_ALGORITHM_ID,
+        evaluator,
+        _crazy_target_strategy(evaluator),
     )
 
 
@@ -515,6 +540,16 @@ def cpu_crazy_target_search_adapter() -> EvaluatedSearchExecutionAdapter:
 
     """
     return crazy_target_search_adapter(CpuExactPrimitiveAdapter())
+
+
+def cpu_crazy_target_resume_execution() -> ResumableEvaluatedSearchExecution:
+    """Construct the mandatory scalar crazy-target resume execution.
+
+    Returns:
+        CPU-backed crazy-target checkpoint resume execution.
+
+    """
+    return crazy_target_resume_execution(CpuExactPrimitiveAdapter())
 
 
 def build_crazy_target_batch(
