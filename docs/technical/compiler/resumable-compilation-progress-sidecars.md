@@ -130,7 +130,7 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Product CLI/compiler integration, portable compiler-state serialization, broader
+Product CLI/compiler integration, concrete compiler/search state codecs, broader
 
 power-loss injection, and CPU/CUDA resume equivalence remain unimplemented.
 
