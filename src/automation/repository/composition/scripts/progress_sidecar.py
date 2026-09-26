@@ -443,6 +443,15 @@ class ResumeIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class PortableCheckpointPosition:
+    """Backend-neutral durable position for one checkpoint generation."""
+
+    checkpoint_sequence: int
+    stage: str
+    units_completed: int
+
+
+@dataclass(frozen=True, slots=True)
 class PortableCheckpoint:
     """Backend-neutral envelope for one opaque resumable state payload."""
 
@@ -551,50 +560,57 @@ def partial_path(output: str | Path, sequence: int) -> Path:
     return Path(f"{_output_path_text(output)}.partial.{sequence:020d}")
 
 
-def _portable_checkpoint_document(
-    identity: ResumeIdentity,
-    checkpoint_sequence: int,
-    stage: str,
-    units_completed: int,
-    state_codec: str,
-    payload: bytes,
-) -> JsonObject:
-    validated_identity = _validate_resume_identity(identity)
+def _validate_checkpoint_position(
+    position: PortableCheckpointPosition,
+) -> PortableCheckpointPosition:
+    if type(position) is not PortableCheckpointPosition:
+        _fail("checkpoint position must use the exact immutable type")
     sequence = _nonnegative_integer(
-        checkpoint_sequence,
+        position.checkpoint_sequence,
         "checkpoint sequence",
     )
     if sequence == 0:
         _fail("portable checkpoint requires a positive checkpoint sequence")
-    _identifier(stage, "checkpoint stage")
-    completed = _nonnegative_integer(
-        units_completed,
+    _identifier(position.stage, "checkpoint stage")
+    _ = _nonnegative_integer(
+        position.units_completed,
         "checkpoint completed units",
     )
+    return position
+
+
+def _portable_checkpoint_document(
+    identity: ResumeIdentity,
+    position: PortableCheckpointPosition,
+    state_codec: str,
+    *,
+    payload: bytes,
+) -> JsonObject:
+    validated_identity = _validate_resume_identity(identity)
+    validated_position = _validate_checkpoint_position(position)
     _identifier(state_codec, "checkpoint state codec")
     if type(payload) is not bytes:
         _fail("checkpoint state payload must use exact immutable bytes")
     encoded = b64encode(payload).decode("ascii")
     return {
-        "checkpoint_sequence": sequence,
+        "checkpoint_sequence": validated_position.checkpoint_sequence,
         "compatibility_fingerprint": resume_compatibility_fingerprint(
             validated_identity,
         ),
         "payload_base64": encoded,
         "payload_sha256": "sha256:" + sha256(payload).hexdigest(),
         "schema": CHECKPOINT_SCHEMA_ID,
-        "stage": stage,
+        "stage": validated_position.stage,
         "state_codec": state_codec,
-        "units_completed": completed,
+        "units_completed": validated_position.units_completed,
     }
 
 
 def encode_portable_checkpoint(
     identity: ResumeIdentity,
-    checkpoint_sequence: int,
-    stage: str,
-    units_completed: int,
+    position: PortableCheckpointPosition,
     state_codec: str,
+    *,
     payload: bytes,
 ) -> bytes:
     """Encode opaque resumable state in one canonical backend-neutral envelope.
@@ -605,11 +621,9 @@ def encode_portable_checkpoint(
     """
     document = _portable_checkpoint_document(
         identity,
-        checkpoint_sequence,
-        stage,
-        units_completed,
+        position,
         state_codec,
-        payload,
+        payload=payload,
     )
     text = json.dumps(
         document,
@@ -646,20 +660,9 @@ def _portable_checkpoint_from_document(
     )
 
 
-def decode_portable_checkpoint(
-    sidecar: ProgressSidecar,
-    state_codec: str,
+def _decode_portable_checkpoint_document(
     checkpoint: bytes,
-) -> bytes:
-    """Validate and decode one canonical backend-neutral checkpoint envelope.
-
-    Returns:
-        Exact opaque state bytes after identity, position, codec, and digest
-        validation.
-
-    """
-    validated = validate(sidecar)
-    _identifier(state_codec, "checkpoint state codec")
+) -> PortableCheckpoint:
     if type(checkpoint) is not bytes:
         _fail("portable checkpoint must use exact immutable bytes")
     try:
@@ -675,24 +678,41 @@ def decode_portable_checkpoint(
         raise
     except ValueError as error:
         _fail(f"invalid checkpoint JSON: {error}")
-    envelope = _portable_checkpoint_from_document(
+    return _portable_checkpoint_from_document(
         _mapping(parsed, "portable checkpoint"),
     )
-    if envelope.schema != CHECKPOINT_SCHEMA_ID:
-        _fail(f"unsupported checkpoint schema: {envelope.schema}")
+
+
+def _validate_checkpoint_identity(
+    sidecar: ProgressSidecar,
+    envelope: PortableCheckpoint,
+) -> None:
     if (
         envelope.compatibility_fingerprint
-        != validated.compatibility_fingerprint
+        != sidecar.compatibility_fingerprint
     ):
         _fail("checkpoint compatibility fingerprint does not match sidecar")
-    if envelope.checkpoint_sequence != validated.checkpoint_sequence:
+    if envelope.checkpoint_sequence != sidecar.checkpoint_sequence:
         _fail("checkpoint sequence does not match sidecar")
-    if envelope.stage != validated.stage:
+    if envelope.stage != sidecar.stage:
         _fail("checkpoint stage does not match sidecar")
-    if envelope.units_completed != validated.units_completed:
+    if envelope.units_completed != sidecar.units_completed:
         _fail("checkpoint completed units do not match sidecar")
+
+
+def _validate_checkpoint_envelope(
+    sidecar: ProgressSidecar,
+    state_codec: str,
+    envelope: PortableCheckpoint,
+) -> None:
+    if envelope.schema != CHECKPOINT_SCHEMA_ID:
+        _fail(f"unsupported checkpoint schema: {envelope.schema}")
     if envelope.state_codec != state_codec:
         _fail("checkpoint state codec does not match requested codec")
+    _validate_checkpoint_identity(sidecar, envelope)
+
+
+def _decode_checkpoint_payload(envelope: PortableCheckpoint) -> bytes:
     _digest(envelope.payload_sha256, "checkpoint payload_sha256")
     try:
         payload = b64decode(envelope.payload_base64, validate=True)
@@ -702,13 +722,41 @@ def decode_portable_checkpoint(
         _fail("checkpoint payload_base64 is not canonical")
     if "sha256:" + sha256(payload).hexdigest() != envelope.payload_sha256:
         _fail("checkpoint payload digest does not match encoded state")
+    return payload
+
+
+def _checkpoint_position_from_envelope(
+    envelope: PortableCheckpoint,
+) -> PortableCheckpointPosition:
+    return PortableCheckpointPosition(
+        checkpoint_sequence=envelope.checkpoint_sequence,
+        stage=envelope.stage,
+        units_completed=envelope.units_completed,
+    )
+
+
+def decode_portable_checkpoint(
+    sidecar: ProgressSidecar,
+    state_codec: str,
+    checkpoint: bytes,
+) -> bytes:
+    """Validate and decode one canonical backend-neutral checkpoint envelope.
+
+    Returns:
+        Exact opaque state bytes after identity, position, codec, and digest
+        validation.
+
+    """
+    validated = validate(sidecar)
+    _identifier(state_codec, "checkpoint state codec")
+    envelope = _decode_portable_checkpoint_document(checkpoint)
+    _validate_checkpoint_envelope(validated, state_codec, envelope)
+    payload = _decode_checkpoint_payload(envelope)
     canonical = encode_portable_checkpoint(
         _resume_identity(validated),
-        envelope.checkpoint_sequence,
-        envelope.stage,
-        envelope.units_completed,
+        _checkpoint_position_from_envelope(envelope),
         state_codec,
-        payload,
+        payload=payload,
     )
     if canonical != checkpoint:
         _fail("portable checkpoint is not canonical")

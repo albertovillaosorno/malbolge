@@ -114,11 +114,12 @@ publication. Only successful or post-commit-failing writes consume the limiter
 window, so a prepublication failure can retry immediately.
 
 `malbolge-checkpoint-v1` now supplies a canonical backend-neutral envelope for
-opaque resumable state. The envelope binds the sidecar compatibility fingerprint,
-checkpoint sequence, stage, completed-unit count, caller-owned versioned state
-codec, payload SHA-256, and canonical base64 payload while intentionally omitting
-CPU/CUDA backend identity. Decoding revalidates all of those fields against the
-sidecar and rejects malformed, noncanonical, or differently identified state.
+opaque resumable state. The envelope binds the sidecar compatibility
+fingerprint, checkpoint sequence, stage, completed-unit count, caller-owned
+versioned state codec, payload SHA-256, and canonical base64 payload while
+intentionally omitting CPU/CUDA backend identity. Decoding revalidates all of
+those fields against the sidecar and rejects malformed, noncanonical, or
+differently identified state.
 The envelope does not define compiler-stage semantics; concrete compiler/search
 state codecs remain owned by their producing subsystems.
 
@@ -271,9 +272,9 @@ jobs that requested resumability.
   exclusion and
   post-lock revalidation: a stale candidate that
   waited behind a newer commit is rejected before mutable-pointer replacement.
-- Portable-checkpoint tests prove that identical opaque state produces byte-exact
-  checkpoint envelopes for CPU and CUDA sidecars and that identity, position,
-  codec, payload, and canonical-encoding drift fail closed.
+- Portable-checkpoint tests prove that identical opaque state produces
+  byte-exact checkpoint envelopes for CPU and CUDA sidecars and that identity,
+  position, codec, payload, and canonical-encoding drift fail closed.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
