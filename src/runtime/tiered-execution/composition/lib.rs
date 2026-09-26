@@ -131,6 +131,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "tier/jit_admission.rs"]
+pub mod native_tier_jit_admission;
 #[path = "tier/jit_attempt.rs"]
 pub mod native_tier_jit_attempt;
 #[path = "tier/jit_rescue.rs"]

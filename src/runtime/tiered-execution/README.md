@@ -27,7 +27,8 @@ It must not bypass another function or architectural kind boundary.
   cycles, exact interpreter-relative JIT promotion gating, lazy AOT-first JIT
   rescue eligibility, exact-key/IR compilation authority retention, explicit
   pre-compilation resource/time scheduling, bounded JIT compilation fallback
-  orchestration, independent outer candidate-latency measurement, and direct
-  JIT candidate semantic admission through reviewed native verifiers.
+  orchestration, independent outer candidate-latency measurement, direct JIT
+  candidate semantic admission through reviewed native verifiers, and fail-
+  closed scheduled candidate-to-verified-artifact routing.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
   monotonic clock, and budget-enforcing JIT compiler contracts.

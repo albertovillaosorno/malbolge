@@ -94,4 +94,8 @@ but discovery never changes observable Malbolge behavior by itself.
   reconstructs the reviewed direct target from retained IR. It rejects key
   drift/deoptimization,
   and reuses the existing byte-canonical semantic verifier before granting
-  `VerifiedDirectNativeArtifact` authority. Installation/dispatch remain open.
+  `VerifiedDirectNativeArtifact` authority.
+
+  Scheduled admission preserves exact AOT bypass, keeps prior interpreter
+  fallbacks unchanged, and returns semantic rejection to the interpreter.
+  Installation/dispatch remain open.

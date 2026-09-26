@@ -131,6 +131,8 @@ pub mod leased_retry;
 pub mod monotonic_clock;
 #[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/composition/tier/jit_admission.rs"]
+pub mod native_tier_jit_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_attempt.rs"]
 pub mod native_tier_jit_attempt;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_rescue.rs"]
@@ -1010,6 +1012,10 @@ use monotonic_clock::NativeContinuationMonotonicClock;
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
+};
+use native_tier_jit_admission::{
+    NativeTierScheduledJitAdmission, NativeTierScheduledJitAdmissionRejection,
+    admit_scheduled_jit_candidate,
 };
 use native_tier_jit_attempt::{
     NativeTierScheduledJitFallback, NativeTierScheduledJitRoute,
@@ -3840,6 +3846,37 @@ impl
                 })
             },
         }
+    }
+}
+
+#[derive(Debug)]
+struct TestCanonicalJitCompiler {
+    calls: usize,
+    object: Vec<u8>,
+}
+
+impl
+    NativeTierJitCompiler<
+        NativeArtifactKey,
+        RegionEffectProgram,
+        Vec<u8>,
+        Infallible,
+    > for TestCanonicalJitCompiler
+{
+    fn compile(
+        &mut self,
+        _request: NativeTierJitCompilationRequest<
+            '_,
+            NativeArtifactKey,
+            RegionEffectProgram,
+        >,
+    ) -> Result<NativeTierJitCompilerOutcome<Vec<u8>>, Infallible> {
+        self.calls = self.calls.saturating_add(1);
+        Ok(NativeTierJitCompilerOutcome::Compiled {
+            artifact: self.object.clone(),
+            elapsed_nanoseconds: 1,
+            object_bytes: self.object.len(),
+        })
     }
 }
 
@@ -34517,6 +34554,181 @@ fn test_promoted_jit_schedule() -> Result<NativeTierJitRescueSchedule, String> {
             )?,
         },
     ))
+}
+
+#[test]
+fn scheduled_jit_admission_promotes_verified_candidate() -> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let program = schedule
+        .uncovered_program()
+        .ok_or_else(|| String::from("scheduled JIT admission lost program"))?
+        .clone();
+    let canonical = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: canonical.object().to_vec(),
+    };
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    if matches!(
+        admission,
+        NativeTierScheduledJitAdmission::VerifiedJit(artifact)
+            if *artifact == canonical
+    ) && compiler.calls == 1
+        && attempt.route() == NativeTierScheduledJitRoute::JitCandidate
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "scheduled JIT candidate did not gain verified authority",
+        ))
+    }
+}
+
+#[test]
+fn scheduled_jit_admission_rejects_mutated_candidate() -> Result<(), String> {
+    let schedule = test_promoted_jit_schedule()?;
+    let program = schedule
+        .uncovered_program()
+        .ok_or_else(|| String::from("scheduled JIT admission lost program"))?
+        .clone();
+    let canonical = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = canonical.object().to_vec();
+    let last = object.last_mut().ok_or_else(|| {
+        String::from("canonical scheduled JIT object was empty")
+    })?;
+    *last ^= 1;
+    let mut compiler = TestCanonicalJitCompiler { calls: 0, object };
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    if matches!(admission, NativeTierScheduledJitAdmission::Interpreter {
+        rejection: Some(NativeTierScheduledJitAdmissionRejection::Candidate(_))
+    }) && attempt.route() == NativeTierScheduledJitRoute::JitCandidate
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "scheduled JIT admission exposed mutated candidate authority",
+        ))
+    }
+}
+
+#[test]
+fn scheduled_jit_admission_preserves_aot_bypass() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &cache.seal(),
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_key = match &selected {
+        AheadOfExecutionPreflightedTier::Direct(artifact) => {
+            Some(artifact.key().clone())
+        },
+        AheadOfExecutionPreflightedTier::Interpreter
+        | AheadOfExecutionPreflightedTier::Uncovered { .. } => None,
+    };
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: Vec::new(),
+    };
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    if matches!(
+        admission,
+        NativeTierScheduledJitAdmission::AheadOfExecution(artifact)
+            if Some(artifact.key()) == expected_key.as_ref()
+    ) && compiler.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "scheduled JIT admission changed AOT precedence",
+        ))
+    }
+}
+
+#[test]
+fn scheduled_jit_admission_preserves_interpreter() -> Result<(), String> {
+    let aot = VerifiedDirectNativeCache::default().seal();
+    let selected = select_ahead_of_execution_preflighted_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        &aot,
+    )
+    .map_err(|error| error.to_string())?;
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
+    let schedule =
+        schedule_aot_first_jit_rescue(rescue, NativeTierJitCompilationBudget {
+            maximum_nanoseconds: NonZeroU64::MIN,
+            maximum_object_bytes: NonZeroUsize::MIN,
+        });
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: Vec::new(),
+    };
+    let mut clock = TestMonotonicClock::default();
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    if admission
+        == (NativeTierScheduledJitAdmission::Interpreter { rejection: None })
+        && compiler.calls == 0
+        && attempt.route() == NativeTierScheduledJitRoute::Interpreter
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "scheduled JIT admission changed interpreter fallback",
+        ))
+    }
 }
 
 #[test]

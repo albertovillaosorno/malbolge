@@ -922,7 +922,9 @@ behavior.
   monotonic clock. Clock failure, outer overrun, and every non-candidate outcome
   retain interpreter authority. Direct JIT candidate admission repeats profile
   preflight, exact target selection, complete-key equality, and existing direct
-  byte verification; deoptimization-only candidates are rejected.
+  byte verification; deoptimization-only candidates are rejected. Scheduled
+  admission now preserves AOT/interpreter bypass and exposes native authority
+  only as `VerifiedDirectNativeArtifact`.
 - Durable AOT preparation/loading, reduced state-graph artifact admission,
   native graph-transition dispatch, JIT executable installation, and executable
   in-process dispatch remain unimplemented. Durable cache

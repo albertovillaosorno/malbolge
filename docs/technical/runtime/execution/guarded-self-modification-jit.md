@@ -62,7 +62,10 @@ retained `RegionEffectProgram`, deterministically selects the reviewed direct
 template, and requires its complete `NativeArtifactKey` to equal the compiler
 claim. Candidates selecting only the deoptimization stub are rejected. Object
 bytes remain untrusted until the existing byte-canonical direct verifier for the
-selected template promotes them to `VerifiedDirectNativeArtifact`.
+selected template promotes them to `VerifiedDirectNativeArtifact`. Scheduled JIT
+composition now invokes that admission only for `JitCandidate`; AOT remains
+untouched, prior interpreter fallbacks stay interpreted, and admission rejection
+returns to the interpreter with typed evidence.
 
 Executable installation and JIT dispatch remain unimplemented.
 

@@ -2328,6 +2328,9 @@ claim. It repeats profile/runtime preflight from the retained IR, reconstructs
 the reviewed direct target, rejects complete-key drift and deoptimization-only
 selection, then reuses that target's existing byte-canonical semantic verifier.
 Only the resulting `VerifiedDirectNativeArtifact` has native artifact authority.
+A dedicated scheduled-admission composition preserves AOT and existing
+interpreter routes without admission work, promotes only verified JIT bytes, and
+maps admission rejection back to interpreter authority.
 
 Executable installation and JIT dispatch remain open.
 
