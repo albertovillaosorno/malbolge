@@ -194,7 +194,9 @@ through the production Python sidecar writer, inject process death at every
 checkpoint/pointer publication boundary relevant when no partial artifact is
 present, and resume through the Rust composition bridge plus production
 inspector. Before pointer replacement, resume restores the previous committed
-generation; after pointer replacement, it restores the new generation.
+generation; after pointer replacement, it restores the new generation. The
+fixture deliberately moves from a CPU sidecar to a CUDA sidecar at generation
+two, so the same matrix also exercises backend-neutral compiler-state handoff.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -412,8 +414,6 @@ jobs that requested resumability.
   envelopes under CPU and CUDA sidecar identities, with identical verified
   metadata and byte-exact decoded compiler state. Backend/device identity is not
   part of portable typed-IR checkpoint compatibility.
-- CPU and CUDA fixtures resume from a common canonical checkpoint and produce
-  the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
   phase, reject foreign phases, corrupt direct timer state, boolean/negative/
   backward samples, and prove
@@ -422,8 +422,9 @@ jobs that requested resumability.
 - Direct-construction tests mutate resume identity and sidecar fields, reject
   boolean sequence aliases and impossible UTC dates, and prove pointer
   publication validates the referenced checkpoint/partial generation first.
-- End-to-end CLI tests prove that the final artifact is atomic while the sidecar
-  remains continuously inspectable.
+- Final `.malbolge` artifact publication remains an open verification item.
+  No current compiler backend emits that artifact, so atomic final publication
+  and continuous sidecar inspection are not yet claimed as implemented evidence.
 
 ## References
 

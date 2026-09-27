@@ -189,7 +189,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   through
   ten typed-IR checkpoint/pointer crash boundaries and resumes each result via
   the Rust composition bridge and production inspector. Pre-pointer crashes
-  restore the prior generation; post-replacement crashes restore the new one.
+  restore the prior CPU generation; post-replacement crashes restore the new
+  CUDA-labelled generation, while checkpoint compatibility remains backend
+  neutral.
 - Product CLI sidecar selection/wiring, later compiler-stage codecs,
   later-stage/final-artifact crash injection, and later compiler-execution
   CPU/CUDA resume equivalence remain open; this TODO is therefore active.
