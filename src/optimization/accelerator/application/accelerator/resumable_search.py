@@ -51,6 +51,9 @@ from accelerator.work_ports import validated_candidate_evaluation_result
 from accelerator.work_ports import validated_search_result
 
 RESUMABLE_EVALUATED_SEARCH_ID = "evaluated-search-prefix-resume-v1"
+RESUMABLE_PREPARED_EVALUATED_SEARCH_ID = (
+    "prepared-evaluated-search-prefix-resume-v1"
+)
 
 if TYPE_CHECKING:
     from accelerator.evaluated_search import EvaluatedSearchStrategy
@@ -69,6 +72,82 @@ def resumable_evaluated_search_id() -> str:
 
     """
     return RESUMABLE_EVALUATED_SEARCH_ID
+
+
+def resumable_prepared_evaluated_search_id() -> str:
+    """Return the stable prepared evaluated-search resume identity.
+
+    Returns:
+        Stable identity for prepared-search resume evidence.
+
+    """
+    return RESUMABLE_PREPARED_EVALUATED_SEARCH_ID
+
+
+@final
+class ResumablePreparedEvaluatedSearchExecution(
+    EvaluatedSearchExecutionAdapter
+):
+    """Bind one prepared evaluated-search strategy to durable prefix state."""
+
+    def __init__(
+        self,
+        algorithm_id: str,
+        adapter: CandidateEvaluationAdapter,
+        strategy: EvaluatedSearchStrategy,
+    ) -> None:
+        """Validate and retain one exact prepared strategy and evaluator."""
+        super().__init__(algorithm_id, adapter, strategy)
+        self._resume_algorithm_id = algorithm_id
+
+    def checkpoint_batch(
+        self,
+        request: SearchRequest,
+    ) -> CandidateEvaluationBatch:
+        """Return the exact prepared evaluation batch bound by checkpoints.
+
+        Returns:
+            Deterministically reconstructed full or projected evaluation batch.
+
+        """
+        validated_request = _validated_request(
+            request,
+            self._resume_algorithm_id,
+        )
+        prepared = self.prepare(validated_request)
+        return self._prepared(prepared).evaluation_batch
+
+    def resume(
+        self,
+        request: SearchRequest,
+        checkpoint: bytes,
+    ) -> SearchResult:
+        """Resume prepared search from exact projected evidence prefix.
+
+        Returns:
+            Structurally valid untrusted proposals after prepared suffix
+            evaluation and prepared selection.
+
+        """
+        validated_request = _validated_request(
+            request,
+            self._resume_algorithm_id,
+        )
+        prepared = self.prepare(validated_request)
+        resolved = self._prepared(prepared)
+        state = decode_search_checkpoint(
+            checkpoint,
+            validated_request,
+            resolved.evaluation_batch,
+        )
+        capability = self.capability()
+        evidence = self._resume_prepared_evidence(
+            resolved,
+            state.completed_evidence,
+            capability,
+        )
+        proposals = self._selected_prepared(resolved, evidence)
+        return self._result(validated_request, capability, proposals)
 
 
 @final

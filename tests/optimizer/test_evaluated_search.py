@@ -636,6 +636,29 @@ def test_prepared_execution_requires_exactly_one_preparer() -> None:
         )
 
 
+def test_prepared_resume_preparer_must_be_callable() -> None:
+    """Prepared suffix reconstruction rejects a non-callable callback."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    invalid = cast("SearchBatchPreparer", object())
+
+    _expect_error(
+        "prepared candidate resume preparer must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=PreparedCandidateExecution(
+                    batch_preparer=_prepare_identity_batch,
+                    evaluator=_evaluate_identity_state,
+                    resume_preparer=invalid,
+                ),
+            ),
+        ),
+    )
+
+
 def test_prepared_candidate_execution_reuses_explicit_state() -> None:
     """A strategy-owned prepared state drives repeated candidate execution."""
     evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)

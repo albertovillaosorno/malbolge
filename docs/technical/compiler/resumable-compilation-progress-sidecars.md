@@ -140,6 +140,15 @@ membership. Fixed-width indexed candidate storage remains packed across suffix
 projection. Restored evidence remains untrusted and does not bypass independent
 verification.
 
+`prepared-evaluated-search-prefix-resume-v1` applies the same evidence codec to
+prepared search without downgrading to ordinary evaluation. Resume reconstructs
+the strategy-owned prepared projection, requires the checkpoint to match that
+exact evaluation batch, re-prepares only the unfinished projected suffix, and
+then reruns prepared proposal selection against the original full candidate
+batch. Ordinary batch preparers are reusable for suffix state automatically;
+selection-aware strategies must declare an explicit `resume_preparer`. Rotate
+and crazy target strategies bind their primitive suffix preparers explicitly.
+
 Rotate-target and crazy-target expose target-owned resume factories that reuse
 the exact ordinary strategy definitions rather than reconstructing selection
 behavior at the call site.
@@ -185,9 +194,8 @@ typed-IR state only; no compiler pipeline stage currently publishes or resumes
 that state through `malbolge-progress-v1`.
 
 Single-command sidecar discovery in the product/compiler CLI, typed-IR pipeline
-resume wiring, later compiler-stage codecs, prepared-search resume,
-compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
-equivalence remain unimplemented.
+resume wiring, later compiler-stage codecs, compiler-pipeline crash injection,
+and compiler/non-search CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -353,6 +361,9 @@ jobs that requested resumability.
 - Typed-IR compiler tests round-trip canonical and extended semantic modules,
   reject every truncated canonical prefix, unknown tags, wrong magic/version,
   invalid UTF-8, trailing bytes, and semantically invalid restored modules.
+- Prepared-search resume tests cover partial and completed projected prefixes,
+  empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
+  equivalence, and CPU-produced checkpoint resume through live CUDA.
 - Search CLI tests cover CPU resume, unavailable-CUDA fallback, live CUDA
   resume, unsupported-algorithm rejection, checkpoint file loading,
   malformed-state rejection, resumed JSON checkpoint/executor provenance, and

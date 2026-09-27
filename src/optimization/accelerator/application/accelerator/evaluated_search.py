@@ -47,19 +47,21 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
+from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateEvaluationResult
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchResult
+from accelerator.work_ports import candidate_work_items_suffix
 from accelerator.work_ports import validated_accelerator_capability
 from accelerator.work_ports import validated_candidate_evaluation_result
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import CandidateEvaluationAdapter
-    from accelerator.work_ports import CandidateEvaluationBatch
+    from accelerator.work_ports import CandidateEvidence
     from accelerator.work_ports import CandidateWorkItem
     from accelerator.work_ports import PreparedCandidateSubset
     from accelerator.work_ports import SearchRequest
@@ -105,6 +107,7 @@ type SearchStrategyKey = tuple[
     SearchProposalSelector,
     SearchBatchPreparer | None,
     SearchSelectionAwareBatchPreparer | None,
+    SearchBatchPreparer | None,
     SearchCandidateStateCount | None,
     SearchSelectionPreparer | None,
     SearchPreparedProposalSelector | None,
@@ -286,6 +289,7 @@ class PreparedCandidateExecution:
 
     batch_preparer: SearchBatchPreparer | None
     evaluator: SearchPreparedEvaluator
+    resume_preparer: SearchBatchPreparer | None = None
     selection_aware_preparer: SearchSelectionAwareBatchPreparer | None = None
     state_count: SearchCandidateStateCount | None = None
 
@@ -328,6 +332,11 @@ def _validate_prepared_execution(value: object) -> None:
         raise InvalidAcceleratorWorkError(message)
     _validate_candidate_preparer(value)
     _require_callable(value.evaluator, "prepared candidate evaluator")
+    if value.resume_preparer is not None:
+        _require_callable(
+            value.resume_preparer,
+            "prepared candidate resume preparer",
+        )
     if value.state_count is not None:
         _require_callable(value.state_count, "prepared candidate state counter")
 
@@ -475,9 +484,21 @@ class _ResolvedPreparedSearch:
     selection_state: object
 
 
-@final
 class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     """Run one search strategy through a replaceable candidate evaluator."""
+
+    _adapter: CandidateEvaluationAdapter
+    _algorithm_id: str
+    _batch_builder: SearchBatchBuilder
+    _batch_preparer: SearchBatchPreparer | None
+    _candidate_state_count: SearchCandidateStateCount | None
+    _prepared_evaluator: SearchPreparedEvaluator | None
+    _prepared_proposal_selector: SearchPreparedProposalSelector | None
+    _proposal_selector: SearchProposalSelector
+    _resume_preparer: SearchBatchPreparer | None
+    _selection_aware_batch_preparer: SearchSelectionAwareBatchPreparer | None
+    _selection_preparer: SearchSelectionPreparer | None
+    _selection_state_count: SearchSelectionStateCount | None
 
     def __init__(
         self,
@@ -513,6 +534,12 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         self._prepared_evaluator = (
             None if prepared_execution is None else prepared_execution.evaluator
         )
+        self._resume_preparer = (
+            None
+            if prepared_execution is None
+            else prepared_execution.resume_preparer
+            or prepared_execution.batch_preparer
+        )
         self._selection_aware_batch_preparer = (
             None
             if prepared_execution is None
@@ -543,6 +570,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             validated_strategy.proposal_selector,
             self._batch_preparer,
             self._selection_aware_batch_preparer,
+            self._resume_preparer,
             self._candidate_state_count,
             self._selection_preparer,
             self._prepared_proposal_selector,
@@ -857,6 +885,53 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         )
         proposals = self._selected_prepared(resolved, evidence)
         return self._result(resolved.request, capability, proposals)
+
+    def _resume_prepared_evidence(
+        self,
+        resolved: _ResolvedPreparedSearch,
+        completed_evidence: tuple[CandidateEvidence, ...],
+        capability: AcceleratorCapability,
+    ) -> CandidateEvaluationResult:
+        remaining_batch = CandidateEvaluationBatch(
+            evaluator_id=resolved.evaluation_batch.evaluator_id,
+            items=candidate_work_items_suffix(
+                resolved.evaluation_batch.items,
+                len(completed_evidence),
+            ),
+        ).validated()
+        remaining = self._evaluate_prepared_resume_suffix(
+            resolved,
+            remaining_batch,
+            capability,
+        )
+        return CandidateEvaluationResult(
+            capability=capability,
+            evaluator_id=resolved.evaluation_batch.evaluator_id,
+            items=completed_evidence + remaining,
+        ).validated_against(resolved.evaluation_batch, capability)
+
+    def _evaluate_prepared_resume_suffix(
+        self,
+        resolved: _ResolvedPreparedSearch,
+        remaining_batch: CandidateEvaluationBatch,
+        capability: AcceleratorCapability,
+    ) -> tuple[CandidateEvidence, ...]:
+        if not remaining_batch.items:
+            return ()
+        if resolved.candidate_state is _NO_CANDIDATE_STATE:
+            result = self._evaluated(remaining_batch, capability)
+        else:
+            if (
+                self._resume_preparer is None
+                or self._prepared_evaluator is None
+            ):
+                message = "prepared candidate state has no resume preparer"
+                raise InvalidAcceleratorWorkError(message)
+            state = self._resume_preparer(remaining_batch)
+            result = validated_candidate_evaluation_result(
+                self._prepared_evaluator(state)
+            ).validated_against(remaining_batch, capability)
+        return result.materialized_items_against(remaining_batch, capability)
 
     def _evaluated_prepared(
         self,

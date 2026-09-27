@@ -144,8 +144,16 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `tests/optimizer/test_resumable_search.py` covers interrupted/uninterrupted
   equivalence, completed checkpoints, packed evidence, failure paths, and live
   CPU-to-CUDA plus CUDA-to-CPU rotate and crazy-target resume with
-  byte-identical
-  checkpoint bytes and matching proposals.
+  byte-identical checkpoint bytes and matching proposals.
+- `prepared-evaluated-search-prefix-resume-v1` reconstructs exact prepared
+  projection state, binds checkpoints to the projected evaluation batch,
+  re-prepares only unfinished suffix state, and reruns prepared selection
+  against
+  the full candidate batch. Rotate/crazy selection-aware strategies declare
+  explicit primitive suffix preparers.
+  `tests/optimizer/test_resumable_prepared_search.py` covers partial/completed
+  prefixes, projected-batch mismatch rejection, uninterrupted equivalence, and
+  CPU checkpoint resume through live CUDA.
 - `optimizer.cli` accepts `--resume-checkpoint` for rotate/crazy inner search
   state, preserves configured/actual backend identity and accelerator-failure
   fallback, rejects malformed/unsupported resume state, and emits checkpoint
@@ -162,9 +170,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and noncanonical re-encoding; `tests/compiler_ir.rs` covers canonical and
   extended round trips plus malformed-wire and full-validation failures.
 - Single-command product/compiler sidecar discovery, typed-IR pipeline resume
-  wiring, later compiler-stage codecs, prepared-search resume, compiler-pipeline
-  crash injection, and compiler/non-search CPU/CUDA resume equivalence remain
-  open; this TODO is therefore active.
+  wiring, later compiler-stage codecs, compiler-pipeline crash injection, and
+  compiler/non-search CPU/CUDA resume equivalence remain open; this TODO is
+  therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

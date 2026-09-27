@@ -63,6 +63,9 @@ from accelerator.primitive_candidates import (
 )
 from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.resumable_search import ResumableEvaluatedSearchExecution
+from accelerator.resumable_search import (
+    ResumablePreparedEvaluatedSearchExecution,
+)
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
@@ -481,6 +484,7 @@ def _crazy_target_strategy(
         prepared_execution=PreparedCandidateExecution(
             batch_preparer=None,
             evaluator=evaluator.evaluate_prepared,
+            resume_preparer=prepare_crazy_candidate_batch,
             selection_aware_preparer=prepare_projected_crazy_candidate_batch,
             state_count=prepared_primitive_reference_word_count,
         ),
@@ -506,6 +510,26 @@ def crazy_target_search_adapter(
         PrimitiveKind.CRAZY,
     )
     return EvaluatedSearchExecutionAdapter(
+        CRAZY_TARGET_ALGORITHM_ID,
+        evaluator,
+        _crazy_target_strategy(evaluator),
+    )
+
+
+def crazy_target_prepared_resume_execution(
+    primitive: ExactPrimitiveAdapter,
+) -> ResumablePreparedEvaluatedSearchExecution:
+    """Bind crazy-target prepared resume to one exact primitive backend.
+
+    Returns:
+        Prepared resume execution using the ordinary prepared strategy.
+
+    """
+    evaluator = PrimitiveCandidateEvaluationAdapter(
+        primitive,
+        PrimitiveKind.CRAZY,
+    )
+    return ResumablePreparedEvaluatedSearchExecution(
         CRAZY_TARGET_ALGORITHM_ID,
         evaluator,
         _crazy_target_strategy(evaluator),
@@ -540,6 +564,17 @@ def cpu_crazy_target_search_adapter() -> EvaluatedSearchExecutionAdapter:
 
     """
     return crazy_target_search_adapter(CpuExactPrimitiveAdapter())
+
+
+def cpu_crazy_target_prepared_resume_execution(
+) -> ResumablePreparedEvaluatedSearchExecution:
+    """Construct mandatory scalar crazy-target prepared resume execution.
+
+    Returns:
+        CPU-backed prepared checkpoint resume execution.
+
+    """
+    return crazy_target_prepared_resume_execution(CpuExactPrimitiveAdapter())
 
 
 def cpu_crazy_target_resume_execution() -> ResumableEvaluatedSearchExecution:

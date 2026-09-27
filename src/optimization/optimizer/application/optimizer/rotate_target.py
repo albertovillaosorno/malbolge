@@ -62,6 +62,9 @@ from accelerator.primitive_candidates import (
 )
 from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.resumable_search import ResumableEvaluatedSearchExecution
+from accelerator.resumable_search import (
+    ResumablePreparedEvaluatedSearchExecution,
+)
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
@@ -229,6 +232,7 @@ def _rotate_target_strategy(
         prepared_execution=PreparedCandidateExecution(
             batch_preparer=None,
             evaluator=evaluator.evaluate_prepared,
+            resume_preparer=prepare_rotate_candidate_batch,
             selection_aware_preparer=prepare_projected_rotate_candidate_batch,
             state_count=prepared_primitive_reference_word_count,
         ),
@@ -254,6 +258,26 @@ def rotate_target_search_adapter(
         PrimitiveKind.ROTATE,
     )
     return EvaluatedSearchExecutionAdapter(
+        ROTATE_TARGET_ALGORITHM_ID,
+        evaluator,
+        _rotate_target_strategy(evaluator),
+    )
+
+
+def rotate_target_prepared_resume_execution(
+    primitive: ExactPrimitiveAdapter,
+) -> ResumablePreparedEvaluatedSearchExecution:
+    """Bind rotate-target prepared resume to one exact primitive backend.
+
+    Returns:
+        Prepared resume execution using the ordinary prepared strategy.
+
+    """
+    evaluator = PrimitiveCandidateEvaluationAdapter(
+        primitive,
+        PrimitiveKind.ROTATE,
+    )
+    return ResumablePreparedEvaluatedSearchExecution(
         ROTATE_TARGET_ALGORITHM_ID,
         evaluator,
         _rotate_target_strategy(evaluator),
@@ -288,6 +312,17 @@ def cpu_rotate_target_search_adapter() -> EvaluatedSearchExecutionAdapter:
 
     """
     return rotate_target_search_adapter(CpuExactPrimitiveAdapter())
+
+
+def cpu_rotate_target_prepared_resume_execution(
+) -> ResumablePreparedEvaluatedSearchExecution:
+    """Construct mandatory scalar rotate-target prepared resume execution.
+
+    Returns:
+        CPU-backed prepared checkpoint resume execution.
+
+    """
+    return rotate_target_prepared_resume_execution(CpuExactPrimitiveAdapter())
 
 
 def cpu_rotate_target_resume_execution() -> ResumableEvaluatedSearchExecution:

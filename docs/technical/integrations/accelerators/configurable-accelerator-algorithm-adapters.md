@@ -119,6 +119,14 @@ failure to CPU reference, and records checkpoint SHA-256 plus resume executor
 identity in JSON. Unsupported algorithms, malformed checkpoints, and request or
 batch drift fail explicitly.
 
+Prepared rotate/crazy execution also supports durable evidence-prefix resume
+under `prepared-evaluated-search-prefix-resume-v1`. The checkpoint binds the
+strategy-reconstructed projected evaluation batch rather than the full corpus.
+Resume re-prepares only the unfinished projected suffix through the prepared
+backend path, recombines evidence, and reruns prepared selection against the
+original full batch. Selection-aware strategies must declare an exact suffix
+preparer; they do not silently fall back to ordinary evaluation.
+
 The progress-sidecar inspector provides
 `--extract-checkpoint STATE_CODEC PROGRESS.json` as the composition bridge from
 a durable `malbolge-progress-v1` pointer and portable outer envelope into that
