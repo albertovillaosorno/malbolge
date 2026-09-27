@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Purpose
 
@@ -29,7 +29,33 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+All declared prerequisites are complete, so implementation may now proceed. No
+executable ternary lowering exists yet, and this contract does not claim target
+code support before that implementation lands.
+
+### Authoritative Inputs
+
+The first implementation must consume existing identities without renaming or
+reinterpreting them:
+
+- canonical compiler state is `malbolge-typed-ir-v1` under ABI
+  `malbolge-c32-v1`, preserving the module's exact source and target-profile
+  provenance;
+- guest-runtime semantics are versioned by `malbolge-guest-runtime-v1`, whose
+  current reviewed target profile is `malbolge-2026`;
+- compiler-generated startup must realize the one-shot
+  `malbolge_guest_runtime_bind_heap` entry before allocation wrappers become
+  available to user code;
+- byte input and output must realize the exact declaration-only identities
+  `malbolge_guest_intrinsic_input_word` and
+  `malbolge_guest_intrinsic_output_byte`; and
+- the guest-runtime contract's `host_fallback` value is `forbidden`, so none of
+  these operations may be replaced by host callbacks in accepted lowering.
+
+No ternary-stage serialization identity is defined yet. The implementation must
+introduce one only together with its concrete deterministic representation and
+round-trip or normalized golden evidence; this document does not reserve an
+unimplemented wire name.
 
 ## Invariants
 

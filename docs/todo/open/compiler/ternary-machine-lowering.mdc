@@ -1,6 +1,6 @@
 ---
 id: "ternary-machine-lowering"
-status: "pending"
+status: "active"
 lane: "9"
 priority: "p2"
 area: "compiler"
@@ -48,6 +48,14 @@ instruction.
 
 ## Evidence
 
+- All declared prerequisites are completed: `typed-compiler-ir`,
+  `guest-runtime-and-allocator`, `malbolge-specific-optimization-mathematics`,
+  and `documentation-readiness-and-implementation-gate`.
+- The governing contract now pins the already-authoritative inbound identities:
+  `malbolge-typed-ir-v1`, `malbolge-c32-v1`, `malbolge-guest-runtime-v1`,
+  `malbolge_guest_runtime_bind_heap`, `malbolge_guest_intrinsic_input_word`, and
+  `malbolge_guest_intrinsic_output_byte`, with host fallback explicitly
+  forbidden. No ternary-stage wire identity is reserved before implementation.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
