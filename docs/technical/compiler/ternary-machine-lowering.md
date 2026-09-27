@@ -44,10 +44,17 @@ byte-effect operations with SSA type/order validation. These operations preserve
 the typed IR's successful `u8` semantics and do not impersonate the raw profile
 input word or its EOF case.
 
+The separate raw runtime-intrinsic port admits only
+`malbolge_guest_intrinsic_input_word` and
+`malbolge_guest_intrinsic_output_byte` under the exact `malbolge-2026` profile.
+Those identities lower to distinct pre-layout `InputWord` and `OutputByte`
+operations; `InputWord` explicitly includes the selected profile's EOF word.
+Unknown intrinsic names or profile drift fail closed.
+
 This is executable compiler lowering but not target code generation. Layout,
-address assignment, raw input-word/EOF mapping, declaration-only runtime
-intrinsic realization, target serialization, and Malbolge encoding remain
-downstream work.
+address assignment, current-profile `/`/`<` opcode realization, guest-runtime
+EOF decoding, target serialization, and Malbolge encoding remain downstream
+work.
 
 ### Authoritative Inputs
 
@@ -89,7 +96,8 @@ wire name.
 
 Malformed inbound projection identity, retained globals/proof obligations,
 non-`i32` or malformed constants, non-`u8` byte input, byte output before a byte
-definition, duplicate projected SSA identities, byte-valued returns,
+definition, duplicate projected SSA identities, byte-valued returns, unknown raw
+runtime intrinsic names, runtime-intrinsic profile drift,
 multi-block/phi/parameterized function shapes, and unsupported instructions or
 terminators fail closed before a pre-layout target program is returned. Later
 layout/profile failures must likewise fail before accepted target code is
@@ -114,11 +122,14 @@ emitted.
   `i32` return path. Adversarial projection tests reject non-`u8` input,
   undefined
   output values, duplicate SSA IDs, and byte-valued returns.
-- The byte-effect evidence is intentionally below raw runtime intrinsic
-  realization: `malbolge_guest_intrinsic_input_word` still needs profile-word
-  and
-  EOF mapping to current `/` semantics, and
-  `malbolge_guest_intrinsic_output_byte` still needs executable `<` realization.
+- Raw intrinsic identity evidence reads the guest-runtime JSON contract and
+  declaration header, proves the exact input/output names remain synchronized,
+  lowers only those names under `malbolge-2026` to distinct `InputWord` and
+  `OutputByte` semantics, and rejects unknown names or profile drift.
+- Runtime identity admission is still below executable machine realization:
+  current-profile `/`/`<` opcode assignment and guest-runtime EOF decoding
+  remain
+  open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

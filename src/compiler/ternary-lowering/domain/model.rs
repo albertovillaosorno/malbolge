@@ -98,6 +98,15 @@ impl TernaryI32Scalar {
     }
 }
 
+/// One declaration-only guest-runtime operation before profile opcode encoding.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeIntrinsicOperation {
+    /// Read one raw selected-profile input word, including the EOF word.
+    InputWord,
+    /// Emit one exact guest byte through the selected profile.
+    OutputByte,
+}
+
 /// One deterministic pre-layout ternary operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryOperation {

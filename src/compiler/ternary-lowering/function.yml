@@ -58,6 +58,16 @@ parts:
     kind: composition
     language: rust
     responsibility: Declare the canonical ternary-lowering module topology.
+  - id: part-0005
+    path: port-inbound/runtime_intrinsic.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Define exact declaration-only runtime intrinsic requests.
+  - id: part-0006
+    path: application/lower_runtime_intrinsic.rs
+    kind: application
+    language: rust
+    responsibility: Admit exact byte-I/O intrinsic identities fail closed.
 projects: []
 tests: []
 graph:

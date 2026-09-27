@@ -74,11 +74,17 @@ instruction.
   projections with non-`u8` input, undefined output, duplicate SSA identity, or
   byte-valued return fail closed. These target effects deliberately do not claim
   raw profile-word/EOF or declaration-only intrinsic realization.
+- A separate inbound runtime-intrinsic request now admits only the exact
+  `malbolge_guest_intrinsic_input_word` and
+  `malbolge_guest_intrinsic_output_byte` identities under `malbolge-2026`,
+  lowering them to distinct raw `InputWord`/`OutputByte` pre-layout operations.
+  Tests cross-check both identities against the guest-runtime JSON authority and
+  declaration header and reject unknown identities or profile drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
-  one-shot heap startup binding, raw profile-word/EOF and exact byte-I/O
-  intrinsic realization, later
-  runtime helpers, target serialization, and executable Malbolge-oriented
-  lowering evidence. No ternary-stage wire identity exists yet.
+  one-shot heap startup binding, current-profile `/`/`<` opcode realization,
+  guest-runtime EOF decode/helper lowering, later runtime helpers, target
+  serialization, and executable Malbolge-oriented lowering evidence. No
+  ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

@@ -45,7 +45,9 @@ use malbolge as _;
 use ternary_lowering::{
     I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
     InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
-    TernaryLoweringError, TernaryOperation, TypedIrInput, lower_typed_ir,
+    RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
+    RuntimeIntrinsicRequest, TernaryLoweringError, TernaryOperation,
+    TypedIrInput, lower_runtime_intrinsic, lower_typed_ir,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
@@ -59,6 +61,10 @@ const RETURN_GOLDEN: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
 const SELECT_GOLDEN: &str = "tests/compiler/typed-ir/golden/select.hex";
 const BYTE_IO_SOURCE_HASH: [u8; 32] = [0x6b; 32];
+const GUEST_INTRINSICS_HEADER: &str =
+    "src/runtime/guest-runtime/contract/guest_intrinsics.h";
+const GUEST_RUNTIME_CONTRACT: &str =
+    "src/runtime/guest-runtime/contract/guest-runtime-v1.json";
 
 fn admitted_byte_io_fixture() -> Result<Module, String> {
     let module = byte_io_module();
@@ -676,6 +682,72 @@ fn projection_identity_drift_fails_closed() -> Result<(), String> {
     input.target_profile = String::from("other-profile");
     if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
         return Err(String::from("target profile drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_intrinsic_identities_match_guest_runtime_authority()
+-> Result<(), String> {
+    let contract = read_to_string(GUEST_RUNTIME_CONTRACT)
+        .map_err(|error| format!("read guest-runtime contract: {error}"))?;
+    let header = read_to_string(GUEST_INTRINSICS_HEADER)
+        .map_err(|error| format!("read guest intrinsic header: {error}"))?;
+    for expected in [
+        "malbolge_guest_intrinsic_input_word",
+        "malbolge_guest_intrinsic_output_byte",
+    ] {
+        if !contract.contains(expected) || !header.contains(expected) {
+            return Err(format!(
+                "runtime intrinsic authority missing {expected}"
+            ));
+        }
+    }
+    if !contract.contains("\"target_profile\": \"malbolge-2026\"") {
+        return Err(String::from("guest-runtime target profile drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_byte_io_intrinsic_identities_lower_exactly() -> Result<(), String> {
+    let input = RuntimeIntrinsicRequest {
+        identity: String::from("malbolge_guest_intrinsic_input_word"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    let output = RuntimeIntrinsicRequest {
+        identity: String::from("malbolge_guest_intrinsic_output_byte"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    if lower_runtime_intrinsic(&input)
+        != Ok(RuntimeIntrinsicOperation::InputWord)
+        || lower_runtime_intrinsic(&output)
+            != Ok(RuntimeIntrinsicOperation::OutputByte)
+    {
+        return Err(String::from(
+            "runtime intrinsic identity lowering drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_intrinsic_identity_or_profile_drift_fails_closed() -> Result<(), String>
+{
+    let unknown = RuntimeIntrinsicRequest {
+        identity: String::from("host_getchar"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    let wrong_profile = RuntimeIntrinsicRequest {
+        identity: String::from("malbolge_guest_intrinsic_input_word"),
+        target_profile: String::from("malbolge-1998"),
+    };
+    if lower_runtime_intrinsic(&unknown)
+        != Err(RuntimeIntrinsicLoweringError::UnsupportedIdentity)
+        || lower_runtime_intrinsic(&wrong_profile)
+            != Err(RuntimeIntrinsicLoweringError::UnsupportedProfile)
+    {
+        return Err(String::from("runtime intrinsic drift was not rejected"));
     }
     Ok(())
 }

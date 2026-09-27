@@ -37,9 +37,17 @@
 mod input;
 #[path = "../application/lower.rs"]
 mod lower;
+#[path = "../application/lower_runtime_intrinsic.rs"]
+mod lower_runtime_intrinsic;
 #[path = "../domain/model.rs"]
 mod model;
+#[path = "../port-inbound/runtime_intrinsic.rs"]
+mod runtime_intrinsic_input;
 
 pub use input::*;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
+pub use lower_runtime_intrinsic::{
+    RuntimeIntrinsicLoweringError, lower_runtime_intrinsic,
+};
 pub use model::*;
+pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;
