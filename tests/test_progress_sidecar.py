@@ -545,6 +545,18 @@ def _with_checkpoint_bytes(
     return replace(sidecar, checkpoint_sha256=_digest(checkpoint))
 
 
+def _portable_state(
+    sidecar: progress.ProgressSidecar,
+    codec: str,
+) -> bytes:
+    state, partial = progress.read_portable_checkpoint_generation(
+        sidecar,
+        codec,
+    )
+    assert partial is None
+    return state
+
+
 def test_portable_checkpoint_is_backend_neutral_and_durable(
     tmp_path: Path,
 ) -> None:
@@ -590,6 +602,43 @@ def test_portable_checkpoint_is_backend_neutral_and_durable(
         progress.decode_portable_checkpoint(durable, codec, restored)
         == state
     )
+
+
+def test_typed_ir_checkpoint_is_cpu_cuda_identity_neutral(
+    tmp_path: Path,
+) -> None:
+    """Canonical typed-IR state is identical across CPU/CUDA sidecar routes."""
+    cpu = _checkpointed(_sidecar(tmp_path), partial=None)
+    cuda = replace(cpu, backend="cuda", device="cuda-device-0")
+    state = _typed_ir_golden_state("select.hex")
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(cpu),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    )
+    assert progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(cuda),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    ) == checkpoint
+    destination = progress.write_checkpoint_generation(
+        _with_checkpoint_bytes(cpu, checkpoint),
+        checkpoint,
+    )
+    committed_cpu = progress.read(destination)
+    committed_cuda = replace(
+        committed_cpu,
+        backend=cuda.backend,
+        device=cuda.device,
+    )
+
+    assert _portable_state(committed_cpu, TYPED_IR_CRASH_CODEC) == state
+    assert _portable_state(committed_cuda, TYPED_IR_CRASH_CODEC) == state
+    assert progress.read_portable_checkpoint_metadata(
+        committed_cpu
+    ) == progress.read_portable_checkpoint_metadata(committed_cuda)
 
 
 def test_progress_cli_reports_verified_typed_ir_checkpoint_metadata(

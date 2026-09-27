@@ -158,8 +158,10 @@ strategies. Rotate-target and crazy-target each produce byte-identical CPU/CUDA
 checkpoint payloads, resume CPU-produced state on CUDA, resume CUDA-produced
 state on CPU, and match uninterrupted CPU proposals. Prepared checkpoint resume
 additionally proves a CPU-produced projected prefix resumes on live CUDA with
-matching proposals. Full bidirectional prepared and compiler/non-search CPU/CUDA
-resume equivalence remain open.
+matching proposals. Full bidirectional prepared and later compiler-execution
+CPU/CUDA resume equivalence remain open.
+
+Canonical typed-IR durable state is already backend-identity neutral.
 
 The external optimizer runner now accepts `--resume-checkpoint PATH` for
 rotate-target and crazy-target evaluated-search checkpoint payloads. It
@@ -209,7 +211,7 @@ that state itself. Generic checkpoint metadata discovery remains available
 through the progress inspector.
 
 Product CLI sidecar selection/wiring, later compiler-stage codecs,
-compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
+compiler-pipeline crash injection, and later compiler-execution CPU/CUDA resume
 equivalence remain unimplemented.
 
 ### Sidecar Schema
@@ -397,6 +399,10 @@ jobs that requested resumability.
   Operator inspection tests also prove verified typed-IR codec/payload-digest
   discovery and fail-closed outer-digest drift. Extraction tests prove exact
   binary stdout, help discovery, and fail-closed state-codec mismatch handling.
+- The tracked canonical `malbolge-typed-ir-v1` fixture produces byte-identical
+  envelopes under CPU and CUDA sidecar identities, with identical verified
+  metadata and byte-exact decoded compiler state. Backend/device identity is not
+  part of portable typed-IR checkpoint compatibility.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
