@@ -24,9 +24,11 @@ semantics.
 
 ## Status
 
-The first executable slice lowers admitted no-argument `i32` constant-return
-functions. Exact 32-bit bit patterns become fixed-width 21-trit scalars while
-source, ABI, typed-IR version, source digest, and target-profile provenance are
-preserved. Other valid typed-IR semantics fail explicitly. Layout, target
-serialization, runtime intrinsic realization, and Malbolge encoding remain
-open.
+The executable slice lowers admitted no-argument, single-block functions using
+exact `i32` constants/returns plus deterministic typed-IR `ByteInput` and
+`ByteOutput` effects. Exact 32-bit bit patterns become fixed-width 21-trit
+scalars while source, ABI, typed-IR version, source digest, and target-profile
+provenance are preserved. Byte effects remain successful `u8` semantics: raw
+profile input words, EOF mapping, declaration-only runtime intrinsic
+realization,
+layout, target serialization, and Malbolge encoding remain open.

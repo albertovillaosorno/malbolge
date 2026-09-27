@@ -26,10 +26,11 @@ This document governs the following declared TODO scope:
 `src/compiler/ternary-lowering/` now owns the first executable pre-layout target
 model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
-application lowerer currently admits only no-argument functions containing one
-entry block, no phi nodes, one exact `i32` constant materialization, and a
-return
-of that value. Other admitted typed-IR shapes fail explicitly.
+application lowerer currently admits no-argument functions containing one
+entry block, no phi nodes, exact `i32` constant materialization/return
+semantics,
+and typed-IR `ByteInput`/`ByteOutput` effects. Other admitted typed-IR shapes
+fail explicitly.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
@@ -38,9 +39,15 @@ domain. The pre-layout program retains upstream function/value IDs plus exact
 source spans, source digest, ABI identity, typed-IR version, and target-profile
 identity.
 
+Typed `ByteInput`/`ByteOutput` lower in source order to explicit target
+byte-effect operations with SSA type/order validation. These operations preserve
+the typed IR's successful `u8` semantics and do not impersonate the raw profile
+input word or its EOF case.
+
 This is executable compiler lowering but not target code generation. Layout,
-address assignment, runtime intrinsic realization, target serialization, and
-Malbolge encoding remain downstream work.
+address assignment, raw input-word/EOF mapping, declaration-only runtime
+intrinsic realization, target serialization, and Malbolge encoding remain
+downstream work.
 
 ### Authoritative Inputs
 
@@ -81,10 +88,12 @@ wire name.
 ## Failure Behavior
 
 Malformed inbound projection identity, retained globals/proof obligations,
-non-`i32` or malformed constants, multi-block/phi/parameterized function shapes,
-and unsupported instructions or terminators fail closed before a pre-layout
-target program is returned. Later layout/profile failures must likewise fail
-before accepted target code is emitted.
+non-`i32` or malformed constants, non-`u8` byte input, byte output before a byte
+definition, duplicate projected SSA identities, byte-valued returns,
+multi-block/phi/parameterized function shapes, and unsupported instructions or
+terminators fail closed before a pre-layout target program is returned. Later
+layout/profile failures must likewise fail before accepted target code is
+emitted.
 
 ## Verification
 
@@ -97,6 +106,19 @@ before accepted target code is emitted.
 - Scalar tests cover zero, one, positive signed maximum, the sign-bit pattern,
   and all-one bits; projection tests reject target-profile drift and truncated
   constant bytes; a richer admitted typed-IR golden is rejected as unsupported.
+- A valid byte-input/output typed-IR fixture is completely admitted,
+  canonicalized, restored exactly, projected across the inbound port, and
+  lowered
+  deterministically to ordered byte-input/output target effects plus the
+  existing
+  `i32` return path. Adversarial projection tests reject non-`u8` input,
+  undefined
+  output values, duplicate SSA IDs, and byte-valued returns.
+- The byte-effect evidence is intentionally below raw runtime intrinsic
+  realization: `malbolge_guest_intrinsic_input_word` still needs profile-word
+  and
+  EOF mapping to current `/` semantics, and
+  `malbolge_guest_intrinsic_output_byte` still needs executable `<` realization.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

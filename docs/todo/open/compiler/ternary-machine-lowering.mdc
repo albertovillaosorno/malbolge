@@ -68,8 +68,15 @@ instruction.
   source-span/identity preservation, round-trips representative extreme 32-bit
   patterns through the ternary scalar, rejects malformed/identity-drifted
   projections, and rejects a richer admitted typed-IR shape.
+- The same lowering boundary now admits typed-IR successful `u8` `ByteInput` and
+  `ByteOutput` effects. A valid byte-I/O fixture is admitted, canonicalized,
+  restored exactly, projected, and lowered in source order; fabricated
+  projections with non-`u8` input, undefined output, duplicate SSA identity, or
+  byte-valued return fail closed. These target effects deliberately do not claim
+  raw profile-word/EOF or declaration-only intrinsic realization.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
-  one-shot heap startup binding, exact byte-I/O intrinsic realization, later
+  one-shot heap startup binding, raw profile-word/EOF and exact byte-I/O
+  intrinsic realization, later
   runtime helpers, target serialization, and executable Malbolge-oriented
   lowering evidence. No ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

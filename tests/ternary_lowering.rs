@@ -48,19 +48,123 @@ use ternary_lowering::{
     TernaryLoweringError, TernaryOperation, TypedIrInput, lower_typed_ir,
 };
 use typed_ir::{
-    BasicBlock, Function, Instruction, LocatedInstruction, Module, SourceSpan,
-    TYPED_IR_CODEC_ID, Terminator, TypeDef, TypeId, canonical_module,
+    BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
+    Instruction, IntegerConstant, LocatedInstruction, Module, ModuleSpec,
+    SourcePosition, SourceSpan, TYPED_IR_CODEC_ID, Terminator, TypeDef,
+    TypeEntry, TypeId, ValueId, canonical_bytes, canonical_module,
     validate_module,
 };
 
 const RETURN_GOLDEN: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
 const SELECT_GOLDEN: &str = "tests/compiler/typed-ir/golden/select.hex";
+const BYTE_IO_SOURCE_HASH: [u8; 32] = [0x6b; 32];
+
+fn admitted_byte_io_fixture() -> Result<Module, String> {
+    let module = byte_io_module();
+    validate_module(&module)
+        .map_err(|error| format!("validate byte-I/O fixture: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("canonicalize byte-I/O fixture: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore byte-I/O fixture: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("byte-I/O canonical round trip drifted"));
+    }
+    Ok(restored)
+}
 
 fn admitted_golden(path: &str) -> Result<Module, String> {
     let bytes = canonical_golden(path)?;
     canonical_module(&bytes)
         .map_err(|error| format!("admit typed IR: {error:?}"))
+}
+
+fn assert_byte_io_program(
+    module: &Module,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    assert_program_provenance(module, program)?;
+    let function = program
+        .functions
+        .first()
+        .ok_or_else(|| String::from("byte-I/O lowering emitted no function"))?;
+    if function.operations.len() != 4 {
+        return Err(String::from("unexpected byte-I/O operation count"));
+    }
+    assert_byte_input(function)?;
+    assert_byte_output(function)?;
+    assert_byte_return_materialization(function)?;
+    assert_byte_return(function)
+}
+
+fn assert_byte_input(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .first()
+        .ok_or_else(|| String::from("missing byte input operation"))?;
+    let TernaryOperation::ByteInput { result, span } = operation else {
+        return Err(String::from("first byte-I/O operation is not input"));
+    };
+    if *result != 0 || *span != output_span(fixture_span(0, 1)) {
+        return Err(String::from("byte input lowering drifted"));
+    }
+    Ok(())
+}
+
+fn assert_byte_output(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .get(1)
+        .ok_or_else(|| String::from("missing byte output operation"))?;
+    let TernaryOperation::ByteOutput { span, value } = operation else {
+        return Err(String::from("second byte-I/O operation is not output"));
+    };
+    if *value != 0 || *span != output_span(fixture_span(1, 2)) {
+        return Err(String::from("byte output lowering drifted"));
+    }
+    Ok(())
+}
+
+fn assert_byte_return(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .get(3)
+        .ok_or_else(|| String::from("missing byte-I/O return"))?;
+    let TernaryOperation::Return { span, value } = operation else {
+        return Err(String::from("fourth byte-I/O operation is not return"));
+    };
+    if *value != 1 || *span != output_span(fixture_span(3, 4)) {
+        return Err(String::from("byte-I/O return lowering drifted"));
+    }
+    Ok(())
+}
+
+fn assert_byte_return_materialization(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function.operations.get(2).ok_or_else(|| {
+        String::from("missing byte-I/O return materialization")
+    })?;
+    let TernaryOperation::MaterializeI32 { result, scalar, span } = operation
+    else {
+        return Err(String::from(
+            "third byte-I/O operation is not i32 materialization",
+        ));
+    };
+    if *result != 1
+        || scalar.bits() != 0
+        || *span != output_span(fixture_span(2, 3))
+    {
+        return Err(String::from("byte-I/O return materialization drifted"));
+    }
+    Ok(())
 }
 
 fn assert_constant_return_program(
@@ -175,6 +279,77 @@ const fn output_span(span: SourceSpan) -> ternary_lowering::TernarySourceSpan {
     }
 }
 
+fn byte_io_module() -> Module {
+    let u8_type = TypeId::new(0);
+    let i32_type = TypeId::new(1);
+    let function_type = TypeId::new(2);
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: vec![
+            LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: ValueId::new(0),
+                    type_id: u8_type,
+                },
+                fixture_span(0, 1),
+            ),
+            LocatedInstruction::new(
+                Instruction::ByteOutput { value: ValueId::new(0) },
+                fixture_span(1, 2),
+            ),
+            LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                    result: ValueId::new(1),
+                    type_id: i32_type,
+                },
+                fixture_span(2, 3),
+            ),
+        ],
+        phis: Vec::new(),
+        span: fixture_span(0, 4),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(1)),
+        },
+        terminator_span: fixture_span(3, 4),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![block],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from("byte_round_trip"),
+        parameters: Vec::new(),
+        signature: function_type,
+        span: fixture_span(0, 4),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![function],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/byte-io.c"),
+        source_sha256: BYTE_IO_SOURCE_HASH,
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(u8_type, TypeDef::U8),
+            TypeEntry::new(i32_type, TypeDef::I32),
+            TypeEntry::new(
+                function_type,
+                TypeDef::function(Vec::new(), Some(i32_type), false),
+            ),
+        ],
+    })
+}
+
+const fn fixture_position(byte: u32) -> SourcePosition {
+    SourcePosition::new(byte, 1, byte.saturating_add(1))
+}
+
+const fn fixture_span(begin: u32, end: u32) -> SourceSpan {
+    SourceSpan::new(fixture_position(begin), fixture_position(end))
+}
+
 fn canonical_golden(path: &str) -> Result<Vec<u8>, String> {
     let text = read_to_string(path)
         .map_err(|error| format!("read golden: {error}"))?;
@@ -232,6 +407,21 @@ fn input_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
 ) -> InputInstruction {
+    if let Instruction::ByteInput { result, type_id } =
+        instruction.instruction()
+    {
+        return InputInstruction::ByteInput {
+            result: result.value(),
+            span: input_span(instruction.span()),
+            type_kind: input_scalar_type(module, *type_id),
+        };
+    }
+    if let Instruction::ByteOutput { value } = instruction.instruction() {
+        return InputInstruction::ByteOutput {
+            span: input_span(instruction.span()),
+            value: value.value(),
+        };
+    }
     if let Instruction::ConstantInteger {
         constant,
         result,
@@ -256,10 +446,29 @@ fn input_scalar_type(module: &Module, type_id: TypeId) -> InputScalarType {
     let Some(entry) = module.types().get(index) else {
         return InputScalarType::Other;
     };
-    if entry.id() == type_id && entry.definition() == &TypeDef::I32 {
-        InputScalarType::I32
-    } else {
-        InputScalarType::Other
+    if entry.id() != type_id {
+        return InputScalarType::Other;
+    }
+    match entry.definition() {
+        TypeDef::I32 => InputScalarType::I32,
+        TypeDef::U8 => InputScalarType::U8,
+        TypeDef::Array { .. }
+        | TypeDef::Bool
+        | TypeDef::Char
+        | TypeDef::F128
+        | TypeDef::F32
+        | TypeDef::F64
+        | TypeDef::Function { .. }
+        | TypeDef::I16
+        | TypeDef::I64
+        | TypeDef::I8
+        | TypeDef::Pointer { .. }
+        | TypeDef::Struct { .. }
+        | TypeDef::U16
+        | TypeDef::U32
+        | TypeDef::U64
+        | TypeDef::Union { .. }
+        | TypeDef::Void => InputScalarType::Other,
     }
 }
 
@@ -284,7 +493,7 @@ fn input_terminator(block: &BasicBlock) -> InputTerminator {
     if let Terminator::Return { value } = block.terminator() {
         return InputTerminator::Return {
             span: input_span(block.terminator_span()),
-            value: (*value).map(typed_ir::ValueId::value),
+            value: (*value).map(ValueId::value),
         };
     }
     InputTerminator::Unsupported
@@ -310,6 +519,78 @@ fn project_typed_ir(module: &Module) -> Result<TypedIrInput, String> {
     })
 }
 
+fn projected_byte_io_fixture() -> Result<TypedIrInput, String> {
+    let module = admitted_byte_io_fixture()?;
+    project_typed_ir(&module)
+}
+
+#[test]
+fn byte_input_requires_u8_projection() -> Result<(), String> {
+    let mut input = projected_byte_io_fixture()?;
+    let instruction = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.first_mut())
+        .ok_or_else(|| String::from("byte-I/O projection has no input"))?;
+    let InputInstruction::ByteInput { type_kind, .. } = instruction else {
+        return Err(String::from("first projection instruction is not input"));
+    };
+    *type_kind = InputScalarType::Other;
+    if lower_typed_ir(&input)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("non-u8 byte input was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_output_requires_prior_byte_definition() -> Result<(), String> {
+    let mut input = projected_byte_io_fixture()?;
+    let instruction = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(1))
+        .ok_or_else(|| String::from("byte-I/O projection has no output"))?;
+    let InputInstruction::ByteOutput { value, .. } = instruction else {
+        return Err(String::from(
+            "second projection instruction is not output",
+        ));
+    };
+    *value = 99;
+    if lower_typed_ir(&input)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("undefined byte output was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn duplicate_projection_value_ids_fail_closed() -> Result<(), String> {
+    let mut input = projected_byte_io_fixture()?;
+    let instruction = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("byte-I/O projection has no constant"))?;
+    let InputInstruction::ConstantInteger { result, .. } = instruction else {
+        return Err(String::from(
+            "third projection instruction is not constant",
+        ));
+    };
+    *result = 0;
+    if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
+        return Err(String::from(
+            "duplicate projection SSA ID was not rejected",
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn i32_constant_return_lowers_to_exact_ternary_bits() -> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
@@ -322,6 +603,21 @@ fn i32_constant_return_lowers_to_exact_ternary_bits() -> Result<(), String> {
         return Err(String::from("ternary lowering is not deterministic"));
     }
     assert_constant_return_program(&module, &first)
+}
+
+#[test]
+fn byte_io_effects_lower_after_canonical_typed_ir_round_trip()
+-> Result<(), String> {
+    let module = admitted_byte_io_fixture()?;
+    let input = project_typed_ir(&module)?;
+    let first = lower_typed_ir(&input)
+        .map_err(|error| format!("lower byte-I/O projection: {error:?}"))?;
+    let second = lower_typed_ir(&input)
+        .map_err(|error| format!("repeat byte-I/O lowering: {error:?}"))?;
+    if first != second {
+        return Err(String::from("byte-I/O lowering is not deterministic"));
+    }
+    assert_byte_io_program(&module, &first)
 }
 
 #[test]
@@ -380,6 +676,26 @@ fn projection_identity_drift_fails_closed() -> Result<(), String> {
     input.target_profile = String::from("other-profile");
     if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
         return Err(String::from("target profile drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn returning_byte_value_as_i32_fails_closed() -> Result<(), String> {
+    let mut input = projected_byte_io_fixture()?;
+    let block = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("byte-I/O projection has no block"))?;
+    let InputTerminator::Return { value, .. } = &mut block.terminator else {
+        return Err(String::from("byte-I/O projection has no return"));
+    };
+    *value = Some(0);
+    if lower_typed_ir(&input)
+        != Err(TernaryLoweringError::UnsupportedTerminator)
+    {
+        return Err(String::from("byte value return was not rejected"));
     }
     Ok(())
 }

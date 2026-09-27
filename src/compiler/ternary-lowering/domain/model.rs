@@ -24,7 +24,8 @@
 // - Summary:
 //   - Defines the first pre-layout ternary compiler representation.
 // - Description:
-//   - Preserves exact C scalar bits while exposing base-three target state.
+//   - Preserves exact C scalar bits and successful byte effects in target
+//     state.
 // - Usage:
 //   - Produced only after validated typed-IR admission and shape checks.
 // - Defaults:
@@ -100,6 +101,24 @@ impl TernaryI32Scalar {
 /// One deterministic pre-layout ternary operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryOperation {
+    /// Read one successful guest `u8` byte effect.
+    ///
+    /// This is not the raw profile input word and therefore cannot represent
+    /// EOF; guest-runtime mapping remains a later realization concern.
+    ByteInput {
+        /// Upstream SSA result identity retained until later
+        /// allocation/layout.
+        result: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Emit one exact guest `u8` byte effect.
+    ByteOutput {
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+        /// Upstream SSA byte value identity retained until later layout.
+        value: u32,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later

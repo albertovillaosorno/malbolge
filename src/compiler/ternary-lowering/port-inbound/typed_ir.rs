@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Import upstream compiler implementation types or parse serialized IR.
 // - Allows:
-//   - Inputs: copied module provenance, function shape, constants, and returns.
+//   - Inputs: copied module provenance, function shape, scalars, byte effects,
+//     and returns.
 //   - Outputs: immutable lowering input records owned by this capability.
 //   - Side effects: none.
 // - Split-When:
@@ -59,11 +60,29 @@ pub enum InputScalarType {
     I32,
     /// Any other already-admitted typed-IR type.
     Other,
+    /// Exact unsigned 8-bit byte semantics.
+    U8,
 }
 
 /// One projected non-terminating typed-IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputInstruction {
+    /// Read one deterministic successful guest byte effect.
+    ByteInput {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
+    /// Emit one deterministic guest byte effect.
+    ByteOutput {
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Upstream SSA byte value identity.
+        value: u32,
+    },
     /// Exact integer constant bits plus typed result identity.
     ConstantInteger {
         /// Meaningful source bit width.
