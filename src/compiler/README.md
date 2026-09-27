@@ -16,3 +16,4 @@ It must not collapse frontend, portable IR, lowering, or runtime ownership.
 
 - [`c-frontend/`](c-frontend/): governed function `c-frontend`.
 - [`typed-ir/`](typed-ir/): governed portable IR implementation.
+- [`ternary-lowering/`](ternary-lowering/): governed pre-layout target lowering.

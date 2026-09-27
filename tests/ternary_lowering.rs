@@ -1,0 +1,403 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - MIT
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE-MIT
+//
+// Boundary-Contract:
+// - Owns:
+//   - Integration evidence for the first typed-IR-to-ternary lowering slice.
+// - Must-Not:
+//   - Claim layout, Malbolge encoding, or unsupported typed-IR semantics.
+// - Allows:
+//   - Inputs: tracked canonical typed-IR golden modules.
+//   - Outputs: deterministic target-model and fail-closed assertions.
+//   - Side effects: fixture reads only.
+// - Split-When:
+//   - Another lowering family needs an independent integration harness.
+// - Merge-When:
+//   - Another test owns this exact typed-IR-to-ternary evidence.
+// - Summary:
+//   - Proves exact `i32` constant-return ternary lowering.
+// - Description:
+//   - Checks projection, bit preservation, provenance, and unsupported
+//     rejection.
+// - Usage:
+//   - Run through Cargo or repository Jig validation.
+// - Defaults:
+//   - Only the tracked first lowering golden is accepted by this slice.
+//
+
+//! Integration tests for the first pre-layout ternary lowering slice.
+
+#[path = "../src/compiler/ternary-lowering/composition/lib.rs"]
+pub mod ternary_lowering;
+#[path = "../src/compiler/typed-ir/composition/lib.rs"]
+pub mod typed_ir;
+
+use std::fs::read_to_string;
+use std::str::from_utf8;
+
+use malbolge as _;
+use ternary_lowering::{
+    I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
+    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    TernaryLoweringError, TernaryOperation, TypedIrInput, lower_typed_ir,
+};
+use typed_ir::{
+    BasicBlock, Function, Instruction, LocatedInstruction, Module, SourceSpan,
+    TYPED_IR_CODEC_ID, Terminator, TypeDef, TypeId, canonical_module,
+    validate_module,
+};
+
+const RETURN_GOLDEN: &str =
+    "tests/compiler/typed-ir/golden/ir-return-constant.hex";
+const SELECT_GOLDEN: &str = "tests/compiler/typed-ir/golden/select.hex";
+
+fn admitted_golden(path: &str) -> Result<Module, String> {
+    let bytes = canonical_golden(path)?;
+    canonical_module(&bytes)
+        .map_err(|error| format!("admit typed IR: {error:?}"))
+}
+
+fn assert_constant_return_program(
+    module: &Module,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    assert_program_provenance(module, program)?;
+    let function = program
+        .functions
+        .first()
+        .ok_or_else(|| String::from("lowering emitted no function"))?;
+    if function.operations.len() != 2 {
+        return Err(String::from("unexpected ternary operation count"));
+    }
+    assert_materialize(module, function)?;
+    assert_return(module, function)
+}
+
+fn assert_materialize(
+    module: &Module,
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let materialize = function
+        .operations
+        .first()
+        .ok_or_else(|| String::from("missing ternary materialization"))?;
+    let TernaryOperation::MaterializeI32 { result, scalar, span } = materialize
+    else {
+        return Err(String::from("first operation is not i32 materialization"));
+    };
+    let input_function = module
+        .functions()
+        .first()
+        .ok_or_else(|| String::from("typed IR has no function"))?;
+    let input_instruction = input_function
+        .blocks()
+        .first()
+        .and_then(|block| block.instructions().first())
+        .ok_or_else(|| String::from("typed IR has no instruction"))?;
+    if *result != 0
+        || scalar.bits() != 7
+        || scalar.trits().len() != I32_TERNARY_TRITS
+        || scalar.trits().first() != Some(&1)
+        || scalar.trits().get(1) != Some(&2)
+        || scalar.trits().iter().any(|trit| *trit > 2)
+        || *span != output_span(input_instruction.span())
+    {
+        return Err(String::from("i32 ternary materialization drifted"));
+    }
+    Ok(())
+}
+
+fn assert_program_provenance(
+    module: &Module,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let function = program.functions.first();
+    let input_function = module.functions().first();
+    if program.abi_id != module.abi_id()
+        || program.input_format_version != module.format_version()
+        || program.source_id != module.source_id()
+        || program.source_sha256 != *module.source_sha256()
+        || program.target_profile != module.target_profile()
+        || program.functions.len() != 1
+        || function.map(|value| value.span)
+            != input_function.map(|value| output_span(value.span()))
+    {
+        return Err(String::from("ternary program provenance drifted"));
+    }
+    Ok(())
+}
+
+fn assert_return(
+    module: &Module,
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let returned = function
+        .operations
+        .get(1)
+        .ok_or_else(|| String::from("missing ternary return"))?;
+    let TernaryOperation::Return { span, value } = returned else {
+        return Err(String::from("second operation is not return"));
+    };
+    let input_span = module
+        .functions()
+        .first()
+        .and_then(|input_function| input_function.blocks().first())
+        .map(|block| output_span(block.terminator_span()))
+        .ok_or_else(|| String::from("typed IR has no return block"))?;
+    if *value != 0 || *span != input_span {
+        return Err(String::from(
+            "return operation did not use materialized value",
+        ));
+    }
+    Ok(())
+}
+
+const fn output_span(span: SourceSpan) -> ternary_lowering::TernarySourceSpan {
+    let begin = span.begin();
+    let end = span.end();
+    ternary_lowering::TernarySourceSpan {
+        begin: ternary_lowering::TernarySourcePosition {
+            byte: begin.byte(),
+            column: begin.column(),
+            line: begin.line(),
+        },
+        end: ternary_lowering::TernarySourcePosition {
+            byte: end.byte(),
+            column: end.column(),
+            line: end.line(),
+        },
+    }
+}
+
+fn canonical_golden(path: &str) -> Result<Vec<u8>, String> {
+    let text = read_to_string(path)
+        .map_err(|error| format!("read golden: {error}"))?;
+    let compact = text.lines().collect::<String>();
+    let payload = compact
+        .strip_prefix(TYPED_IR_CODEC_ID)
+        .and_then(|value| value.strip_prefix(':'))
+        .ok_or_else(|| String::from("typed-IR golden prefix mismatch"))?;
+    let (pairs, remainder) = payload.as_bytes().as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err(String::from("typed-IR golden has odd hex length"));
+    }
+    pairs
+        .iter()
+        .map(|pair| {
+            from_utf8(pair)
+                .map_err(|error| format!("golden UTF-8: {error}"))
+                .and_then(|value| {
+                    u8::from_str_radix(value, 16)
+                        .map_err(|error| format!("golden hex: {error}"))
+                })
+        })
+        .collect()
+}
+
+fn input_block(module: &Module, block: &BasicBlock) -> InputBlock {
+    InputBlock {
+        id: block.id().value(),
+        instructions: block
+            .instructions()
+            .iter()
+            .map(|instruction| input_instruction(module, instruction))
+            .collect(),
+        phi_count: block.phis().len(),
+        terminator: input_terminator(block),
+    }
+}
+
+fn input_function(module: &Module, function: &Function) -> InputFunction {
+    InputFunction {
+        blocks: function
+            .blocks()
+            .iter()
+            .map(|block| input_block(module, block))
+            .collect(),
+        entry: function.entry().value(),
+        id: function.id().value(),
+        name: String::from(function.name()),
+        parameter_count: function.parameters().len(),
+        span: input_span(function.span()),
+    }
+}
+
+fn input_instruction(
+    module: &Module,
+    instruction: &LocatedInstruction,
+) -> InputInstruction {
+    if let Instruction::ConstantInteger {
+        constant,
+        result,
+        type_id,
+    } = instruction.instruction()
+    {
+        return InputInstruction::ConstantInteger {
+            bit_width: constant.bit_width(),
+            little_endian: Vec::from(constant.little_endian()),
+            result: result.value(),
+            span: input_span(instruction.span()),
+            type_kind: input_scalar_type(module, *type_id),
+        };
+    }
+    InputInstruction::Unsupported
+}
+
+fn input_scalar_type(module: &Module, type_id: TypeId) -> InputScalarType {
+    let Some(index) = usize::try_from(type_id.value()).ok() else {
+        return InputScalarType::Other;
+    };
+    let Some(entry) = module.types().get(index) else {
+        return InputScalarType::Other;
+    };
+    if entry.id() == type_id && entry.definition() == &TypeDef::I32 {
+        InputScalarType::I32
+    } else {
+        InputScalarType::Other
+    }
+}
+
+const fn input_span(span: SourceSpan) -> InputSourceSpan {
+    let begin = span.begin();
+    let end = span.end();
+    InputSourceSpan {
+        begin: InputSourcePosition {
+            byte: begin.byte(),
+            column: begin.column(),
+            line: begin.line(),
+        },
+        end: InputSourcePosition {
+            byte: end.byte(),
+            column: end.column(),
+            line: end.line(),
+        },
+    }
+}
+
+fn input_terminator(block: &BasicBlock) -> InputTerminator {
+    if let Terminator::Return { value } = block.terminator() {
+        return InputTerminator::Return {
+            span: input_span(block.terminator_span()),
+            value: (*value).map(typed_ir::ValueId::value),
+        };
+    }
+    InputTerminator::Unsupported
+}
+
+fn project_typed_ir(module: &Module) -> Result<TypedIrInput, String> {
+    validate_module(module).map_err(|error| {
+        format!("validate typed IR before projection: {error:?}")
+    })?;
+    Ok(TypedIrInput {
+        abi_id: String::from(module.abi_id()),
+        functions: module
+            .functions()
+            .iter()
+            .map(|function| input_function(module, function))
+            .collect(),
+        global_count: module.globals().len(),
+        input_format_version: module.format_version(),
+        proof_obligation_count: module.proof_obligations().len(),
+        source_id: String::from(module.source_id()),
+        source_sha256: *module.source_sha256(),
+        target_profile: String::from(module.target_profile()),
+    })
+}
+
+#[test]
+fn i32_constant_return_lowers_to_exact_ternary_bits() -> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let input = project_typed_ir(&module)?;
+    let first = lower_typed_ir(&input)
+        .map_err(|error| format!("lower typed IR projection: {error:?}"))?;
+    let second = lower_typed_ir(&input)
+        .map_err(|error| format!("repeat typed IR lowering: {error:?}"))?;
+    if first != second {
+        return Err(String::from("ternary lowering is not deterministic"));
+    }
+    assert_constant_return_program(&module, &first)
+}
+
+#[test]
+fn i32_ternary_scalar_width_is_minimal() -> Result<(), String> {
+    let patterns = 1u64 << 32u32;
+    if 3u64.pow(20) >= patterns || 3u64.pow(21) < patterns {
+        return Err(String::from(
+            "21 trits is not the minimal complete 32-bit scalar width",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn i32_ternary_scalars_preserve_extreme_bit_patterns() -> Result<(), String> {
+    for bits in [0u32, 1, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+        let scalar = ternary_lowering::TernaryI32Scalar::from_bits(bits);
+        if scalar.bits() != bits || scalar.trits().iter().any(|trit| *trit > 2)
+        {
+            return Err(format!("ternary scalar round trip failed for {bits}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_constant_projection_fails_closed() -> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let mut input = project_typed_ir(&module)?;
+    let Some(function) = input.functions.first_mut() else {
+        return Err(String::from("projection has no function"));
+    };
+    let Some(block) = function.blocks.first_mut() else {
+        return Err(String::from("projection has no block"));
+    };
+    let Some(instruction) = block.instructions.first_mut() else {
+        return Err(String::from("projection has no instruction"));
+    };
+    let InputInstruction::ConstantInteger { little_endian, .. } = instruction
+    else {
+        return Err(String::from("projection constant is missing"));
+    };
+    let _: Option<u8> = little_endian.pop();
+    if lower_typed_ir(&input)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("truncated constant was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn projection_identity_drift_fails_closed() -> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let mut input = project_typed_ir(&module)?;
+    input.target_profile = String::from("other-profile");
+    if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
+        return Err(String::from("target profile drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_typed_ir_shape_fails_closed() -> Result<(), String> {
+    let module = admitted_golden(SELECT_GOLDEN)?;
+    let input = project_typed_ir(&module)?;
+    let observed = lower_typed_ir(&input);
+    if !matches!(
+        observed,
+        Err(TernaryLoweringError::UnsupportedFunction
+            | TernaryLoweringError::UnsupportedInstruction
+            | TernaryLoweringError::UnsupportedModule)
+    ) {
+        return Err(format!(
+            "unsupported typed IR was not rejected: {observed:?}"
+        ));
+    }
+    Ok(())
+}

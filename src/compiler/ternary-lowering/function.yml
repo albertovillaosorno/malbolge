@@ -1,0 +1,86 @@
+schema: jig-function/v3
+identity:
+  id: ternary-lowering
+  node: function:ternary-lowering
+  path: src/compiler/ternary-lowering
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: ternary-lowering.jig
+parts:
+  - id: part-0001
+    path: port-inbound/typed_ir.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Define the validated typed-IR semantic projection.
+  - id: part-0002
+    path: domain/model.rs
+    kind: domain
+    language: rust
+    responsibility: Define deterministic pre-layout ternary target values.
+  - id: part-0003
+    path: application/lower.rs
+    kind: application
+    language: rust
+    responsibility: Lower the first admitted typed-IR semantic shape.
+  - id: part-0004
+    path: composition/lib.rs
+    kind: composition
+    language: rust
+    responsibility: Declare the canonical ternary-lowering module topology.
+projects: []
+tests: []
+graph:
+  node: function:ternary-lowering
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:ternary-lowering
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal
