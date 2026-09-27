@@ -38,9 +38,11 @@
 pub mod typed_ir;
 
 use std::env::temp_dir;
-use std::fs::{read_to_string, remove_file, write};
+use std::fs::{
+    create_dir_all, read_to_string, remove_dir_all, remove_file, write,
+};
 use std::path::{Path, PathBuf};
-use std::process::id;
+use std::process::{Command, id};
 use std::str::from_utf8;
 
 use malbolge as _;
@@ -102,6 +104,205 @@ if not compact.startswith(prefix):
     raise SystemExit(2)
 sys.stdout.buffer.write(bytes.fromhex(compact.removeprefix(prefix)))
 "#;
+const COMPILER_CRASH_EXIT: i32 = 73;
+const COMPILER_CRASH_BOUNDARIES: [&str; 10] = [
+    "before-checkpoint-file-sync",
+    "before-checkpoint-publish",
+    "after-checkpoint-publish",
+    "after-checkpoint-sync",
+    "after-checkpoint",
+    "before-sidecar-file-sync",
+    "before-sidecar-replace",
+    "after-sidecar-replace",
+    "after-sidecar-sync",
+    "before-sidecar",
+];
+const COMPILER_PROGRESS_CRASH_SCRIPT: &str = r#"from dataclasses import replace
+from hashlib import sha256
+from pathlib import Path
+import os
+import stat
+import sys
+from scripts import progress_sidecar as progress
+
+output = Path(sys.argv[1])
+first_golden = Path(sys.argv[2])
+second_golden = Path(sys.argv[3])
+exit_code = int(sys.argv[4])
+boundary = sys.argv[5]
+codec = "malbolge-typed-ir-v1"
+source_hash = "sha256:" + ("1" * 64)
+toolchain_hash = "sha256:" + ("2" * 64)
+profile_hash = "malbolge-profile-v1:sha256:" + ("3" * 64)
+revision = "a" * 40
+
+def digest(payload):
+    return "sha256:" + sha256(payload).hexdigest()
+
+def golden(path):
+    text = path.read_text(encoding="utf-8")
+    compact = "".join(text.splitlines())
+    prefix = codec + ":"
+    if not compact.startswith(prefix):
+        raise SystemExit(92)
+    return bytes.fromhex(compact.removeprefix(prefix))
+
+identity = progress.ResumeIdentity(
+    algorithm_id="compiler.typed-ir",
+    algorithm_version="1",
+    repository_revision=revision,
+    schema=progress.SCHEMA_ID,
+    seed=None,
+    source_sha256=source_hash,
+    target_profile_fingerprint=profile_hash,
+    target_profile_id="malbolge-2026",
+    toolchain_fingerprint=toolchain_hash,
+)
+compatibility = progress.resume_compatibility_fingerprint(identity)
+
+def generation(sequence, units, updated_at, state):
+    position = progress.PortableCheckpointPosition(
+        checkpoint_sequence=sequence,
+        stage="typed-ir",
+        units_completed=units,
+    )
+    checkpoint = progress.encode_portable_checkpoint(
+        identity,
+        position,
+        codec,
+        payload=state,
+    )
+    sidecar = progress.ProgressSidecar(
+        active_elapsed_ns=sequence * 100,
+        algorithm_id=identity.algorithm_id,
+        algorithm_version=identity.algorithm_version,
+        backend="cpu",
+        checkpoint_elapsed_ns=sequence * 10,
+        checkpoint_path=str(progress.checkpoint_path(output, sequence)),
+        checkpoint_sequence=sequence,
+        checkpoint_sha256=digest(checkpoint),
+        compatibility_fingerprint=compatibility,
+        completed_at=None,
+        device=None,
+        diagnostic_code=None,
+        diagnostic_message=None,
+        operation_id="compile-crash-fixture",
+        output_path=str(output),
+        partial_bytes=None,
+        partial_path=None,
+        partial_sha256=None,
+        paused_elapsed_ns=0,
+        progress_path=str(progress.progress_path(output)),
+        repository_revision=revision,
+        schema=progress.SCHEMA_ID,
+        seed=None,
+        serialization_elapsed_ns=0,
+        source_path="input.c",
+        source_sha256=source_hash,
+        stage="typed-ir",
+        started_at="2026-08-06T14:00:00Z",
+        status=progress.ProgressStatus.CHECKPOINTED,
+        target_profile_fingerprint=profile_hash,
+        target_profile_id="malbolge-2026",
+        toolchain_fingerprint=toolchain_hash,
+        units_completed=units,
+        units_total=None,
+        updated_at=updated_at,
+        verification_elapsed_ns=0,
+        wall_elapsed_ns=sequence * 110,
+    )
+    return sidecar, checkpoint
+
+first, first_checkpoint = generation(
+    1,
+    1,
+    "2026-08-06T14:00:01Z",
+    golden(first_golden),
+)
+progress.write_checkpoint_generation(first, first_checkpoint)
+second, second_checkpoint = generation(
+    2,
+    2,
+    "2026-08-06T14:00:02Z",
+    golden(second_golden),
+)
+
+original_write_immutable = progress._write_immutable
+original_publish = progress._publish_immutable_payload
+original_confirm = progress._confirm_publication_durability
+original_fsync = os.fsync
+original_replace = Path.replace
+publication_count = 0
+regular_sync_count = 0
+
+def fsync_then_crash(descriptor):
+    global regular_sync_count
+    mode = os.fstat(descriptor).st_mode
+    if not stat.S_ISREG(mode):
+        return original_fsync(descriptor)
+    regular_sync_count += 1
+    if boundary == "before-checkpoint-file-sync" and regular_sync_count == 1:
+        os._exit(exit_code)
+    if boundary == "before-sidecar-file-sync" and regular_sync_count == 2:
+        os._exit(exit_code)
+    return original_fsync(descriptor)
+
+def publish_then_crash(temporary, destination, payload, *, platform):
+    global publication_count
+    if boundary == "before-checkpoint-publish":
+        os._exit(exit_code)
+    result = original_publish(
+        temporary,
+        destination,
+        payload,
+        platform=platform,
+    )
+    publication_count = 1
+    if boundary == "after-checkpoint-publish":
+        os._exit(exit_code)
+    return result
+
+def write_then_crash(destination, payload):
+    result = original_write_immutable(destination, payload)
+    if boundary == "after-checkpoint" and publication_count == 1:
+        os._exit(exit_code)
+    return result
+
+def confirm_then_crash(published_path, *, context, platform=os.name):
+    result = original_confirm(
+        published_path,
+        context=context,
+        platform=platform,
+    )
+    if context == "immutable progress payload":
+        if boundary == "after-checkpoint-sync" and publication_count == 1:
+            os._exit(exit_code)
+    if context == "progress sidecar" and boundary == "after-sidecar-sync":
+        os._exit(exit_code)
+    return result
+
+def crash_before_sidecar(_sidecar):
+    os._exit(exit_code)
+
+def replace_then_crash(source, destination):
+    if boundary == "before-sidecar-replace":
+        os._exit(exit_code)
+    result = original_replace(source, destination)
+    if boundary == "after-sidecar-replace":
+        os._exit(exit_code)
+    return result
+
+progress._publish_immutable_payload = publish_then_crash
+progress._confirm_publication_durability = confirm_then_crash
+progress._write_immutable = write_then_crash
+os.fsync = fsync_then_crash
+if boundary == "before-sidecar":
+    progress.write_atomic = crash_before_sidecar
+elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
+    Path.replace = replace_then_crash
+progress.write_checkpoint_generation(second, second_checkpoint)
+raise SystemExit(93)
+"#;
 
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -118,6 +319,76 @@ fn temporary_inspector(label: &str, source: &str) -> Result<PathBuf, String> {
     write(&path, source)
         .map_err(|error| format!("write temporary inspector: {error}"))?;
     Ok(path)
+}
+
+fn typed_ir_progress_inspector() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "src/automation/repository/composition/scripts/progress_sidecar.py",
+    )
+}
+
+fn compiler_crash_directory(boundary: &str) -> Result<PathBuf, String> {
+    let directory =
+        temp_dir().join(format!("malbolge-typed-ir-crash-{}-{boundary}", id()));
+    if directory.exists() {
+        remove_dir_all(&directory)
+            .map_err(|error| format!("remove stale crash fixture: {error}"))?;
+    }
+    create_dir_all(&directory)
+        .map_err(|error| format!("create crash fixture: {error}"))?;
+    Ok(directory)
+}
+
+fn run_compiler_crash_boundary(
+    boundary: &str,
+    first: &Module,
+    second: &Module,
+) -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = compiler_crash_directory(boundary)?;
+    let output = directory.join("program.malbolge");
+    let progress =
+        PathBuf::from(format!("{}.progress.json", output.to_string_lossy()));
+    let crashed = Command::new(repository_python())
+        .arg("-c")
+        .arg(COMPILER_PROGRESS_CRASH_SCRIPT)
+        .arg(&output)
+        .arg(root.join(GOLDEN_PATH))
+        .arg(root.join(EXTENDED_GOLDEN_PATH))
+        .arg(COMPILER_CRASH_EXIT.to_string())
+        .arg(boundary)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env(
+            "PYTHONPATH",
+            root.join("src/automation/repository/composition"),
+        )
+        .output()
+        .map_err(|error| format!("run compiler crash fixture: {error}"))?;
+    if crashed.status.code() != Some(COMPILER_CRASH_EXIT) {
+        return Err(format!(
+            "crash boundary {boundary} did not terminate as expected: {}",
+            String::from_utf8_lossy(&crashed.stderr),
+        ));
+    }
+    let restored = resume_typed_ir_from_progress(
+        &repository_python(),
+        &typed_ir_progress_inspector(),
+        &progress,
+    )
+    .map_err(|error| format!("resume typed IR after {boundary}: {error:?}"))?;
+    let expected =
+        if matches!(boundary, "after-sidecar-replace" | "after-sidecar-sync") {
+            second
+        } else {
+            first
+        };
+    if &restored != expected {
+        return Err(format!(
+            "crash boundary {boundary} restored wrong typed-IR generation",
+        ));
+    }
+    remove_dir_all(&directory)
+        .map_err(|error| format!("remove crash fixture: {error}"))
 }
 
 fn canonical_golden_bytes(path: &str) -> Option<Vec<u8>> {
@@ -1151,6 +1422,22 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
         .map(|text| text.lines().collect::<String>())
         .map_err(|_error| CanonicalError::TextFormatting);
     assert_eq!(lowered, Ok(expected));
+}
+
+#[test]
+fn progress_crash_resume_restores_committed_ir() -> Result<(), String> {
+    let first_bytes = canonical_golden_bytes(GOLDEN_PATH)
+        .ok_or_else(|| String::from("decode first typed-IR golden"))?;
+    let second_bytes = canonical_golden_bytes(EXTENDED_GOLDEN_PATH)
+        .ok_or_else(|| String::from("decode second typed-IR golden"))?;
+    let first = canonical_module(&first_bytes)
+        .map_err(|error| format!("admit first typed-IR golden: {error:?}"))?;
+    let second = canonical_module(&second_bytes)
+        .map_err(|error| format!("admit second typed-IR golden: {error:?}"))?;
+    for boundary in COMPILER_CRASH_BOUNDARIES {
+        run_compiler_crash_boundary(boundary, &first, &second)?;
+    }
+    Ok(())
 }
 
 #[test]

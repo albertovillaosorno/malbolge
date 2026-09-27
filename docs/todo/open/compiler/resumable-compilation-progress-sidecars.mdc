@@ -185,9 +185,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   parsing sidecar JSON in compiler code. It requires the exact typed-IR codec,
   rejects launch/status/diagnostic failures, and revalidates extracted bytes
   through the stage entrypoint.
+  `tests/compiler_ir.rs` also drives the production Python sidecar writer
+  through
+  ten typed-IR checkpoint/pointer crash boundaries and resumes each result via
+  the Rust composition bridge and production inspector. Pre-pointer crashes
+  restore the prior generation; post-replacement crashes restore the new one.
 - Product CLI sidecar selection/wiring, later compiler-stage codecs,
-  compiler-pipeline crash injection, and later compiler-execution CPU/CUDA
-  resume equivalence remain open; this TODO is therefore active.
+  later-stage/final-artifact crash injection, and later compiler-execution
+  CPU/CUDA resume equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

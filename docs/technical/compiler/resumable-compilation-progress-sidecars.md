@@ -189,6 +189,13 @@ invokes the verified extractor for `malbolge-typed-ir-v1` and immediately reruns
 complete typed-IR checkpoint admission. Product CLI selection of interpreter,
 inspector, and progress path remains open.
 
+Compiler integration tests now publish real canonical typed-IR generations
+through the production Python sidecar writer, inject process death at every
+checkpoint/pointer publication boundary relevant when no partial artifact is
+present, and resume through the Rust composition bridge plus production
+inspector. Before pointer replacement, resume restores the previous committed
+generation; after pointer replacement, it restores the new generation.
+
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
 immediately before or after checkpoint/partial atomic publication; after
@@ -210,8 +217,8 @@ publish
 that state itself. Generic checkpoint metadata discovery remains available
 through the progress inspector.
 
-Product CLI sidecar selection/wiring, later compiler-stage codecs,
-compiler-pipeline crash injection, and later compiler-execution CPU/CUDA resume
+Product CLI sidecar selection/wiring, later compiler-stage codecs, later-stage
+and final-artifact crash injection, and later compiler-execution CPU/CUDA resume
 equivalence remain unimplemented.
 
 ### Sidecar Schema
@@ -382,8 +389,10 @@ jobs that requested resumability.
   converge on the same admitted typed-IR module while preserving failure
   categories. Progress-adapter tests cover exact codec extraction arguments,
   launch/rejection/diagnostic failures, malformed extracted bytes, and
-  successful
-  restoration of the tracked canonical typed-IR golden.
+  successful restoration of the tracked canonical typed-IR golden. A
+  cross-language crash matrix additionally publishes real typed-IR generations,
+  kills publication at ten checkpoint/pointer boundaries, and proves the Rust
+  resume bridge restores exactly the last committed generation.
 - Prepared-search resume tests cover partial and completed projected prefixes,
   empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
   equivalence, and CPU-produced checkpoint resume through live CUDA.
