@@ -137,6 +137,11 @@ parts:
     kind: application
     language: rust
     responsibility: Restore fail-closed canonical typed-IR modules from bytes.
+  - id: part-0021
+    path: application/stage.rs
+    kind: application
+    language: rust
+    responsibility: Enter typed IR from fresh frontend or durable checkpoint.
 projects: []
 tests: []
 graph:

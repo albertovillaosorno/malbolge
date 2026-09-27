@@ -49,8 +49,9 @@ use typed_ir::{
     GlobalSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
     ModuleSpec, Parameter, Phi, PhiIncoming, ProofObligation, SourcePosition,
     SourceSpan, TYPED_IR_CODEC_ID, Terminator, TypeDef, TypeEntry, TypeId,
-    ValidationError, ValueId, canonical_bytes, canonical_debug_text,
-    canonical_module, lower_frontend_artifact, validate_module,
+    TypedIrStageError, TypedIrStageInput, ValidationError, ValueId,
+    canonical_bytes, canonical_debug_text, canonical_module,
+    enter_typed_ir_stage, lower_frontend_artifact, validate_module,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -1086,6 +1087,53 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
         .map(|text| text.lines().collect::<String>())
         .map_err(|_error| CanonicalError::TextFormatting);
     assert_eq!(lowered, Ok(expected));
+}
+
+#[test]
+fn typed_ir_stage_resume_matches_fresh_frontend_lowering() {
+    let artifact = frontend_return_projection();
+    let fresh = enter_typed_ir_stage(TypedIrStageInput::Frontend(&artifact));
+    assert!(fresh.is_ok(), "fresh typed-IR stage entry failed");
+    let checkpoint = fresh
+        .as_ref()
+        .ok()
+        .and_then(|module| canonical_bytes(module).ok());
+    assert!(checkpoint.is_some(), "fresh typed-IR checkpoint failed");
+    let resumed = checkpoint.as_deref().and_then(|bytes| {
+        enter_typed_ir_stage(TypedIrStageInput::Checkpoint(bytes)).ok()
+    });
+
+    assert_eq!(resumed.as_ref(), fresh.as_ref().ok());
+}
+
+#[test]
+fn typed_ir_stage_preserves_frontend_failure_category() {
+    let artifact = frontend_artifact("other-frontend", Vec::new());
+
+    assert_eq!(
+        enter_typed_ir_stage(TypedIrStageInput::Frontend(&artifact)),
+        Err(TypedIrStageError::Frontend(FrontendLoweringError::Identity))
+    );
+}
+
+#[test]
+fn typed_ir_stage_preserves_checkpoint_failure_category() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(
+        encoded.is_ok(),
+        "valid typed-IR fixture failed to canonicalize"
+    );
+    let mut checkpoint = encoded.unwrap_or_default();
+    if let Some(first) = checkpoint.first_mut() {
+        *first = b'X';
+    }
+
+    assert_eq!(
+        enter_typed_ir_stage(TypedIrStageInput::Checkpoint(&checkpoint)),
+        Err(TypedIrStageError::Checkpoint(
+            CanonicalDecodeError::InvalidMagic
+        ))
+    );
 }
 
 #[test]

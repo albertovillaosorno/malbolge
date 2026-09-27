@@ -186,6 +186,13 @@ state to
 re-encode byte-for-byte to the original input. Canonical typed IR is therefore a
 restorable compiler checkpoint state rather than a one-way cache identity.
 
+Compiler composition enters this stage through `enter_typed_ir_stage()`. Fresh
+execution supplies a normalized `FrontendArtifact`; resumed execution supplies
+canonical `malbolge-typed-ir-v1` checkpoint bytes. Both paths return the same
+fully admitted `Module` type, while `TypedIrStageError` preserves whether a
+failure came from frontend lowering or checkpoint restoration. Later lowering
+therefore need not distinguish fresh compilation from a validated resume.
+
 ### Relationship to LLVM IR
 
 LLVM's language reference is useful design evidence for explicit basic-block

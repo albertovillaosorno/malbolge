@@ -61,6 +61,8 @@ mod module;
 mod proofs;
 #[path = "../domain/source.rs"]
 mod source;
+#[path = "../application/stage.rs"]
+mod stage;
 #[path = "../application/types.rs"]
 mod type_validation;
 #[path = "../domain/types.rs"]
@@ -82,5 +84,6 @@ pub use instruction::*;
 pub use lower_frontend::{FrontendLoweringError, lower_frontend_artifact};
 pub use module::*;
 pub use source::*;
+pub use stage::{TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage};
 pub use types::*;
 pub use validate::validate_module;

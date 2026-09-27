@@ -16,14 +16,16 @@ It must not inherit LLVM IR syntax, native data layout, or Malbolge encoding.
 
 - `contract/`: closed version-one grammar and canonical identity rules.
 - `domain/`: portable IDs, types, instructions, control flow, and module values.
-- `application/`: admission, frontend lowering, proof checks, and encoding.
+- `application/`: admission, frontend lowering, checkpoint restoration,
+  fresh-or-resumed stage entry, proof checks, and encoding.
 - `composition/`: canonical product module topology.
 
 ## Status
 
 Implemented version one. The safe Rust model, SSA/CFG/type/proof validator,
 finite guest object layout, automatic storage, direct/indirect call semantics,
-validation-gated canonical bytes, deterministic debug identity, and normalized
-frontend handoff are implemented. Unsupported frontend semantic shapes fail
+validation-gated canonical bytes, deterministic debug identity, and a single
+fresh-or-resumed normalized-frontend/typed-IR stage handoff are implemented.
+Unsupported frontend semantic shapes fail
 closed; full accepted-C coverage is owned by the later tools/tidy lowerability
 contract rather than weakening this IR boundary.

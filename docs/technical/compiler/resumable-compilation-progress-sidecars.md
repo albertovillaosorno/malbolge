@@ -189,13 +189,16 @@ confirmation; and immediately after sidecar directory durability confirmation.
 Canonical typed IR now supplies one concrete compiler-state codec,
 `malbolge-typed-ir-v1`: validation-gated canonical bytes can be restored through
 `canonical_module()` with exact-tag, bounded-length, UTF-8, trailing-byte, full
-IR-validation, and byte-for-byte re-encode checks. This establishes durable
-typed-IR state only; no compiler pipeline stage currently publishes or resumes
-that state through `malbolge-progress-v1`.
+IR-validation, and byte-for-byte re-encode checks. The typed-IR stage now has
+a single `enter_typed_ir_stage()` handoff that accepts either normalized
+frontend evidence or canonical checkpoint bytes and returns the same admitted
+module type. No compiler composition currently publishes or discovers that
+state through `malbolge-progress-v1`.
 
-Single-command sidecar discovery in the product/compiler CLI, typed-IR pipeline
-resume wiring, later compiler-stage codecs, compiler-pipeline crash injection,
-and compiler/non-search CPU/CUDA resume equivalence remain unimplemented.
+Single-command sidecar discovery in the product/compiler CLI, later
+compiler-stage codecs, compiler-pipeline crash injection, and compiler/non-
+search
+CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -360,7 +363,10 @@ jobs that requested resumability.
   crazy-target resume with byte-identical checkpoints and matching proposals.
 - Typed-IR compiler tests round-trip canonical and extended semantic modules,
   reject every truncated canonical prefix, unknown tags, wrong magic/version,
-  invalid UTF-8, trailing bytes, and semantically invalid restored modules.
+  invalid UTF-8, trailing bytes, and semantically invalid restored modules. They
+  also prove fresh normalized frontend entry and resumed canonical entry
+  converge
+  on the same admitted typed-IR module while preserving failure categories.
 - Prepared-search resume tests cover partial and completed projected prefixes,
   empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
   equivalence, and CPU-produced checkpoint resume through live CUDA.
