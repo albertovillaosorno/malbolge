@@ -124,8 +124,14 @@ PARTIAL_BEFORE_CRASH = b"partial-before-crash"
 CHECKPOINT_AFTER_CRASH = b"checkpoint-after-crash"
 PARTIAL_AFTER_CRASH = b"partial-after-crash"
 PORTABLE_CRASH_CODEC = "search.evaluated-prefix-v1"
+TYPED_IR_CRASH_CODEC = "malbolge-typed-ir-v1"
+TYPED_IR_GOLDEN_PREFIX = "malbolge-typed-ir-v1:"
+TYPED_IR_GOLDEN_DIRECTORY = (
+    Path(__file__).parent / "compiler" / "typed-ir" / "golden"
+)
 PORTABLE_STATE_BEFORE_CRASH = b"portable-state-before-crash"
 PORTABLE_STATE_AFTER_CRASH = b"portable-state-after-crash"
+type PortableCrashState = tuple[str, bytes]
 LOCK_ACQUIRED = "acquired"
 LOCK_CRASH_EXIT = 74
 WRITER_LOCK_SCRIPT = """
@@ -2909,9 +2915,9 @@ def test_writer_lock_is_released_after_process_death(tmp_path: Path) -> None:
 
 def _portable_checkpointed(
     sidecar: progress.ProgressSidecar,
-    *,
     sequence: int,
-    state: bytes,
+    state: PortableCrashState,
+    *,
     partial: bytes | None,
 ) -> tuple[progress.ProgressSidecar, bytes]:
     provisional = _checkpointed(
@@ -2920,20 +2926,42 @@ def _portable_checkpointed(
         checkpoint=b"portable-checkpoint-placeholder",
         partial=partial,
     )
+    codec, payload = state
     checkpoint = progress.encode_portable_checkpoint(
         _resume_identity(),
         _checkpoint_position(provisional),
-        PORTABLE_CRASH_CODEC,
-        payload=state,
+        codec,
+        payload=payload,
     )
     return _with_checkpoint_bytes(provisional, checkpoint), checkpoint
 
 
-def _portable_crash_fixture(tmp_path: Path) -> CrashFixture:
+def _write_crash_inputs(
+    tmp_path: Path,
+    payloads: tuple[bytes, bytes, bytes],
+) -> tuple[Path, Path, Path]:
+    sidecar_input = tmp_path / "pending-portable-sidecar.json"
+    checkpoint_input = tmp_path / "pending-portable-checkpoint.bin"
+    partial_input = tmp_path / "pending-portable-partial.bin"
+    sidecar_payload, checkpoint_payload, partial_payload = payloads
+    _ = sidecar_input.write_bytes(sidecar_payload)
+    _ = checkpoint_input.write_bytes(checkpoint_payload)
+    _ = partial_input.write_bytes(partial_payload)
+    return sidecar_input, checkpoint_input, partial_input
+
+
+def _portable_crash_fixture(
+    tmp_path: Path,
+    states: tuple[PortableCrashState, PortableCrashState] | None = None,
+) -> CrashFixture:
+    first_state, second_state = states or (
+        (PORTABLE_CRASH_CODEC, PORTABLE_STATE_BEFORE_CRASH),
+        (PORTABLE_CRASH_CODEC, PORTABLE_STATE_AFTER_CRASH),
+    )
     first, checkpoint_one = _portable_checkpointed(
         _sidecar(tmp_path),
-        sequence=1,
-        state=PORTABLE_STATE_BEFORE_CRASH,
+        1,
+        first_state,
         partial=PARTIAL_BEFORE_CRASH,
     )
     destination = progress.write_checkpoint_generation(
@@ -2943,27 +2971,25 @@ def _portable_crash_fixture(tmp_path: Path) -> CrashFixture:
     )
     second, checkpoint_two = _portable_checkpointed(
         first,
-        sequence=2,
-        state=PORTABLE_STATE_AFTER_CRASH,
+        2,
+        second_state,
         partial=PARTIAL_AFTER_CRASH,
     )
-    sidecar_input = tmp_path / "pending-portable-sidecar.json"
-    checkpoint_input = tmp_path / "pending-portable-checkpoint.bin"
-    partial_input = tmp_path / "pending-portable-partial.bin"
-    _ = sidecar_input.write_bytes(progress.encode(second))
-    _ = checkpoint_input.write_bytes(checkpoint_two)
-    _ = partial_input.write_bytes(PARTIAL_AFTER_CRASH)
+    inputs = _write_crash_inputs(
+        tmp_path,
+        (progress.encode(second), checkpoint_two, PARTIAL_AFTER_CRASH),
+    )
     return CrashFixture(
-        checkpoint_input=checkpoint_input,
+        checkpoint_input=inputs[1],
         checkpoint_one=checkpoint_one,
         checkpoint_two=checkpoint_two,
         destination=destination,
         first=first,
-        partial_input=partial_input,
+        partial_input=inputs[2],
         partial_one=PARTIAL_BEFORE_CRASH,
         partial_two=PARTIAL_AFTER_CRASH,
         second=second,
-        sidecar_input=sidecar_input,
+        sidecar_input=inputs[0],
     )
 
 
@@ -3002,6 +3028,18 @@ def _crash_fixture(tmp_path: Path) -> CrashFixture:
         second=second,
         sidecar_input=sidecar_input,
     )
+
+
+def _typed_ir_golden_state(name: str) -> bytes:
+    text = (TYPED_IR_GOLDEN_DIRECTORY / name).read_text(encoding="utf-8")
+    canonical = text.strip()
+    if not canonical.startswith(TYPED_IR_GOLDEN_PREFIX):
+        message = f"typed-IR golden fixture has wrong prefix: {name}"
+        raise AssertionError(message)
+    hex_text = "".join(
+        canonical.removeprefix(TYPED_IR_GOLDEN_PREFIX).split()
+    )
+    return bytes.fromhex(hex_text)
 
 
 @pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
@@ -3045,6 +3083,58 @@ def test_portable_checkpoint_recovers_across_process_crash_boundaries(
         if committed_second
         else PORTABLE_STATE_BEFORE_CRASH
     )
+    expected_partial = (
+        PARTIAL_AFTER_CRASH if committed_second else PARTIAL_BEFORE_CRASH
+    )
+    assert state == expected_state
+    assert partial == expected_partial
+
+
+@pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
+def test_typed_ir_checkpoint_recovers_across_process_crash_boundaries(
+    tmp_path: Path,
+    boundary: str,
+) -> None:
+    """Canonical typed-IR state survives every publication crash boundary."""
+    first_state = _typed_ir_golden_state("select.hex")
+    second_state = _typed_ir_golden_state("extended-semantics.hex")
+    fixture = _portable_crash_fixture(
+        tmp_path,
+        (
+            (TYPED_IR_CRASH_CODEC, first_state),
+            (TYPED_IR_CRASH_CODEC, second_state),
+        ),
+    )
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-c",
+            CRASH_SCRIPT,
+            str(fixture.sidecar_input),
+            str(fixture.checkpoint_input),
+            str(fixture.partial_input),
+            str(CRASH_EXIT),
+            boundary,
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
+        errors="replace"
+    )
+    committed = progress.read(fixture.destination)
+    state, partial = progress.read_portable_checkpoint_generation(
+        committed,
+        TYPED_IR_CRASH_CODEC,
+    )
+    committed_second = boundary in {
+        AFTER_SIDECAR_REPLACE,
+        AFTER_SIDECAR_SYNC,
+    }
+    expected_state = second_state if committed_second else first_state
     expected_partial = (
         PARTIAL_AFTER_CRASH if committed_second else PARTIAL_BEFORE_CRASH
     )

@@ -185,8 +185,8 @@ typed-IR state only; no compiler pipeline stage currently publishes or resumes
 that state through `malbolge-progress-v1`.
 
 Single-command sidecar discovery in the product/compiler CLI, typed-IR pipeline
-resume wiring, later compiler-stage codecs, prepared-search resume, broader
-non-search power-loss injection, and compiler/non-search CPU/CUDA resume
+resume wiring, later compiler-stage codecs, prepared-search resume,
+compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
 equivalence remain unimplemented.
 
 ### Sidecar Schema
@@ -359,8 +359,11 @@ jobs that requested resumability.
   the sidecar-extraction-to-optimizer subprocess bridge.
 - Progress-sidecar recovery tests inject every publication crash boundary using
   real portable checkpoint envelopes and prove that recovery decodes only the
-  last sidecar-committed inner state. Operator extraction tests also prove exact
-  binary stdout, help discovery, and fail-closed state-codec mismatch handling.
+  last sidecar-committed inner state. The same matrix now carries tracked
+  canonical `malbolge-typed-ir-v1` modules before and after each crash, proving
+  byte-exact non-search compiler-state recovery at the generic sidecar boundary.
+  Operator extraction tests also prove exact binary stdout, help discovery, and
+  fail-closed state-codec mismatch handling.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

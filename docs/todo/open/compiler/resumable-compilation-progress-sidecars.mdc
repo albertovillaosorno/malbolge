@@ -124,8 +124,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   bounded routine-write cadence with committed/prepublication retry semantics,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
-  using real portable envelopes, exact binary checkpoint extraction, and exact
-  operator-facing elapsed-time summaries.
+  using real portable envelopes for both search-labelled state and tracked
+  canonical typed-IR compiler state, exact binary checkpoint extraction, and
+  exact operator-facing elapsed-time summaries.
 - `src/optimization/accelerator/application/accelerator/search_checkpoint.py`
   implements
   `evaluated-search-prefix-evidence-v1`, canonical backend-neutral state binding
@@ -161,9 +162,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and noncanonical re-encoding; `tests/compiler_ir.rs` covers canonical and
   extended round trips plus malformed-wire and full-validation failures.
 - Single-command product/compiler sidecar discovery, typed-IR pipeline resume
-  wiring, later compiler-stage codecs, prepared-search resume, broader
-  non-search power-loss injection, and compiler/non-search CPU/CUDA resume
-  equivalence remain open; this TODO is therefore active.
+  wiring, later compiler-stage codecs, prepared-search resume, compiler-pipeline
+  crash injection, and compiler/non-search CPU/CUDA resume equivalence remain
+  open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.
