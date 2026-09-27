@@ -156,8 +156,10 @@ behavior at the call site.
 Focused differential evidence now covers both accelerator-backed search
 strategies. Rotate-target and crazy-target each produce byte-identical CPU/CUDA
 checkpoint payloads, resume CPU-produced state on CUDA, resume CUDA-produced
-state on CPU, and match uninterrupted CPU proposals. Prepared-search resume and
-compiler/non-search CPU/CUDA resume equivalence are not yet implemented.
+state on CPU, and match uninterrupted CPU proposals. Prepared checkpoint resume
+additionally proves a CPU-produced projected prefix resumes on live CUDA with
+matching proposals. Full bidirectional prepared and compiler/non-search CPU/CUDA
+resume equivalence remain open.
 
 The external optimizer runner now accepts `--resume-checkpoint PATH` for
 rotate-target and crazy-target evaluated-search checkpoint payloads. It
@@ -168,15 +170,19 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
-The progress-sidecar inspector now provides
-`--extract-checkpoint STATE_CODEC PROGRESS.json`. It validates the mutable
-sidecar, immutable generation bytes, outer checkpoint digest, resume identity,
-position, state codec, canonical envelope, and inner payload digest before
-emitting the exact opaque state bytes to stdout. This supplies a fail-closed
-operator bridge from `malbolge-progress-v1` into the optimizer's
-`--resume-checkpoint` file input without adding an optimizer dependency on
-repository-automation modules. Direct one-command sidecar discovery and compiler
-CLI integration remain open.
+The progress-sidecar inspector provides two verified portable-checkpoint views.
+`--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
+generation bytes, outer checkpoint digest, resume identity and position,
+canonical envelope, and inner payload digest before reporting only checkpoint
+sequence, stage, completed units, state codec, and payload SHA-256.
+`--extract-checkpoint STATE_CODEC PROGRESS.json` performs the same durable-state
+admission, additionally requires the caller's expected codec, and emits exact
+opaque state bytes to binary stdout. Together these provide an operator bridge
+from `malbolge-progress-v1` into codec-aware consumers without allowing unknown
+checkpoint state to execute automatically.
+
+The optimizer still consumes an explicit extracted file; direct
+product/compiler sidecar input remains open.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -192,13 +198,13 @@ Canonical typed IR now supplies one concrete compiler-state codec,
 IR-validation, and byte-for-byte re-encode checks. The typed-IR stage now has
 a single `enter_typed_ir_stage()` handoff that accepts either normalized
 frontend evidence or canonical checkpoint bytes and returns the same admitted
-module type. No compiler composition currently publishes or discovers that
-state through `malbolge-progress-v1`.
+module type. No compiler composition currently publishes or directly consumes
+that state through `malbolge-progress-v1`; generic checkpoint metadata discovery
+is now available through the progress inspector.
 
-Single-command sidecar discovery in the product/compiler CLI, later
-compiler-stage codecs, compiler-pipeline crash injection, and compiler/non-
-search
-CPU/CUDA resume equivalence remain unimplemented.
+Direct product/compiler sidecar consumption, later compiler-stage codecs,
+compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
+equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -379,8 +385,9 @@ jobs that requested resumability.
   last sidecar-committed inner state. The same matrix now carries tracked
   canonical `malbolge-typed-ir-v1` modules before and after each crash, proving
   byte-exact non-search compiler-state recovery at the generic sidecar boundary.
-  Operator extraction tests also prove exact binary stdout, help discovery, and
-  fail-closed state-codec mismatch handling.
+  Operator inspection tests also prove verified typed-IR codec/payload-digest
+  discovery and fail-closed outer-digest drift. Extraction tests prove exact
+  binary stdout, help discovery, and fail-closed state-codec mismatch handling.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

@@ -127,14 +127,15 @@ backend path, recombines evidence, and reruns prepared selection against the
 original full batch. Selection-aware strategies must declare an exact suffix
 preparer; they do not silently fall back to ordinary evaluation.
 
-The progress-sidecar inspector provides
+The progress-sidecar inspector provides `--checkpoint-info PROGRESS.json` for
+verified codec/digest discovery and
 `--extract-checkpoint STATE_CODEC PROGRESS.json` as the composition bridge from
 a durable `malbolge-progress-v1` pointer and portable outer envelope into that
-inner search-state file. Extraction validates the referenced generation, outer
-digest, resume identity/position, requested codec, canonical envelope, and inner
-payload digest before writing exact binary state to stdout. The optimizer does
-not import repository-automation modules; one-command sidecar discovery remains
-separate integration work.
+inner search-state file. Both modes validate the referenced generation, outer
+digest, resume identity/position, canonical envelope, and inner payload digest;
+extraction additionally requires the expected codec before writing exact binary
+state to stdout. The optimizer does not import repository-automation modules;
+direct sidecar input remains separate product integration work.
 
 The first retained side-by-side performance record uses the complete 59,049-word
 classic domain with 15 retained

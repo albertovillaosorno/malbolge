@@ -81,7 +81,9 @@ SUMMARY_FIELDS = (
     "serialization_ns=10",
     "checkpoint_ns=30",
 )
+CHECKPOINT_INSPECTION_FAILED_PREFIX = "portable checkpoint inspection failed:"
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
+CHECKPOINT_INFO_HELP = "--checkpoint-info PROGRESS.json"
 EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
 WRONG_CODEC_DIAGNOSTIC = b"checkpoint state codec"
 BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
@@ -590,6 +592,99 @@ def test_portable_checkpoint_is_backend_neutral_and_durable(
     )
 
 
+def test_progress_cli_reports_verified_typed_ir_checkpoint_metadata(
+    tmp_path: Path,
+) -> None:
+    """Operator discovery reports a verified compiler-state codec and digest."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    state = _typed_ir_golden_state("select.hex")
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    committed = progress.read(destination)
+    metadata = progress.read_portable_checkpoint_metadata(committed)
+    assert metadata == progress.PortableCheckpointMetadata(
+        checkpoint_sequence=committed.checkpoint_sequence,
+        payload_sha256=_digest(state),
+        stage=committed.stage,
+        state_codec=TYPED_IR_CRASH_CODEC,
+        units_completed=committed.units_completed,
+    )
+    module_file = progress.__file__
+    assert module_file is not None
+
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            module_file,
+            "--checkpoint-info",
+            str(destination),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == progress.render_checkpoint_metadata(metadata)
+    assert not completed.stderr
+
+
+def test_checkpoint_info_rejects_nonportable_checkpoint_generation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Metadata discovery never guesses a codec for raw checkpoint bytes."""
+    checkpoint = b"legacy-opaque-checkpoint"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    status = progress.main(["--checkpoint-info", str(destination)])
+    captured = capsys.readouterr()
+
+    assert status == 1
+    assert not captured.out
+    assert CHECKPOINT_INSPECTION_FAILED_PREFIX in captured.err
+
+
+def test_checkpoint_metadata_rejects_sidecar_digest_drift(
+    tmp_path: Path,
+) -> None:
+    """Codec discovery cannot bypass exact outer checkpoint digest binding."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        TYPED_IR_CRASH_CODEC,
+        payload=b"state",
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    committed = progress.read(destination)
+    drifted = replace(
+        committed,
+        checkpoint_sha256="sha256:" + ("0" * 64),
+    )
+
+    with pytest.raises(
+        ERROR,
+        match="checkpoint bytes do not match sidecar hash",
+    ):
+        _ = progress.read_portable_checkpoint_metadata(drifted)
+
+
 def test_progress_cli_extracts_verified_portable_checkpoint_payload(
     tmp_path: Path,
 ) -> None:
@@ -695,12 +790,13 @@ def test_progress_cli_extraction_fails_closed_without_binary_stdout(
     assert BINARY_STDOUT_DIAGNOSTIC in captured.err
 
 
-def test_progress_cli_help_advertises_checkpoint_extraction(
+def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Operator help exposes the verified checkpoint extraction mode."""
+    """Operator help exposes verified checkpoint discovery and extraction."""
     assert progress.main(["--help"]) == 0
     captured = capsys.readouterr()
+    assert CHECKPOINT_INFO_HELP in captured.out
     assert EXTRACT_HELP in captured.out
     assert not captured.err
 

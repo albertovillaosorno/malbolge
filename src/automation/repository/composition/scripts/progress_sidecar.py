@@ -15,8 +15,8 @@
 # - Allows:
 #   - Inputs: one explicit progress record and same-filesystem output path.
 #   - Outputs: canonical JSON, validated records, exact timing summaries,
-#     verified portable state bytes, immutable generations, and atomic sidecar
-#     replacement.
+#     verified portable metadata/state bytes, immutable generations, and atomic
+#     sidecar replacement.
 #   - Side effects: immutable generation creation and atomic sidecar update.
 # - Split-When:
 #   - Product compiler or accelerator adapters gain independent persistence.
@@ -71,6 +71,8 @@ SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
+_CHECKPOINT_INFO_FLAG: Final = "--checkpoint-info"
+_CHECKPOINT_INFO_ARGUMENT_COUNT: Final = 2
 _EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
 _EXTRACT_ARGUMENT_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
@@ -460,6 +462,17 @@ class ResumeIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class PortableCheckpointMetadata:
+    """Verified operator-visible identity for one portable checkpoint."""
+
+    checkpoint_sequence: int
+    payload_sha256: str
+    stage: str
+    state_codec: str
+    units_completed: int
+
+
+@dataclass(frozen=True, slots=True)
 class PortableCheckpointPosition:
     """Backend-neutral durable position for one checkpoint generation."""
 
@@ -720,18 +733,6 @@ def _validate_checkpoint_identity(
         _fail("checkpoint completed units do not match sidecar")
 
 
-def _validate_checkpoint_envelope(
-    sidecar: ProgressSidecar,
-    state_codec: str,
-    envelope: PortableCheckpoint,
-) -> None:
-    if envelope.schema != CHECKPOINT_SCHEMA_ID:
-        _fail(f"unsupported checkpoint schema: {envelope.schema}")
-    if envelope.state_codec != state_codec:
-        _fail("checkpoint state codec does not match requested codec")
-    _validate_checkpoint_identity(sidecar, envelope)
-
-
 def _decode_checkpoint_payload(envelope: PortableCheckpoint) -> bytes:
     _digest(envelope.payload_sha256, "checkpoint payload_sha256")
     try:
@@ -766,6 +767,34 @@ def _validate_sidecar_checkpoint_digest(
         _fail("portable checkpoint digest does not match sidecar")
 
 
+def _validated_portable_checkpoint(
+    sidecar: ProgressSidecar,
+    checkpoint: bytes,
+    *,
+    state_codec: str | None,
+) -> tuple[PortableCheckpoint, bytes]:
+    validated = validate(sidecar)
+    if state_codec is not None:
+        _identifier(state_codec, "checkpoint state codec")
+    _validate_sidecar_checkpoint_digest(validated, checkpoint)
+    envelope = _decode_portable_checkpoint_document(checkpoint)
+    if envelope.schema != CHECKPOINT_SCHEMA_ID:
+        _fail(f"unsupported checkpoint schema: {envelope.schema}")
+    if state_codec is not None and envelope.state_codec != state_codec:
+        _fail("checkpoint state codec does not match requested codec")
+    _validate_checkpoint_identity(validated, envelope)
+    payload = _decode_checkpoint_payload(envelope)
+    canonical = encode_portable_checkpoint(
+        _resume_identity(validated),
+        _checkpoint_position_from_envelope(envelope),
+        envelope.state_codec,
+        payload=payload,
+    )
+    if canonical != checkpoint:
+        _fail("portable checkpoint is not canonical")
+    return envelope, payload
+
+
 def decode_portable_checkpoint(
     sidecar: ProgressSidecar,
     state_codec: str,
@@ -778,20 +807,11 @@ def decode_portable_checkpoint(
         validation.
 
     """
-    validated = validate(sidecar)
-    _identifier(state_codec, "checkpoint state codec")
-    _validate_sidecar_checkpoint_digest(validated, checkpoint)
-    envelope = _decode_portable_checkpoint_document(checkpoint)
-    _validate_checkpoint_envelope(validated, state_codec, envelope)
-    payload = _decode_checkpoint_payload(envelope)
-    canonical = encode_portable_checkpoint(
-        _resume_identity(validated),
-        _checkpoint_position_from_envelope(envelope),
-        state_codec,
-        payload=payload,
+    _, payload = _validated_portable_checkpoint(
+        sidecar,
+        checkpoint,
+        state_codec=state_codec,
     )
-    if canonical != checkpoint:
-        _fail("portable checkpoint is not canonical")
     return payload
 
 
@@ -2075,6 +2095,48 @@ def read_portable_checkpoint_generation(
     return payload, partial
 
 
+def read_portable_checkpoint_metadata(
+    sidecar: ProgressSidecar,
+) -> PortableCheckpointMetadata:
+    """Read and verify operator-visible metadata for one durable checkpoint.
+
+    Returns:
+        Codec, payload digest, and durable position after complete envelope
+        validation without emitting or interpreting the opaque state payload.
+
+    """
+    checkpoint, _ = read_checkpoint_generation(sidecar)
+    envelope, _ = _validated_portable_checkpoint(
+        sidecar,
+        checkpoint,
+        state_codec=None,
+    )
+    return PortableCheckpointMetadata(
+        checkpoint_sequence=envelope.checkpoint_sequence,
+        payload_sha256=envelope.payload_sha256,
+        stage=envelope.stage,
+        state_codec=envelope.state_codec,
+        units_completed=envelope.units_completed,
+    )
+
+
+def render_checkpoint_metadata(metadata: PortableCheckpointMetadata) -> str:
+    """Render one stable operator-facing portable checkpoint identity.
+
+    Returns:
+        One newline-terminated key/value record with no opaque payload bytes.
+
+    """
+    fields = (
+        f"checkpoint_sequence={metadata.checkpoint_sequence}",
+        f"stage={metadata.stage}",
+        f"units_completed={metadata.units_completed}",
+        f"state_codec={metadata.state_codec}",
+        f"payload_sha256={metadata.payload_sha256}",
+    )
+    return " ".join(fields) + "\n"
+
+
 def render_summary(sidecar: ProgressSidecar) -> str:
     """Render one exact operator-facing progress and timing summary.
 
@@ -2123,6 +2185,17 @@ def _portable_payload_from_path(path: Path, state_codec: str) -> bytes:
     return payload
 
 
+def _checkpoint_info_path(path: Path) -> int:
+    try:
+        metadata = read_portable_checkpoint_metadata(read(path))
+    except (OSError, ProgressSidecarError) as error:
+        message = f"portable checkpoint inspection failed: {error}\n"
+        _ = sys.stderr.write(message)
+        return 1
+    _ = sys.stdout.write(render_checkpoint_metadata(metadata))
+    return 0
+
+
 def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
     try:
         payload = _portable_payload_from_path(path, state_codec)
@@ -2146,7 +2219,7 @@ def _inspect_path(path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Inspect a sidecar or extract one verified portable checkpoint payload.
+    """Inspect a sidecar, checkpoint metadata, or verified state payload.
 
     Returns:
         Process-style status code: zero on valid output, nonzero otherwise.
@@ -2155,12 +2228,18 @@ def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     usage = (
         "usage: progress_sidecar.py PROGRESS.json\n"
+        "       progress_sidecar.py --checkpoint-info PROGRESS.json\n"
         "       progress_sidecar.py --extract-checkpoint "
         "STATE_CODEC PROGRESS.json\n"
     )
     if arguments in (["-h"], ["--help"]):
         _ = sys.stdout.write(usage)
         status = 0
+    elif (
+        len(arguments) == _CHECKPOINT_INFO_ARGUMENT_COUNT
+        and arguments[0] == _CHECKPOINT_INFO_FLAG
+    ):
+        status = _checkpoint_info_path(Path(arguments[1]))
     elif (
         len(arguments) == _EXTRACT_ARGUMENT_COUNT
         and arguments[0] == _EXTRACT_CHECKPOINT_FLAG

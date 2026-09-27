@@ -162,8 +162,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   state, and unsupported algorithms. `progress_sidecar.py --extract-checkpoint`
   now provides a verified operator bridge from a durable progress sidecar to
   that inner checkpoint input without coupling optimizer runtime code to
-  repository automation. An end-to-end subprocess regression publishes the
-  outer envelope, extracts the inner state, and resumes the optimizer CLI.
+  repository automation.
+
+  `--checkpoint-info` additionally discovers verified state codec, payload
+  digest, and durable position without emitting opaque
+  state, while `--extract-checkpoint` still requires an explicit expected codec.
+  An end-to-end subprocess regression publishes the outer envelope, extracts
+  the inner state, and resumes the optimizer CLI.
 - `src/compiler/typed-ir/application/decode.rs` makes canonical typed IR a
   reversible compiler-state codec under stable identity `malbolge-typed-ir-v1`.
   It rejects truncation, unknown tags, invalid UTF-8, trailing data, invalid IR,
@@ -174,9 +179,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   typed-IR stage entrypoint. Normalized frontend evidence and canonical
   checkpoint bytes converge on the same admitted `Module`; stage errors preserve
   frontend-versus-checkpoint failure identity.
-- Single-command product/compiler sidecar discovery, later compiler-stage
-  codecs, compiler-pipeline crash injection, and compiler/non-search CPU/CUDA
-  resume equivalence remain open; this TODO is therefore active.
+- Direct product/compiler sidecar consumption, later compiler-stage codecs,
+  compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
+  equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

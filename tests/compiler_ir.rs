@@ -38,6 +38,7 @@
 pub mod typed_ir;
 
 use std::fs::read_to_string;
+use std::str::from_utf8;
 
 use malbolge as _;
 use typed_ir::{
@@ -73,6 +74,24 @@ const BOOL_TYPE: TypeId = TypeId::new(0);
 const I32_TYPE: TypeId = TypeId::new(1);
 const FUNCTION_TYPE: TypeId = TypeId::new(2);
 const FUNCTION_ID: FunctionId = FunctionId::new(0);
+
+fn canonical_golden_bytes(path: &str) -> Option<Vec<u8>> {
+    let text = read_to_string(path).ok()?;
+    let compact = text.lines().collect::<String>();
+    let payload = compact.strip_prefix(TYPED_IR_CODEC_ID)?.strip_prefix(':')?;
+    let (pairs, remainder) = payload.as_bytes().as_chunks::<2>();
+    if !remainder.is_empty() {
+        return None;
+    }
+    pairs
+        .iter()
+        .map(|pair| {
+            from_utf8(pair)
+                .ok()
+                .and_then(|digits| u8::from_str_radix(digits, 16).ok())
+        })
+        .collect()
+}
 
 const fn position(byte: u32) -> SourcePosition {
     SourcePosition::new(byte, 1, byte.saturating_add(1))
@@ -1087,6 +1106,20 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
         .map(|text| text.lines().collect::<String>())
         .map_err(|_error| CanonicalError::TextFormatting);
     assert_eq!(lowered, Ok(expected));
+}
+
+#[test]
+fn typed_ir_stage_restores_tracked_canonical_golden() {
+    let checkpoint = canonical_golden_bytes(GOLDEN_PATH);
+    assert!(
+        checkpoint.is_some(),
+        "tracked typed-IR golden failed to decode"
+    );
+    let resumed = checkpoint.as_deref().and_then(|bytes| {
+        enter_typed_ir_stage(TypedIrStageInput::Checkpoint(bytes)).ok()
+    });
+
+    assert_eq!(resumed, Some(valid_module()));
 }
 
 #[test]
