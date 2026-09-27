@@ -155,10 +155,15 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   that inner checkpoint input without coupling optimizer runtime code to
   repository automation. An end-to-end subprocess regression publishes the
   outer envelope, extracts the inner state, and resumes the optimizer CLI.
-- Single-command product/compiler sidecar discovery, compiler-state codecs,
-  prepared-search resume, broader non-search power-loss injection, and
-  compiler/non-search CPU/CUDA resume equivalence remain open; this TODO is
-  therefore active.
+- `src/compiler/typed-ir/application/decode.rs` makes canonical typed IR a
+  reversible compiler-state codec under stable identity `malbolge-typed-ir-v1`.
+  It rejects truncation, unknown tags, invalid UTF-8, trailing data, invalid IR,
+  and noncanonical re-encoding; `tests/compiler_ir.rs` covers canonical and
+  extended round trips plus malformed-wire and full-validation failures.
+- Single-command product/compiler sidecar discovery, typed-IR pipeline resume
+  wiring, later compiler-stage codecs, prepared-search resume, broader
+  non-search power-loss injection, and compiler/non-search CPU/CUDA resume
+  equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

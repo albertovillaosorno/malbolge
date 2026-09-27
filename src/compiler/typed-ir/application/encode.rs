@@ -54,6 +54,8 @@ use super::validate::validate_module;
 
 const MAGIC: &[u8; 4] = b"MCTI";
 const DEBUG_PREFIX: &str = "malbolge-typed-ir-v1:";
+/// Stable state-codec identity for canonical portable typed compiler IR.
+pub const TYPED_IR_CODEC_ID: &str = "malbolge-typed-ir-v1";
 
 /// Canonical typed-IR serialization failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

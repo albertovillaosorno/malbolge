@@ -177,9 +177,17 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
-Single-command sidecar discovery in the product/compiler CLI, compiler-state
-codecs, prepared-search resume, broader non-search power-loss injection, and
-compiler/non-search CPU/CUDA resume equivalence remain unimplemented.
+Canonical typed IR now supplies one concrete compiler-state codec,
+`malbolge-typed-ir-v1`: validation-gated canonical bytes can be restored through
+`canonical_module()` with exact-tag, bounded-length, UTF-8, trailing-byte, full
+IR-validation, and byte-for-byte re-encode checks. This establishes durable
+typed-IR state only; no compiler pipeline stage currently publishes or resumes
+that state through `malbolge-progress-v1`.
+
+Single-command sidecar discovery in the product/compiler CLI, typed-IR pipeline
+resume wiring, later compiler-stage codecs, prepared-search resume, broader
+non-search power-loss injection, and compiler/non-search CPU/CUDA resume
+equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -342,6 +350,9 @@ jobs that requested resumability.
   indexed suffix storage, materialize packed suffix evidence safely, reject
   backend/proposal drift, and exercise CPU-to-CUDA plus CUDA-to-CPU rotate and
   crazy-target resume with byte-identical checkpoints and matching proposals.
+- Typed-IR compiler tests round-trip canonical and extended semantic modules,
+  reject every truncated canonical prefix, unknown tags, wrong magic/version,
+  invalid UTF-8, trailing bytes, and semantically invalid restored modules.
 - Search CLI tests cover CPU resume, unavailable-CUDA fallback, live CUDA
   resume, unsupported-algorithm rejection, checkpoint file loading,
   malformed-state rejection, resumed JSON checkpoint/executor provenance, and

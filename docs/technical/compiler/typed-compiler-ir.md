@@ -178,6 +178,14 @@ Deterministic debug identity is the prefix `malbolge-typed-ir-v1:` followed by
 lowercase hexadecimal canonical bytes. It does not use Rust `Debug`, struct
 layout, host pointer width, or native endianness.
 
+`malbolge-typed-ir-v1` is also the stable compiler-state codec identity.
+`canonical_module()` is the fail-closed inverse of `canonical_bytes()`. It
+bounds length reads, requires exact wire tags and booleans, validates UTF-8,
+rejects trailing bytes, reruns complete typed-IR admission, and requires decoded
+state to
+re-encode byte-for-byte to the original input. Canonical typed IR is therefore a
+restorable compiler checkpoint state rather than a one-way cache identity.
+
 ### Relationship to LLVM IR
 
 LLVM's language reference is useful design evidence for explicit basic-block

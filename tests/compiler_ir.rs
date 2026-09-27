@@ -41,15 +41,16 @@ use std::fs::read_to_string;
 
 use malbolge as _;
 use typed_ir::{
-    BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CallTarget, CanonicalError,
-    CastOp, CompareOp, FrontendArtifact, FrontendArtifactSpec,
-    FrontendLoweringError, FrontendPosition, FrontendReturnIntegerFunction,
-    FrontendReturnIntegerFunctionSpec, FrontendSpan, Function, FunctionId,
-    FunctionSpec, Global, GlobalId, GlobalSpec, Instruction, IntegerConstant,
-    LocatedInstruction, Module, ModuleSpec, Parameter, Phi, PhiIncoming,
-    ProofObligation, SourcePosition, SourceSpan, Terminator, TypeDef,
-    TypeEntry, TypeId, ValidationError, ValueId, canonical_bytes,
-    canonical_debug_text, lower_frontend_artifact, validate_module,
+    BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CallTarget,
+    CanonicalDecodeError, CanonicalError, CastOp, CompareOp, FrontendArtifact,
+    FrontendArtifactSpec, FrontendLoweringError, FrontendPosition,
+    FrontendReturnIntegerFunction, FrontendReturnIntegerFunctionSpec,
+    FrontendSpan, Function, FunctionId, FunctionSpec, Global, GlobalId,
+    GlobalSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
+    ModuleSpec, Parameter, Phi, PhiIncoming, ProofObligation, SourcePosition,
+    SourceSpan, TYPED_IR_CODEC_ID, Terminator, TypeDef, TypeEntry, TypeId,
+    ValidationError, ValueId, canonical_bytes, canonical_debug_text,
+    canonical_module, lower_frontend_artifact, validate_module,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -361,6 +362,151 @@ fn accepted_module_has_deterministic_canonical_identity() {
         &first,
         Ok(bytes) if bytes.starts_with(b"MCTI\x01\x00")
     ));
+}
+
+#[test]
+fn canonical_typed_ir_codec_identity_is_stable() {
+    assert_eq!(TYPED_IR_CODEC_ID, "malbolge-typed-ir-v1");
+}
+
+#[test]
+fn canonical_bytes_restore_exact_module_and_identity() {
+    let module = valid_module();
+    let encoded = canonical_bytes(&module);
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let bytes = encoded.unwrap_or_default();
+
+    assert_eq!(canonical_module(&bytes), Ok(module));
+}
+
+#[test]
+fn extended_semantics_restore_exact_module_and_identity() {
+    let module = indirect_call_module();
+    let encoded = canonical_bytes(&module);
+    assert!(encoded.is_ok(), "extended module failed to canonicalize");
+    let bytes = encoded.unwrap_or_default();
+
+    assert_eq!(canonical_module(&bytes), Ok(module));
+}
+
+#[test]
+fn representative_canonical_states_restore_exactly() {
+    let modules = [
+        pointer_bool_module(CastOp::PointerToBool),
+        initialized_i32_global_module(vec![1, 0, 0, 0]),
+        switch_selector_module(TypeDef::I32),
+        promoted_binary_parameter_module(TypeDef::I32, BinaryOp::Add),
+        promoted_compare_parameter_module(TypeDef::I32, CompareOp::LessSigned),
+        overflow_proof_module(BinaryOp::Add, ValueId::new(2)),
+    ];
+    for module in modules {
+        let encoded = canonical_bytes(&module);
+        assert!(
+            encoded.is_ok(),
+            "representative module failed to canonicalize"
+        );
+        let bytes = encoded.unwrap_or_default();
+        assert_eq!(canonical_module(&bytes), Ok(module));
+    }
+}
+
+#[test]
+fn canonical_decoder_rejects_magic_version_utf8_and_trailing_bytes() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let canonical = encoded.unwrap_or_default();
+
+    let mut magic = canonical.clone();
+    if let Some(first) = magic.first_mut() {
+        *first = b'X';
+    }
+    assert_eq!(
+        canonical_module(&magic),
+        Err(CanonicalDecodeError::InvalidMagic)
+    );
+
+    let mut version = canonical.clone();
+    if let Some(byte) = version.get_mut(4) {
+        *byte = 2;
+    }
+    assert_eq!(
+        canonical_module(&version),
+        Err(CanonicalDecodeError::UnsupportedVersion)
+    );
+
+    let mut utf8 = canonical.clone();
+    if let Some(byte) = utf8.get_mut(10) {
+        *byte = 0xff;
+    }
+    assert_eq!(
+        canonical_module(&utf8),
+        Err(CanonicalDecodeError::InvalidUtf8)
+    );
+
+    let mut trailing = canonical;
+    trailing.push(0);
+    assert_eq!(
+        canonical_module(&trailing),
+        Err(CanonicalDecodeError::TrailingBytes)
+    );
+}
+
+#[test]
+fn canonical_decoder_rejects_unknown_wire_tag() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let mut bytes = encoded.unwrap_or_default();
+    let first_type_tag = 6
+        + 4
+        + ABI_ID.len()
+        + 4
+        + PROFILE_ID.len()
+        + 4
+        + SOURCE_ID.len()
+        + 32
+        + 4
+        + 4;
+    if let Some(tag) = bytes.get_mut(first_type_tag) {
+        *tag = u8::MAX;
+    }
+
+    assert_eq!(
+        canonical_module(&bytes),
+        Err(CanonicalDecodeError::UnknownTag)
+    );
+}
+
+#[test]
+fn canonical_decoder_revalidates_restored_module() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let mut bytes = encoded.unwrap_or_default();
+    let source_start = 6 + 4 + ABI_ID.len() + 4 + PROFILE_ID.len() + 4;
+    let source_end = source_start + SOURCE_ID.len();
+    if let Some(source) = bytes.get_mut(source_start..source_end) {
+        source.copy_from_slice(b"../escape.cxxxxxx");
+    }
+
+    assert_eq!(
+        canonical_module(&bytes),
+        Err(CanonicalDecodeError::Validation(
+            ValidationError::SourceProvenance
+        ))
+    );
+}
+
+#[test]
+fn every_truncated_canonical_prefix_fails_closed() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let canonical = encoded.unwrap_or_default();
+    for prefix_length in 0..canonical.len() {
+        let prefix = canonical.get(..prefix_length).unwrap_or_default();
+        assert!(
+            canonical_module(prefix).is_err(),
+            "truncated prefix {prefix_length} unexpectedly restored",
+        );
+    }
 }
 
 #[test]

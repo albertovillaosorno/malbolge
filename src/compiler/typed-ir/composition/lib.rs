@@ -37,6 +37,8 @@
 mod cfg;
 #[path = "../domain/control.rs"]
 mod control;
+#[path = "../application/decode.rs"]
+mod decode;
 #[path = "../application/encode.rs"]
 mod encode;
 #[path = "../application/error.rs"]
@@ -69,7 +71,10 @@ mod validate;
 mod values;
 
 pub use control::*;
-pub use encode::{CanonicalError, canonical_bytes, canonical_debug_text};
+pub use decode::{CanonicalDecodeError, canonical_module};
+pub use encode::{
+    CanonicalError, TYPED_IR_CODEC_ID, canonical_bytes, canonical_debug_text,
+};
 pub use error::ValidationError;
 pub use frontend_semantics::*;
 pub use ids::*;

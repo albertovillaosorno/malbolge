@@ -132,6 +132,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Declare the canonical typed-IR module topology.
+  - id: part-0020
+    path: application/decode.rs
+    kind: application
+    language: rust
+    responsibility: Restore fail-closed canonical typed-IR modules from bytes.
 projects: []
 tests: []
 graph:
