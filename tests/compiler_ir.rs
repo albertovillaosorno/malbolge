@@ -37,7 +37,10 @@
 #[path = "../src/compiler/typed-ir/composition/lib.rs"]
 pub mod typed_ir;
 
-use std::fs::read_to_string;
+use std::env::temp_dir;
+use std::fs::{read_to_string, remove_file, write};
+use std::path::{Path, PathBuf};
+use std::process::id;
 use std::str::from_utf8;
 
 use malbolge as _;
@@ -48,11 +51,12 @@ use typed_ir::{
     FrontendReturnIntegerFunction, FrontendReturnIntegerFunctionSpec,
     FrontendSpan, Function, FunctionId, FunctionSpec, Global, GlobalId,
     GlobalSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
-    ModuleSpec, Parameter, Phi, PhiIncoming, ProofObligation, SourcePosition,
-    SourceSpan, TYPED_IR_CODEC_ID, Terminator, TypeDef, TypeEntry, TypeId,
-    TypedIrStageError, TypedIrStageInput, ValidationError, ValueId,
-    canonical_bytes, canonical_debug_text, canonical_module,
-    enter_typed_ir_stage, lower_frontend_artifact, validate_module,
+    ModuleSpec, Parameter, Phi, PhiIncoming, ProgressCheckpointError,
+    ProofObligation, SourcePosition, SourceSpan, TYPED_IR_CODEC_ID, Terminator,
+    TypeDef, TypeEntry, TypeId, TypedIrStageError, TypedIrStageInput,
+    ValidationError, ValueId, canonical_bytes, canonical_debug_text,
+    canonical_module, enter_typed_ir_stage, lower_frontend_artifact,
+    resume_typed_ir_from_progress, validate_module,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -74,6 +78,47 @@ const BOOL_TYPE: TypeId = TypeId::new(0);
 const I32_TYPE: TypeId = TypeId::new(1);
 const FUNCTION_TYPE: TypeId = TypeId::new(2);
 const FUNCTION_ID: FunctionId = FunctionId::new(0);
+const INSPECTOR_DIAGNOSTIC_SCRIPT: &str = r#"import sys
+sys.stderr.write("unexpected diagnostic")
+"#;
+const INSPECTOR_REJECT_SCRIPT: &str = r#"import sys
+sys.stderr.write("rejected")
+raise SystemExit(3)
+"#;
+const INSPECTOR_STAGE_FAILURE_SCRIPT: &str = r#"import sys
+sys.stdout.buffer.write(b"bad")
+"#;
+const INSPECTOR_SUCCESS_SCRIPT: &str = r#"from pathlib import Path
+import sys
+expected = ["--extract-checkpoint", "malbolge-typed-ir-v1"]
+if sys.argv[1:3] != expected:
+    sys.stderr.write("unexpected arguments")
+    raise SystemExit(2)
+text = Path(sys.argv[3]).read_text(encoding="utf-8")
+compact = "".join(text.splitlines())
+prefix = "malbolge-typed-ir-v1:"
+if not compact.startswith(prefix):
+    sys.stderr.write("unexpected golden identity")
+    raise SystemExit(2)
+sys.stdout.buffer.write(bytes.fromhex(compact.removeprefix(prefix)))
+"#;
+
+fn repository_python() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if cfg!(windows) {
+        root.join(".dependencies/python/3.14.6/python.exe")
+    } else {
+        root.join(".dependencies/python/3.14.6/bin/python")
+    }
+}
+
+fn temporary_inspector(label: &str, source: &str) -> Result<PathBuf, String> {
+    let path = temp_dir()
+        .join(format!("malbolge-typed-ir-inspector-{label}-{}.py", id()));
+    write(&path, source)
+        .map_err(|error| format!("write temporary inspector: {error}"))?;
+    Ok(path)
+}
 
 fn canonical_golden_bytes(path: &str) -> Option<Vec<u8>> {
     let text = read_to_string(path).ok()?;
@@ -1106,6 +1151,104 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
         .map(|text| text.lines().collect::<String>())
         .map_err(|_error| CanonicalError::TextFormatting);
     assert_eq!(lowered, Ok(expected));
+}
+
+#[test]
+fn progress_sidecar_adapter_restores_verified_typed_ir() -> Result<(), String> {
+    let inspector = temporary_inspector("success", INSPECTOR_SUCCESS_SCRIPT)?;
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN_PATH);
+    let observed = resume_typed_ir_from_progress(
+        &repository_python(),
+        &inspector,
+        &golden,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove temporary inspector: {error}"))?;
+
+    if observed != Ok(valid_module()) {
+        return Err(String::from(
+            "verified progress checkpoint did not restore typed IR",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_rejects_diagnostics() -> Result<(), String> {
+    let inspector =
+        temporary_inspector("diagnostic", INSPECTOR_DIAGNOSTIC_SCRIPT)?;
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN_PATH);
+    let observed = resume_typed_ir_from_progress(
+        &repository_python(),
+        &inspector,
+        &progress,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove temporary inspector: {error}"))?;
+
+    if observed != Err(ProgressCheckpointError::InspectorRejected) {
+        return Err(String::from(
+            "inspector diagnostics were not rejected by adapter",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_sidecar_adapter_rejects_inspector_failure() -> Result<(), String> {
+    let inspector = temporary_inspector("rejected", INSPECTOR_REJECT_SCRIPT)?;
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN_PATH);
+    let observed = resume_typed_ir_from_progress(
+        &repository_python(),
+        &inspector,
+        &progress,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove temporary inspector: {error}"))?;
+
+    if observed != Err(ProgressCheckpointError::InspectorRejected) {
+        return Err(String::from(
+            "rejected progress checkpoint was not rejected by adapter",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_sidecar_adapter_reports_launch_failure() {
+    let missing = temp_dir()
+        .join(format!("malbolge-missing-progress-inspector-{}", id()));
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN_PATH);
+
+    assert_eq!(
+        resume_typed_ir_from_progress(&missing, &missing, &progress),
+        Err(ProgressCheckpointError::InspectorLaunch),
+    );
+}
+
+#[test]
+fn progress_sidecar_adapter_revalidates_extracted_bytes() -> Result<(), String>
+{
+    let inspector =
+        temporary_inspector("invalid-stage", INSPECTOR_STAGE_FAILURE_SCRIPT)?;
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN_PATH);
+    let observed = resume_typed_ir_from_progress(
+        &repository_python(),
+        &inspector,
+        &progress,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove temporary inspector: {error}"))?;
+
+    let expected = Err(ProgressCheckpointError::Stage(
+        TypedIrStageError::Checkpoint(CanonicalDecodeError::Truncated),
+    ));
+    if observed != expected {
+        return Err(String::from(
+            "malformed extracted bytes bypassed typed-IR admission",
+        ));
+    }
+    Ok(())
 }
 
 #[test]

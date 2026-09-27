@@ -142,6 +142,12 @@ parts:
     kind: application
     language: rust
     responsibility: Enter typed IR from fresh frontend or durable checkpoint.
+  - id: part-0022
+    path: composition/progress_resume.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Compose verified progress-sidecar state into typed-IR resume.
 projects: []
 tests: []
 graph:

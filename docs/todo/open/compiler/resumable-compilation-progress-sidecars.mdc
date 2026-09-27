@@ -174,12 +174,16 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   It rejects truncation, unknown tags, invalid UTF-8, trailing data, invalid IR,
   and noncanonical re-encoding; `tests/compiler_ir.rs` covers canonical and
   extended round trips plus malformed-wire and full-validation failures.
-  `src/compiler/typed-ir/application/stage.rs` adds one governed fresh-or-
-  resumed
-  typed-IR stage entrypoint. Normalized frontend evidence and canonical
-  checkpoint bytes converge on the same admitted `Module`; stage errors preserve
-  frontend-versus-checkpoint failure identity.
-- Direct product/compiler sidecar consumption, later compiler-stage codecs,
+  `src/compiler/typed-ir/application/stage.rs` adds one governed
+  fresh-or-resumed typed-IR stage entrypoint. Normalized frontend evidence and
+  canonical checkpoint bytes converge on the same admitted `Module`; stage
+  errors preserve frontend-versus-checkpoint failure identity.
+- `src/compiler/typed-ir/composition/progress_resume.rs` directly
+  consumes a progress-sidecar path through the verified extractor without
+  parsing sidecar JSON in compiler code. It requires the exact typed-IR codec,
+  rejects launch/status/diagnostic failures, and revalidates extracted bytes
+  through the stage entrypoint.
+- Product CLI sidecar selection/wiring, later compiler-stage codecs,
   compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
   equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint

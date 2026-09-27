@@ -57,6 +57,8 @@ mod layout;
 mod lower_frontend;
 #[path = "../domain/module.rs"]
 mod module;
+#[path = "progress_resume.rs"]
+mod progress_resume;
 #[path = "../application/proofs.rs"]
 mod proofs;
 #[path = "../domain/source.rs"]
@@ -83,6 +85,9 @@ pub use ids::*;
 pub use instruction::*;
 pub use lower_frontend::{FrontendLoweringError, lower_frontend_artifact};
 pub use module::*;
+pub use progress_resume::{
+    ProgressCheckpointError, resume_typed_ir_from_progress,
+};
 pub use source::*;
 pub use stage::{TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage};
 pub use types::*;

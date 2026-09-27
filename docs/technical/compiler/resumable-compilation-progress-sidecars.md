@@ -181,8 +181,11 @@ opaque state bytes to binary stdout. Together these provide an operator bridge
 from `malbolge-progress-v1` into codec-aware consumers without allowing unknown
 checkpoint state to execute automatically.
 
-The optimizer still consumes an explicit extracted file; direct
-product/compiler sidecar input remains open.
+The optimizer still consumes an explicit extracted file. Typed-IR compiler
+composition now has `resume_typed_ir_from_progress()`, a composition bridge that
+invokes the verified extractor for `malbolge-typed-ir-v1` and immediately reruns
+complete typed-IR checkpoint admission. Product CLI selection of interpreter,
+inspector, and progress path remains open.
 
 Child-process crash fixtures now terminate after temporary bytes are flushed but
 before file synchronization for checkpoint, partial, and sidecar writes;
@@ -192,17 +195,20 @@ temporary cleanup; after a durable checkpoint; immediately before sidecar
 publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
+
 Canonical typed IR now supplies one concrete compiler-state codec,
 `malbolge-typed-ir-v1`: validation-gated canonical bytes can be restored through
 `canonical_module()` with exact-tag, bounded-length, UTF-8, trailing-byte, full
 IR-validation, and byte-for-byte re-encode checks. The typed-IR stage now has
 a single `enter_typed_ir_stage()` handoff that accepts either normalized
 frontend evidence or canonical checkpoint bytes and returns the same admitted
-module type. No compiler composition currently publishes or directly consumes
-that state through `malbolge-progress-v1`; generic checkpoint metadata discovery
-is now available through the progress inspector.
+module type. Compiler composition can now directly consume a progress-sidecar
+path through the explicit verified composition bridge; it still does not
+publish
+that state itself. Generic checkpoint metadata discovery remains available
+through the progress inspector.
 
-Direct product/compiler sidecar consumption, later compiler-stage codecs,
+Product CLI sidecar selection/wiring, later compiler-stage codecs,
 compiler-pipeline crash injection, and compiler/non-search CPU/CUDA resume
 equivalence remain unimplemented.
 
@@ -371,8 +377,11 @@ jobs that requested resumability.
   reject every truncated canonical prefix, unknown tags, wrong magic/version,
   invalid UTF-8, trailing bytes, and semantically invalid restored modules. They
   also prove fresh normalized frontend entry and resumed canonical entry
-  converge
-  on the same admitted typed-IR module while preserving failure categories.
+  converge on the same admitted typed-IR module while preserving failure
+  categories. Progress-adapter tests cover exact codec extraction arguments,
+  launch/rejection/diagnostic failures, malformed extracted bytes, and
+  successful
+  restoration of the tracked canonical typed-IR golden.
 - Prepared-search resume tests cover partial and completed projected prefixes,
   empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
   equivalence, and CPU-produced checkpoint resume through live CUDA.

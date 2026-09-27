@@ -193,6 +193,14 @@ fully admitted `Module` type, while `TypedIrStageError` preserves whether a
 failure came from frontend lowering or checkpoint restoration. Later lowering
 therefore need not distinguish fresh compilation from a validated resume.
 
+`resume_typed_ir_from_progress()` is the compiler-side composition bridge for a
+durable `malbolge-progress-v1` path. It does not parse sidecar JSON. Compiler
+composition supplies an explicit interpreter and trusted progress-inspector
+path; the adapter invokes `--extract-checkpoint malbolge-typed-ir-v1`, rejects
+launch failure, nonzero status, or any inspector diagnostics, and submits the
+exact stdout bytes to `enter_typed_ir_stage()` for complete checkpoint
+admission.
+
 ### Relationship to LLVM IR
 
 LLVM's language reference is useful design evidence for explicit basic-block
