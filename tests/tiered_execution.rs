@@ -548,7 +548,8 @@ use execution_native::{
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
     RegisterMaskedDependencyIdentityClaim as ReducedIdentityClaim,
-    RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedDirectAdmissionErrorKind, RegisterMaskedInputLease,
+    RegisterMaskedInputLeaseCache, RegisterMaskedInputLeaseCacheInvalidation,
     RegisterMaskedInputNativeExecutableOwner,
     RegisterMaskedInputNativeOwnerExecutionFailure,
     RegisterMaskedInputNativeOwnerLoadFailure,
@@ -2068,6 +2069,14 @@ type RegisterMaskedCrazyMultiCacheFixture =
 type RegisterMaskedCrazyVariant = (
     RegisterMaskedRegionEffectProgram,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
+);
+
+type RegisterMaskedInputMultiCacheFixture =
+    (FakeNativeExecutableAdapter, RegisterMaskedInputLeaseCache);
+
+type RegisterMaskedInputVariant = (
+    RegisterMaskedRegionEffectProgram,
+    VerifiedRegisterMaskedInputNativeObjectArtifact,
 );
 
 type RegisterMaskedOutputMultiCacheFixture =
@@ -18499,6 +18508,57 @@ fn register_masked_v6_crazy_multi_cache_skips_retired() -> TieredTestResult {
     }
 }
 
+fn register_masked_input_cache_variant(
+    accumulator_delta: u32,
+) -> Result<RegisterMaskedInputVariant, String> {
+    let mut program = canonical_register_masked_input_program(vec![0x41])?;
+    let effect =
+        program.program.effects.first_mut().ok_or_else(|| {
+            String::from("v6 input cache variant effect missing")
+        })?;
+    effect.before.registers.accumulator = effect
+        .before
+        .registers
+        .accumulator
+        .wrapping_add(accumulator_delta);
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    Ok((program, artifact))
+}
+
+fn register_masked_input_multi_cache_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+    entry_limit: usize,
+) -> Result<RegisterMaskedInputMultiCacheFixture, String> {
+    let entry_capacity = NonZeroUsize::new(entry_limit)
+        .ok_or_else(|| String::from("zero input cache capacity"))?;
+    Ok((
+        FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_id_value)?,
+            native_executable_address(base_address)?,
+        ),
+        RegisterMaskedInputLeaseCache::new(entry_capacity),
+    ))
+}
+
+fn return_input_retired_lease(
+    cache: &mut RegisterMaskedInputLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    lease: RegisterMaskedInputLease,
+    key: &NativeArtifactKey,
+) -> Result<(), String> {
+    let reconciled = cache
+        .return_lease(adapter, lease)
+        .map_err(|error| format!("v6 input lease return: {error}"))?;
+    if reconciled.released_keys() == [key.clone()]
+        && reconciled.retained_keys().is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input retired lease did not reconcile"))
+    }
+}
+
 fn register_masked_output_multi_cache_fixture(
     mapping_id_value: u64,
     base_address: usize,
@@ -18561,6 +18621,339 @@ fn return_output_retired_lease(
         Ok(())
     } else {
         Err(String::from("v6 Output retired lease did not reconcile"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_hits_no_remap() -> TieredTestResult {
+    let (program, artifact) = register_masked_input_cache_variant(1)?;
+    let key = artifact.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_input_multi_cache_fixture(596, 0x9a000, 2)?;
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 input cache insert: {error}"))?;
+    if first.disposition().is_hit() {
+        return Err(String::from("v6 input first cache insert reported hit"));
+    }
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 input cache hit: {error}"))?;
+    let second_is_hit = second.disposition().is_hit();
+    let second_lease = second.into_lease();
+    if !second_is_hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.active_len() != 1
+        || cache.resident_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 input cache hit remapped or changed usage",
+        ));
+    }
+    let drained = cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 input leased drain: {error}"))?;
+    if !drained.released_keys().is_empty()
+        || drained.retained_keys() != [key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 input live drain retirement drifted"));
+    }
+    drop(first_lease);
+    return_input_retired_lease(&mut cache, &mut adapter, second_lease, &key)?;
+    if cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input retired state drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_rejects_same_key_drift()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_input_cache_variant(10)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(597)?,
+        native_executable_address(0x9b000)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero input cache capacity"))?;
+    let mut cache = RegisterMaskedInputLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 input drift seed: {error}"))?,
+    );
+    let loaded_operations = adapter.operations.clone();
+    let mut drifted_program = program;
+    let effect = drifted_program
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 input drift effect missing"))?;
+    effect.before.registers.accumulator ^= 1;
+    let Err(error) = cache.ensure(&mut adapter, &drifted_program, &artifact)
+    else {
+        return Err(String::from(
+            "v6 input same-key evidence drift was admitted",
+        ));
+    };
+    if !matches!(
+        error.load_failure(),
+        Some(RegisterMaskedInputNativeOwnerLoadFailure::ArtifactIdentity)
+    ) || cache.active_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 input same-key rejection changed residency",
+        ));
+    }
+    let cleanup = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| format!("v6 input drift cleanup: {failure}"))?;
+    if cleanup.retained_keys().is_empty() && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 input drift cleanup retained key"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_retires_fifo() -> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_input_cache_variant(2)?;
+    let (program_b, artifact_b) = register_masked_input_cache_variant(3)?;
+    let (program_c, artifact_c) = register_masked_input_cache_variant(4)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let key_c = artifact_c.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_input_multi_cache_fixture(598, 0x9c000, 2)?;
+    let first = cache
+        .ensure(&mut adapter, &program_a, &artifact_a)
+        .map_err(|error| format!("v6 input cache A: {error}"))?;
+    let leased_a = first.into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|error| format!("v6 input cache B: {error}"))?,
+    );
+    let third = cache
+        .ensure(&mut adapter, &program_c, &artifact_c)
+        .map_err(|error| format!("v6 input cache C: {error}"))?;
+    if third.disposition().evicted_keys() != [key_a.clone(), key_b]
+        || third.disposition().retired_keys() != [key_a.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_c]
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
+        || cache.usage().entries() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 input leased FIFO retirement drifted"));
+    }
+    drop(third);
+    return_input_retired_lease(&mut cache, &mut adapter, leased_a, &key_a)?;
+    if cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 input FIFO retirement did not reconcile"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 input FIFO cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_live_lease_blocks() -> TieredTestResult
+{
+    let (program_a, artifact_a) = register_masked_input_cache_variant(5)?;
+    let (program_b, artifact_b) = register_masked_input_cache_variant(6)?;
+    let key_a = artifact_a.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_input_multi_cache_fixture(599, 0x9d000, 1)?;
+    let first = cache
+        .ensure(&mut adapter, &program_a, &artifact_a)
+        .map_err(|error| format!("v6 input live seed: {error}"))?;
+    let lease = first.into_lease();
+    let Err(error) = cache.ensure(&mut adapter, &program_b, &artifact_b) else {
+        return Err(String::from(
+            "v6 input live lease failed to block capacity",
+        ));
+    };
+    let block = error
+        .block()
+        .ok_or_else(|| String::from("v6 input block evidence missing"))?;
+    if block.retired_keys() != [key_a.clone()]
+        || block.usage().entries() != 1
+        || error.evicted_keys() != [key_a.clone()]
+        || error.retired_keys() != [key_a.clone()]
+        || error.candidate_cleanup_failure().is_some()
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 input live-lease blockage drifted"));
+    }
+    let reconciled =
+        cache
+            .return_lease(&mut adapter, lease)
+            .map_err(|return_error| {
+                format!("v6 input block return: {return_error}")
+            })?;
+    if reconciled.released_keys() != [key_a]
+        || cache.usage().entries() != 0
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 input blocked resident did not reconcile",
+        ));
+    }
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|insert_error| {
+                format!("v6 input post-block insert: {insert_error}")
+            })?,
+    );
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|failure| format!("v6 input block cleanup: {failure}"))
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_rejects_oversize_mapping()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_input_cache_variant(7)?;
+    let mapped_len = 4096;
+    let byte_limit = NonZeroUsize::new(1024)
+        .ok_or_else(|| String::from("zero input byte limit"))?;
+    let entry_limit = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero input cache capacity"))?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(600)?,
+        native_executable_address(0x9e000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let mut cache = RegisterMaskedInputLeaseCache::with_limits(limits);
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 input oversize mapping entered cache"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::MappedBytes {
+            required: mapped_len,
+            limit: byte_limit,
+        })
+        || error.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 input oversize cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_release_failure_retries()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_input_cache_variant(11)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(601)?,
+        native_executable_address(0x9f000)?,
+    )
+    .with_release_failure_at(1);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("zero input cache capacity"))?;
+    let mut cache = RegisterMaskedInputLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 input drain seed: {error}"))?,
+    );
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from("v6 input release-all failure was ignored"));
+    };
+    if failure.failures().len() != 1
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 input release-all failure ownership drifted",
+        ));
+    }
+    let retried = failure.retry(&mut adapter).map_err(|retry_failure| {
+        format!("v6 input release retry failed: {retry_failure}")
+    })?;
+    if retried.released_keys() == [key]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input release retry result drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_multi_cache_invalidation_retires_lease()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_input_cache_variant(12)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(602)?,
+        native_executable_address(0xa0000)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero input cache capacity"))?;
+    let mut cache = RegisterMaskedInputLeaseCache::new(capacity);
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 input invalidation seed: {error}"))?;
+    let lease = acquisition.into_lease();
+    let invalidated =
+        cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+            format!("v6 input invalidation: {}", error.failure())
+        })?;
+    if invalidated
+        != (RegisterMaskedInputLeaseCacheInvalidation::Retired { leases: 1 })
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key.clone()]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 input leased invalidation drifted"));
+    }
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("v6 input invalidation return: {error}"))?;
+    if reconciled.released_keys() == [key]
+        && cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input invalidation reconciliation drifted"))
     }
 }
 

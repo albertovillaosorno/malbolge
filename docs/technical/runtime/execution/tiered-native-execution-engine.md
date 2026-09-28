@@ -2306,8 +2306,13 @@ immutable lease without adapter work, different identity cannot replace an
 occupied slot, live leases block release, and cleanup failure transfers exact
 retry ownership without leaving stale cache authority.
 
-Input multi-entry cache/sequence residency plus both JumpCode and JumpData
-families remain open and fail closed.
+A weighted multi-resident Input lease cache now reuses exact owners under FIFO
+limits without refreshing hit age. Live victims retire while retaining charged
+weight; invalidation, release, lease return, reconciliation, and limit changes
+preserve keyed cleanup retry ownership.
+
+Input sequence residency plus both JumpCode and JumpData families remain open
+and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

@@ -343,8 +343,13 @@ failure without remapping, and transfers retryable release ownership.
 `RegisterMaskedInputNativeResidentLeaseCache` adds one exact cloneable lease
 slot. Hits perform no adapter work, different identity cannot replace the
 resident, live leases block release, and failed cleanup transfers exact retry
-ownership while clearing cache authority. Multi-entry cache and sequence
-residency remain separate fail-closed boundaries.
+ownership while clearing cache authority.
+
+A weighted multi-resident Input lease cache now adds FIFO lookup authority under
+entry, mapping, and mapped-byte limits. Live victims retire with charged weight;
+invalidation, release, lease return, reconciliation, and limit changes preserve
+keyed retry ownership. Sequence residency remains a separate fail-closed
+boundary.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

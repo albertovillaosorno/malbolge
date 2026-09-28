@@ -89,6 +89,7 @@ mod register_masked_crazy_sequence_cache;
 mod register_masked_crazy_sequence_execution;
 mod register_masked_crazy_sequence_lease_cache;
 mod register_masked_graph_resident;
+mod register_masked_input_lease_cache;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -906,6 +907,28 @@ pub use register_masked_graph_resident::{
     RegisterMaskedReducedGraphResidentReleaseFailure,
     RegisterMaskedReducedGraphResidentWeight,
     load_ahead_of_execution_register_masked_reduced_state_graph,
+};
+pub use register_masked_input_lease_cache::{
+    RegisterMaskedInputLease, RegisterMaskedInputLeaseCache,
+    RegisterMaskedInputLeaseCacheAcquisition,
+    RegisterMaskedInputLeaseCacheBlock,
+    RegisterMaskedInputLeaseCacheCapacityError,
+    RegisterMaskedInputLeaseCacheDisposition,
+    RegisterMaskedInputLeaseCacheEntryReleaseFailure,
+    RegisterMaskedInputLeaseCacheInvalidation,
+    RegisterMaskedInputLeaseCacheInvalidationResult,
+    RegisterMaskedInputLeaseCacheLimits,
+    RegisterMaskedInputLeaseCacheLoadFailure,
+    RegisterMaskedInputLeaseCacheLoadReleaseFailures,
+    RegisterMaskedInputLeaseCacheLoadResult,
+    RegisterMaskedInputLeaseCacheReconciliationResult,
+    RegisterMaskedInputLeaseCacheReconfiguration,
+    RegisterMaskedInputLeaseCacheReconfigurationFailure,
+    RegisterMaskedInputLeaseCacheReconfigurationResult,
+    RegisterMaskedInputLeaseCacheReleaseFailure,
+    RegisterMaskedInputLeaseCacheReleaseResult,
+    RegisterMaskedInputLeaseCacheReleaseSummary,
+    RegisterMaskedInputLeaseCacheUsage,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
