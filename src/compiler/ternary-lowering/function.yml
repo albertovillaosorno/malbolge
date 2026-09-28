@@ -147,12 +147,12 @@ parts:
     path: application/lower_frame_helper.rs
     kind: application
     language: rust
-    responsibility: Bind frame validation to exact ABI/runtime semantics.
+    responsibility: Bind frame codec helpers to exact ABI/runtime semantics.
   - id: part-0023
     path: application/realize_frame_helper.rs
     kind: application
     language: rust
-    responsibility: Expand frame validation into explicit control flow.
+    responsibility: Expand frame codec helpers into explicit execution plans.
 projects: []
 tests: []
 graph:

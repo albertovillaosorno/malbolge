@@ -66,9 +66,11 @@ storage while publishing `INVALID_INPUT_WORD`. Output-helper realization keeps
 the exact low-byte mask. No branch addresses or host evaluation enter this
 representation.
 
-A separate call-frame helper port admits only
-`malbolge_guest_frame_validate` under exact `malbolge-c32-v1` and
-`malbolge-guest-runtime-v1` identity. Its declarative semantics bind the ABI's
+A separate call-frame helper port admits exactly
+`malbolge_guest_frame_validate`, `malbolge_guest_frame_encode`, and
+`malbolge_guest_frame_decode` under `malbolge-c32-v1` and
+`malbolge-guest-runtime-v1` identity. Shared declarative semantics bind the
+ABI's
 32-byte hidden header and 16-byte frame alignment plus runtime statuses
 `VALID=0`, `INVALID_ARGUMENT=1`, and `INVALID_FRAME=5`.
 
@@ -76,8 +78,14 @@ Frame-validator realization preserves the checked-in C condition order as six
 pre-layout exits: null frame pointer, extent below 32 bytes, misaligned extent,
 null argument-block pointer, nonzero flags, then success. The first branch
 returns `INVALID_ARGUMENT`, the four shape branches return `INVALID_FRAME`, and
-the final branch returns `VALID`. Frame encode/decode memory reads, writes, and
-publication remain separate later work.
+the final branch returns `VALID`.
+
+Frame encode/decode realization binds the eight ABI `u32` fields at byte offsets
+`0,4,8,12,16,20,24,28` in checked-in C order and marks each transfer
+little-endian. Encode checks the output wire pointer/size, validates the source
+frame, builds a scratch wire image, then publishes all 32 bytes atomically.
+Decode checks both pointers/size, reads all fields into scratch state, validates
+that scratch frame, and only then publishes the decoded frame.
 
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
@@ -258,11 +266,11 @@ emitted.
   alongside profile-bound machine I/O.
 - Frame-helper evidence cross-checks the ABI JSON, runtime header, and
   checked-in
-  `frame.c`. It binds the exact frame-validator identity,
-  header/alignment/status
-  constants, proves the ordered null/extent/alignment/argument/flags/success
-  exits, and rejects ABI, runtime, or helper identity drift before publishing
-  control flow.
+  `frame.c`. It binds exact validate/encode/decode identities, the fixed field
+  offsets, header/alignment/status constants, ordered validator exits, and
+  deferred publication. Encode validation precedes field encoding/output copy;
+  decode validation follows scratch field reads and precedes caller-frame
+  publication. ABI, runtime, or helper identity drift fails closed.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

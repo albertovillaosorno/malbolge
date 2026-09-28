@@ -115,9 +115,58 @@ pub struct FrameValidationSemantics {
     pub valid_status: u32,
 }
 
+/// One canonical hidden frame field.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameField {
+    /// Required argument-block object pointer.
+    ArgumentBlock,
+    /// Compiler-owned return continuation identity.
+    ContinuationId,
+    /// Version-one flags word.
+    Flags,
+    /// Complete aligned frame extent in bytes.
+    FrameExtent,
+    /// Deterministic function-table identity.
+    FunctionId,
+    /// Previous active frame object pointer.
+    PreviousFrame,
+    /// Caller-owned result storage object pointer.
+    ResultBlock,
+    /// First promoted variadic argument object pointer.
+    VariadicBegin,
+}
+
+/// One frame field and its fixed byte offset in the 32-byte wire header.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameFieldLayout {
+    /// Semantic frame field.
+    pub field: FrameField,
+    /// Zero-based byte offset in the canonical frame header.
+    pub offset: u32,
+}
+
+/// Declarative semantics shared by canonical frame encode/decode helpers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameCodecSemantics {
+    /// Fixed little-endian field layout in source publication order.
+    pub fields: [FrameFieldLayout; 8],
+    /// Fixed version-one frame header/wire size.
+    pub header_bytes: u32,
+    /// Runtime status for null pointers or wrong wire size.
+    pub invalid_argument_status: u32,
+    /// Runtime status returned after successful publication.
+    pub valid_status: u32,
+    /// Frame validation semantics invoked before publication.
+    pub validation: FrameValidationSemantics,
+}
+
 /// One admitted call-frame helper represented as declarative semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrameHelperOperation {
+    /// Decode one canonical 32-byte wire header into a validated frame.
+    Decode(FrameCodecSemantics),
+    /// Encode one validated frame into canonical 32-byte wire bytes.
+    Encode(FrameCodecSemantics),
     /// Validate one hidden version-one call-frame header.
     Validate(FrameValidationSemantics),
 }
@@ -148,9 +197,53 @@ pub struct FrameValidationArm {
     pub status: u32,
 }
 
+/// One explicit frame encode/decode execution step before target layout.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FrameCodecExecutionStep {
+    /// Read one little-endian `u32` field from the wire into scratch state.
+    DecodeFieldLittleEndian(FrameFieldLayout),
+    /// Write one frame `u32` field into the scratch wire image.
+    EncodeFieldLittleEndian(FrameFieldLayout),
+    /// Require a non-null destination frame pointer or return one status.
+    GuardFramePointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Require a non-null wire pointer or return one status.
+    GuardWirePointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Require the exact canonical wire size or return one status.
+    GuardWireSizeExact {
+        /// Exact accepted wire byte count.
+        bytes: u32,
+        /// Runtime status returned for a different size.
+        failure_status: u32,
+    },
+    /// Publish the fully validated scratch frame to caller-owned storage.
+    PublishDecodedFrameAtomically,
+    /// Publish the fully encoded scratch wire to caller-owned storage.
+    PublishEncodedWireAtomically,
+    /// Return one exact runtime status.
+    ReturnStatus(u32),
+    /// Validate frame scratch/source and return its status on failure.
+    ValidateFrameOrReturn(Box<FrameHelperExecutionPlan>),
+}
+
 /// One call-frame helper after explicit control-flow realization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FrameHelperExecutionPlan {
+    /// Canonical wire-to-frame execution with deferred publication.
+    Decode {
+        /// Ordered decode and validation steps.
+        steps: Vec<FrameCodecExecutionStep>,
+    },
+    /// Canonical frame-to-wire execution with deferred publication.
+    Encode {
+        /// Ordered encode and validation steps.
+        steps: Vec<FrameCodecExecutionStep>,
+    },
     /// Ordered exits for version-one frame validation.
     Validate {
         /// First matching branch determines the returned status.

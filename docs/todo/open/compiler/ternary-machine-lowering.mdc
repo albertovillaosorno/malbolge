@@ -102,15 +102,13 @@ instruction.
   realization
   retains the exact low-byte mask, and realized stdio wrapper plans carry the
   helper execution plan beside profile-bound machine I/O.
-- A separate frame-helper family now admits only
-  `malbolge_guest_frame_validate` under exact ABI/runtime authority. It binds
-  the
-  32-byte header, 16-byte frame alignment, zero flags, and statuses `0/1/5`,
-  then
-  realizes the checked-in C validator as ordered null/extent/alignment/argument/
-  flags/success exits. ABI/runtime/helper drift fails closed; frame
-  encode/decode
-  memory movement remains open.
+- A separate frame-helper family now admits exact validate/encode/decode helper
+  identities under ABI/runtime authority. It binds the 32-byte header, 16-byte
+  alignment, statuses `0/1/5`, and all eight little-endian field offsets. The
+  validator retains ordered null/extent/alignment/argument/flags/success exits;
+  encode/decode use scratch state and defer caller-visible wire/frame
+  publication
+  until validation succeeds. ABI/runtime/helper drift fails closed.
 - A separate inbound runtime-intrinsic request now admits only the exact
   `malbolge_guest_intrinsic_input_word` and
   `malbolge_guest_intrinsic_output_byte` identities under `malbolge-2026`,
@@ -149,8 +147,8 @@ instruction.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
-  branch-address/source-cell placement, frame encode/decode plus heap/formatting
-  runtime helpers, final target serialization, and executable Malbolge-oriented
+  branch-address/source-cell placement, heap/formatting runtime helpers, final
+  target serialization, and executable Malbolge-oriented
   lowering evidence.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

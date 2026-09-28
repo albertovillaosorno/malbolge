@@ -46,12 +46,13 @@ use ternary_lowering::{
     ByteStreamControlFlowError, ByteStreamWrapperExecutionPlan,
     ByteStreamWrapperExecutionStep, ByteStreamWrapperOrder,
     ByteStreamWrapperPlanningError, ByteStreamWrapperRealizationError,
-    ByteStreamWrapperRequest, ByteStreamWrapperReturn,
-    FrameHelperExecutionPlan, FrameHelperLoweringError, FrameHelperOperation,
-    FrameHelperRequest, FrameValidationArm, FrameValidationCondition,
-    FrameValidationSemantics, I32_TERNARY_TRITS, InputBlock, InputDecodeArm,
-    InputDecodeCondition, InputDecodeResult, InputFunction, InputInstruction,
-    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    ByteStreamWrapperRequest, ByteStreamWrapperReturn, FrameCodecExecutionStep,
+    FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
+    FrameHelperLoweringError, FrameHelperOperation, FrameHelperRequest,
+    FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
+    I32_TERNARY_TRITS, InputBlock, InputDecodeArm, InputDecodeCondition,
+    InputDecodeResult, InputFunction, InputInstruction, InputScalarType,
+    InputSourcePosition, InputSourceSpan, InputTerminator,
     InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
@@ -1409,8 +1410,12 @@ fn frame_helper_authority_matches_abi_and_runtime() -> Result<(), String> {
     let source = read_to_string(GUEST_FRAME_SOURCE)
         .map_err(|error| format!("read guest frame source: {error}"))?;
     for expected in [
+        "malbolge_guest_frame_decode",
+        "malbolge_guest_frame_encode",
         "malbolge_guest_frame_validate",
         "FRAME_ALIGNMENT UINT32_C(16)",
+        "copy_wire(wire, encoded)",
+        "frame->previous_frame = decoded.previous_frame",
     ] {
         if !source.contains(expected) {
             return Err(format!("frame source authority missing {expected}"));
@@ -1491,6 +1496,142 @@ fn frame_validator_realizes_exact_control_flow() -> Result<(), String> {
     Ok(())
 }
 
+const fn expected_frame_fields() -> [FrameFieldLayout; 8] {
+    [
+        FrameFieldLayout {
+            field: FrameField::PreviousFrame,
+            offset: 0,
+        },
+        FrameFieldLayout {
+            field: FrameField::ContinuationId,
+            offset: 4,
+        },
+        FrameFieldLayout {
+            field: FrameField::FunctionId,
+            offset: 8,
+        },
+        FrameFieldLayout {
+            field: FrameField::FrameExtent,
+            offset: 12,
+        },
+        FrameFieldLayout {
+            field: FrameField::ArgumentBlock,
+            offset: 16,
+        },
+        FrameFieldLayout {
+            field: FrameField::ResultBlock,
+            offset: 20,
+        },
+        FrameFieldLayout {
+            field: FrameField::VariadicBegin,
+            offset: 24,
+        },
+        FrameFieldLayout {
+            field: FrameField::Flags,
+            offset: 28,
+        },
+    ]
+}
+
+fn frame_validation_plan() -> FrameHelperExecutionPlan {
+    FrameHelperExecutionPlan::Validate {
+        exits: vec![
+            FrameValidationArm {
+                condition: FrameValidationCondition::FramePointerNull,
+                status: 1,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FrameExtentBelow(32),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FrameExtentMisaligned(16),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::ArgumentBlockNull,
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FlagsNotEqual(0),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::Otherwise,
+                status: 0,
+            },
+        ],
+    }
+}
+
+#[test]
+fn frame_encode_defers_wire_publication_until_validation() -> Result<(), String>
+{
+    let operation = lower_frame_helper(&FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_frame_encode"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower frame encode: {error:?}"))?;
+    let observed = realize_frame_helper(operation);
+    let mut expected_steps = vec![
+        FrameCodecExecutionStep::GuardWirePointerNonNull { failure_status: 1 },
+        FrameCodecExecutionStep::GuardWireSizeExact {
+            bytes: 32,
+            failure_status: 1,
+        },
+        FrameCodecExecutionStep::ValidateFrameOrReturn(Box::new(
+            frame_validation_plan(),
+        )),
+    ];
+    expected_steps.extend(
+        expected_frame_fields()
+            .into_iter()
+            .map(FrameCodecExecutionStep::EncodeFieldLittleEndian),
+    );
+    expected_steps.push(FrameCodecExecutionStep::PublishEncodedWireAtomically);
+    expected_steps.push(FrameCodecExecutionStep::ReturnStatus(0));
+    let expected = FrameHelperExecutionPlan::Encode { steps: expected_steps };
+    if observed != expected {
+        return Err(String::from("frame encode execution plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn frame_decode_defers_publication_until_validation() -> Result<(), String> {
+    let operation = lower_frame_helper(&FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_frame_decode"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower frame decode: {error:?}"))?;
+    let observed = realize_frame_helper(operation);
+    let mut expected_steps = vec![
+        FrameCodecExecutionStep::GuardWirePointerNonNull { failure_status: 1 },
+        FrameCodecExecutionStep::GuardFramePointerNonNull { failure_status: 1 },
+        FrameCodecExecutionStep::GuardWireSizeExact {
+            bytes: 32,
+            failure_status: 1,
+        },
+    ];
+    expected_steps.extend(
+        expected_frame_fields()
+            .into_iter()
+            .map(FrameCodecExecutionStep::DecodeFieldLittleEndian),
+    );
+    expected_steps.push(FrameCodecExecutionStep::ValidateFrameOrReturn(
+        Box::new(frame_validation_plan()),
+    ));
+    expected_steps.push(FrameCodecExecutionStep::PublishDecodedFrameAtomically);
+    expected_steps.push(FrameCodecExecutionStep::ReturnStatus(0));
+    let expected = FrameHelperExecutionPlan::Decode { steps: expected_steps };
+    if observed != expected {
+        return Err(String::from("frame decode execution plan drifted"));
+    }
+    Ok(())
+}
+
 #[test]
 fn frame_helper_identity_drift_fails_closed() -> Result<(), String> {
     let base = FrameHelperRequest {
@@ -1503,7 +1644,7 @@ fn frame_helper_identity_drift_fails_closed() -> Result<(), String> {
     let mut wrong_runtime = base.clone();
     wrong_runtime.runtime_id = String::from("malbolge-guest-runtime-v2");
     let mut wrong_helper = base;
-    wrong_helper.identity = String::from("malbolge_guest_frame_decode");
+    wrong_helper.identity = String::from("malbolge_guest_frame_unknown");
     if lower_frame_helper(&wrong_abi)
         != Err(FrameHelperLoweringError::InvalidAuthority)
         || lower_frame_helper(&wrong_runtime)
