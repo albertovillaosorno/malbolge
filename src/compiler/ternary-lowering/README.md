@@ -39,6 +39,13 @@ operation tags, exact source spans, and 21 one-byte trits per `i32` scalar.
 Restoration rejects malformed, truncated, unknown-tag, noncanonical, or
 semantic-invalid state before returning a program.
 
+The ternary stage now has one fresh-or-resumed entrypoint. Fresh typed-IR
+projections and canonical `malbolge-ternary-ir-v1` checkpoint bytes converge
+on the same admitted `TernaryProgram`. Compiler composition also exposes an
+explicit progress-sidecar bridge that requires caller-selected inspector paths,
+delegates envelope/codec validation, and revalidates extracted bytes through
+the ternary stage before returning state.
+
 A separate pure runtime-helper port admits only
 `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
 current profile. It lowers them to declarative target recipes: input accepts raw

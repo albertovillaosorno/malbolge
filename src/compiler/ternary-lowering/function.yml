@@ -168,6 +168,16 @@ parts:
     kind: application
     language: rust
     responsibility: Expand heap helpers into explicit execution steps.
+  - id: part-0027
+    path: application/stage.rs
+    kind: application
+    language: rust
+    responsibility: Admit fresh or canonical checkpoint ternary stage state.
+  - id: part-0028
+    path: composition/progress_resume.rs
+    kind: composition
+    language: rust
+    responsibility: Resume verified ternary state through progress extraction.
 projects: []
 tests: []
 graph:

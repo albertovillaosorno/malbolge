@@ -38,7 +38,12 @@ pub mod ternary_lowering;
 #[path = "../src/compiler/typed-ir/composition/lib.rs"]
 pub mod typed_ir;
 
-use std::fs::read_to_string;
+use std::env::temp_dir;
+use std::fs::{
+    create_dir_all, read_to_string, remove_dir_all, remove_file, write,
+};
+use std::path::{Path, PathBuf};
+use std::process::{Command, id};
 use std::str::from_utf8;
 
 use malbolge::{current_profile, decode_profile_instruction};
@@ -64,13 +69,15 @@ use ternary_lowering::{
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TERNARY_PROGRAM_CODEC_ID,
     TargetProfileIo, TernaryLoweringError, TernaryOperation,
-    TernaryProgramCodecError, TernaryProgramValidationError, TypedIrInput,
-    canonical_ternary_bytes, canonical_ternary_program, encode_machine_io,
-    lower_frame_helper, lower_heap_helper, lower_runtime_helper,
-    lower_runtime_intrinsic, lower_typed_ir, plan_byte_stream_wrapper,
-    plan_startup, realize_byte_stream_control_flow,
-    realize_byte_stream_wrapper, realize_frame_helper, realize_heap_helper,
-    realize_runtime_helper, realize_runtime_io,
+    TernaryProgramCodecError, TernaryProgramValidationError,
+    TernaryProgressCheckpointError, TernaryStageError, TernaryStageInput,
+    TypedIrInput, canonical_ternary_bytes, canonical_ternary_program,
+    encode_machine_io, enter_ternary_stage, lower_frame_helper,
+    lower_heap_helper, lower_runtime_helper, lower_runtime_intrinsic,
+    lower_typed_ir, plan_byte_stream_wrapper, plan_startup,
+    realize_byte_stream_control_flow, realize_byte_stream_wrapper,
+    realize_frame_helper, realize_heap_helper, realize_runtime_helper,
+    realize_runtime_io, resume_ternary_from_progress,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -99,6 +106,94 @@ const GUEST_STDIO_SOURCE: &str = "src/runtime/guest-c-library/domain/stdio.c";
 const ABI_CONTRACT: &str = "docs/technical/specification/c-abi-v1.json";
 const LIBC_CONTRACT: &str = "docs/technical/specification/c-libc-v1.json";
 
+const TERNARY_PROGRESS_FIXTURE_SCRIPT: &str = r#"from hashlib import sha256
+from pathlib import Path
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from scripts import progress_sidecar as progress
+
+directory = Path(sys.argv[2])
+payload = Path(sys.argv[3]).read_bytes()
+output = directory / "program.malbolge"
+source_hash = "sha256:" + ("1" * 64)
+toolchain_hash = "sha256:" + ("2" * 64)
+profile_hash = "malbolge-profile-v1:sha256:" + ("3" * 64)
+revision = "a" * 40
+identity = progress.ResumeIdentity(
+    algorithm_id="compiler.ternary-lowering",
+    algorithm_version="1",
+    repository_revision=revision,
+    schema=progress.SCHEMA_ID,
+    seed=7,
+    source_sha256=source_hash,
+    target_profile_fingerprint=profile_hash,
+    target_profile_id="malbolge-2026",
+    toolchain_fingerprint=toolchain_hash,
+)
+position = progress.PortableCheckpointPosition(
+    checkpoint_sequence=1,
+    stage="ternary-lowering",
+    units_completed=1,
+)
+checkpoint = progress.encode_portable_checkpoint(
+    identity,
+    position,
+    "malbolge-ternary-ir-v1",
+    payload=payload,
+)
+sidecar = progress.ProgressSidecar(
+    active_elapsed_ns=700,
+    algorithm_id="compiler.ternary-lowering",
+    algorithm_version="1",
+    backend="cpu",
+    checkpoint_elapsed_ns=30,
+    checkpoint_path=str(progress.checkpoint_path(output, 1)),
+    checkpoint_sequence=1,
+    checkpoint_sha256="sha256:" + sha256(checkpoint).hexdigest(),
+    compatibility_fingerprint=(
+        progress.resume_compatibility_fingerprint(identity)
+    ),
+    completed_at=None,
+    device=None,
+    diagnostic_code=None,
+    diagnostic_message=None,
+    operation_id="compile-ternary-resume",
+    output_path=str(output),
+    partial_bytes=None,
+    partial_path=None,
+    partial_sha256=None,
+    paused_elapsed_ns=100,
+    progress_path=str(progress.progress_path(output)),
+    repository_revision=revision,
+    schema=progress.SCHEMA_ID,
+    seed=7,
+    serialization_elapsed_ns=10,
+    source_path="input.c",
+    source_sha256=source_hash,
+    stage="ternary-lowering",
+    started_at="2026-08-06T14:00:00Z",
+    status=progress.ProgressStatus.CHECKPOINTED,
+    target_profile_fingerprint=profile_hash,
+    target_profile_id="malbolge-2026",
+    toolchain_fingerprint=toolchain_hash,
+    units_completed=1,
+    units_total=None,
+    updated_at="2026-08-06T14:00:02Z",
+    verification_elapsed_ns=30,
+    wall_elapsed_ns=870,
+)
+progress.write_checkpoint_generation(sidecar, checkpoint)
+"#;
+const TERNARY_INSPECTOR_DIAGNOSTIC_SCRIPT: &str = r#"import sys
+sys.stderr.write("unexpected diagnostic")
+"#;
+const TERNARY_INSPECTOR_INVALID_SCRIPT: &str = r#"import sys
+sys.stdout.buffer.write(b"bad")
+"#;
+
+type TernaryProgressFixture = (PathBuf, PathBuf);
+
 struct VmProfileInstructionDecoder;
 
 impl ProfileInstructionDecoder for VmProfileInstructionDecoder {
@@ -121,6 +216,72 @@ impl ProfileInstructionDecoder for MissingInstructionDecoder {
     fn decode(&self, _cell: u32, _code_pointer: u32) -> Option<u8> {
         None
     }
+}
+
+fn repository_python() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if cfg!(windows) {
+        root.join(".dependencies/python/3.14.6/python.exe")
+    } else {
+        root.join(".dependencies/python/3.14.6/bin/python")
+    }
+}
+
+fn temporary_ternary_file(
+    stem: &str,
+    extension: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, String> {
+    let path = temp_dir()
+        .join(format!("malbolge-ternary-{stem}-{}.{extension}", id()));
+    write(&path, bytes)
+        .map_err(|error| format!("write temporary ternary {stem}: {error}"))?;
+    Ok(path)
+}
+
+fn progress_inspector() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "src/automation/repository/composition/scripts/progress_sidecar.py",
+    )
+}
+
+fn publish_ternary_progress_fixture(
+    bytes: &[u8],
+) -> Result<TernaryProgressFixture, String> {
+    let directory =
+        temp_dir().join(format!("malbolge-ternary-progress-{}", id()));
+    if directory.exists() {
+        remove_dir_all(&directory).map_err(|error| {
+            format!("remove stale ternary fixture: {error}")
+        })?;
+    }
+    create_dir_all(&directory)
+        .map_err(|error| format!("create ternary progress fixture: {error}"))?;
+    let payload = directory.join("ternary.checkpoint");
+    write(&payload, bytes).map_err(|error| {
+        format!("write ternary checkpoint payload: {error}")
+    })?;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let module_root = root.join("src/automation/repository/composition");
+    let output = Command::new(repository_python())
+        .arg("-B")
+        .arg("-c")
+        .arg(TERNARY_PROGRESS_FIXTURE_SCRIPT)
+        .arg(module_root)
+        .arg(&directory)
+        .arg(&payload)
+        .output()
+        .map_err(|error| {
+            format!("publish ternary progress fixture: {error}")
+        })?;
+    if !output.status.success() {
+        let _cleanup = remove_dir_all(&directory);
+        return Err(format!(
+            "ternary progress fixture publication failed: {}",
+            String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok((directory.join("program.malbolge.progress.json"), directory))
 }
 
 fn valid_startup_request() -> StartupRequest {
@@ -1119,6 +1280,120 @@ fn every_truncated_ternary_prefix_fails_closed() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn ternary_stage_fresh_and_checkpoint_inputs_converge() -> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let projection = project_typed_ir(&module)?;
+    let fresh = enter_ternary_stage(TernaryStageInput::Projection(&projection))
+        .map_err(|error| format!("enter fresh ternary stage: {error:?}"))?;
+    let checkpoint = canonical_ternary_bytes(&fresh)
+        .map_err(|error| format!("encode ternary checkpoint: {error:?}"))?;
+    let resumed =
+        enter_ternary_stage(TernaryStageInput::Checkpoint(&checkpoint))
+            .map_err(|error| {
+                format!("enter resumed ternary stage: {error:?}")
+            })?;
+    if fresh != resumed {
+        return Err(String::from(
+            "fresh and resumed ternary stage outputs diverged",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_stage_rejects_malformed_checkpoint() {
+    assert_eq!(
+        enter_ternary_stage(TernaryStageInput::Checkpoint(b"bad")),
+        Err(TernaryStageError::Checkpoint(
+            TernaryProgramCodecError::Truncated,
+        )),
+    );
+}
+
+#[test]
+fn progress_adapter_restores_verified_ternary_state() -> Result<(), String> {
+    let program = lowered_return_fixture()?;
+    let bytes = canonical_ternary_bytes(&program).map_err(|error| {
+        format!("encode ternary progress fixture: {error:?}")
+    })?;
+    let (progress, directory) = publish_ternary_progress_fixture(&bytes)?;
+    let observed = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("remove ternary progress fixture: {error}"))?;
+    if observed != Ok(program) {
+        return Err(String::from(
+            "verified progress checkpoint did not restore ternary state",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_rejects_inspector_diagnostics() -> Result<(), String> {
+    let inspector = temporary_ternary_file(
+        "inspector-diagnostic",
+        "py",
+        TERNARY_INSPECTOR_DIAGNOSTIC_SCRIPT.as_bytes(),
+    )?;
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
+    let observed = resume_ternary_from_progress(
+        &repository_python(),
+        &inspector,
+        &progress,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove ternary inspector: {error}"))?;
+    if observed != Err(TernaryProgressCheckpointError::InspectorRejected) {
+        return Err(String::from(
+            "ternary progress diagnostics were not rejected",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_revalidates_ternary_checkpoint_bytes() -> Result<(), String>
+{
+    let inspector = temporary_ternary_file(
+        "inspector-invalid",
+        "py",
+        TERNARY_INSPECTOR_INVALID_SCRIPT.as_bytes(),
+    )?;
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
+    let observed = resume_ternary_from_progress(
+        &repository_python(),
+        &inspector,
+        &progress,
+    );
+    remove_file(&inspector)
+        .map_err(|error| format!("remove ternary inspector: {error}"))?;
+    let expected = Err(TernaryProgressCheckpointError::Stage(
+        TernaryStageError::Checkpoint(TernaryProgramCodecError::Truncated),
+    ));
+    if observed != expected {
+        return Err(String::from(
+            "malformed extracted ternary bytes bypassed stage admission",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_reports_ternary_inspector_launch_failure() {
+    let missing =
+        temp_dir().join(format!("malbolge-missing-ternary-inspector-{}", id()));
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
+    assert_eq!(
+        resume_ternary_from_progress(&missing, &missing, &progress),
+        Err(TernaryProgressCheckpointError::InspectorLaunch),
+    );
 }
 
 #[test]

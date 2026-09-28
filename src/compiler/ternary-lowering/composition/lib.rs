@@ -63,6 +63,8 @@ mod plan_byte_stream_wrapper;
 mod plan_startup;
 #[path = "../application/program_codec.rs"]
 mod program_codec;
+#[path = "progress_resume.rs"]
+mod progress_resume;
 #[path = "../application/realize_byte_stream_control_flow.rs"]
 mod realize_byte_stream_control_flow;
 #[path = "../application/realize_byte_stream_wrapper.rs"]
@@ -79,6 +81,8 @@ mod realize_runtime_io;
 mod runtime_helper_input;
 #[path = "../port-inbound/runtime_intrinsic.rs"]
 mod runtime_intrinsic_input;
+#[path = "../application/stage.rs"]
+mod stage;
 #[path = "../port-inbound/startup.rs"]
 mod startup_input;
 #[path = "../port-inbound/target_profile.rs"]
@@ -109,6 +113,9 @@ pub use program_codec::{
     TernaryProgramValidationError, canonical_ternary_bytes,
     canonical_ternary_program, validate_ternary_program,
 };
+pub use progress_resume::{
+    TernaryProgressCheckpointError, resume_ternary_from_progress,
+};
 pub use realize_byte_stream_control_flow::{
     ByteStreamControlFlowError, realize_byte_stream_control_flow,
 };
@@ -121,5 +128,6 @@ pub use realize_runtime_helper::realize_runtime_helper;
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_helper_input::RuntimeHelperRequest;
 pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;
+pub use stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 pub use startup_input::StartupRequest;
 pub use target_profile_input::TargetProfileIo;

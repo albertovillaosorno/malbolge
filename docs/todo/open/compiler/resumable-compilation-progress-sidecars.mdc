@@ -192,14 +192,25 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   restore the prior CPU generation; post-replacement crashes restore the new
   CUDA-labelled generation, while checkpoint compatibility remains backend
   neutral.
+- `src/compiler/ternary-lowering/application/stage.rs` now gives the
+  pre-layout ternary compiler stage one fresh-or-resumed admission boundary.
+  Canonical `malbolge-ternary-ir-v1` bytes and fresh typed-IR projections
+  converge on the same validated `TernaryProgram`, while malformed bytes
+  retain checkpoint-specific failure identity.
+- `src/compiler/ternary-lowering/composition/progress_resume.rs` consumes
+  the exact ternary codec through caller-selected progress-inspector paths,
+  rejects launch/status/diagnostic failures, and revalidates extracted bytes.
+  `tests/ternary_lowering.rs` publishes a real portable ternary checkpoint
+  through the production Python writer and restores it through the production
+  inspector, alongside malformed-state and bridge failure regressions.
 - Product CLI progress access now selects repository-pinned Python 3.14.6 and
   the trusted inspector for `--checkpoint-info` plus
   `--extract-checkpoint STATE_CODEC`. Rust duplicates no sidecar parsing, and an
   end-to-end CLI regression proves exact binary payload preservation through NUL
-  and `0xFF`. Product compiler resume selection/wiring, later compiler-stage
-  codecs, later-stage/final-artifact crash injection, and later
-  compiler-execution CPU/CUDA resume equivalence remain open; this TODO is
-  therefore active.
+  and `0xFF`. Product compiler resume selection/wiring, compiler-stage codecs
+  beyond ternary lowering, later-stage/final-artifact crash injection, and
+  later compiler-execution CPU/CUDA resume equivalence remain open; this TODO
+  is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

@@ -226,11 +226,19 @@ publish
 that state itself. Generic checkpoint metadata discovery remains available
 through the progress inspector.
 
+Pre-layout ternary IR now provides the next compiler-state resume stage. Its
+`malbolge-ternary-ir-v1` codec is admitted through a single fresh-or-checkpoint
+`enter_ternary_stage()` handoff, and `resume_ternary_from_progress()`
+delegates durable envelope and codec validation to the trusted inspector before
+revalidating the extracted program bytes. Integration evidence publishes a real
+portable ternary checkpoint with the production writer and restores it through
+the production inspector.
+
 Product CLI metadata inspection and explicit-codec binary checkpoint extraction
 are now wired through the trusted inspector. Product compiler resume
-selection/wiring, later compiler-stage codecs, later-stage and final-artifact
-crash injection, and later compiler-execution CPU/CUDA resume equivalence remain
-unimplemented.
+selection/wiring, compiler-stage codecs beyond ternary lowering, later-stage
+and final-artifact crash injection, and later compiler-execution CPU/CUDA
+resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
