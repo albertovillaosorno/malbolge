@@ -87,6 +87,18 @@ frame, builds a scratch wire image, then publishes all 32 bytes atomically.
 Decode checks both pointers/size, reads all fields into scratch state, validates
 that scratch frame, and only then publishes the decoded frame.
 
+A separate heap-helper port admits exactly `malbolge_guest_heap_init` under the
+same ABI/runtime identities. Its declarative semantics bind 16-byte arena and
+capacity alignment, minimum capacity 32 bytes, `INVALID_ARGUMENT=1`, and
+`VALID=0`. Realization preserves the checked-in C short-circuit guard order:
+non-null heap state, non-null arena, minimum capacity, aligned capacity, aligned
+arena pointer.
+
+Only after those guards pass does it publish `arena`, `capacity`, and `used=0`,
+zero every arena byte through `capacity - 1`, then return `VALID`. No global
+arena
+address is selected by this helper boundary.
+
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
 function must own a reachable entry block. Therefore direct helper-call
@@ -210,9 +222,8 @@ or undefined truncation inputs, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
 runtime intrinsic names, runtime-intrinsic/profile drift, unknown pure runtime
 helper identities, helper/profile drift, ambiguous helper EOF projections,
-frame-helper ABI/runtime/identity drift, colliding projected profile I/O
-opcodes,
-invalid startup identities,
+frame-helper ABI/runtime/identity drift, heap-helper ABI/runtime/identity
+drift, colliding projected profile I/O opcodes, invalid startup identities,
 null/misaligned/undersized/
 overflowing heap extents, multi-block/phi/parameterized function shapes, and
 unsupported instructions or terminators fail closed before a pre-layout target
@@ -271,6 +282,11 @@ emitted.
   deferred publication. Encode validation precedes field encoding/output copy;
   decode validation follows scratch field reads and precedes caller-frame
   publication. ABI, runtime, or helper identity drift fails closed.
+- Heap-init evidence cross-checks `heap.c`, the runtime header, and JSON
+  contract. It binds exact alignment/minimum/status constants, proves the
+  null/minimum/alignment guard sequence, and proves arena/capacity/used
+  publication plus capacity-wide zeroing occurs only after all guards pass.
+  ABI/runtime/helper identity drift fails closed.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

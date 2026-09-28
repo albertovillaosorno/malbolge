@@ -98,6 +98,82 @@ impl TernaryI32Scalar {
     }
 }
 
+/// Declarative semantics for version-one guest heap initialization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapInitSemantics {
+    /// Required arena/capacity alignment in logical bytes.
+    pub alignment: u32,
+    /// Runtime status for invalid pointer or geometry arguments.
+    pub invalid_argument_status: u32,
+    /// Smallest accepted arena capacity.
+    pub minimum_capacity: u32,
+    /// Runtime status after successful initialization.
+    pub valid_status: u32,
+}
+
+/// One admitted heap helper represented as declarative semantics.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapHelperOperation {
+    /// Initialize caller-owned heap state over one supplied arena.
+    Initialize(HeapInitSemantics),
+}
+
+/// One explicit heap-initialization step before target memory layout.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapInitStep {
+    /// Require an aligned arena pointer or return one status.
+    GuardArenaPointerAligned {
+        /// Required power-of-two logical byte alignment.
+        alignment: u32,
+        /// Runtime status returned for misalignment.
+        failure_status: u32,
+    },
+    /// Require a non-null arena pointer or return one status.
+    GuardArenaPointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Require aligned capacity or return one status.
+    GuardCapacityAligned {
+        /// Required power-of-two logical byte alignment.
+        alignment: u32,
+        /// Runtime status returned for misalignment.
+        failure_status: u32,
+    },
+    /// Require capacity at least one minimum extent or return one status.
+    GuardCapacityAtLeast {
+        /// Runtime status returned below the minimum.
+        failure_status: u32,
+        /// Smallest accepted capacity.
+        minimum: u32,
+    },
+    /// Require a non-null heap-state pointer or return one status.
+    GuardHeapPointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Publish the supplied arena pointer into caller-owned heap state.
+    PublishArenaPointer,
+    /// Publish the supplied arena capacity into caller-owned heap state.
+    PublishCapacity,
+    /// Publish `used = 0` into caller-owned heap state.
+    PublishUsedZero,
+    /// Return one exact runtime status.
+    ReturnStatus(u32),
+    /// Zero every byte from arena offset zero through capacity minus one.
+    ZeroArenaCapacityBytes,
+}
+
+/// One heap helper after explicit execution realization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HeapHelperExecutionPlan {
+    /// Ordered version-one heap initialization steps.
+    Initialize {
+        /// Guard and mutation order matching checked-in guest C.
+        steps: Vec<HeapInitStep>,
+    },
+}
+
 /// Declarative semantics for version-one hidden frame validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameValidationSemantics {

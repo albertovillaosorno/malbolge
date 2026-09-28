@@ -50,12 +50,13 @@ use ternary_lowering::{
     FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
     FrameHelperLoweringError, FrameHelperOperation, FrameHelperRequest,
     FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
-    I32_TERNARY_TRITS, InputBlock, InputDecodeArm, InputDecodeCondition,
-    InputDecodeResult, InputFunction, InputInstruction, InputScalarType,
-    InputSourcePosition, InputSourceSpan, InputTerminator,
-    InputWordDecodeControlFlow, InputWordDecodeSemantics,
-    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
-    ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
+    HeapHelperExecutionPlan, HeapHelperLoweringError, HeapHelperOperation,
+    HeapHelperRequest, HeapInitSemantics, HeapInitStep, I32_TERNARY_TRITS,
+    InputBlock, InputDecodeArm, InputDecodeCondition, InputDecodeResult,
+    InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
+    InputSourceSpan, InputTerminator, InputWordDecodeControlFlow,
+    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
+    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
@@ -63,10 +64,11 @@ use ternary_lowering::{
     TargetProfileIo, TernaryLoweringError, TernaryOperation,
     TernaryProgramCodecError, TernaryProgramValidationError, TypedIrInput,
     canonical_ternary_bytes, canonical_ternary_program, encode_machine_io,
-    lower_frame_helper, lower_runtime_helper, lower_runtime_intrinsic,
-    lower_typed_ir, plan_byte_stream_wrapper, plan_startup,
-    realize_byte_stream_control_flow, realize_byte_stream_wrapper,
-    realize_frame_helper, realize_runtime_helper, realize_runtime_io,
+    lower_frame_helper, lower_heap_helper, lower_runtime_helper,
+    lower_runtime_intrinsic, lower_typed_ir, plan_byte_stream_wrapper,
+    plan_startup, realize_byte_stream_control_flow,
+    realize_byte_stream_wrapper, realize_frame_helper, realize_heap_helper,
+    realize_runtime_helper, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -90,6 +92,7 @@ const GUEST_RUNTIME_HEADER: &str =
 const GUEST_BYTE_STREAM_SOURCE: &str =
     "src/runtime/guest-runtime/domain/byte_stream.c";
 const GUEST_FRAME_SOURCE: &str = "src/runtime/guest-runtime/domain/frame.c";
+const GUEST_HEAP_SOURCE: &str = "src/runtime/guest-runtime/domain/heap.c";
 const GUEST_STDIO_SOURCE: &str = "src/runtime/guest-c-library/domain/stdio.c";
 const ABI_CONTRACT: &str = "docs/technical/specification/c-abi-v1.json";
 const LIBC_CONTRACT: &str = "docs/technical/specification/c-libc-v1.json";
@@ -1653,6 +1656,126 @@ fn frame_helper_identity_drift_fails_closed() -> Result<(), String> {
             != Err(FrameHelperLoweringError::UnsupportedIdentity)
     {
         return Err(String::from("frame-helper authority drift was accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_init_authority_matches_guest_runtime() -> Result<(), String> {
+    let contract = read_to_string(GUEST_RUNTIME_CONTRACT)
+        .map_err(|error| format!("read guest-runtime contract: {error}"))?;
+    let header = read_to_string(GUEST_RUNTIME_HEADER)
+        .map_err(|error| format!("read guest-runtime header: {error}"))?;
+    let source = read_to_string(GUEST_HEAP_SOURCE)
+        .map_err(|error| format!("read guest heap source: {error}"))?;
+    for expected in [
+        "malbolge_guest_heap_init",
+        "MIN_BLOCK_SPAN UINT32_C(32)",
+        "heap->arena = (uint8_t *)arena",
+        "heap->capacity = capacity",
+        "heap->used = UINT32_C(0)",
+        "heap->arena[index] = UINT8_C(0)",
+    ] {
+        if !source.contains(expected) {
+            return Err(format!(
+                "heap-init source authority missing {expected}"
+            ));
+        }
+    }
+    for expected in [
+        "MALBOLGE_GUEST_HEAP_ALIGNMENT UINT32_C(16)",
+        "MALBOLGE_GUEST_HEAP_HEADER_SIZE UINT32_C(16)",
+        "MALBOLGE_GUEST_RUNTIME_VALID = 0",
+        "MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT = 1",
+    ] {
+        if !header.contains(expected) {
+            return Err(format!(
+                "heap-init header authority missing {expected}"
+            ));
+        }
+    }
+    for expected in [
+        "\"alignment\": 16",
+        "\"header_bytes\": 16",
+        "\"extent_domain\": \"u32-logical-bytes\"",
+    ] {
+        if !contract.contains(expected) {
+            return Err(format!(
+                "heap-init contract authority missing {expected}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_init_realizes_exact_guard_and_mutation_order() -> Result<(), String> {
+    let operation = lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_heap_init"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower heap init: {error:?}"))?;
+    if operation
+        != HeapHelperOperation::Initialize(HeapInitSemantics {
+            alignment: 16,
+            invalid_argument_status: 1,
+            minimum_capacity: 32,
+            valid_status: 0,
+        })
+    {
+        return Err(String::from("heap-init semantics drifted"));
+    }
+    let expected = HeapHelperExecutionPlan::Initialize {
+        steps: vec![
+            HeapInitStep::GuardHeapPointerNonNull { failure_status: 1 },
+            HeapInitStep::GuardArenaPointerNonNull { failure_status: 1 },
+            HeapInitStep::GuardCapacityAtLeast {
+                failure_status: 1,
+                minimum: 32,
+            },
+            HeapInitStep::GuardCapacityAligned {
+                alignment: 16,
+                failure_status: 1,
+            },
+            HeapInitStep::GuardArenaPointerAligned {
+                alignment: 16,
+                failure_status: 1,
+            },
+            HeapInitStep::PublishArenaPointer,
+            HeapInitStep::PublishCapacity,
+            HeapInitStep::PublishUsedZero,
+            HeapInitStep::ZeroArenaCapacityBytes,
+            HeapInitStep::ReturnStatus(0),
+        ],
+    };
+    if realize_heap_helper(operation) != expected {
+        return Err(String::from("heap-init execution plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_helper_identity_drift_fails_closed() -> Result<(), String> {
+    let base = HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_heap_init"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    };
+    let mut wrong_abi = base.clone();
+    wrong_abi.abi_id = String::from("host-abi");
+    let mut wrong_runtime = base.clone();
+    wrong_runtime.runtime_id = String::from("malbolge-guest-runtime-v2");
+    let mut wrong_helper = base;
+    wrong_helper.identity = String::from("malbolge_guest_heap_allocate");
+    if lower_heap_helper(&wrong_abi)
+        != Err(HeapHelperLoweringError::InvalidAuthority)
+        || lower_heap_helper(&wrong_runtime)
+            != Err(HeapHelperLoweringError::InvalidAuthority)
+        || lower_heap_helper(&wrong_helper)
+            != Err(HeapHelperLoweringError::UnsupportedIdentity)
+    {
+        return Err(String::from("heap-helper authority drift was accepted"));
     }
     Ok(())
 }

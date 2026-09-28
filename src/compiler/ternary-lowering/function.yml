@@ -153,6 +153,21 @@ parts:
     kind: application
     language: rust
     responsibility: Expand frame codec helpers into explicit execution plans.
+  - id: part-0024
+    path: port-inbound/heap_helper.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Carry exact heap-helper identities into lowering.
+  - id: part-0025
+    path: application/lower_heap_helper.rs
+    kind: application
+    language: rust
+    responsibility: Bind heap initialization to exact ABI/runtime semantics.
+  - id: part-0026
+    path: application/realize_heap_helper.rs
+    kind: application
+    language: rust
+    responsibility: Expand heap initialization into explicit execution steps.
 projects: []
 tests: []
 graph:
