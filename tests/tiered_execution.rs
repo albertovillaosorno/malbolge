@@ -548,9 +548,12 @@ use execution_native::{
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
     RegisterMaskedDependencyIdentityClaim as ReducedIdentityClaim,
-    RegisterMaskedDirectAdmissionErrorKind, RegisterMaskedInputNativeRunner,
-    RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
-    RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
+    RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedInputNativeExecutableOwner,
+    RegisterMaskedInputNativeOwnerExecutionFailure,
+    RegisterMaskedInputNativeRunner, RegisterMaskedNativeExecutableOwner,
+    RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
+    RegisterMaskedNativeLeaseCacheAcquisition,
     RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
     RegisterMaskedNativeLeaseCacheInvalidation,
     RegisterMaskedNativeOwnerExecutionFailure,
@@ -1954,6 +1957,14 @@ struct RegisterMaskedCrazyOwnerFixture {
 struct RegisterMaskedNoOperationOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNoOperationNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedInputOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    input: Vec<u8>,
+    owner: RegisterMaskedInputNativeExecutableOwner,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -5382,6 +5393,31 @@ fn register_masked_no_operation_owner_fixture(
     Ok(RegisterMaskedNoOperationOwnerFixture { adapter, owner, program })
 }
 
+fn register_masked_input_owner_fixture(
+    input: Vec<u8>,
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedInputOwnerFixture, String> {
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedInputNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 input owner fixture load failed: {error}"))?;
+    Ok(RegisterMaskedInputOwnerFixture {
+        adapter,
+        input,
+        owner,
+        program,
+    })
+}
+
 fn register_masked_output_owner_fixture(
     mapping_id_value: u64,
     base_address: usize,
@@ -5647,6 +5683,69 @@ fn assert_crazy_owner_run_failure(
         },
         RegisterMaskedCrazyNativeOwnerExecutionFailure::Preparation(_) => Err(
             String::from("v6 Crazy owner runner failure became preparation"),
+        ),
+    }
+}
+
+fn execute_register_masked_input_owner_applied(
+    fixture: &RegisterMaskedInputOwnerFixture,
+    runner: &mut FakeRegisterMaskedInputNativeRunner,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let effect = fixture
+        .program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 input owner effect missing"))?;
+    let mut expected = effect.after;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&fixture.program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_input_expected(
+        &fixture.program,
+        &mut expected_memory,
+    )?;
+    let mut output = [4u8, 3, 2, 1];
+    let expected_output = output;
+    let outcome = fixture
+        .owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(
+                &mut memory,
+                fixture.input.as_slice(),
+                &mut output,
+            ),
+        )
+        .map_err(|error| format!("v6 input owner execution failed: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == expected_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input owner rebased execution drifted"))
+    }
+}
+
+fn assert_input_owner_run_failure(
+    error: &RegisterMaskedInputNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> Result<(), String> {
+    match error {
+        RegisterMaskedInputNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run =>
+        {
+            Ok(())
+        },
+        RegisterMaskedInputNativeOwnerExecutionFailure::Execution(_) => {
+            Err(String::from("v6 input owner runner failure lost run phase"))
+        },
+        RegisterMaskedInputNativeOwnerExecutionFailure::Preparation(_) => Err(
+            String::from("v6 input owner runner failure became preparation"),
         ),
     }
 }
@@ -15430,6 +15529,150 @@ fn register_masked_v6_crazy_owner_recovers_after_runner_failure()
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 Crazy owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_input_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let fixture =
+        register_masked_input_owner_fixture(vec![0x41], 589, 0x93000)?;
+    let loaded_operations = fixture.adapter.operations.clone();
+    let weight = fixture.owner.resident_weight();
+    if weight.mapped_bytes()
+        != fixture.owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || fixture.owner.key() != fixture.owner.artifact().key()
+    {
+        return Err(String::from("v6 input owner weight or identity drifted"));
+    }
+    let source_entry = fixture
+        .program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 input owner effect missing"))?
+        .before;
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (accumulator, output_len) in [(11, 1), (31, 2)] {
+        let mut entry = source_entry;
+        entry.registers.accumulator = accumulator;
+        entry.output_len = output_len;
+        execute_register_masked_input_owner_applied(
+            &fixture,
+            &mut runner,
+            entry,
+        )?;
+    }
+    let mapping_id = fixture.owner.executable().mapping().mapping_id();
+    if fixture.adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 input owner remapped or changed mapping identity",
+        ));
+    }
+    let RegisterMaskedInputOwnerFixture { mut adapter, owner, .. } = fixture;
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input owner release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 input owner release was not explicit"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    let program = canonical_register_masked_input_program(Vec::new())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(590)?,
+        native_executable_address(0x94000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedInputNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 input weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 input owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input weighted owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_owner_recovers_after_runner_failure()
+-> TieredTestResult {
+    let fixture =
+        register_masked_input_owner_fixture(vec![0x41], 591, 0x95000)?;
+    let loaded_operations = fixture.adapter.operations.clone();
+    let mut entry = fixture
+        .program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 input owner failure effect missing"))?
+        .before;
+    entry.registers.accumulator = 0x1234;
+    entry.output_len = 2;
+    let mut memory = register_masked_program_memory(&fixture.program)?;
+    let entry_memory = memory.clone();
+    let mut output = [4u8, 3, 2, 1];
+    let entry_output = output;
+    let mut failing = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = fixture.owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(
+            &mut memory,
+            fixture.input.as_slice(),
+            &mut output,
+        ),
+    ) else {
+        return Err(String::from("v6 input owner runner failure was ignored"));
+    };
+    assert_input_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || fixture.adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 input owner failure changed residency or caller state",
+        ));
+    }
+    let mut succeeding = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_register_masked_input_owner_applied(
+        &fixture,
+        &mut succeeding,
+        entry,
+    )?;
+    if fixture.adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 input owner remapped after runner failure",
+        ));
+    }
+    let RegisterMaskedInputOwnerFixture { mut adapter, owner, .. } = fixture;
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 input owner release: {release}"))
 }
 
 #[test]

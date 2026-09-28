@@ -331,12 +331,15 @@ load images and one rebased semantic invocation contract: C/D plus the input
 cursor stay exact, while entry A and output history may rebase.
 
 Input now also has typed RW staging, RX admission, instruction synchronization,
-transactional
-platform loading, and retryable release. Loaded execution now adds exact
-ready-image binding plus a dedicated runner port with atomic rollback on
-runner/completion failure. Integrated transactional execution now owns exact
-load/call/release ordering and retryable final cleanup. Reusable resident
-ownership remains a separate fail-closed boundary.
+transactional platform loading, and retryable release. Loaded execution adds
+exact ready-image binding plus a dedicated runner port with atomic rollback on
+runner/completion failure. Integrated execution owns exact load/call/release
+ordering and retryable final cleanup.
+
+`RegisterMaskedInputNativeExecutableOwner` retains one exact synchronized
+mapping across rebased calls, reports platform mapping weight, survives runner
+failure without remapping, and transfers retryable release ownership. Input
+lease/cache/sequence residency remains a separate fail-closed boundary.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

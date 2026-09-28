@@ -901,9 +901,13 @@ behavior.
   rejects mismatched executable state before the call.
 
   Integrated Input execution now owns load, call, release, rollback, and
-  retryable final cleanup
-  as one transaction. Reusable Input resident ownership and both jump
-  instruction families remain open and fail closed.
+  retryable final cleanup as one transaction. A reusable Input owner now retains
+  exact program/artifact/mapping identity across rebased calls, reports platform
+  mapping weight, survives runner failure without remapping, and transfers
+  retryable release ownership.
+
+  Input lease/cache/sequence residency and both jump instruction families remain
+  open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

@@ -2297,8 +2297,12 @@ before the call.
 Integrated Input execution now loads, binds, runs, admits, and releases as one
 transaction. Load/call failure restores caller state and attempts cleanup; final
 release failure preserves the committed outcome plus retryable executable
-ownership. Reusable Input resident ownership and both JumpCode and JumpData
-families remain open and fail closed.
+ownership. A reusable Input owner now retains exact program, artifact, and one
+ready mapping across rebased calls, reports platform mapping weight, survives
+runner failure without remapping, and transfers retryable release ownership.
+
+Input lease/cache/sequence residency plus both JumpCode and JumpData families
+remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
