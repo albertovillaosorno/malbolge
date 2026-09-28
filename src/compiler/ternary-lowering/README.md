@@ -46,6 +46,12 @@ explicit progress-sidecar bridge that requires caller-selected inspector paths,
 delegates envelope/codec validation, and revalidates extracted bytes through
 the ternary stage before returning state.
 
+Integration coverage publishes two canonical ternary generations through the
+production sidecar writer, labels the first CPU and the second CUDA, and
+injects process death at ten checkpoint/pointer publication boundaries. Resume
+through the production inspector restores the generation named by the last
+sidecar pointer that crossed atomic replacement.
+
 A separate pure runtime-helper port admits only
 `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
 current profile. It lowers them to declarative target recipes: input accepts raw

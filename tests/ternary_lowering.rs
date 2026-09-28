@@ -15,7 +15,7 @@
 // - Allows:
 //   - Inputs: tracked canonical typed-IR golden modules.
 //   - Outputs: deterministic target-model and fail-closed assertions.
-//   - Side effects: fixture reads only.
+//   - Side effects: fixture reads plus cleaned child-process crash fixtures.
 // - Split-When:
 //   - Another lowering family needs an independent integration harness.
 // - Merge-When:
@@ -185,6 +185,200 @@ sidecar = progress.ProgressSidecar(
 )
 progress.write_checkpoint_generation(sidecar, checkpoint)
 "#;
+const TERNARY_CRASH_EXIT: i32 = 73;
+const TERNARY_CRASH_BOUNDARIES: [&str; 10] = [
+    "before-checkpoint-file-sync",
+    "before-checkpoint-publish",
+    "after-checkpoint-publish",
+    "after-checkpoint-sync",
+    "after-checkpoint",
+    "before-sidecar-file-sync",
+    "before-sidecar-replace",
+    "after-sidecar-replace",
+    "after-sidecar-sync",
+    "before-sidecar",
+];
+const TERNARY_PROGRESS_CRASH_SCRIPT: &str = r#"from hashlib import sha256
+from pathlib import Path
+import os
+import stat
+import sys
+from scripts import progress_sidecar as progress
+
+output = Path(sys.argv[1])
+first_payload = Path(sys.argv[2]).read_bytes()
+second_payload = Path(sys.argv[3]).read_bytes()
+exit_code = int(sys.argv[4])
+boundary = sys.argv[5]
+codec = "malbolge-ternary-ir-v1"
+source_hash = "sha256:" + ("1" * 64)
+toolchain_hash = "sha256:" + ("2" * 64)
+profile_hash = "malbolge-profile-v1:sha256:" + ("3" * 64)
+revision = "a" * 40
+
+def digest(payload):
+    return "sha256:" + sha256(payload).hexdigest()
+
+identity = progress.ResumeIdentity(
+    algorithm_id="compiler.ternary-lowering",
+    algorithm_version="1",
+    repository_revision=revision,
+    schema=progress.SCHEMA_ID,
+    seed=7,
+    source_sha256=source_hash,
+    target_profile_fingerprint=profile_hash,
+    target_profile_id="malbolge-2026",
+    toolchain_fingerprint=toolchain_hash,
+)
+compatibility = progress.resume_compatibility_fingerprint(identity)
+
+def generation(sequence, units, updated_at, backend, device, state):
+    position = progress.PortableCheckpointPosition(
+        checkpoint_sequence=sequence,
+        stage="ternary-lowering",
+        units_completed=units,
+    )
+    checkpoint = progress.encode_portable_checkpoint(
+        identity,
+        position,
+        codec,
+        payload=state,
+    )
+    sidecar = progress.ProgressSidecar(
+        active_elapsed_ns=sequence * 100,
+        algorithm_id=identity.algorithm_id,
+        algorithm_version=identity.algorithm_version,
+        backend=backend,
+        checkpoint_elapsed_ns=sequence * 10,
+        checkpoint_path=str(progress.checkpoint_path(output, sequence)),
+        checkpoint_sequence=sequence,
+        checkpoint_sha256=digest(checkpoint),
+        compatibility_fingerprint=compatibility,
+        completed_at=None,
+        device=device,
+        diagnostic_code=None,
+        diagnostic_message=None,
+        operation_id="compile-ternary-crash-fixture",
+        output_path=str(output),
+        partial_bytes=None,
+        partial_path=None,
+        partial_sha256=None,
+        paused_elapsed_ns=0,
+        progress_path=str(progress.progress_path(output)),
+        repository_revision=revision,
+        schema=progress.SCHEMA_ID,
+        seed=7,
+        serialization_elapsed_ns=0,
+        source_path="input.c",
+        source_sha256=source_hash,
+        stage="ternary-lowering",
+        started_at="2026-08-06T14:00:00Z",
+        status=progress.ProgressStatus.CHECKPOINTED,
+        target_profile_fingerprint=profile_hash,
+        target_profile_id="malbolge-2026",
+        toolchain_fingerprint=toolchain_hash,
+        units_completed=units,
+        units_total=None,
+        updated_at=updated_at,
+        verification_elapsed_ns=0,
+        wall_elapsed_ns=sequence * 110,
+    )
+    return sidecar, checkpoint
+
+first, first_checkpoint = generation(
+    1,
+    1,
+    "2026-08-06T14:00:01Z",
+    "cpu",
+    None,
+    first_payload,
+)
+progress.write_checkpoint_generation(first, first_checkpoint)
+second, second_checkpoint = generation(
+    2,
+    2,
+    "2026-08-06T14:00:02Z",
+    "cuda",
+    "cuda-device-0",
+    second_payload,
+)
+
+original_write_immutable = progress._write_immutable
+original_publish = progress._publish_immutable_payload
+original_confirm = progress._confirm_publication_durability
+original_fsync = os.fsync
+original_replace = Path.replace
+publication_count = 0
+regular_sync_count = 0
+
+def fsync_then_crash(descriptor):
+    global regular_sync_count
+    mode = os.fstat(descriptor).st_mode
+    if not stat.S_ISREG(mode):
+        return original_fsync(descriptor)
+    regular_sync_count += 1
+    if boundary == "before-checkpoint-file-sync" and regular_sync_count == 1:
+        os._exit(exit_code)
+    if boundary == "before-sidecar-file-sync" and regular_sync_count == 2:
+        os._exit(exit_code)
+    return original_fsync(descriptor)
+
+def publish_then_crash(temporary, destination, payload, *, platform):
+    global publication_count
+    if boundary == "before-checkpoint-publish":
+        os._exit(exit_code)
+    result = original_publish(
+        temporary,
+        destination,
+        payload,
+        platform=platform,
+    )
+    publication_count = 1
+    if boundary == "after-checkpoint-publish":
+        os._exit(exit_code)
+    return result
+
+def write_then_crash(destination, payload):
+    result = original_write_immutable(destination, payload)
+    if boundary == "after-checkpoint" and publication_count == 1:
+        os._exit(exit_code)
+    return result
+
+def confirm_then_crash(published_path, *, context, platform=os.name):
+    result = original_confirm(
+        published_path,
+        context=context,
+        platform=platform,
+    )
+    if context == "immutable progress payload":
+        if boundary == "after-checkpoint-sync" and publication_count == 1:
+            os._exit(exit_code)
+    if context == "progress sidecar" and boundary == "after-sidecar-sync":
+        os._exit(exit_code)
+    return result
+
+def crash_before_sidecar(_sidecar):
+    os._exit(exit_code)
+
+def replace_then_crash(source, destination):
+    if boundary == "before-sidecar-replace":
+        os._exit(exit_code)
+    result = original_replace(source, destination)
+    if boundary == "after-sidecar-replace":
+        os._exit(exit_code)
+    return result
+
+progress._publish_immutable_payload = publish_then_crash
+progress._confirm_publication_durability = confirm_then_crash
+progress._write_immutable = write_then_crash
+os.fsync = fsync_then_crash
+if boundary == "before-sidecar":
+    progress.write_atomic = crash_before_sidecar
+elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
+    Path.replace = replace_then_crash
+progress.write_checkpoint_generation(second, second_checkpoint)
+raise SystemExit(93)
+"#;
 const TERNARY_INSPECTOR_DIAGNOSTIC_SCRIPT: &str = r#"import sys
 sys.stderr.write("unexpected diagnostic")
 "#;
@@ -193,6 +387,12 @@ sys.stdout.buffer.write(b"bad")
 "#;
 
 type TernaryProgressFixture = (PathBuf, PathBuf);
+
+struct TernaryCrashPaths {
+    directory: PathBuf,
+    first: PathBuf,
+    second: PathBuf,
+}
 
 struct VmProfileInstructionDecoder;
 
@@ -282,6 +482,115 @@ fn publish_ternary_progress_fixture(
         ));
     }
     Ok((directory.join("program.malbolge.progress.json"), directory))
+}
+
+fn ternary_crash_directory(boundary: &str) -> Result<PathBuf, String> {
+    let directory =
+        temp_dir().join(format!("malbolge-ternary-crash-{}-{boundary}", id()));
+    if directory.exists() {
+        remove_dir_all(&directory).map_err(|error| {
+            format!("remove stale ternary crash fixture: {error}")
+        })?;
+    }
+    create_dir_all(&directory)
+        .map_err(|error| format!("create ternary crash fixture: {error}"))?;
+    Ok(directory)
+}
+
+fn write_ternary_crash_states(
+    directory: PathBuf,
+    first: &ternary_lowering::TernaryProgram,
+    second: &ternary_lowering::TernaryProgram,
+) -> Result<TernaryCrashPaths, String> {
+    let first_path = directory.join("first.ternary");
+    let second_path = directory.join("second.ternary");
+    let first_bytes = canonical_ternary_bytes(first).map_err(|error| {
+        format!("encode first ternary crash state: {error:?}")
+    })?;
+    let second_bytes = canonical_ternary_bytes(second).map_err(|error| {
+        format!("encode second ternary crash state: {error:?}")
+    })?;
+    write(&first_path, first_bytes)
+        .map_err(|error| format!("write first ternary crash state: {error}"))?;
+    write(&second_path, second_bytes).map_err(|error| {
+        format!("write second ternary crash state: {error}")
+    })?;
+    Ok(TernaryCrashPaths {
+        directory,
+        first: first_path,
+        second: second_path,
+    })
+}
+
+fn launch_ternary_crash(
+    root: &Path,
+    boundary: &str,
+    paths: &TernaryCrashPaths,
+) -> Result<PathBuf, String> {
+    let output = paths.directory.join("program.malbolge");
+    let progress =
+        PathBuf::from(format!("{}.progress.json", output.to_string_lossy()));
+    let crashed = Command::new(repository_python())
+        .arg("-B")
+        .arg("-c")
+        .arg(TERNARY_PROGRESS_CRASH_SCRIPT)
+        .arg(&output)
+        .arg(&paths.first)
+        .arg(&paths.second)
+        .arg(TERNARY_CRASH_EXIT.to_string())
+        .arg(boundary)
+        .env(
+            "PYTHONPATH",
+            root.join("src/automation/repository/composition"),
+        )
+        .output()
+        .map_err(|error| format!("run ternary crash fixture: {error}"))?;
+    if crashed.status.code() != Some(TERNARY_CRASH_EXIT) {
+        return Err(format!(
+            "ternary crash boundary {boundary} did not terminate: {}",
+            String::from_utf8_lossy(&crashed.stderr),
+        ));
+    }
+    Ok(progress)
+}
+
+fn run_ternary_crash_boundary(
+    boundary: &str,
+    first: &ternary_lowering::TernaryProgram,
+    second: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = ternary_crash_directory(boundary)?;
+    let paths = write_ternary_crash_states(directory, first, second)?;
+    let result = (|| {
+        let progress = launch_ternary_crash(root, boundary, &paths)?;
+        let restored = resume_ternary_from_progress(
+            &repository_python(),
+            &progress_inspector(),
+            &progress,
+        )
+        .map_err(|error| {
+            format!("resume ternary state after {boundary}: {error:?}")
+        })?;
+        let expected = if matches!(
+            boundary,
+            "after-sidecar-replace" | "after-sidecar-sync"
+        ) {
+            second
+        } else {
+            first
+        };
+        if &restored != expected {
+            return Err(format!(
+                "ternary crash boundary {boundary} restored wrong generation",
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&paths.directory)
+        .map_err(|error| format!("remove ternary crash fixture: {error}"));
+    result?;
+    cleanup
 }
 
 fn valid_startup_request() -> StartupRequest {
@@ -1311,6 +1620,22 @@ fn ternary_stage_rejects_malformed_checkpoint() {
             TernaryProgramCodecError::Truncated,
         )),
     );
+}
+
+#[test]
+fn progress_crash_resume_restores_committed_ternary() -> Result<(), String> {
+    let first = lowered_return_fixture()?;
+    let second_projection = projected_byte_io_fixture()?;
+    let second = lower_typed_ir(&second_projection).map_err(|error| {
+        format!("lower second ternary crash state: {error:?}")
+    })?;
+    if first == second {
+        return Err(String::from("ternary crash generations are not distinct"));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, &first, &second)?;
+    }
+    Ok(())
 }
 
 #[test]

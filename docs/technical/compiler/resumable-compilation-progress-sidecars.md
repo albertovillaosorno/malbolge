@@ -230,15 +230,17 @@ Pre-layout ternary IR now provides the next compiler-state resume stage. Its
 `malbolge-ternary-ir-v1` codec is admitted through a single fresh-or-checkpoint
 `enter_ternary_stage()` handoff, and `resume_ternary_from_progress()`
 delegates durable envelope and codec validation to the trusted inspector before
-revalidating the extracted program bytes. Integration evidence publishes a real
-portable ternary checkpoint with the production writer and restores it through
-the production inspector.
+revalidating the extracted program bytes. Integration evidence publishes two
+real canonical ternary generations with the production writer and injects
+process death at ten checkpoint/pointer boundaries. Pre-pointer crashes
+restore the prior CPU-labelled generation; post-replacement crashes restore
+the new CUDA-labelled generation through the production inspector.
 
 Product CLI metadata inspection and explicit-codec binary checkpoint extraction
 are now wired through the trusted inspector. Product compiler resume
-selection/wiring, compiler-stage codecs beyond ternary lowering, later-stage
-and final-artifact crash injection, and later compiler-execution CPU/CUDA
-resume equivalence remain unimplemented.
+selection/wiring, compiler-stage codecs beyond ternary lowering, crash
+injection beyond the ternary stage and final-artifact publication, and later
+compiler-execution CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -412,6 +414,12 @@ jobs that requested resumability.
   cross-language crash matrix additionally publishes real typed-IR generations,
   kills publication at ten checkpoint/pointer boundaries, and proves the Rust
   resume bridge restores exactly the last committed generation.
+- Ternary compiler tests now publish two canonical `malbolge-ternary-ir-v1`
+  generations through the production sidecar writer, inject process death at
+  the same ten checkpoint/pointer boundaries, and resume through the Rust
+  ternary bridge plus production inspector. The first generation is CPU-labelled
+  and the second CUDA-labelled; recovery follows only the last committed sidecar
+  pointer, proving backend identity does not become ternary checkpoint state.
 - Prepared-search resume tests cover partial and completed projected prefixes,
   empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
   equivalence, and CPU-produced checkpoint resume through live CUDA.
