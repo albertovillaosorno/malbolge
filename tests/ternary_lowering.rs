@@ -50,13 +50,14 @@ use ternary_lowering::{
     FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
     FrameHelperLoweringError, FrameHelperOperation, FrameHelperRequest,
     FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
-    HeapHelperExecutionPlan, HeapHelperLoweringError, HeapHelperOperation,
-    HeapHelperRequest, HeapInitSemantics, HeapInitStep, I32_TERNARY_TRITS,
-    InputBlock, InputDecodeArm, InputDecodeCondition, InputDecodeResult,
-    InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
-    InputSourceSpan, InputTerminator, InputWordDecodeControlFlow,
-    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
-    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
+    HeapAllocateSemantics, HeapAllocateStep, HeapHelperExecutionPlan,
+    HeapHelperLoweringError, HeapHelperOperation, HeapHelperRequest,
+    HeapInitSemantics, HeapInitStep, I32_TERNARY_TRITS, InputBlock,
+    InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
+    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
+    InputTerminator, InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
+    ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
@@ -1755,6 +1756,123 @@ fn heap_init_realizes_exact_guard_and_mutation_order() -> Result<(), String> {
     Ok(())
 }
 
+fn expected_heap_allocate_plan() -> HeapHelperExecutionPlan {
+    HeapHelperExecutionPlan::Allocate {
+        steps: vec![
+            HeapAllocateStep::GuardResultPointerNonNull { failure_status: 1 },
+            HeapAllocateStep::GuardHeapShape { failure_status: 1 },
+            HeapAllocateStep::PublishResultNull,
+            HeapAllocateStep::ValidateHeapChain { failure_status: 3 },
+            HeapAllocateStep::ReturnIfSizeZero { status: 0 },
+            HeapAllocateStep::ComputeRequiredSpan {
+                alignment: 16,
+                header_bytes: 16,
+                overflow_status: 2,
+            },
+            HeapAllocateStep::ScanFirstFitFreeBlock {
+                free_state: 0,
+                on_match: vec![
+                    HeapAllocateStep::SplitOrClaimFreeBlock {
+                        allocated_state: 1,
+                        minimum_remainder: 32,
+                        reserved_value: 0,
+                    },
+                    HeapAllocateStep::PublishResultFromBlock {
+                        header_bytes: 16,
+                    },
+                    HeapAllocateStep::ReturnStatus(0),
+                ],
+                read_failure_status: 3,
+            },
+            HeapAllocateStep::GuardTailExtentFits { failure_status: 2 },
+            HeapAllocateStep::WriteAllocatedTailBlock {
+                allocated_state: 1,
+                reserved_value: 0,
+            },
+            HeapAllocateStep::PublishResultFromTail { header_bytes: 16 },
+            HeapAllocateStep::PublishTailUsed,
+            HeapAllocateStep::ReturnStatus(0),
+        ],
+    }
+}
+
+#[test]
+fn heap_allocate_realizes_first_fit_and_tail_paths() -> Result<(), String> {
+    let operation = lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_heap_allocate"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower heap allocate: {error:?}"))?;
+    let semantics = HeapAllocateSemantics {
+        alignment: 16,
+        allocated_state: 1,
+        corrupt_state_status: 3,
+        header_bytes: 16,
+        invalid_argument_status: 1,
+        minimum_block_span: 32,
+        out_of_memory_status: 2,
+        reserved_value: 0,
+        valid_status: 0,
+    };
+    if operation != HeapHelperOperation::Allocate(semantics) {
+        return Err(String::from("heap-allocate semantics drifted"));
+    }
+    let expected = expected_heap_allocate_plan();
+    if realize_heap_helper(operation) != expected {
+        return Err(String::from("heap-allocate execution plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_allocate_authority_matches_runtime_policy() -> Result<(), String> {
+    let contract = read_to_string(GUEST_RUNTIME_CONTRACT)
+        .map_err(|error| format!("read guest-runtime contract: {error}"))?;
+    let header = read_to_string(GUEST_RUNTIME_HEADER)
+        .map_err(|error| format!("read guest-runtime header: {error}"))?;
+    let source = read_to_string(GUEST_HEAP_SOURCE)
+        .map_err(|error| format!("read guest heap source: {error}"))?;
+    for expected in [
+        "malbolge_guest_heap_allocate",
+        "*result = NULL",
+        "if (!heap_chain_valid(heap))",
+        "if (size == UINT32_C(0))",
+        "split_or_claim(heap, block, required, size)",
+        "heap->used = new_used",
+    ] {
+        if !source.contains(expected) {
+            return Err(format!(
+                "heap-allocate source authority missing {expected}"
+            ));
+        }
+    }
+    for expected in [
+        "MALBOLGE_GUEST_HEAP_ALIGNMENT UINT32_C(16)",
+        "MALBOLGE_GUEST_HEAP_HEADER_SIZE UINT32_C(16)",
+        "MALBOLGE_GUEST_RUNTIME_OUT_OF_MEMORY = 2",
+        "MALBOLGE_GUEST_RUNTIME_CORRUPT_STATE = 3",
+    ] {
+        if !header.contains(expected) {
+            return Err(format!(
+                "heap-allocate header authority missing {expected}"
+            ));
+        }
+    }
+    for expected in [
+        "\"policy\": \"first-fit-split-coalesce-tail-trim\"",
+        "\"zero_size_allocation\": \"null-success\"",
+        "\"corrupt_chain\": \"reject-before-mutation-or-result-publication\"",
+    ] {
+        if !contract.contains(expected) {
+            return Err(format!(
+                "heap-allocate contract authority missing {expected}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn heap_helper_identity_drift_fails_closed() -> Result<(), String> {
     let base = HeapHelperRequest {
@@ -1767,7 +1885,7 @@ fn heap_helper_identity_drift_fails_closed() -> Result<(), String> {
     let mut wrong_runtime = base.clone();
     wrong_runtime.runtime_id = String::from("malbolge-guest-runtime-v2");
     let mut wrong_helper = base;
-    wrong_helper.identity = String::from("malbolge_guest_heap_allocate");
+    wrong_helper.identity = String::from("malbolge_guest_heap_release");
     if lower_heap_helper(&wrong_abi)
         != Err(HeapHelperLoweringError::InvalidAuthority)
         || lower_heap_helper(&wrong_runtime)

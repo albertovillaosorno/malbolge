@@ -87,17 +87,29 @@ frame, builds a scratch wire image, then publishes all 32 bytes atomically.
 Decode checks both pointers/size, reads all fields into scratch state, validates
 that scratch frame, and only then publishes the decoded frame.
 
-A separate heap-helper port admits exactly `malbolge_guest_heap_init` under the
-same ABI/runtime identities. Its declarative semantics bind 16-byte arena and
-capacity alignment, minimum capacity 32 bytes, `INVALID_ARGUMENT=1`, and
-`VALID=0`. Realization preserves the checked-in C short-circuit guard order:
-non-null heap state, non-null arena, minimum capacity, aligned capacity, aligned
-arena pointer.
+A separate heap-helper port admits exactly `malbolge_guest_heap_init` and
+`malbolge_guest_heap_allocate` under the same ABI/runtime identities. Shared
+semantics bind 16-byte alignment/header geometry, minimum block span 32 bytes,
+`VALID=0`, `INVALID_ARGUMENT=1`, `OUT_OF_MEMORY=2`, and
+`CORRUPT_STATE=3`. Heap initialization preserves the checked-in short-circuit
+guards and publishes `arena`, `capacity`, and `used=0` only after they pass,
+then
+zeros exactly the supplied arena capacity.
 
-Only after those guards pass does it publish `arena`, `capacity`, and `used=0`,
-zero every arena byte through `capacity - 1`, then return `VALID`. No global
-arena
-address is selected by this helper boundary.
+Allocation first requires caller-owned result storage and canonical heap shape,
+then publishes `result = NULL` before complete chain validation. Zero-size
+requests return `VALID` with that null result. Positive sizes compute the
+16-byte-aligned payload plus 16-byte header with overflow-to-`OUT_OF_MEMORY`,
+then scan blocks in ascending offset order and select the first free block whose
+span fits.
+
+A first-fit match uses the checked-in split-or-claim rule: a remainder of at
+least 32 bytes becomes a canonical free block, otherwise the whole block is
+claimed. The payload pointer is published only after metadata mutation, then the
+helper returns `VALID`. If no free block fits, allocation overflow-checks
+`used + required` against capacity, writes one allocated tail header, publishes
+the tail payload pointer, then publishes the new `used` extent and returns
+`VALID`. No global arena address is selected by this helper boundary.
 
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
@@ -282,11 +294,13 @@ emitted.
   deferred publication. Encode validation precedes field encoding/output copy;
   decode validation follows scratch field reads and precedes caller-frame
   publication. ABI, runtime, or helper identity drift fails closed.
-- Heap-init evidence cross-checks `heap.c`, the runtime header, and JSON
-  contract. It binds exact alignment/minimum/status constants, proves the
-  null/minimum/alignment guard sequence, and proves arena/capacity/used
-  publication plus capacity-wide zeroing occurs only after all guards pass.
-  ABI/runtime/helper identity drift fails closed.
+- Heap-helper evidence cross-checks `heap.c`, the runtime header, and JSON
+  contract. Initialization binds exact alignment/minimum/status constants and
+  proves guarded state publication plus capacity-wide zeroing. Allocation proves
+  null-result publication before chain validation, zero-size success, checked
+  required-span arithmetic, first-fit split-or-claim reuse, corrupt-chain
+  rejection, capacity/overflow OOM, tail metadata/result publication, and final
+  `used` publication. ABI/runtime/helper identity drift fails closed.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

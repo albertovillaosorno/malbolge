@@ -98,6 +98,111 @@ impl TernaryI32Scalar {
     }
 }
 
+/// Declarative semantics for version-one guest heap allocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapAllocateSemantics {
+    /// Required payload/span alignment in logical bytes.
+    pub alignment: u32,
+    /// Metadata state word for an allocated block.
+    pub allocated_state: u32,
+    /// Runtime status for malformed heap metadata.
+    pub corrupt_state_status: u32,
+    /// Fixed metadata header size in logical bytes.
+    pub header_bytes: u32,
+    /// Runtime status for invalid pointer or heap-shape arguments.
+    pub invalid_argument_status: u32,
+    /// Smallest representable block/remainder span.
+    pub minimum_block_span: u32,
+    /// Runtime status for extent overflow or capacity exhaustion.
+    pub out_of_memory_status: u32,
+    /// Required reserved metadata word.
+    pub reserved_value: u32,
+    /// Runtime status after successful allocation or zero-size handling.
+    pub valid_status: u32,
+}
+
+/// One explicit heap-allocation step before target memory layout.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HeapAllocateStep {
+    /// Compute aligned payload plus header; overflow returns one status.
+    ComputeRequiredSpan {
+        /// Payload alignment in logical bytes.
+        alignment: u32,
+        /// Fixed metadata header size.
+        header_bytes: u32,
+        /// Runtime status returned on overflow.
+        overflow_status: u32,
+    },
+    /// Require canonical heap shape or return one status.
+    GuardHeapShape {
+        /// Runtime status returned for invalid shape.
+        failure_status: u32,
+    },
+    /// Require caller-owned result storage or return one status.
+    GuardResultPointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Require tail extent to fit the arena or return one status.
+    GuardTailExtentFits {
+        /// Runtime status returned for overflow/capacity exhaustion.
+        failure_status: u32,
+    },
+    /// Publish payload pointer for the selected free block.
+    PublishResultFromBlock {
+        /// Payload begins this many bytes after block start.
+        header_bytes: u32,
+    },
+    /// Publish payload pointer for the old tail `used` offset.
+    PublishResultFromTail {
+        /// Payload begins this many bytes after block start.
+        header_bytes: u32,
+    },
+    /// Publish `result = NULL` before chain/size processing.
+    PublishResultNull,
+    /// Publish the overflow-checked new tail extent as heap `used`.
+    PublishTailUsed,
+    /// Return immediately with null result when request size is zero.
+    ReturnIfSizeZero {
+        /// Runtime status returned for zero size.
+        status: u32,
+    },
+    /// Return one exact runtime status.
+    ReturnStatus(u32),
+    /// Scan blocks in ascending offset order and use the first fitting free
+    /// one.
+    ScanFirstFitFreeBlock {
+        /// Metadata state word identifying a free block.
+        free_state: u32,
+        /// Actions executed for the first fitting free block before returning.
+        on_match: Vec<Self>,
+        /// Runtime status returned if block decoding detects corruption.
+        read_failure_status: u32,
+    },
+    /// Split a fitting free block when the remainder is representable, else
+    /// claim it.
+    SplitOrClaimFreeBlock {
+        /// Metadata state word written to the allocated block.
+        allocated_state: u32,
+        /// Smallest remainder that becomes a separate free block.
+        minimum_remainder: u32,
+        /// Required reserved metadata word.
+        reserved_value: u32,
+    },
+    /// Validate the complete block chain before size-dependent work.
+    ValidateHeapChain {
+        /// Runtime status returned for corruption.
+        failure_status: u32,
+    },
+    /// Write one allocated block header at the old tail `used` offset.
+    WriteAllocatedTailBlock {
+        /// Metadata state word written to the block.
+        allocated_state: u32,
+        /// Required reserved metadata word.
+        reserved_value: u32,
+    },
+}
+
 /// Declarative semantics for version-one guest heap initialization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HeapInitSemantics {
@@ -114,6 +219,8 @@ pub struct HeapInitSemantics {
 /// One admitted heap helper represented as declarative semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HeapHelperOperation {
+    /// Allocate one first-fit block from caller-owned heap state.
+    Allocate(HeapAllocateSemantics),
     /// Initialize caller-owned heap state over one supplied arena.
     Initialize(HeapInitSemantics),
 }
@@ -167,6 +274,11 @@ pub enum HeapInitStep {
 /// One heap helper after explicit execution realization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HeapHelperExecutionPlan {
+    /// Ordered version-one first-fit allocation steps.
+    Allocate {
+        /// Guard, scan, mutation, and publication order matching guest C.
+        steps: Vec<HeapAllocateStep>,
+    },
     /// Ordered version-one heap initialization steps.
     Initialize {
         /// Guard and mutation order matching checked-in guest C.

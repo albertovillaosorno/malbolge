@@ -109,10 +109,14 @@ instruction.
   encode/decode use scratch state and defer caller-visible wire/frame
   publication
   until validation succeeds. ABI/runtime/helper drift fails closed.
-- A heap-helper family now admits exactly `malbolge_guest_heap_init`. It binds
-  the 16-byte arena/capacity alignment, 32-byte minimum, statuses `1/0`, and
-  checked-in guard order; after all guards pass it publishes arena/capacity/
-  `used=0`, zeroes exactly `capacity` arena bytes, and returns `VALID`. Heap
+- A heap-helper family now admits exact heap init/allocation identities. Init
+  binds 16-byte alignment, 32-byte minimum, guarded state publication, and exact
+  arena zeroing. Allocation publishes null result before chain validation, keeps
+  zero-size null success, overflow-checks aligned header+payload extent,
+  performs
+  ascending first-fit split-or-claim reuse, and otherwise appends at the old
+  tail
+  with OOM/corruption statuses and exact result/`used` publication order. Heap
   placement remains a separate global-layout responsibility.
 - A separate inbound runtime-intrinsic request now admits only the exact
   `malbolge_guest_intrinsic_input_word` and
@@ -152,7 +156,7 @@ instruction.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
-  branch-address/source-cell placement, heap allocation/resize/release and
+  branch-address/source-cell placement, zeroed allocation/resize/release and
   formatting runtime helpers, final target serialization, and executable
   Malbolge-oriented
   lowering evidence.

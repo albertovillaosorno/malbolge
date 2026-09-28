@@ -57,13 +57,15 @@ bind all eight fixed little-endian field offsets and defer caller-visible wire
 or frame publication until validation succeeds, without reading guest values on
 the host.
 
-A heap-helper boundary now admits `malbolge_guest_heap_init` under the same
-exact
-ABI/runtime authority. It binds 16-byte arena/capacity alignment, minimum
-32-byte capacity, invalid-argument/valid statuses, and the checked-in guard
-order. After every guard passes, the execution plan publishes arena, capacity,
-and `used=0`, then zeros exactly the supplied arena capacity before returning
-`VALID`; arena placement itself remains external layout input.
+A heap-helper boundary now admits `malbolge_guest_heap_init` and
+`malbolge_guest_heap_allocate` under the same exact ABI/runtime authority. Heap
+initialization binds 16-byte arena/capacity alignment, minimum 32-byte capacity,
+and checked-in guard/publication/zeroing order. Allocation publishes a null
+result before chain validation, preserves zero-size null success, computes the
+aligned 16-byte-header span with overflow checks, scans first-fit free blocks in
+ascending offset order, and otherwise appends at the old tail when capacity
+permits. Split-or-claim uses a 32-byte minimum remainder; result and `used`
+publication follow the checked-in mutation order.
 
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input
