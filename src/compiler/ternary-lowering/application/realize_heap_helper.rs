@@ -34,8 +34,9 @@
 //! Pre-layout execution realization for canonical guest heap helpers.
 
 use super::model::{
-    HeapAllocateSemantics, HeapAllocateStep, HeapHelperExecutionPlan,
-    HeapHelperOperation, HeapInitStep,
+    HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
+    HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperOperation,
+    HeapInitStep,
 };
 
 /// Expands one admitted heap helper into explicit pre-layout execution.
@@ -47,6 +48,11 @@ pub fn realize_heap_helper(
         HeapHelperOperation::Allocate(semantics) => {
             HeapHelperExecutionPlan::Allocate {
                 steps: allocate_steps(semantics),
+            }
+        },
+        HeapHelperOperation::AllocateZeroed(semantics) => {
+            HeapHelperExecutionPlan::AllocateZeroed {
+                steps: allocate_zeroed_steps(semantics),
             }
         },
         HeapHelperOperation::Initialize(semantics) => {
@@ -129,5 +135,31 @@ fn allocate_steps(semantics: HeapAllocateSemantics) -> Vec<HeapAllocateStep> {
         },
         HeapAllocateStep::PublishTailUsed,
         HeapAllocateStep::ReturnStatus(semantics.valid_status),
+    ]
+}
+
+fn allocate_zeroed_steps(
+    semantics: HeapAllocateZeroedSemantics,
+) -> Vec<HeapAllocateZeroedStep> {
+    let allocation = HeapHelperExecutionPlan::Allocate {
+        steps: allocate_steps(semantics.allocation),
+    };
+    vec![
+        HeapAllocateZeroedStep::GuardResultPointerNonNull {
+            failure_status: semantics.invalid_argument_status,
+        },
+        HeapAllocateZeroedStep::PublishResultNull,
+        HeapAllocateZeroedStep::DelegateZeroSizeAllocation(Box::new(
+            allocation.clone(),
+        )),
+        HeapAllocateZeroedStep::GuardProductFitsU32 {
+            failure_status: semantics.out_of_memory_status,
+        },
+        HeapAllocateZeroedStep::AllocateTotalOrReturn(Box::new(allocation)),
+        HeapAllocateZeroedStep::ReturnUnlessAllocatedNonNull {
+            valid_status: semantics.valid_status,
+        },
+        HeapAllocateZeroedStep::ZeroAllocatedPayloadBytes,
+        HeapAllocateZeroedStep::ReturnStatus(semantics.valid_status),
     ]
 }

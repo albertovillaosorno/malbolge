@@ -57,15 +57,22 @@ bind all eight fixed little-endian field offsets and defer caller-visible wire
 or frame publication until validation succeeds, without reading guest values on
 the host.
 
-A heap-helper boundary now admits `malbolge_guest_heap_init` and
-`malbolge_guest_heap_allocate` under the same exact ABI/runtime authority. Heap
-initialization binds 16-byte arena/capacity alignment, minimum 32-byte capacity,
-and checked-in guard/publication/zeroing order. Allocation publishes a null
-result before chain validation, preserves zero-size null success, computes the
-aligned 16-byte-header span with overflow checks, scans first-fit free blocks in
+A heap-helper boundary now admits `malbolge_guest_heap_init`,
+`malbolge_guest_heap_allocate`, and `malbolge_guest_heap_allocate_zeroed` under
+the same exact ABI/runtime authority. Heap initialization binds 16-byte
+arena/capacity alignment, minimum 32-byte capacity, and checked-in
+guard/publication/zeroing order. Allocation publishes a null result before
+chain validation, preserves zero-size null success, computes the aligned
+16-byte-header span with overflow checks, scans first-fit free blocks in
 ascending offset order, and otherwise appends at the old tail when capacity
-permits. Split-or-claim uses a 32-byte minimum remainder; result and `used`
-publication follow the checked-in mutation order.
+permits.
+
+Split-or-claim uses a 32-byte minimum remainder; result and `used` publication
+follow the checked-in mutation order. Zeroed allocation first publishes a null
+result, delegates count/size-zero requests to zero-size allocation, rejects
+`count * size` overflow as OOM, delegates the positive total to the canonical
+allocator, preserves its returned status/null check, then zeros exactly the
+requested payload bytes before returning `VALID`.
 
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input

@@ -50,12 +50,13 @@ use ternary_lowering::{
     FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
     FrameHelperLoweringError, FrameHelperOperation, FrameHelperRequest,
     FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
-    HeapAllocateSemantics, HeapAllocateStep, HeapHelperExecutionPlan,
-    HeapHelperLoweringError, HeapHelperOperation, HeapHelperRequest,
-    HeapInitSemantics, HeapInitStep, I32_TERNARY_TRITS, InputBlock,
-    InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
-    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
-    InputTerminator, InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
+    HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperLoweringError,
+    HeapHelperOperation, HeapHelperRequest, HeapInitSemantics, HeapInitStep,
+    I32_TERNARY_TRITS, InputBlock, InputDecodeArm, InputDecodeCondition,
+    InputDecodeResult, InputFunction, InputInstruction, InputScalarType,
+    InputSourcePosition, InputSourceSpan, InputTerminator,
+    InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
@@ -1867,6 +1868,85 @@ fn heap_allocate_authority_matches_runtime_policy() -> Result<(), String> {
         if !contract.contains(expected) {
             return Err(format!(
                 "heap-allocate contract authority missing {expected}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_allocate_zeroed_preserves_delegation_and_zeroing_order()
+-> Result<(), String> {
+    let operation = lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_heap_allocate_zeroed"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower heap allocate-zeroed: {error:?}"))?;
+    let allocation = HeapAllocateSemantics {
+        alignment: 16,
+        allocated_state: 1,
+        corrupt_state_status: 3,
+        header_bytes: 16,
+        invalid_argument_status: 1,
+        minimum_block_span: 32,
+        out_of_memory_status: 2,
+        reserved_value: 0,
+        valid_status: 0,
+    };
+    let semantics = HeapAllocateZeroedSemantics {
+        allocation,
+        invalid_argument_status: 1,
+        out_of_memory_status: 2,
+        valid_status: 0,
+    };
+    if operation != HeapHelperOperation::AllocateZeroed(semantics) {
+        return Err(String::from("heap allocate-zeroed semantics drifted"));
+    }
+    let nested = expected_heap_allocate_plan();
+    let expected = HeapHelperExecutionPlan::AllocateZeroed {
+        steps: vec![
+            HeapAllocateZeroedStep::GuardResultPointerNonNull {
+                failure_status: 1,
+            },
+            HeapAllocateZeroedStep::PublishResultNull,
+            HeapAllocateZeroedStep::DelegateZeroSizeAllocation(Box::new(
+                nested.clone(),
+            )),
+            HeapAllocateZeroedStep::GuardProductFitsU32 { failure_status: 2 },
+            HeapAllocateZeroedStep::AllocateTotalOrReturn(Box::new(nested)),
+            HeapAllocateZeroedStep::ReturnUnlessAllocatedNonNull {
+                valid_status: 0,
+            },
+            HeapAllocateZeroedStep::ZeroAllocatedPayloadBytes,
+            HeapAllocateZeroedStep::ReturnStatus(0),
+        ],
+    };
+    if realize_heap_helper(operation) != expected {
+        return Err(String::from("heap allocate-zeroed execution drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_allocate_zeroed_authority_matches_runtime_source() -> Result<(), String>
+{
+    let source = read_to_string(GUEST_HEAP_SOURCE)
+        .map_err(|error| format!("read guest heap source: {error}"))?;
+    for expected in [
+        "malbolge_guest_heap_allocate_zeroed",
+        "if (result == NULL)",
+        "*result = NULL",
+        "count == UINT32_C(0) || size == UINT32_C(0)",
+        "count > UINT32_MAX / size",
+        "total = count * size",
+        "malbolge_guest_heap_allocate(heap, total, result)",
+        "status != MALBOLGE_GUEST_RUNTIME_VALID || *result == NULL",
+        "bytes[index] = UINT8_C(0)",
+    ] {
+        if !source.contains(expected) {
+            return Err(format!(
+                "heap allocate-zeroed source authority missing {expected}"
             ));
         }
     }

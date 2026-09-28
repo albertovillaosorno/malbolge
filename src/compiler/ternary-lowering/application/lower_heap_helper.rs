@@ -34,7 +34,8 @@
 
 use super::heap_helper_input::HeapHelperRequest;
 use super::model::{
-    HeapAllocateSemantics, HeapHelperOperation, HeapInitSemantics,
+    HeapAllocateSemantics, HeapAllocateZeroedSemantics, HeapHelperOperation,
+    HeapInitSemantics,
 };
 
 const ALLOCATED_STATE: u32 = 1;
@@ -42,6 +43,7 @@ const ABI_ID: &str = "malbolge-c32-v1";
 const CORRUPT_STATE_STATUS: u32 = 3;
 const HEAP_ALIGNMENT: u32 = 16;
 const HEAP_ALLOCATE_ID: &str = "malbolge_guest_heap_allocate";
+const HEAP_ALLOCATE_ZEROED_ID: &str = "malbolge_guest_heap_allocate_zeroed";
 const HEAP_HEADER_BYTES: u32 = 16;
 const HEAP_INIT_ID: &str = "malbolge_guest_heap_init";
 const INVALID_ARGUMENT_STATUS: u32 = 1;
@@ -72,18 +74,16 @@ pub fn lower_heap_helper(
     }
     match request.identity.as_str() {
         HEAP_ALLOCATE_ID => {
-            Ok(HeapHelperOperation::Allocate(HeapAllocateSemantics {
-                alignment: HEAP_ALIGNMENT,
-                allocated_state: ALLOCATED_STATE,
-                corrupt_state_status: CORRUPT_STATE_STATUS,
-                header_bytes: HEAP_HEADER_BYTES,
-                invalid_argument_status: INVALID_ARGUMENT_STATUS,
-                minimum_block_span: MIN_BLOCK_SPAN,
-                out_of_memory_status: OUT_OF_MEMORY_STATUS,
-                reserved_value: 0,
-                valid_status: VALID_STATUS,
-            }))
+            Ok(HeapHelperOperation::Allocate(allocation_semantics()))
         },
+        HEAP_ALLOCATE_ZEROED_ID => Ok(HeapHelperOperation::AllocateZeroed(
+            HeapAllocateZeroedSemantics {
+                allocation: allocation_semantics(),
+                invalid_argument_status: INVALID_ARGUMENT_STATUS,
+                out_of_memory_status: OUT_OF_MEMORY_STATUS,
+                valid_status: VALID_STATUS,
+            },
+        )),
         HEAP_INIT_ID => {
             Ok(HeapHelperOperation::Initialize(HeapInitSemantics {
                 alignment: HEAP_ALIGNMENT,
@@ -93,5 +93,19 @@ pub fn lower_heap_helper(
             }))
         },
         _ => Err(HeapHelperLoweringError::UnsupportedIdentity),
+    }
+}
+
+const fn allocation_semantics() -> HeapAllocateSemantics {
+    HeapAllocateSemantics {
+        alignment: HEAP_ALIGNMENT,
+        allocated_state: ALLOCATED_STATE,
+        corrupt_state_status: CORRUPT_STATE_STATUS,
+        header_bytes: HEAP_HEADER_BYTES,
+        invalid_argument_status: INVALID_ARGUMENT_STATUS,
+        minimum_block_span: MIN_BLOCK_SPAN,
+        out_of_memory_status: OUT_OF_MEMORY_STATUS,
+        reserved_value: 0,
+        valid_status: VALID_STATUS,
     }
 }

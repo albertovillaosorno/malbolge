@@ -121,6 +121,49 @@ pub struct HeapAllocateSemantics {
     pub valid_status: u32,
 }
 
+/// Declarative semantics for version-one zeroed guest heap allocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapAllocateZeroedSemantics {
+    /// Nested first-fit allocation semantics for zero/nonzero delegation.
+    pub allocation: HeapAllocateSemantics,
+    /// Runtime status for a null result-storage pointer.
+    pub invalid_argument_status: u32,
+    /// Runtime status for `count * size` overflow.
+    pub out_of_memory_status: u32,
+    /// Runtime status after successful allocation and zeroing.
+    pub valid_status: u32,
+}
+
+/// One explicit zeroed-allocation step before target memory layout.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HeapAllocateZeroedStep {
+    /// Delegate positive total allocation to the canonical allocator.
+    AllocateTotalOrReturn(Box<HeapHelperExecutionPlan>),
+    /// For count/size zero, delegate exact zero-size allocation and return.
+    DelegateZeroSizeAllocation(Box<HeapHelperExecutionPlan>),
+    /// Require `count * size` to fit `u32` or return one status.
+    GuardProductFitsU32 {
+        /// Runtime status returned for multiplication overflow.
+        failure_status: u32,
+    },
+    /// Require caller-owned result storage or return one status.
+    GuardResultPointerNonNull {
+        /// Runtime status returned for null.
+        failure_status: u32,
+    },
+    /// Publish `result = NULL` before size/product processing.
+    PublishResultNull,
+    /// Return one exact runtime status.
+    ReturnStatus(u32),
+    /// After allocation, return unless status is valid and result is non-null.
+    ReturnUnlessAllocatedNonNull {
+        /// Status value that permits payload zeroing.
+        valid_status: u32,
+    },
+    /// Zero exactly `count * size` bytes at the allocated payload pointer.
+    ZeroAllocatedPayloadBytes,
+}
+
 /// One explicit heap-allocation step before target memory layout.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HeapAllocateStep {
@@ -221,6 +264,8 @@ pub struct HeapInitSemantics {
 pub enum HeapHelperOperation {
     /// Allocate one first-fit block from caller-owned heap state.
     Allocate(HeapAllocateSemantics),
+    /// Allocate and zero one `count * size` payload.
+    AllocateZeroed(HeapAllocateZeroedSemantics),
     /// Initialize caller-owned heap state over one supplied arena.
     Initialize(HeapInitSemantics),
 }
@@ -278,6 +323,11 @@ pub enum HeapHelperExecutionPlan {
     Allocate {
         /// Guard, scan, mutation, and publication order matching guest C.
         steps: Vec<HeapAllocateStep>,
+    },
+    /// Ordered version-one zeroed-allocation steps.
+    AllocateZeroed {
+        /// Guard, delegation, and payload-zeroing order matching guest C.
+        steps: Vec<HeapAllocateZeroedStep>,
     },
     /// Ordered version-one heap initialization steps.
     Initialize {

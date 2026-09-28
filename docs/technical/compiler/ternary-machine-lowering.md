@@ -111,6 +111,14 @@ helper returns `VALID`. If no free block fits, allocation overflow-checks
 the tail payload pointer, then publishes the new `used` extent and returns
 `VALID`. No global arena address is selected by this helper boundary.
 
+Zeroed allocation first requires result storage and publishes `result = NULL`.
+If count or size is zero it delegates directly to the canonical zero-size
+allocator path. Otherwise `count * size` is checked in the `u32` domain with
+overflow mapped to `OUT_OF_MEMORY`, then the positive total is delegated to the
+canonical allocator plan. The helper preserves the checked-in post-allocation
+status/non-null test before zeroing exactly `total` payload bytes and returning
+`VALID`.
+
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
 function must own a reachable entry block. Therefore direct helper-call
@@ -300,7 +308,11 @@ emitted.
   null-result publication before chain validation, zero-size success, checked
   required-span arithmetic, first-fit split-or-claim reuse, corrupt-chain
   rejection, capacity/overflow OOM, tail metadata/result publication, and final
-  `used` publication. ABI/runtime/helper identity drift fails closed.
+  `used` publication.
+- Zeroed-allocation evidence proves null-result publication, zero-size
+  delegation, product overflow-to-OOM, canonical allocator delegation,
+  post-allocation status/non-null gating, and exact payload zeroing before
+  `VALID`. ABI/runtime/helper identity drift fails closed.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

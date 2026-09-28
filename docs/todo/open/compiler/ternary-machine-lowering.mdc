@@ -109,15 +109,18 @@ instruction.
   encode/decode use scratch state and defer caller-visible wire/frame
   publication
   until validation succeeds. ABI/runtime/helper drift fails closed.
-- A heap-helper family now admits exact heap init/allocation identities. Init
-  binds 16-byte alignment, 32-byte minimum, guarded state publication, and exact
-  arena zeroing. Allocation publishes null result before chain validation, keeps
-  zero-size null success, overflow-checks aligned header+payload extent,
-  performs
-  ascending first-fit split-or-claim reuse, and otherwise appends at the old
-  tail
-  with OOM/corruption statuses and exact result/`used` publication order. Heap
-  placement remains a separate global-layout responsibility.
+- A heap-helper family now admits exact heap init/allocation/zeroed-allocation
+  identities. Init binds 16-byte alignment, 32-byte minimum, guarded state
+  publication, and exact arena zeroing. Allocation publishes null result before
+  chain validation, keeps zero-size null success, overflow-checks aligned
+  header+payload extent, performs ascending first-fit split-or-claim reuse, and
+  otherwise appends at the old tail with OOM/corruption statuses and exact
+  result/`used` publication order.
+- Zeroed allocation publishes null first, delegates zero count/size to zero-size
+  allocation, rejects `count * size` overflow as OOM, delegates positive totals
+  to the canonical allocator, preserves the returned status/non-null gate, and
+  zeros exactly the requested payload before `VALID`. Heap placement remains a
+  separate global-layout responsibility.
 - A separate inbound runtime-intrinsic request now admits only the exact
   `malbolge_guest_intrinsic_input_word` and
   `malbolge_guest_intrinsic_output_byte` identities under `malbolge-2026`,
@@ -156,8 +159,8 @@ instruction.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
-  branch-address/source-cell placement, zeroed allocation/resize/release and
-  formatting runtime helpers, final target serialization, and executable
+  branch-address/source-cell placement, heap resize/release and formatting
+  runtime helpers, final target serialization, and executable
   Malbolge-oriented
   lowering evidence.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
