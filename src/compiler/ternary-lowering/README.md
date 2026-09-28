@@ -32,6 +32,13 @@ become fixed-width 21-trit scalars while source, ABI, typed-IR version, source
 digest, and target-profile provenance are preserved. Byte effects remain
 successful `u8` semantics.
 
+A separate pure runtime-helper port admits only
+`malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
+current profile. It lowers them to declarative target recipes: input accepts raw
+words `0..255` or the profile EOF word and carries exact valid/invalid statuses,
+while output carries the exact low-eight-bit mask. These recipes never evaluate
+a guest value on the host.
+
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
 `malbolge_guest_intrinsic_output_byte` declarations under `malbolge-2026`,
@@ -46,5 +53,6 @@ Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
 one `BindHeap` action before `EnterUserCode` while retaining the exact
 `malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
-bind-call encoding, direct runtime-helper call lowering, input EOF mapping,
-global layout, target serialization, and complete Malbolge emission remain open.
+bind-call encoding, direct runtime-helper call integration, executable input
+helper branching/status publication, global layout, target serialization, and
+complete Malbolge emission remain open.

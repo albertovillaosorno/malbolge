@@ -45,12 +45,14 @@ use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
     I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
     InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
-    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
-    ProfileInstructionDecoder, RuntimeIntrinsicLoweringError,
-    RuntimeIntrinsicOperation, RuntimeIntrinsicRequest,
-    RuntimeIoRealizationError, StartupAction, StartupPlanningError,
-    StartupRequest, TargetProfileIo, TernaryLoweringError, TernaryOperation,
-    TypedIrInput, encode_machine_io, lower_runtime_intrinsic, lower_typed_ir,
+    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
+    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperLoweringError,
+    RuntimeHelperOperation, RuntimeHelperRequest,
+    RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
+    RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
+    StartupPlanningError, StartupRequest, TargetProfileIo,
+    TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
+    lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
     plan_startup, realize_runtime_io,
 };
 use typed_ir::{
@@ -72,6 +74,8 @@ const GUEST_RUNTIME_CONTRACT: &str =
     "src/runtime/guest-runtime/contract/guest-runtime-v1.json";
 const GUEST_RUNTIME_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_runtime.h";
+const GUEST_BYTE_STREAM_SOURCE: &str =
+    "src/runtime/guest-runtime/domain/byte_stream.c";
 
 struct VmProfileInstructionDecoder;
 
@@ -1142,6 +1146,104 @@ fn runtime_intrinsic_identities_match_guest_runtime_authority()
     }
     if !contract.contains("\"target_profile\": \"malbolge-2026\"") {
         return Err(String::from("guest-runtime target profile drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_helper_authority_matches_guest_runtime() -> Result<(), String> {
+    let contract = read_to_string(GUEST_RUNTIME_CONTRACT)
+        .map_err(|error| format!("read guest-runtime contract: {error}"))?;
+    let header = read_to_string(GUEST_RUNTIME_HEADER)
+        .map_err(|error| format!("read guest-runtime header: {error}"))?;
+    let source = read_to_string(GUEST_BYTE_STREAM_SOURCE)
+        .map_err(|error| format!("read byte-stream source: {error}"))?;
+    for expected in [
+        "malbolge_guest_decode_input_word",
+        "malbolge_guest_output_byte",
+    ] {
+        if !header.contains(expected) || !source.contains(expected) {
+            return Err(format!("runtime helper authority missing {expected}"));
+        }
+    }
+    for expected in [
+        "profile-byte-word-or-eof-to-int32-byte-or-minus-one",
+        "low-eight-bits",
+        "forbidden",
+    ] {
+        if !contract.contains(expected) {
+            return Err(format!("runtime helper contract missing {expected}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn pure_byte_stream_helpers_lower_to_declarative_semantics()
+-> Result<(), String> {
+    let profile = current_profile_io();
+    let input = RuntimeHelperRequest {
+        identity: String::from("malbolge_guest_decode_input_word"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    let output = RuntimeHelperRequest {
+        identity: String::from("malbolge_guest_output_byte"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    if lower_runtime_helper(&input, &profile)
+        != Ok(RuntimeHelperOperation::DecodeInputWord(Box::new(
+            InputWordDecodeSemantics {
+                byte_max: 255,
+                eof_value_bits: u32::MAX,
+                eof_word: current_profile().eof_word(),
+                invalid_input_status: 4,
+                valid_status: 0,
+            },
+        )))
+        || lower_runtime_helper(&output, &profile)
+            != Ok(RuntimeHelperOperation::OutputByte { mask: 255 })
+    {
+        return Err(String::from("pure runtime-helper semantics drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_helper_identity_or_profile_drift_fails_closed() -> Result<(), String>
+{
+    let profile = current_profile_io();
+    let unknown = RuntimeHelperRequest {
+        identity: String::from("host_getchar"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    let wrong_profile = RuntimeHelperRequest {
+        identity: String::from("malbolge_guest_decode_input_word"),
+        target_profile: String::from("malbolge-1998"),
+    };
+    let mut drifted_projection = profile.clone();
+    drifted_projection.profile_id = String::from("malbolge-2026.3");
+    let mut ambiguous_eof = profile.clone();
+    ambiguous_eof.eof_word = 255;
+    if lower_runtime_helper(&unknown, &profile)
+        != Err(RuntimeHelperLoweringError::UnsupportedIdentity)
+        || lower_runtime_helper(&wrong_profile, &profile)
+            != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+        || lower_runtime_helper(
+            &RuntimeHelperRequest {
+                identity: String::from("malbolge_guest_output_byte"),
+                target_profile: String::from("malbolge-2026"),
+            },
+            &drifted_projection,
+        ) != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+        || lower_runtime_helper(
+            &RuntimeHelperRequest {
+                identity: String::from("malbolge_guest_decode_input_word"),
+                target_profile: String::from("malbolge-2026"),
+            },
+            &ambiguous_eof,
+        ) != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+    {
+        return Err(String::from("runtime-helper drift was not rejected"));
     }
     Ok(())
 }

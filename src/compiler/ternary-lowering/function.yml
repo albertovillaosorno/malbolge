@@ -98,6 +98,16 @@ parts:
     kind: application
     language: rust
     responsibility: Sequence validated heap binding before user entry.
+  - id: part-0013
+    path: port-inbound/runtime_helper.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Carry exact pure byte-stream runtime helper identities.
+  - id: part-0014
+    path: application/lower_runtime_helper.rs
+    kind: application
+    language: rust
+    responsibility: Bind pure byte-stream helpers to profile-aware semantics.
 projects: []
 tests: []
 graph:

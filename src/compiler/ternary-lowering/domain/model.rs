@@ -155,6 +155,33 @@ pub struct MachineIoOperation {
     pub kind: MachineIoKind,
 }
 
+/// Declarative semantics for profile-word to C-input mapping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InputWordDecodeSemantics {
+    /// Largest raw word that maps directly to a C byte value.
+    pub byte_max: u32,
+    /// Exact two's-complement `i32` bits for C `EOF == -1`.
+    pub eof_value_bits: u32,
+    /// Canonical selected-profile EOF word.
+    pub eof_word: u32,
+    /// Runtime status for impossible intermediate input words.
+    pub invalid_input_status: u32,
+    /// Runtime status for byte and EOF mappings.
+    pub valid_status: u32,
+}
+
+/// One pure guest-runtime helper represented as declarative target semantics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeHelperOperation {
+    /// Map a raw profile input word to byte-or-EOF `i32` plus runtime status.
+    DecodeInputWord(Box<InputWordDecodeSemantics>),
+    /// Reduce one C `int` value to the emitted low-eight-bit guest byte.
+    OutputByte {
+        /// Exact low-byte mask.
+        mask: u32,
+    },
+}
+
 /// One declaration-only guest-runtime operation before profile opcode encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeIntrinsicOperation {

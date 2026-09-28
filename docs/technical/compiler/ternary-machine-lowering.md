@@ -50,6 +50,20 @@ used by `malbolge_guest_output_byte` without evaluating guest values on the
 host.
 Direct calls to that runtime helper are not yet recognized by this stage.
 
+A separate pure runtime-helper port now admits exactly
+`malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
+reviewed current profile. It lowers those identities to declarative recipes
+rather than host-evaluated values: input records the `0..255` byte domain, the
+profile-projected EOF word, exact `EOF == -1` bits, and valid/invalid runtime
+statuses; output records the low-eight-bit mask. An EOF projection overlapping
+the byte domain fails closed.
+
+The current typed IR cannot yet represent declaration-only external helper
+callees: direct `Call` targets resolve only to module-local functions, and every
+function must own a reachable entry block. Therefore this helper recipe is
+semantic lowering evidence, while direct helper-call integration and executable
+branch/status publication remain open.
+
 The separate raw runtime-intrinsic port admits only
 `malbolge_guest_intrinsic_input_word` and
 `malbolge_guest_intrinsic_output_byte` under the exact `malbolge-2026` profile.
@@ -82,8 +96,8 @@ place allocation-capable user code before the required bind.
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
 runtime-call encoding, complete source sequencing, direct runtime-helper call
-integration, input EOF mapping, target serialization, and complete Malbolge
-emission remain downstream work.
+integration, executable input-helper branching/status publication, target
+serialization, and complete Malbolge emission remain downstream work.
 
 ### Authoritative Inputs
 
@@ -127,8 +141,10 @@ Malformed inbound projection identity, retained globals/proof obligations,
 non-`i32` or malformed constants, invalid/undefined `i32` AND operands, invalid
 or undefined truncation inputs, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
-runtime intrinsic names, runtime-intrinsic/profile drift, colliding projected
-profile I/O opcodes, invalid startup identities, null/misaligned/undersized/
+runtime intrinsic names, runtime-intrinsic/profile drift, unknown pure runtime
+helper identities, helper/profile drift, ambiguous helper EOF projections,
+colliding projected profile I/O opcodes, invalid startup identities,
+null/misaligned/undersized/
 overflowing heap extents, multi-block/phi/parameterized function shapes, and
 unsupported instructions or terminators fail closed before a pre-layout target
 program is returned. Later
@@ -154,6 +170,12 @@ emitted.
   `i32` return path. Adversarial projection tests reject non-`u8` input,
   undefined
   output values, duplicate SSA IDs, and byte-valued returns.
+- Pure runtime-helper evidence cross-checks the guest-runtime JSON contract, C
+  declarations, and byte-stream implementation. It binds only the exact decode
+  and low-byte helper identities, copies EOF from `current_profile()`, records
+  `0..255`, `-1`, status, and mask semantics without accepting concrete guest
+  values, and rejects identity/profile drift or EOF overlap with the byte
+  domain.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and
@@ -179,8 +201,8 @@ emitted.
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
 - Global heap placement, executable bind-call/source sequencing, direct
-  runtime-helper call integration, and input EOF decoding remain open
-  target-lowering work.
+  runtime-helper call integration, and executable input-helper branching/status
+  publication remain open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

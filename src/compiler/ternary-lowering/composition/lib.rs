@@ -41,6 +41,8 @@ mod input;
 mod instruction_decoder_input;
 #[path = "../application/lower.rs"]
 mod lower;
+#[path = "../application/lower_runtime_helper.rs"]
+mod lower_runtime_helper;
 #[path = "../application/lower_runtime_intrinsic.rs"]
 mod lower_runtime_intrinsic;
 #[path = "../domain/model.rs"]
@@ -49,6 +51,8 @@ mod model;
 mod plan_startup;
 #[path = "../application/realize_runtime_io.rs"]
 mod realize_runtime_io;
+#[path = "../port-inbound/runtime_helper.rs"]
+mod runtime_helper_input;
 #[path = "../port-inbound/runtime_intrinsic.rs"]
 mod runtime_intrinsic_input;
 #[path = "../port-inbound/startup.rs"]
@@ -60,12 +64,16 @@ pub use encode_machine_io::{MachineIoEncodingError, encode_machine_io};
 pub use input::*;
 pub use instruction_decoder_input::ProfileInstructionDecoder;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
+pub use lower_runtime_helper::{
+    RuntimeHelperLoweringError, lower_runtime_helper,
+};
 pub use lower_runtime_intrinsic::{
     RuntimeIntrinsicLoweringError, lower_runtime_intrinsic,
 };
 pub use model::*;
 pub use plan_startup::{StartupPlanningError, plan_startup};
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
+pub use runtime_helper_input::RuntimeHelperRequest;
 pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;
 pub use startup_input::StartupRequest;
 pub use target_profile_input::TargetProfileIo;
