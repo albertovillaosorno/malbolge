@@ -42,6 +42,8 @@ use super::invocation::{
     PreparedNativeExecutableInvocation, PreparedRegisterMaskedCrazyInvocation,
     PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
+    PreparedRegisterMaskedInputInvocation,
+    PreparedRegisterMaskedInputNativeInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationHaltInvocation,
     PreparedRegisterMaskedNoOperationHaltNativeInvocation,
@@ -67,6 +69,7 @@ use super::lifecycle::{
     NativeExecutableReleaseRequest, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedCrazyNativeExecutable,
+    ReadyRegisterMaskedInputNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
@@ -236,6 +239,25 @@ pub struct RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
 pub type RegisterMaskedCrazyLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedCrazyLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedInputNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 Input call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedInputLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedInputNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 Input call.
+pub type RegisterMaskedInputLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedInputLoadedExecutionFailure<RunnerError>>,
 >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -633,6 +655,13 @@ type RegisterMaskedCrazyNativeCallResult<Runner> = Result<
     >,
 >;
 
+type RegisterMaskedInputNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedInputNativeCallFailure<
+        <Runner as RegisterMaskedInputNativeRunner>::Error,
+    >,
+>;
+
 type RegisterMaskedOutputNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedOutputNativeCallFailure<
@@ -859,6 +888,29 @@ pub trait RegisterMaskedCrazyNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedCrazyNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 Input call.
+///
+/// This port receives only a view constructed after exact Input v6
+/// image/executable identity binding.
+pub trait RegisterMaskedInputNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 Input executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedInputNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -1297,6 +1349,62 @@ impl<RunnerError> RegisterMaskedCrazyLoadedExecutionFailure<RunnerError> {
             RegisterMaskedCrazyNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedCrazyNativeCallFailure::Binding(_)
             | RegisterMaskedCrazyNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedInputLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedInputNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedInputNativeCallFailure::Completion(_)
+            | RegisterMaskedInputNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 Input result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedInputNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedInputNativeCallFailure::Binding(_)
+            | RegisterMaskedInputNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedInputNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedInputNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedInputNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedInputNativeCallFailure::Runner(error) => Some(error),
+            RegisterMaskedInputNativeCallFailure::Binding(_)
+            | RegisterMaskedInputNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -3041,6 +3149,25 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedInputLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 Input failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedInputNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedInputNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedInputNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for RegisterMaskedOutputLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -3524,6 +3651,29 @@ where
 {
     run_register_masked_crazy_prepared(runner, executable, prepared).map_err(
         |cause| Box::new(RegisterMaskedCrazyLoadedExecutionFailure { cause }),
+    )
+}
+
+/// Binds, runs, and admits one v6 Input call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedInputLoadedExecutionFailure`] for binding, runner,
+/// or completion failure.
+pub fn execute_loaded_verified_register_masked_input_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedInputNativeExecutable,
+    prepared: PreparedRegisterMaskedInputInvocation<'_, '_>,
+) -> RegisterMaskedInputLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedInputNativeRunner,
+{
+    run_register_masked_input_prepared(runner, executable, prepared).map_err(
+        |cause| Box::new(RegisterMaskedInputLoadedExecutionFailure { cause }),
     )
 }
 
@@ -4373,6 +4523,31 @@ where
     bound
         .complete(raw_status)
         .map_err(RegisterMaskedCrazyNativeCallFailure::Completion)
+}
+
+fn run_register_masked_input_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedInputNativeExecutable,
+    prepared: PreparedRegisterMaskedInputInvocation<'_, '_>,
+) -> RegisterMaskedInputNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedInputNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedInputNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedInputNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedInputNativeCallFailure::Completion)
 }
 
 fn run_register_masked_output_prepared<Runner>(

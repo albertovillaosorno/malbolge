@@ -506,6 +506,7 @@ use execution_native::{
     PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedInputInvocation,
+    PreparedRegisterMaskedInputNativeInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNoOperationNativeInvocation,
@@ -547,7 +548,7 @@ use execution_native::{
     RegisterMaskedCrazyNativeSequencePlan,
     RegisterMaskedCrazyNativeSequencePlanError,
     RegisterMaskedDependencyIdentityClaim as ReducedIdentityClaim,
-    RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedDirectAdmissionErrorKind, RegisterMaskedInputNativeRunner,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
     RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
     RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
@@ -705,6 +706,7 @@ use execution_native::{
     execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence,
     execute_loaded_verified_register_masked_crazy_native,
+    execute_loaded_verified_register_masked_input_native,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
@@ -1829,6 +1831,16 @@ struct FakeRegisterMaskedNoOperationNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedInputNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeRegisterMaskedOutputNativeRunner {
     behavior: FakeNativeRunnerBehavior,
     behaviors: Vec<FakeNativeRunnerBehavior>,
@@ -2638,6 +2650,19 @@ impl FakeRegisterMaskedNoOperationNativeRunner {
         Self {
             behavior: FakeNativeRunnerBehavior::GuardMiss,
             behaviors,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
+impl FakeRegisterMaskedInputNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            behaviors: Vec::new(),
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -3486,6 +3511,47 @@ impl en::RegisterMaskedNoOperationRotateNativeRunner
                 '_,
                 '_,
             >,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl RegisterMaskedInputNativeRunner for FakeRegisterMaskedInputNativeRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedInputNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -8235,6 +8301,130 @@ fn register_masked_v6_input_release_failure_retries_exact_ready()
     if adapter.release_attempts != 2 {
         return Err(String::from("v6 input release retry count drifted"));
     }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_loaded_runner_applies_rebased_state()
+-> TieredTestResult {
+    let input = vec![0x41];
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 input loaded image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(583)?,
+        native_executable_address(0x8d000)?,
+    );
+    let ready =
+        load_register_masked_input_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 input loaded executable: {error}"))?;
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 input loaded effect missing"))?;
+    let mut entry = source.before;
+    entry.registers.accumulator ^= 0x1234_5678;
+    entry.output_len = 2;
+    let mut expected = source.after;
+    expected.output_len = entry.output_len;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_input_expected(&program, &mut expected_memory)?;
+    let mut output = [4u8, 3, 2, 1];
+    let expected_output = output;
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input loaded prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_verified_register_masked_input_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 input loaded execution: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 input loaded execution drifted"));
+    }
+    release_register_masked_input_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 input loaded release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_loaded_runner_rejects_ready_drift()
+-> TieredTestResult {
+    let byte_program = canonical_register_masked_input_program(vec![0x41])?;
+    let byte_artifact =
+        verified_register_masked_input(&byte_program, HostIsa::X86_64)?;
+    let byte_image = VerifiedRegisterMaskedInputLoadImage::new(&byte_artifact)
+        .map_err(|error| format!("v6 input drift loaded image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(584)?,
+        native_executable_address(0x8e000)?,
+    );
+    let ready =
+        load_register_masked_input_native_executable(&mut adapter, &byte_image)
+            .map_err(|error| {
+                format!("v6 input drift loaded executable: {error}")
+            })?;
+
+    let eof_input = Vec::new();
+    let eof_program =
+        canonical_register_masked_input_program(eof_input.clone())?;
+    let eof_artifact =
+        verified_register_masked_input(&eof_program, HostIsa::X86_64)?;
+    let source = eof_program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 input drift effect missing"))?;
+    let mut memory = register_masked_program_memory(&eof_program)?;
+    let original_memory = memory.clone();
+    let mut output = [0u8; 4];
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &eof_artifact,
+        &eof_program,
+        source.before,
+        NativeRegionBuffers::new(&mut memory, &eof_input, &mut output),
+    )
+    .map_err(|error| format!("v6 input drift prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_input_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 input ready drift was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Bind
+        || error.binding_error()
+            != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || runner.calls != 0
+        || memory != original_memory
+    {
+        return Err(String::from(
+            "v6 input ready drift did not fail atomically",
+        ));
+    }
+    release_register_masked_input_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 input drift release: {release}"))?;
     Ok(())
 }
 
