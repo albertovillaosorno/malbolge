@@ -53,10 +53,10 @@ use ternary_lowering::{
     HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
     HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperLoweringError,
     HeapHelperOperation, HeapHelperRequest, HeapInitSemantics, HeapInitStep,
-    I32_TERNARY_TRITS, InputBlock, InputDecodeArm, InputDecodeCondition,
-    InputDecodeResult, InputFunction, InputInstruction, InputScalarType,
-    InputSourcePosition, InputSourceSpan, InputTerminator,
-    InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    HeapReleaseSemantics, HeapReleaseStep, I32_TERNARY_TRITS, InputBlock,
+    InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
+    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
+    InputTerminator, InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
@@ -1954,6 +1954,82 @@ fn heap_allocate_zeroed_authority_matches_runtime_source() -> Result<(), String>
 }
 
 #[test]
+fn heap_release_realizes_preflight_coalesce_and_trim_order()
+-> Result<(), String> {
+    let operation = lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_heap_release"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower heap release: {error:?}"))?;
+    let semantics = HeapReleaseSemantics {
+        allocated_state: 1,
+        corrupt_state_status: 3,
+        free_state: 0,
+        header_bytes: 16,
+        invalid_argument_status: 1,
+        valid_status: 0,
+        zero_metadata_value: 0,
+    };
+    if operation != HeapHelperOperation::Release(semantics) {
+        return Err(String::from("heap-release semantics drifted"));
+    }
+    let expected = HeapHelperExecutionPlan::Release {
+        steps: vec![
+            HeapReleaseStep::GuardHeapShape { failure_status: 1 },
+            HeapReleaseStep::ValidateHeapChain { failure_status: 3 },
+            HeapReleaseStep::ReturnIfPointerNull { status: 0 },
+            HeapReleaseStep::FindAllocatedBlockOrReturn {
+                allocated_state: 1,
+                corrupt_status: 3,
+                header_bytes: 16,
+                invalid_argument_status: 1,
+            },
+            HeapReleaseStep::WriteLocatedBlockFree {
+                free_state: 0,
+                zero_metadata_value: 0,
+            },
+            HeapReleaseStep::CoalesceFreeBlocksOrReturn {
+                corrupt_status: 3,
+                free_state: 0,
+            },
+            HeapReleaseStep::TrimFreeTailOrReturn {
+                corrupt_status: 3,
+                free_state: 0,
+                valid_status: 0,
+            },
+        ],
+    };
+    if realize_heap_helper(operation) != expected {
+        return Err(String::from("heap-release execution plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn heap_release_authority_matches_runtime_source() -> Result<(), String> {
+    let source = read_to_string(GUEST_HEAP_SOURCE)
+        .map_err(|error| format!("read guest heap source: {error}"))?;
+    for expected in [
+        "malbolge_guest_heap_release",
+        "if (!heap_shape_valid(heap))",
+        "if (!heap_chain_valid(heap))",
+        "if (pointer == NULL)",
+        "find_allocated_block(heap, pointer, &block)",
+        "write_block(heap->arena + block.offset, block.span, UINT32_C(0)",
+        "status = coalesce_free_blocks(heap)",
+        "return trim_free_tail(heap)",
+    ] {
+        if !source.contains(expected) {
+            return Err(format!(
+                "heap-release source authority missing {expected}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn heap_helper_identity_drift_fails_closed() -> Result<(), String> {
     let base = HeapHelperRequest {
         abi_id: String::from("malbolge-c32-v1"),
@@ -1965,7 +2041,7 @@ fn heap_helper_identity_drift_fails_closed() -> Result<(), String> {
     let mut wrong_runtime = base.clone();
     wrong_runtime.runtime_id = String::from("malbolge-guest-runtime-v2");
     let mut wrong_helper = base;
-    wrong_helper.identity = String::from("malbolge_guest_heap_release");
+    wrong_helper.identity = String::from("malbolge_guest_heap_resize");
     if lower_heap_helper(&wrong_abi)
         != Err(HeapHelperLoweringError::InvalidAuthority)
         || lower_heap_helper(&wrong_runtime)

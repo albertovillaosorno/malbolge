@@ -119,7 +119,10 @@ instruction.
 - Zeroed allocation publishes null first, delegates zero count/size to zero-size
   allocation, rejects `count * size` overflow as OOM, delegates positive totals
   to the canonical allocator, preserves the returned status/non-null gate, and
-  zeros exactly the requested payload before `VALID`. Heap placement remains a
+  zeros exactly the requested payload before `VALID`. Release preflights the
+  complete chain before mutation, accepts null, requires an exact allocated
+  payload pointer, writes canonical free metadata, coalesces adjacent free
+  blocks, and trims a free tail by lowering `used`. Heap placement remains a
   separate global-layout responsibility.
 - A separate inbound runtime-intrinsic request now admits only the exact
   `malbolge_guest_intrinsic_input_word` and
@@ -159,8 +162,8 @@ instruction.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
-  branch-address/source-cell placement, heap resize/release and formatting
-  runtime helpers, final target serialization, and executable
+  branch-address/source-cell placement, heap resize and formatting runtime
+  helpers, final target serialization, and executable
   Malbolge-oriented
   lowering evidence.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

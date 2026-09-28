@@ -58,8 +58,9 @@ or frame publication until validation succeeds, without reading guest values on
 the host.
 
 A heap-helper boundary now admits `malbolge_guest_heap_init`,
-`malbolge_guest_heap_allocate`, and `malbolge_guest_heap_allocate_zeroed` under
-the same exact ABI/runtime authority. Heap initialization binds 16-byte
+`malbolge_guest_heap_allocate`, `malbolge_guest_heap_allocate_zeroed`, and
+`malbolge_guest_heap_release` under the same exact ABI/runtime authority. Heap
+initialization binds 16-byte
 arena/capacity alignment, minimum 32-byte capacity, and checked-in
 guard/publication/zeroing order. Allocation publishes a null result before
 chain validation, preserves zero-size null success, computes the aligned
@@ -73,6 +74,14 @@ result, delegates count/size-zero requests to zero-size allocation, rejects
 `count * size` overflow as OOM, delegates the positive total to the canonical
 allocator, preserves its returned status/null check, then zeros exactly the
 requested payload bytes before returning `VALID`.
+ Release validates the complete
+heap chain before pointer-dependent mutation, treats null as success, requires
+an exact allocated payload match, rewrites that block free, coalesces adjacent
+free blocks, and trims one free tail by lowering `used`.
+ Release validates the complete
+heap chain before pointer-dependent mutation, treats null as success, requires
+an exact allocated payload match, rewrites that block free, coalesces adjacent
+free blocks, and trims one free tail by lowering `used`.
 
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input

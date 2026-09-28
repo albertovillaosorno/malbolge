@@ -246,6 +246,80 @@ pub enum HeapAllocateStep {
     },
 }
 
+/// Declarative semantics for version-one guest heap release.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapReleaseSemantics {
+    /// Metadata state word identifying an allocated block.
+    pub allocated_state: u32,
+    /// Runtime status for malformed heap metadata.
+    pub corrupt_state_status: u32,
+    /// Metadata state word written to released/free blocks.
+    pub free_state: u32,
+    /// Payload begins this many bytes after a block header.
+    pub header_bytes: u32,
+    /// Runtime status for invalid heap shape or foreign/free pointer.
+    pub invalid_argument_status: u32,
+    /// Runtime status after successful release/null release.
+    pub valid_status: u32,
+    /// Required reserved/requested metadata value for free blocks.
+    pub zero_metadata_value: u32,
+}
+
+/// One explicit heap-release step before target memory layout.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapReleaseStep {
+    /// Coalesce adjacent free blocks or return corruption.
+    CoalesceFreeBlocksOrReturn {
+        /// Runtime status returned for malformed block traversal.
+        corrupt_status: u32,
+        /// Metadata state word identifying a free block.
+        free_state: u32,
+    },
+    /// Find the exact allocated block whose payload pointer equals the
+    /// argument.
+    FindAllocatedBlockOrReturn {
+        /// Metadata state word identifying allocated blocks.
+        allocated_state: u32,
+        /// Runtime status for malformed traversal.
+        corrupt_status: u32,
+        /// Payload begins this many bytes after block start.
+        header_bytes: u32,
+        /// Runtime status for no exact allocated-block match.
+        invalid_argument_status: u32,
+    },
+    /// Require canonical heap shape or return one status.
+    GuardHeapShape {
+        /// Runtime status returned for invalid shape.
+        failure_status: u32,
+    },
+    /// Return success immediately for a null pointer argument.
+    ReturnIfPointerNull {
+        /// Runtime status returned for null.
+        status: u32,
+    },
+    /// Trim one free tail block by publishing its offset as heap `used`.
+    TrimFreeTailOrReturn {
+        /// Runtime status returned for malformed traversal.
+        corrupt_status: u32,
+        /// Metadata state word identifying a free block.
+        free_state: u32,
+        /// Runtime status returned after trim/no-trim success.
+        valid_status: u32,
+    },
+    /// Validate the complete heap chain before pointer-dependent mutation.
+    ValidateHeapChain {
+        /// Runtime status returned for corruption.
+        failure_status: u32,
+    },
+    /// Rewrite the located block header as free while preserving span.
+    WriteLocatedBlockFree {
+        /// Metadata state word written to the block.
+        free_state: u32,
+        /// Requested/reserved words written for free metadata.
+        zero_metadata_value: u32,
+    },
+}
+
 /// Declarative semantics for version-one guest heap initialization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HeapInitSemantics {
@@ -268,6 +342,8 @@ pub enum HeapHelperOperation {
     AllocateZeroed(HeapAllocateZeroedSemantics),
     /// Initialize caller-owned heap state over one supplied arena.
     Initialize(HeapInitSemantics),
+    /// Release one exact allocated payload pointer.
+    Release(HeapReleaseSemantics),
 }
 
 /// One explicit heap-initialization step before target memory layout.
@@ -333,6 +409,11 @@ pub enum HeapHelperExecutionPlan {
     Initialize {
         /// Guard and mutation order matching checked-in guest C.
         steps: Vec<HeapInitStep>,
+    },
+    /// Ordered version-one heap-release steps.
+    Release {
+        /// Preflight, free/coalesce, and tail-trim order matching guest C.
+        steps: Vec<HeapReleaseStep>,
     },
 }
 

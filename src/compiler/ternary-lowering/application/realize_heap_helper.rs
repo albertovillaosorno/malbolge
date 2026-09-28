@@ -36,7 +36,7 @@
 use super::model::{
     HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
     HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperOperation,
-    HeapInitStep,
+    HeapInitStep, HeapReleaseSemantics, HeapReleaseStep,
 };
 
 /// Expands one admitted heap helper into explicit pre-layout execution.
@@ -82,6 +82,11 @@ pub fn realize_heap_helper(
                     HeapInitStep::ZeroArenaCapacityBytes,
                     HeapInitStep::ReturnStatus(semantics.valid_status),
                 ],
+            }
+        },
+        HeapHelperOperation::Release(semantics) => {
+            HeapHelperExecutionPlan::Release {
+                steps: release_steps(semantics),
             }
         },
     }
@@ -161,5 +166,38 @@ fn allocate_zeroed_steps(
         },
         HeapAllocateZeroedStep::ZeroAllocatedPayloadBytes,
         HeapAllocateZeroedStep::ReturnStatus(semantics.valid_status),
+    ]
+}
+
+fn release_steps(semantics: HeapReleaseSemantics) -> Vec<HeapReleaseStep> {
+    vec![
+        HeapReleaseStep::GuardHeapShape {
+            failure_status: semantics.invalid_argument_status,
+        },
+        HeapReleaseStep::ValidateHeapChain {
+            failure_status: semantics.corrupt_state_status,
+        },
+        HeapReleaseStep::ReturnIfPointerNull {
+            status: semantics.valid_status,
+        },
+        HeapReleaseStep::FindAllocatedBlockOrReturn {
+            allocated_state: semantics.allocated_state,
+            corrupt_status: semantics.corrupt_state_status,
+            header_bytes: semantics.header_bytes,
+            invalid_argument_status: semantics.invalid_argument_status,
+        },
+        HeapReleaseStep::WriteLocatedBlockFree {
+            free_state: semantics.free_state,
+            zero_metadata_value: semantics.zero_metadata_value,
+        },
+        HeapReleaseStep::CoalesceFreeBlocksOrReturn {
+            corrupt_status: semantics.corrupt_state_status,
+            free_state: semantics.free_state,
+        },
+        HeapReleaseStep::TrimFreeTailOrReturn {
+            corrupt_status: semantics.corrupt_state_status,
+            free_state: semantics.free_state,
+            valid_status: semantics.valid_status,
+        },
     ]
 }

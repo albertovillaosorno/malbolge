@@ -162,12 +162,12 @@ parts:
     path: application/lower_heap_helper.rs
     kind: application
     language: rust
-    responsibility: Bind heap init/allocation to exact ABI/runtime semantics.
+    responsibility: Bind heap helpers to exact ABI/runtime semantics.
   - id: part-0026
     path: application/realize_heap_helper.rs
     kind: application
     language: rust
-    responsibility: Expand heap init/allocation into explicit execution steps.
+    responsibility: Expand heap helpers into explicit execution steps.
 projects: []
 tests: []
 graph:

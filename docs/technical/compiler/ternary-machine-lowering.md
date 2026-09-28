@@ -119,6 +119,26 @@ canonical allocator plan. The helper preserves the checked-in post-allocation
 status/non-null test before zeroing exactly `total` payload bytes and returning
 `VALID`.
 
+Release first validates canonical heap shape and the complete block chain, so a
+late corrupt block fails before the target block is mutated. A null
+pointer
+returns `VALID`; otherwise the helper requires an exact payload-pointer match to
+an allocated block, rewrites that block with preserved span plus
+zero
+requested/reserved words and free state, then coalesces adjacent free blocks.
+Finally it scans for a free tail block and, when present, publishes that block's
+offset as the new `used` extent before returning `VALID`.
+
+Release first validates canonical heap shape and the complete block chain, so a
+late corrupt block fails before the target block is mutated. A null
+pointer
+returns `VALID`; otherwise the helper requires an exact payload-pointer match to
+an allocated block, rewrites that block with preserved span plus
+zero
+requested/reserved words and free state, then coalesces adjacent free blocks.
+Finally it scans for a free tail block and, when present, publishes that block's
+offset as the new `used` extent before returning `VALID`.
+
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
 function must own a reachable entry block. Therefore direct helper-call
@@ -313,6 +333,16 @@ emitted.
   delegation, product overflow-to-OOM, canonical allocator delegation,
   post-allocation status/non-null gating, and exact payload zeroing before
   `VALID`. ABI/runtime/helper identity drift fails closed.
+- Release evidence proves complete-chain preflight before mutation, null
+success,
+  exact allocated-payload lookup, canonical free-header publication, adjacent
+  free-block coalescing, and free-tail `used` trimming. Source checks bind that
+  order directly to `heap.c`; ABI/runtime/helper identity drift fails closed.
+- Release evidence proves complete-chain preflight before mutation, null
+success,
+  exact allocated-payload lookup, canonical free-header publication, adjacent
+  free-block coalescing, and free-tail `used` trimming. Source checks bind that
+  order directly to `heap.c`; ABI/runtime/helper identity drift fails closed.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

@@ -35,7 +35,7 @@
 use super::heap_helper_input::HeapHelperRequest;
 use super::model::{
     HeapAllocateSemantics, HeapAllocateZeroedSemantics, HeapHelperOperation,
-    HeapInitSemantics,
+    HeapInitSemantics, HeapReleaseSemantics,
 };
 
 const ALLOCATED_STATE: u32 = 1;
@@ -46,6 +46,7 @@ const HEAP_ALLOCATE_ID: &str = "malbolge_guest_heap_allocate";
 const HEAP_ALLOCATE_ZEROED_ID: &str = "malbolge_guest_heap_allocate_zeroed";
 const HEAP_HEADER_BYTES: u32 = 16;
 const HEAP_INIT_ID: &str = "malbolge_guest_heap_init";
+const HEAP_RELEASE_ID: &str = "malbolge_guest_heap_release";
 const INVALID_ARGUMENT_STATUS: u32 = 1;
 const MIN_BLOCK_SPAN: u32 = 32;
 const OUT_OF_MEMORY_STATUS: u32 = 2;
@@ -90,6 +91,17 @@ pub fn lower_heap_helper(
                 invalid_argument_status: INVALID_ARGUMENT_STATUS,
                 minimum_capacity: MIN_BLOCK_SPAN,
                 valid_status: VALID_STATUS,
+            }))
+        },
+        HEAP_RELEASE_ID => {
+            Ok(HeapHelperOperation::Release(HeapReleaseSemantics {
+                allocated_state: ALLOCATED_STATE,
+                corrupt_state_status: CORRUPT_STATE_STATUS,
+                free_state: 0,
+                header_bytes: HEAP_HEADER_BYTES,
+                invalid_argument_status: INVALID_ARGUMENT_STATUS,
+                valid_status: VALID_STATUS,
+                zero_metadata_value: 0,
             }))
         },
         _ => Err(HeapHelperLoweringError::UnsupportedIdentity),
