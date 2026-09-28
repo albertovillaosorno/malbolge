@@ -53,16 +53,21 @@ Unknown intrinsic names or profile drift fail closed.
 
 A separate target-profile projection copies the current descriptor's exact
 profile ID, input/output instruction bytes, and EOF word. Runtime I/O
-realization
-uses only that projection, producing profile-bound machine operations without
-hardcoded `/` or `<` characters; colliding projected input/output
-instructions or
-profile drift fail closed.
+realization uses only that projection, producing profile-bound machine
+operations
+without hardcoded `/` or `<` characters; colliding projected input/output
+instructions or profile drift fail closed.
+
+For an already-selected code-pointer position, the target-cell encoder exhausts
+graphical ASCII `33..126` through a canonical instruction-decoder port and
+requires exactly one source cell whose VM decode equals the realized operation.
+The compiler therefore does not copy XLAT1. Missing or ambiguous inverse
+encodings fail closed.
 
 This is executable compiler lowering but not complete target code generation.
-Layout, address assignment, encoded instruction-cell construction, guest-runtime
-C EOF/helper lowering, target serialization, and complete Malbolge emission
-remain downstream work.
+Global layout/address assignment, complete source sequencing, guest-runtime C
+EOF/helper lowering, target serialization, and complete Malbolge emission remain
+downstream work.
 
 ### Authoritative Inputs
 
@@ -139,8 +144,12 @@ emitted.
   EOF state from `current_profile()` and proves the resulting machine I/O
   operations match that descriptor without compiler-local opcode literals. It
   rejects profile identity drift and colliding projected input/output opcodes.
-- Encoded instruction-cell construction and guest-runtime C EOF/helper lowering
-  remain open target-lowering work.
+- Target-cell encoding adapts the canonical VM `decode_profile_instruction`
+  through an inbound decoder port. Tests exhaust all 94 decode phases for both
+  profile-derived I/O operations and prove every emitted cell is graphical and
+  decodes back exactly; missing or ambiguous decoder behavior fails closed.
+- Global layout/source sequencing and guest-runtime C EOF/helper lowering remain
+  open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

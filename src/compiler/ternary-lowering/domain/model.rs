@@ -98,6 +98,17 @@ impl TernaryI32Scalar {
     }
 }
 
+/// One graphical source cell encoding a realized machine I/O operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EncodedMachineIo {
+    /// Exact code-pointer position used by position-dependent decoding.
+    pub code_pointer: u32,
+    /// Profile-bound semantic operation represented by the cell.
+    pub operation: MachineIoOperation,
+    /// Graphical ASCII source cell in the inclusive range 33 through 126.
+    pub source_cell: u8,
+}
+
 /// Machine I/O effect category after target-profile realization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineIoKind {

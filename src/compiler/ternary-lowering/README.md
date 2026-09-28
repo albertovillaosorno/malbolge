@@ -36,5 +36,8 @@ A separate runtime-intrinsic port admits only the exact
 lowering them to distinct raw `InputWord` and `OutputByte` pre-layout semantics.
 A target-profile port then copies canonical I/O instruction bytes and EOF state
 from the admitted profile descriptor and realizes those operations without
-hardcoded opcode characters. C EOF/helper lowering, layout, encoded instruction
-cells, target serialization, and complete Malbolge emission remain open.
+hardcoded opcode characters. An instruction-decoder port lets lowering invert
+the canonical VM decode relation without copying XLAT1, producing one unique
+graphical source cell for an already-selected code position. C EOF/helper
+lowering, global layout, target serialization, and complete Malbolge emission
+remain open.

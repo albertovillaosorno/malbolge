@@ -84,10 +84,14 @@ instruction.
   exact profile identity, input/output instruction bytes, and EOF word. Runtime
   I/O realization derives machine operations from those fields rather than
   compiler-local `/`/`<` literals; tests compare directly with
-  `current_profile()`
-  and reject colliding opcodes or profile drift.
+  `current_profile()` and reject colliding opcodes or profile drift.
+- An instruction-decoder inbound port now supports target-cell encoding without
+  copying XLAT1. The encoder requires exactly one graphical source cell for the
+  realized opcode at an already-chosen code position; tests exhaust all 94 VM
+  decode phases for both current-profile I/O operations and reject missing or
+  ambiguous inverse decoders.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
-  one-shot heap startup binding, encoded instruction-cell construction,
+  one-shot heap startup binding, global target layout/source sequencing,
   guest-runtime C EOF/helper lowering, later runtime helpers, target
   serialization, and executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.

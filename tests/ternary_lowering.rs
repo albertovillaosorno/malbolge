@@ -41,15 +41,16 @@ pub mod typed_ir;
 use std::fs::read_to_string;
 use std::str::from_utf8;
 
-use malbolge::current_profile;
+use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
     I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
     InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
-    MachineIoKind, MachineIoOperation, RuntimeIntrinsicLoweringError,
+    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
+    ProfileInstructionDecoder, RuntimeIntrinsicLoweringError,
     RuntimeIntrinsicOperation, RuntimeIntrinsicRequest,
     RuntimeIoRealizationError, TargetProfileIo, TernaryLoweringError,
-    TernaryOperation, TypedIrInput, lower_runtime_intrinsic, lower_typed_ir,
-    realize_runtime_io,
+    TernaryOperation, TypedIrInput, encode_machine_io, lower_runtime_intrinsic,
+    lower_typed_ir, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
@@ -67,6 +68,30 @@ const GUEST_INTRINSICS_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_intrinsics.h";
 const GUEST_RUNTIME_CONTRACT: &str =
     "src/runtime/guest-runtime/contract/guest-runtime-v1.json";
+
+struct VmProfileInstructionDecoder;
+
+impl ProfileInstructionDecoder for VmProfileInstructionDecoder {
+    fn decode(&self, cell: u32, code_pointer: u32) -> Option<u8> {
+        decode_profile_instruction(cell, code_pointer)
+    }
+}
+
+struct AmbiguousInstructionDecoder;
+
+impl ProfileInstructionDecoder for AmbiguousInstructionDecoder {
+    fn decode(&self, _cell: u32, _code_pointer: u32) -> Option<u8> {
+        Some(current_profile().input_instruction())
+    }
+}
+
+struct MissingInstructionDecoder;
+
+impl ProfileInstructionDecoder for MissingInstructionDecoder {
+    fn decode(&self, _cell: u32, _code_pointer: u32) -> Option<u8> {
+        None
+    }
+}
 
 fn admitted_byte_io_fixture() -> Result<Module, String> {
     let module = byte_io_module();
@@ -719,6 +744,56 @@ fn current_profile_io() -> TargetProfileIo {
         output_instruction: profile.output_instruction(),
         profile_id: String::from(profile.id()),
     }
+}
+
+#[test]
+fn machine_io_cells_round_trip_every_decode_phase() -> Result<(), String> {
+    let projection = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    for code_pointer in 0u32..94u32 {
+        for semantic in [
+            RuntimeIntrinsicOperation::InputWord,
+            RuntimeIntrinsicOperation::OutputByte,
+        ] {
+            let operation = realize_runtime_io(semantic, &projection)
+                .map_err(|error| format!("realize machine I/O: {error:?}"))?;
+            let encoded = encode_machine_io(operation, code_pointer, &decoder)
+                .map_err(|error| format!("encode machine I/O: {error:?}"))?;
+            if !(33..=126).contains(&encoded.source_cell)
+                || encoded.code_pointer != code_pointer
+                || encoded.operation != operation
+                || decoder.decode(u32::from(encoded.source_cell), code_pointer)
+                    != Some(operation.instruction)
+            {
+                return Err(format!(
+                    "machine I/O round trip drifted at phase {code_pointer}",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn machine_io_encoder_rejects_broken_decoder_ports() -> Result<(), String> {
+    let operation = realize_runtime_io(
+        RuntimeIntrinsicOperation::InputWord,
+        &current_profile_io(),
+    )
+    .map_err(|error| format!("realize machine I/O: {error:?}"))?;
+    if encode_machine_io(operation, 0, &MissingInstructionDecoder)
+        != Err(MachineIoEncodingError::MissingEncoding)
+    {
+        return Err(String::from("missing inverse encoding was not rejected"));
+    }
+    if encode_machine_io(operation, 0, &AmbiguousInstructionDecoder)
+        != Err(MachineIoEncodingError::AmbiguousEncoding)
+    {
+        return Err(String::from(
+            "ambiguous inverse encoding was not rejected",
+        ));
+    }
+    Ok(())
 }
 
 #[test]

@@ -33,8 +33,12 @@
 
 //! Canonical module topology for pre-layout ternary machine lowering.
 
+#[path = "../application/encode_machine_io.rs"]
+mod encode_machine_io;
 #[path = "../port-inbound/typed_ir.rs"]
 mod input;
+#[path = "../port-inbound/instruction_decoder.rs"]
+mod instruction_decoder_input;
 #[path = "../application/lower.rs"]
 mod lower;
 #[path = "../application/lower_runtime_intrinsic.rs"]
@@ -48,7 +52,9 @@ mod runtime_intrinsic_input;
 #[path = "../port-inbound/target_profile.rs"]
 mod target_profile_input;
 
+pub use encode_machine_io::{MachineIoEncodingError, encode_machine_io};
 pub use input::*;
+pub use instruction_decoder_input::ProfileInstructionDecoder;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
 pub use lower_runtime_intrinsic::{
     RuntimeIntrinsicLoweringError, lower_runtime_intrinsic,
