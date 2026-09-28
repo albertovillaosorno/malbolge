@@ -635,6 +635,7 @@ use execution_native::{
     RegisterMaskedRotateNativeSequencePlanError,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
+    StagedRegisterMaskedInputNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
@@ -726,6 +727,7 @@ use execution_native::{
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_crazy_native_executable,
     load_register_masked_crazy_native_sequence,
+    load_register_masked_input_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_no_operation_native_sequence as load_noop_sequence,
@@ -749,6 +751,7 @@ use execution_native::{
     release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
     release_register_masked_crazy_native_executable,
+    release_register_masked_input_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
@@ -8043,6 +8046,198 @@ fn register_masked_v6_crazy_lifecycle_rejects_drift() -> TieredTestResult {
     }
     Ok(())
 }
+fn assert_register_masked_input_lifecycle(
+    input: Vec<u8>,
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let program = canonical_register_masked_input_program(input)?;
+    let artifact = verified_register_masked_input(&program, isa)?;
+    let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact).map_err(
+        |error| format!("v6 {isa:?} input lifecycle image: {error}"),
+    )?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = StagedRegisterMaskedInputNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} input lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 {isa:?} input lifecycle seal: {error}"))?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v6 {isa:?} input lifecycle sync: {error}"))?;
+    let release = ready.release_request();
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.target_triple() != artifact.target_triple()
+        || release.mapping_id() != mapping_id
+        || release.base_address() != base
+        || release.mapped_len() != image.allocation_len()
+    {
+        return Err(format!("v6 {isa:?} input lifecycle identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_lifecycle_retains_exact_identity()
+-> TieredTestResult {
+    for (input, mapping_value, base_value) in [
+        (vec![0x41], 577u64, 0x87000usize),
+        (Vec::new(), 578u64, 0x88000usize),
+    ] {
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            assert_register_masked_input_lifecycle(
+                input.clone(),
+                isa,
+                mapping_value,
+                base_value,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_platform_loads_and_releases() -> TieredTestResult {
+    for (input, mapping_value, base_value) in [
+        (vec![0x41], 579u64, 0x89000usize),
+        (Vec::new(), 580u64, 0x8a000usize),
+    ] {
+        let program = canonical_register_masked_input_program(input)?;
+        let artifact =
+            verified_register_masked_input(&program, HostIsa::X86_64)?;
+        let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact)
+            .map_err(|error| format!("v6 input platform image: {error}"))?;
+        let mut adapter = FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_value)?,
+            native_executable_address(base_value)?,
+        );
+        let ready =
+            load_register_masked_input_native_executable(&mut adapter, &image)
+                .map_err(|error| format!("v6 input platform load: {error}"))?;
+        if ready.key() != artifact.key()
+            || ready.image() != &image
+            || adapter.operations
+                != [
+                    FakeNativeAdapterOperation::Allocate,
+                    FakeNativeAdapterOperation::Copy,
+                    FakeNativeAdapterOperation::Protect,
+                    FakeNativeAdapterOperation::Synchronize,
+                ]
+        {
+            return Err(String::from(
+                "v6 input platform load evidence drifted",
+            ));
+        }
+        let release = ready.release_request();
+        release_register_masked_input_native_executable(&mut adapter, ready)
+            .map_err(|error| format!("v6 input platform release: {error}"))?;
+        if adapter.release_requests != [release]
+            || adapter.operations.last()
+                != Some(&FakeNativeAdapterOperation::Release)
+        {
+            return Err(String::from(
+                "v6 input platform release evidence drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_platform_cleans_copy_failure() -> TieredTestResult {
+    let program = canonical_register_masked_input_program(vec![0x41])?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 input cleanup image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(581)?,
+        native_executable_address(0x8b000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) =
+        load_register_masked_input_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("v6 input copy failure was ignored"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error().is_some()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 input copy cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_release_failure_retries_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_input_program(Vec::new())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 input retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(582)?,
+        native_executable_address(0x8c000)?,
+    )
+    .with_release_failures(1);
+    let ready =
+        load_register_masked_input_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("v6 input retry load: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        release_register_masked_input_native_executable(&mut adapter, ready)
+    else {
+        return Err(String::from("v6 input release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "v6 input release failure lost ready identity",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 input release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 input release retry count drifted"));
+    }
+    Ok(())
+}
+
 #[test]
 fn register_masked_v6_output_load_image_is_relocation_free() -> TieredTestResult
 {

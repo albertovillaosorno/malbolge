@@ -894,7 +894,9 @@ behavior.
 
   Relocation-free load images and semantic invocation preparation now
   retain exact C/D plus input cursor state while allowing dead A/output-history
-  rebasing for byte and EOF transitions. Executable Input mapping/binding/runner
+  rebasing for byte and EOF transitions. Typed staging, RX transition,
+  instruction synchronization, transactional platform loading, cleanup, and
+  retryable release now cover both shapes. Executable Input binding/runner
   coverage and both jump instruction families remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction

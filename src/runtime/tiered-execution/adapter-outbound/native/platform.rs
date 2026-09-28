@@ -42,6 +42,7 @@ use super::lifecycle::{
     NativeInstructionSyncReport, ReadyDirectFusedNativeExecutable,
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedCrazyNativeExecutable,
+    ReadyRegisterMaskedInputNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
@@ -53,6 +54,7 @@ use super::lifecycle::{
     ReadyRegisterMaskedRotateNoOperationNativeExecutable,
     SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
     SealedNativeExecutable, SealedRegisterMaskedCrazyNativeExecutable,
+    SealedRegisterMaskedInputNativeExecutable,
     SealedRegisterMaskedNativeExecutable,
     SealedRegisterMaskedNoOperationHaltNativeExecutable,
     SealedRegisterMaskedNoOperationNativeExecutable,
@@ -64,6 +66,7 @@ use super::lifecycle::{
     SealedRegisterMaskedRotateNoOperationNativeExecutable,
     StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, StagedRegisterMaskedCrazyNativeExecutable,
+    StagedRegisterMaskedInputNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNoOperationHaltNativeExecutable,
     StagedRegisterMaskedNoOperationNativeExecutable,
@@ -76,6 +79,7 @@ use super::lifecycle::{
     validate_direct_fused_writable_mapping,
     validate_execution_geometry_writable_mapping,
     validate_register_masked_crazy_writable_mapping,
+    validate_register_masked_input_writable_mapping,
     validate_register_masked_no_operation_halt_writable_mapping,
     validate_register_masked_no_operation_pair_writable_mapping,
     validate_register_masked_no_operation_rotate_writable_mapping,
@@ -89,7 +93,8 @@ use super::lifecycle::{
 use super::loader::{
     NativeExecutablePermission, VerifiedDirectFusedLoadImage,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
-    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedInputLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationHaltLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationPairLoadImage,
@@ -197,6 +202,13 @@ pub struct RegisterMaskedCrazyNativeExecutableReleaseFailure<Error> {
     executable: Box<ReadyRegisterMaskedCrazyNativeExecutable>,
 }
 
+/// Failed v6 input release retaining exact executable identity.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedInputNativeExecutableReleaseFailure<Error> {
+    error: Box<Error>,
+    executable: Box<ReadyRegisterMaskedInputNativeExecutable>,
+}
+
 /// Failed v6 output release retaining exact executable identity.
 #[derive(Debug, Eq, PartialEq)]
 pub struct RegisterMaskedOutputNativeExecutableReleaseFailure<Error> {
@@ -297,6 +309,16 @@ pub type RegisterMaskedCrazyNativeExecutableLoadResult<Error> = Result<
 /// Result of explicitly releasing one ready v6 Crazy executable.
 pub type RegisterMaskedCrazyNativeExecutableReleaseResult<Error> =
     Result<(), RegisterMaskedCrazyNativeExecutableReleaseFailure<Error>>;
+
+/// Result of loading one v6 input native executable.
+pub type RegisterMaskedInputNativeExecutableLoadResult<Error> = Result<
+    ReadyRegisterMaskedInputNativeExecutable,
+    NativeExecutableLoadFailure<Error>,
+>;
+
+/// Result of explicitly releasing one ready v6 input executable.
+pub type RegisterMaskedInputNativeExecutableReleaseResult<Error> =
+    Result<(), RegisterMaskedInputNativeExecutableReleaseFailure<Error>>;
 
 /// Result of loading one v6 output native executable.
 pub type RegisterMaskedOutputNativeExecutableLoadResult<Error> = Result<
@@ -879,6 +901,50 @@ impl<Error: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(f, "v6 Crazy native release failed: {}", self.error)
+    }
+}
+
+impl<Error> RegisterMaskedInputNativeExecutableReleaseFailure<Error> {
+    /// Returns the platform release error.
+    #[must_use]
+    pub const fn error(&self) -> &Error {
+        &self.error
+    }
+
+    /// Returns the exact v6 input executable retained for retry.
+    #[must_use]
+    pub fn executable(&self) -> &ReadyRegisterMaskedInputNativeExecutable {
+        self.executable.as_ref()
+    }
+
+    /// Retries release without losing v6 input identity after failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refreshed failure retaining the same executable on failure.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedInputNativeExecutableReleaseResult<Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = Error>,
+    {
+        let request = self.executable.release_request();
+        match adapter.release(request) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Self {
+                error: Box::new(error),
+                executable: self.executable,
+            }),
+        }
+    }
+}
+
+impl<Error: Display> Display
+    for RegisterMaskedInputNativeExecutableReleaseFailure<Error>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "v6 input native release failed: {}", self.error)
     }
 }
 
@@ -1492,6 +1558,52 @@ where
     match adapter.release(request) {
         Ok(()) => Ok(()),
         Err(error) => Err(RegisterMaskedCrazyNativeExecutableReleaseFailure {
+            error: Box::new(error),
+            executable: Box::new(executable),
+        }),
+    }
+}
+
+/// Loads one verified v6 input image through the platform adapter.
+///
+/// Every post-allocation failure attempts exact release before returning. The
+/// result remains input-specific with no binding or runner authority.
+///
+/// # Errors
+///
+/// Returns [`NativeExecutableLoadFailure`] when an adapter operation or
+/// lifecycle admission fails.
+pub fn load_register_masked_input_native_executable<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedInputLoadImage,
+) -> RegisterMaskedInputNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let allocated = allocate_register_masked_input_image(adapter, image)?;
+    let staged = copy_register_masked_input_image(adapter, image, allocated)?;
+    let sealed =
+        protect_register_masked_input_image(adapter, staged, allocated)?;
+    synchronize_register_masked_input_image(adapter, sealed, allocated)
+}
+
+/// Releases one ready v6 input executable with retry ownership.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedInputNativeExecutableReleaseFailure`] with the
+/// exact ready executable when the adapter rejects release.
+pub fn release_register_masked_input_native_executable<Adapter>(
+    adapter: &mut Adapter,
+    executable: ReadyRegisterMaskedInputNativeExecutable,
+) -> RegisterMaskedInputNativeExecutableReleaseResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = executable.release_request();
+    match adapter.release(request) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(RegisterMaskedInputNativeExecutableReleaseFailure {
             error: Box::new(error),
             executable: Box::new(executable),
         }),
@@ -2121,6 +2233,45 @@ where
     Ok(AllocatedNativeMapping { mapping, release_request })
 }
 
+fn allocate_register_masked_input_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedInputLoadImage,
+) -> NativeExecutableLoadStepResult<AllocatedNativeMapping, Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeExecutableAllocationRequest::new(
+        image.allocation_len(),
+        image.minimum_instruction_alignment(),
+        image.policy().initial_permissions(),
+    );
+    let mapping = match adapter.allocate_writable(request) {
+        Ok(mapping) => mapping,
+        Err(error) => {
+            return Err(NativeExecutableLoadFailure {
+                cause: NativeExecutableLoadFailureCause::Adapter(Box::new(
+                    error,
+                )),
+                phase: NativeExecutableLoadPhase::Allocate,
+                release_error: None,
+                release_request: None,
+            });
+        },
+    };
+    let release_request = NativeExecutableReleaseRequest::from_mapping(mapping);
+    if let Err(error) =
+        validate_register_masked_input_writable_mapping(image, mapping)
+    {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Allocate,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            release_request,
+        ));
+    }
+    Ok(AllocatedNativeMapping { mapping, release_request })
+}
+
 fn allocate_register_masked_output_image<Adapter>(
     adapter: &mut Adapter,
     image: &VerifiedRegisterMaskedOutputLoadImage,
@@ -2692,6 +2843,63 @@ where
         ));
     }
     StagedRegisterMaskedCrazyNativeExecutable::stage(
+        image,
+        allocated.mapping,
+        copied.copied_code(),
+    )
+    .map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
+fn copy_register_masked_input_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedRegisterMaskedInputLoadImage,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    StagedRegisterMaskedInputNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let copied = match adapter.copy_code(allocated.mapping, image.code()) {
+        Ok(copied) => copied,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Copy,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    if copied.mapping_id() != allocated.mapping.mapping_id() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyMappingIdentity,
+            )),
+            allocated.release_request,
+        ));
+    }
+    if copied.start_address() != allocated.mapping.base_address() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyStartAddress,
+            )),
+            allocated.release_request,
+        ));
+    }
+    StagedRegisterMaskedInputNativeExecutable::stage(
         image,
         allocated.mapping,
         copied.copied_code(),
@@ -3361,6 +3569,38 @@ where
     })
 }
 
+fn protect_register_masked_input_image<Adapter>(
+    adapter: &mut Adapter,
+    staged: StagedRegisterMaskedInputNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    SealedRegisterMaskedInputNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let report = match adapter.protect_read_execute(allocated.mapping) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Protect,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    staged.admit_read_execute(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Protect,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
 fn protect_register_masked_output_image<Adapter>(
     adapter: &mut Adapter,
     staged: StagedRegisterMaskedOutputNativeExecutable,
@@ -3753,6 +3993,40 @@ fn synchronize_register_masked_crazy_image<Adapter>(
     sealed: SealedRegisterMaskedCrazyNativeExecutable,
     allocated: AllocatedNativeMapping,
 ) -> RegisterMaskedCrazyNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeInstructionSyncRequest::new(
+        sealed.mapping().mapping_id(),
+        sealed.mapping().base_address(),
+        sealed.image().allocation_len(),
+    );
+    let report = match adapter.synchronize_instructions(request) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Synchronize,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    sealed.admit_instruction_sync(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Synchronize,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
+fn synchronize_register_masked_input_image<Adapter>(
+    adapter: &mut Adapter,
+    sealed: SealedRegisterMaskedInputNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> RegisterMaskedInputNativeExecutableLoadResult<Adapter::Error>
 where
     Adapter: NativeExecutableMemoryAdapter,
 {

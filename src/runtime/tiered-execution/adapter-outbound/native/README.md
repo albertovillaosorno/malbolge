@@ -328,8 +328,12 @@ C/D, exact input position/value, code live-in, memory extent, and prior
 termination while dead entry accumulator and output history remain key-bound
 but absent from machine text. Verified Input objects now admit relocation-free
 load images and one rebased semantic invocation contract: C/D plus the input
-cursor stay exact, while entry A and output history may rebase. Executable
-mapping, binding, and runner authority remain separate fail-closed boundaries.
+cursor stay exact, while entry A and output history may rebase.
+
+Input now also has typed RW staging, RX admission, instruction synchronization,
+transactional
+platform loading, and retryable release. Binding and runner authority remain a
+separate fail-closed boundary.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

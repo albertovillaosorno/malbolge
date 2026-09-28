@@ -2287,8 +2287,10 @@ Input now also has a relocation-free load image and a semantic invocation
 boundary before executable mapping. Preparation requires exact C/D and input
 cursor live state, permits entry A and output-history rebasing, and validates
 byte/EOF completion against the same atomic invocation contract used by the
-other v6 one-step forms. Executable mapping/binding/runner coverage and both
-JumpCode and JumpData families remain open and fail closed.
+other v6 one-step forms. Input now also owns typed RW staging, exact RX
+transition, instruction synchronization, transactional platform loading, and
+retryable release for byte and EOF objects. Executable binding/runner coverage
+and both JumpCode and JumpData families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
