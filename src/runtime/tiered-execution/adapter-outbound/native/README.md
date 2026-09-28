@@ -348,7 +348,13 @@ ownership while clearing cache authority.
 A weighted multi-resident Input lease cache now adds FIFO lookup authority under
 entry, mapping, and mapped-byte limits. Live victims retire with charged weight;
 invalidation, release, lease return, reconciliation, and limit changes preserve
-keyed retry ownership. Sequence residency remains a separate fail-closed
+keyed retry ownership.
+
+Exact Input sequence planning now admits continuous same-profile/same-target
+one-step chains before mapping and preserves ordered artifact identity. Empty or
+count drift, discontinuous observations, target drift, premature termination,
+and artifact mismatch reject before executable ownership is created. Loaded
+sequence ownership/execution/cache residency remains a separate fail-closed
 boundary.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies

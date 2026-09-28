@@ -558,9 +558,11 @@ use execution_native::{
     RegisterMaskedInputNativeResidentCacheRelease,
     RegisterMaskedInputNativeResidentLease,
     RegisterMaskedInputNativeResidentLeaseCache,
-    RegisterMaskedInputNativeRunner, RegisterMaskedNativeExecutableOwner,
-    RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
-    RegisterMaskedNativeLeaseCacheAcquisition,
+    RegisterMaskedInputNativeRunner, RegisterMaskedInputNativeSequenceKey,
+    RegisterMaskedInputNativeSequencePlan,
+    RegisterMaskedInputNativeSequencePlanError,
+    RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
+    RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
     RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
     RegisterMaskedNativeLeaseCacheInvalidation,
     RegisterMaskedNativeOwnerExecutionFailure,
@@ -4659,6 +4661,27 @@ fn canonical_register_masked_input_program(
         recorded.ok_or_else(|| String::from("v6 input trace missing"))?;
     RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
         .map_err(|error| format!("v6 input projection failed: {error:?}"))
+}
+
+fn canonical_register_masked_input_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41, 0x42],
+    )?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 input pair run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 input pair did not run two steps"));
+    }
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("v6 input pair projection failed: {error:?}"))
 }
 
 fn canonical_register_masked_output_programs()
@@ -21674,6 +21697,209 @@ fn register_masked_v6_crazy_sequence_late_failure_keeps_prefix()
         .release(&mut adapter)
         .map_err(|error| format!("v6 Crazy late-failure release: {error}"))
 }
+#[test]
+fn register_masked_v6_input_sequence_plan_admits_pair() -> TieredTestResult {
+    let programs = canonical_register_masked_input_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_input(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let plan =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &artifacts)
+            .map_err(|error| format!("v6 input sequence plan: {error}"))?;
+    let first = programs
+        .first()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| {
+            String::from("v6 input sequence first effect missing")
+        })?;
+    let last = programs
+        .last()
+        .and_then(|program| program.effects.first())
+        .ok_or_else(|| String::from("v6 input sequence last effect missing"))?;
+    if plan.len() == 2
+        && !plan.is_empty()
+        && plan.entry() == first.before
+        && plan.exit() == last.after
+        && plan.programs() == programs
+        && plan.artifacts() == artifacts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input sequence plan admission drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_key_preserves_id() -> TieredTestResult {
+    let programs = canonical_register_masked_input_programs()?;
+    let x86_artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_input(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let x86_plan =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &x86_artifacts)
+            .map_err(|error| format!("v6 input x86 key plan: {error}"))?;
+    let x86_key = RegisterMaskedInputNativeSequenceKey::from_plan(&x86_plan);
+    let expected = x86_artifacts
+        .iter()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let arm_artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_input(program, HostIsa::AArch64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let arm_plan =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &arm_artifacts)
+            .map_err(|error| format!("v6 input AArch64 key plan: {error}"))?;
+    let arm_key = RegisterMaskedInputNativeSequenceKey::from_plan(&arm_plan);
+    if x86_key.len() == 2
+        && !x86_key.is_empty()
+        && x86_key.artifact_keys() == expected
+        && x86_key != arm_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input sequence key identity drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedInputNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedInputNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 input sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_input_program(vec![0x41])?;
+    let count =
+        RegisterMaskedInputNativeSequencePlan::new(from_ref(&program), &[]);
+    if count
+        == Err(RegisterMaskedInputNativeSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 input sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_plan_rejects_chain_drift()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_input_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_input(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 input sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let result =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedInputNativeSequencePlanError::ObservationChain {
+                index: 1,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 input sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_plan_rejects_target_drift()
+-> TieredTestResult {
+    let programs = canonical_register_masked_input_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(String::from("v6 input target pair length drifted"));
+    };
+    let first = verified_register_masked_input(first_program, HostIsa::X86_64)?;
+    let second =
+        verified_register_masked_input(second_program, HostIsa::AArch64)?;
+    let result =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &[first, second]);
+    if result
+        == Err(RegisterMaskedInputNativeSequencePlanError::TargetMismatch {
+            index: 1,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input sequence ignored target drift"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_rejects_terminated_prefix()
+-> TieredTestResult {
+    let mut programs = canonical_register_masked_input_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_input(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .first_mut()
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 input sequence prefix effect missing")
+        })?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    let result =
+        RegisterMaskedInputNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        == Err(
+            RegisterMaskedInputNativeSequencePlanError::TerminationBeforeEnd {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input sequence admitted terminated prefix"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_input_program(vec![0x41])?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let variant = register_masked_input_dead_accumulator_variant(&program)?;
+    let result = RegisterMaskedInputNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(
+            RegisterMaskedInputNativeSequencePlanError::ArtifactIdentity {
+                index: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 input sequence ignored artifact identity drift",
+        ))
+    }
+}
+
 #[test]
 fn register_masked_v6_output_sequence_plan_admits_pair() -> TieredTestResult {
     let programs = canonical_register_masked_output_programs()?;

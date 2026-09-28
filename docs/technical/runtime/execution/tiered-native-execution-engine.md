@@ -2311,8 +2311,13 @@ limits without refreshing hit age. Live victims retire while retaining charged
 weight; invalidation, release, lease return, reconciliation, and limit changes
 preserve keyed cleanup retry ownership.
 
-Input sequence residency plus both JumpCode and JumpData families remain open
-and fail closed.
+Exact Input sequence planning now admits continuous same-profile/same-target
+one-step chains before mapping, preserves ordered artifact identity, and rejects
+empty/count drift, discontinuous observations, target drift, premature
+termination, or artifact identity mismatch.
+
+Input loaded-sequence ownership/execution/cache residency plus both JumpCode and
+JumpData families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
