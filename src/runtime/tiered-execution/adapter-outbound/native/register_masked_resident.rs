@@ -609,6 +609,69 @@ pub type RegisterMaskedCrazyNativeResidentReleaseResult<MemoryError> = Result<
     Box<RegisterMaskedCrazyNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
+/// Whether one Input lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedInputNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact Input resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedInputNativeResidentCacheAcquireFailure<MemoryError> {
+    /// A different exact Input identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedInputNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the Input resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedInputNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact Input resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedInputNativeResidentLease {
+    resident: Arc<RegisterMaskedInputNativeExecutableOwner>,
+}
+
+/// Lease plus whether the Input resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedInputNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedInputNativeResidentCacheDisposition,
+    lease: RegisterMaskedInputNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable Input v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedInputNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedInputNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact Input resident lease.
+pub type RegisterMaskedInputNativeResidentAcquireResult<MemoryError> = Result<
+    RegisterMaskedInputNativeResidentCacheAcquisition,
+    Box<RegisterMaskedInputNativeResidentCacheAcquireFailure<MemoryError>>,
+>;
+
+/// Result of releasing the Input resident after leases are gone.
+pub type RegisterMaskedInputNativeResidentReleaseResult<MemoryError> = Result<
+    RegisterMaskedInputNativeResidentCacheRelease,
+    Box<RegisterMaskedInputNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
 /// Whether one Output lease acquisition loaded or reused the resident.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RegisterMaskedOutputNativeResidentCacheDisposition {
@@ -1152,6 +1215,19 @@ impl<MemoryError: Display> Display
         match self {
             Self::IdentityOccupied => {
                 f.write_str("different Crazy v6 identity already resident")
+            },
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedInputNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => {
+                f.write_str("different Input v6 identity already resident")
             },
             Self::Load(error) => Display::fmt(error, f),
         }
@@ -2471,6 +2547,184 @@ impl RegisterMaskedCrazyNativeResidentLeaseCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         use RegisterMaskedCrazyNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+
+impl RegisterMaskedInputNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedInputNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedInputNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(&self) -> &RegisterMaskedInputNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedInputNativeResidentLease {
+    /// Executes through the resident Input mapping without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedInputNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedInputNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident Input v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedInputNativeResidentLeaseCache {
+    /// Loads or reuses one exact Input v6 resident as an immutable lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedInputNativeObjectArtifact,
+    ) -> RegisterMaskedInputNativeResidentAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    RegisterMaskedInputNativeResidentCacheAcquireFailure::
+                        IdentityOccupied,
+                ));
+            }
+            return Ok(RegisterMaskedInputNativeResidentCacheAcquisition {
+                disposition:
+                    RegisterMaskedInputNativeResidentCacheDisposition::Hit,
+                lease: RegisterMaskedInputNativeResidentLease {
+                    resident: Arc::clone(resident),
+                },
+            });
+        }
+        let loaded = RegisterMaskedInputNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| {
+            Box::new(
+                RegisterMaskedInputNativeResidentCacheAcquireFailure::Load(
+                    error,
+                ),
+            )
+        })?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedInputNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedInputNativeResidentCacheAcquisition {
+            disposition:
+                RegisterMaskedInputNativeResidentCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact Input mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident Input lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact Input cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedInputNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedInputNativeResidentCacheRelease as Release;
 
         let Some(resident) = self.resident.take() else {
             return Ok(Release::Missing);

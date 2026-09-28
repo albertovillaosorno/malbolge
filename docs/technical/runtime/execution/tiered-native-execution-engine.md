@@ -2301,8 +2301,13 @@ ownership. A reusable Input owner now retains exact program, artifact, and one
 ready mapping across rebased calls, reports platform mapping weight, survives
 runner failure without remapping, and transfers retryable release ownership.
 
-Input lease/cache/sequence residency plus both JumpCode and JumpData families
-remain open and fail closed.
+Input now also has one exact single-resident lease cache. Exact hits clone an
+immutable lease without adapter work, different identity cannot replace an
+occupied slot, live leases block release, and cleanup failure transfers exact
+retry ownership without leaving stale cache authority.
+
+Input multi-entry cache/sequence residency plus both JumpCode and JumpData
+families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

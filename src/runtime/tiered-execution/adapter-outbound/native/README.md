@@ -338,8 +338,13 @@ ordering and retryable final cleanup.
 
 `RegisterMaskedInputNativeExecutableOwner` retains one exact synchronized
 mapping across rebased calls, reports platform mapping weight, survives runner
-failure without remapping, and transfers retryable release ownership. Input
-lease/cache/sequence residency remains a separate fail-closed boundary.
+failure without remapping, and transfers retryable release ownership.
+
+`RegisterMaskedInputNativeResidentLeaseCache` adds one exact cloneable lease
+slot. Hits perform no adapter work, different identity cannot replace the
+resident, live leases block release, and failed cleanup transfers exact retry
+ownership while clearing cache authority. Multi-entry cache and sequence
+residency remain separate fail-closed boundaries.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
