@@ -718,6 +718,7 @@ use execution_native::{
     execute_verified_direct_fused_native_with_host, execute_verified_native,
     execute_verified_native_sequence, execute_verified_native_with_host,
     execute_verified_register_masked_crazy_native,
+    execute_verified_register_masked_input_native,
     execute_verified_register_masked_native,
     execute_verified_register_masked_no_operation_native,
     execute_verified_register_masked_non_graphical_native,
@@ -8425,6 +8426,229 @@ fn register_masked_v6_input_loaded_runner_rejects_ready_drift()
     }
     release_register_masked_input_native_executable(&mut adapter, ready)
         .map_err(|release| format!("v6 input drift release: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_transaction_applies_and_releases()
+-> TieredTestResult {
+    let input = vec![0x41];
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 input transaction effect missing")
+        })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_input_expected(&program, &mut expected_memory)?;
+    let mut output = [4u8, 3, 2, 1];
+    let expected_output = output;
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        source.before,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input transaction prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(585)?,
+        native_executable_address(0x8f000)?,
+    );
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_input_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 input transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(source.after)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 input transaction success drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let input = vec![0x41];
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 input load-failure effect missing")
+        })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut output = [4u8, 3, 2, 1];
+    let entry_output = output;
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        source.before,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input load-failure prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(586)?,
+        native_executable_address(0x90000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_input_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 input transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 input transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let input = vec![0x41];
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 input runner-failure effect missing")
+    })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut output = [4u8, 3, 2, 1];
+    let entry_output = output;
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        source.before,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input runner-failure prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(587)?,
+        native_executable_address(0x91000)?,
+    );
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_input_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 input transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 input transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_transaction_release_failure_retries()
+-> TieredTestResult {
+    let input = Vec::new();
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 input release-failure effect missing")
+    })?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_input_expected(&program, &mut expected_memory)?;
+    let mut output = [4u8, 3, 2, 1];
+    let expected_output = output;
+    let prepared = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        source.before,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input release-failure prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(588)?,
+        native_executable_address(0x92000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_input_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 input transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(source.after))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from(
+            "v6 input transaction release failure drifted",
+        ));
+    }
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 input transaction retryable release missing")
+    })?;
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("v6 input transaction retry: {retry}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 input transaction retry count drifted"));
+    }
     Ok(())
 }
 

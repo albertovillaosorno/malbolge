@@ -2294,8 +2294,11 @@ prepared state to exact synchronized image identity, exposes one dedicated
 runner port, restores on runner failure, and rejects mismatched ready state
 before the call.
 
-Integrated load/run/release ownership and both JumpCode and JumpData families
-remain open and fail closed.
+Integrated Input execution now loads, binds, runs, admits, and releases as one
+transaction. Load/call failure restores caller state and attempts cleanup; final
+release failure preserves the committed outcome plus retryable executable
+ownership. Reusable Input resident ownership and both JumpCode and JumpData
+families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

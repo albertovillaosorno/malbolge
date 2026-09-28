@@ -898,9 +898,12 @@ behavior.
   instruction synchronization, transactional platform loading, cleanup, and
   retryable release now cover both shapes. Loaded Input binding/runner coverage
   now enforces exact ready-image identity, restores on runner failure, and
-  rejects mismatched executable state before the call. Integrated
-  load/run/release ownership and both jump instruction families remain open and
-  fail closed.
+  rejects mismatched executable state before the call.
+
+  Integrated Input execution now owns load, call, release, rollback, and
+  retryable final cleanup
+  as one transaction. Reusable Input resident ownership and both jump
+  instruction families remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained
