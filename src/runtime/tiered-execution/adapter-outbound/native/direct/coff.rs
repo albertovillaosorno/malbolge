@@ -50,7 +50,8 @@ use super::{
     DirectJumpDataProgram, DirectNoOperationError, DirectNoOperationProgram,
     DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedCrazyGuard,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedInputError,
+    DirectRegisterMaskedInputGuard, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateError,
@@ -499,6 +500,33 @@ pub(super) fn register_masked_crazy_coff(
     .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedCrazyError::ObjectBytes)
+}
+
+pub(super) fn register_masked_input_coff(
+    key: &NativeArtifactKey,
+    selected: DirectInputProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedInputError> {
+    let observation = selected.observation;
+    let guard = DirectRegisterMaskedInputGuard {
+        code_live_in: selected.live_in.value,
+        code_pointer: observation.registers.code_pointer,
+        data_pointer: observation.registers.data_pointer,
+        input: selected.input,
+        input_index: u64::try_from(observation.input_consumed)
+            .map_err(|_error| DirectRegisterMaskedInputError::ObjectBytes)?,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_input_code(guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_input_code(guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedInputError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedInputError::ObjectBytes)
 }
 
 pub(super) fn register_masked_output_coff(

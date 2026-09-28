@@ -48,7 +48,7 @@ use super::direct::{
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
     DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedCrazyGuard,
-    DirectRegisterMaskedNoOperationGuard,
+    DirectRegisterMaskedInputGuard, DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNoOperationHaltTemplate,
     DirectRegisterMaskedNoOperationPairTemplate,
     DirectRegisterMaskedNoOperationRotateTemplate,
@@ -519,6 +519,67 @@ pub(super) fn register_masked_crazy_code(
         },
         commit,
     )
+}
+
+/// Encodes v6 input without guarding dead accumulator/output history.
+#[must_use]
+pub(super) fn register_masked_input_code(
+    guard: DirectRegisterMaskedInputGuard,
+    commit: DirectInputCommit,
+) -> Option<Vec<u8>> {
+    if commit.encrypted_address != guard.code_pointer {
+        return None;
+    }
+    let mut code = Vec::with_capacity(224);
+    let mut guard_jumps = Vec::with_capacity(13);
+    let code_offset =
+        push_register_masked_input_guards(&mut code, &mut guard_jumps, guard)?;
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&code_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x40]);
+    code.extend_from_slice(&commit.accumulator.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x49, 0xba]);
+    code.extend_from_slice(&commit.next_input_consumed.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x89, 0x51, 0x20, 0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_register_masked_input_guards(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    guard: DirectRegisterMaskedInputGuard,
+) -> Option<u32> {
+    let code_offset = memory_byte_offset(guard.code_pointer)?;
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_near_guard_jump(code, guard_jumps, 0x84);
+    push_u64_guard_near(code, guard_jumps, 0x20, guard.input_index);
+    push_u32_guard_near(code, guard_jumps, 0x44, guard.code_pointer);
+    push_u32_guard_near(code, guard_jumps, 0x48, guard.data_pointer);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(code, guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(code, guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard_near(
+        code,
+        guard_jumps,
+        code_offset,
+        guard.code_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(code, guard_jumps, 0x85);
+    push_input_guard_near(code, guard_jumps, guard.input, guard.input_index);
+    Some(code_offset)
 }
 
 /// Encodes v6 output without guarding dead input history.

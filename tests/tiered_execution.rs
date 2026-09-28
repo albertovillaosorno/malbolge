@@ -393,6 +393,8 @@ use execution_native::{
     DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
@@ -452,7 +454,7 @@ use execution_native::{
     DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedInputError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateError, DirectSelectionError,
     DirectSequenceError, ExecutionGeometryDirectNativeKind,
@@ -645,6 +647,7 @@ use execution_native::{
     VerifiedRegisterMaskedCrazyLoadImage,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedInputNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
@@ -676,6 +679,7 @@ use execution_native::{
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_crazy_coff,
     emit_direct_register_masked_halt_fetch_coff,
+    emit_direct_register_masked_input_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
@@ -775,6 +779,7 @@ use execution_native::{
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_crazy,
     verify_direct_register_masked_halt_fetch,
+    verify_direct_register_masked_input,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
     verify_direct_register_masked_output, verify_direct_register_masked_rotate,
@@ -4765,6 +4770,17 @@ fn register_masked_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn register_masked_input_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID),
+        backend_revision: DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn register_masked_output_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID),
@@ -7132,6 +7148,144 @@ fn register_masked_v6_admission_rejects_incomplete_mask_identity()
             ))
     {
         return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
+}
+
+fn verified_register_masked_input(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedInputNativeObjectArtifact, String> {
+    let candidate = emit_direct_register_masked_input_coff(
+        program,
+        register_masked_input_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} input helper emit: {error}"))?;
+    verify_direct_register_masked_input(&candidate, program)
+        .map_err(|error| format!("v6 {isa:?} input helper verify: {error}"))
+}
+
+fn register_masked_input_dead_accumulator_variant(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut variant = program.clone();
+    let effect = variant
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 input inner effect missing"))?;
+    effect.before.registers.accumulator =
+        effect.before.registers.accumulator.wrapping_add(1);
+    Ok(variant)
+}
+
+fn assert_register_masked_input_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    dead_variant: &RegisterMaskedRegionEffectProgram,
+    live_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_input_target(isa);
+    let artifact =
+        emit_direct_register_masked_input_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} input emit failed: {error}")
+            })?;
+    let dead =
+        emit_direct_register_masked_input_coff(dead_variant, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} input dead-state emit failed: {error}")
+            })?;
+    let live = emit_direct_register_masked_input_coff(live_variant, target)
+        .map_err(|error| {
+            format!("v6 {isa:?} input live-state emit failed: {error}")
+        })?;
+    let object_text = direct_object_text(artifact.object())?;
+    if artifact.key() == dead.key()
+        || object_text != direct_object_text(dead.object())?
+        || artifact.key() == live.key()
+        || object_text == direct_object_text(live.object())?
+    {
+        return Err(format!("v6 {isa:?} input guard surface drifted"));
+    }
+    let marker = [b'M', b'B', b'P', b'F', 6, 0];
+    if !artifact
+        .object()
+        .windows(marker.len())
+        .any(|window| window == marker)
+    {
+        return Err(format!("v6 {isa:?} input lost MBPF v6 marker"));
+    }
+    let verified = verify_direct_register_masked_input(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} input verify failed: {error}"))?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} input verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_objects_honor_guard_surface() -> TieredTestResult {
+    for (input, live_input) in
+        [(vec![0x41], vec![0x42]), (Vec::new(), vec![0x41])]
+    {
+        let program = canonical_register_masked_input_program(input)?;
+        let dead_variant =
+            register_masked_input_dead_accumulator_variant(&program)?;
+        let live_variant = canonical_register_masked_input_program(live_input)?;
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            assert_register_masked_input_object(
+                &program,
+                &dead_variant,
+                &live_variant,
+                isa,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_verifier_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_input_program(vec![0x41])?;
+    let artifact = emit_direct_register_masked_input_coff(
+        &program,
+        register_masked_input_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 input baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_input(&tampered, &program)
+        != Err(DirectRegisterMaskedInputError::ObjectBytes)
+    {
+        return Err(String::from("v6 input verifier admitted byte drift"));
+    }
+    if emit_direct_register_masked_input_coff(
+        &program,
+        register_masked_output_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedInputError::TargetBackend)
+    {
+        return Err(String::from("v6 input crossed output backend identity"));
+    }
+    let output = canonical_register_masked_output_program()?;
+    if emit_direct_register_masked_input_coff(
+        &output,
+        register_masked_input_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedInputError::ProgramShape)
+    {
+        return Err(String::from("v6 input backend admitted output"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let verified = verified_register_masked_input(&program, isa)?;
+        if verified.key().target().backend_id()
+            != DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID
+        {
+            return Err(String::from(
+                "v6 input verifier lost backend identity",
+            ));
+        }
     }
     Ok(())
 }
@@ -34129,6 +34283,7 @@ fn all_register_masked_aot_programs()
         canonical_register_masked_halt_program()?,
         canonical_register_masked_non_graphical_program()?,
         canonical_register_masked_no_operation_program()?,
+        canonical_register_masked_input_program(vec![0x41])?,
         canonical_register_masked_output_program()?,
         canonical_register_masked_crazy_program()?,
         canonical_register_masked_rotate_program()?,

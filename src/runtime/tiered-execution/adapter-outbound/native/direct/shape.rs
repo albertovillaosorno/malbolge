@@ -66,6 +66,8 @@ use super::{
     DIRECT_REGISTER_MASKED_CRAZY_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
@@ -90,7 +92,7 @@ use super::{
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedInputError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateCommit, DirectRotateError,
     DirectRotateProgram, EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
@@ -1429,6 +1431,25 @@ pub(super) fn validate_register_masked_crazy_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedCrazyError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_input_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedInputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedInputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedInputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedInputError::TargetFeatures);
     }
     Ok(())
 }

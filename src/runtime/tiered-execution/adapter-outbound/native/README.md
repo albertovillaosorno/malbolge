@@ -322,6 +322,13 @@ x86-64/AArch64 COFF. Its machine text guards live A/C/D, exact memory extent,
 both code/data live-ins, and prior termination; I/O history stays key-bound but
 absent from code.
 
+`direct-register-masked-input` revision 1 now emits and independently verifies
+x86-64/AArch64 COFF for byte and EOF transitions. Its machine text guards live
+C/D, exact input position/value, code live-in, memory extent, and prior
+termination while dead entry accumulator and output history remain key-bound
+but absent from machine text. The verified artifact is object-only; executable
+Input lifecycle remains a separate fail-closed boundary.
+
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
 live-in, exact memory extent, prior termination, and output capacity. Input

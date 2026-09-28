@@ -883,9 +883,15 @@ behavior.
   V6 input now has host-independent semantic admission for both byte and EOF
   traces. Exact C/D entry reads and A/C/D committed writes are verified before
   the existing VM-owned input derivation is reused; complete v6 identity is
-  retained without granting a host target, object, mapping, or call authority.
-  Register-masked input object/lifecycle coverage and both jump instruction
-  families remain open.
+  retained through object selection.
+
+  `direct-register-masked-input` revision 1 now emits and independently verifies
+  canonical x86-64/AArch64 COFF. Tests prove dead entry accumulator state can
+  change complete artifact identity without changing machine text, while live
+  input state changes the reviewed object bytes; byte and EOF shapes both pass
+  exact verification. Sealed register-masked AOT preparation now includes Input
+  objects. Executable Input lifecycle/mapping/invocation and both jump
+  instruction families remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

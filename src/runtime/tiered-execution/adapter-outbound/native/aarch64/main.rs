@@ -48,7 +48,7 @@ use super::direct::{
     DirectFusedRotateOutputTemplate, DirectFusedRotatePairTemplate,
     DirectInputCommit, DirectInputGuard, DirectJumpCodeGuard,
     DirectJumpDataGuard, DirectOutputCommit, DirectRegisterMaskedCrazyGuard,
-    DirectRegisterMaskedNoOperationGuard,
+    DirectRegisterMaskedInputGuard, DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNoOperationHaltTemplate,
     DirectRegisterMaskedNoOperationPairTemplate,
     DirectRegisterMaskedNoOperationRotateTemplate,
@@ -588,6 +588,69 @@ pub(super) fn register_masked_crazy_code(
         },
         commit,
     )
+}
+
+/// Encodes v6 input without guarding dead accumulator/output history.
+#[must_use]
+pub(super) fn register_masked_input_code(
+    guard: DirectRegisterMaskedInputGuard,
+    commit: DirectInputCommit,
+) -> Option<Vec<u8>> {
+    if commit.encrypted_address != guard.code_pointer {
+        return None;
+    }
+    let mut words = Vec::with_capacity(96);
+    let mut guard_branches = Vec::with_capacity(13);
+    push_register_masked_input_guards(&mut words, &mut guard_branches, guard)?;
+    words.extend_from_slice(&[
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.accumulator),
+        movk_w9_high(commit.accumulator),
+        0xb900_4009,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
+    ]);
+    push_u64_x9(&mut words, commit.next_input_consumed)?;
+    words.extend_from_slice(&[0xf900_1009, 0x2a1f_03e0, 0xd65f_03c0]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_register_masked_input_guards(
+    words: &mut Vec<u32>,
+    guard_branches: &mut Vec<usize>,
+    guard: DirectRegisterMaskedInputGuard,
+) -> Option<()> {
+    push_guard_branch(words, guard_branches, 0xb400_0000);
+    words.push(0xf940_1008);
+    push_u64_x9(words, guard.input_index)?;
+    words.push(0xeb09_011f);
+    push_guard_branch(words, guard_branches, 0x5400_0001);
+    push_u32_guard(words, guard_branches, 0xb940_4408, guard.code_pointer);
+    push_u32_guard(words, guard_branches, 0xb940_4808, guard.data_pointer);
+    words.push(0xf940_0008);
+    push_guard_branch(words, guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(words, guard.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(words, guard_branches, 0x5400_0003);
+    push_indexed_memory_guard(
+        words,
+        guard_branches,
+        guard.code_pointer,
+        guard.code_live_in,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(words, guard_branches, 0x3500_0009);
+    push_input_guard(words, guard_branches, guard.input, guard.input_index)
 }
 
 /// Encodes v6 output without guarding dead input history.

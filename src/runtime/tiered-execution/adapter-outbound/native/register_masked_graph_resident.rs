@@ -102,6 +102,8 @@ pub enum RegisterMaskedReducedGraphResidentOwnerLoadFailure<MemoryError> {
     Crazy(Box<RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError>>),
     /// Halt-fetch owner load failed.
     HaltFetch(Box<RegisterMaskedNativeOwnerLoadFailure<MemoryError>>),
+    /// Input has verified object authority but no executable lifecycle yet.
+    Input,
     /// No-operation owner load failed.
     NoOperation(
         Box<RegisterMaskedNoOperationNativeOwnerLoadFailure<MemoryError>>,
@@ -631,6 +633,9 @@ where
         },
         VerifiedAheadOfExecutionRegisterMaskedArtifact::HaltFetch(concrete) => {
             load_halt_fetch(adapter, program, concrete)
+        },
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::Input(_concrete) => {
+            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::Input)
         },
         VerifiedAheadOfExecutionRegisterMaskedArtifact::NoOperation(
             concrete,

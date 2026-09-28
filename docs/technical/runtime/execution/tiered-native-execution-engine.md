@@ -2275,11 +2275,17 @@ ownership.
 Host-independent v6 semantic admission now also covers Input byte and EOF
 steps. Admission requires the normative trace masks (C/D reads and A/C/D
 writes), retains complete register-masked identity, and reuses the VM-owned
-input derivation with the v6 profile capacity supplied explicitly. It grants no
-host target, object, executable-memory, or invocation authority.
+input derivation with the v6 profile capacity supplied explicitly.
 
-Register-masked Input object/lifecycle coverage and both JumpCode and JumpData
-families remain open; unsupported v6 execution remains fail-closed.
+`direct-register-masked-input` revision 1 now emits and independently verifies
+x86-64/AArch64 COFF for both byte and EOF input. Machine text guards live C/D,
+the exact input cursor/value state, code live-in, memory extent, and prior
+termination while omitting dead entry accumulator and output history. Object
+authority is available to sealed AOT preparation, but executable lifecycle,
+mapping, and invocation remain explicitly unavailable and fail closed.
+
+Register-masked Input lifecycle coverage and both JumpCode and JumpData families
+remain open; unsupported v6 execution remains fail-closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
