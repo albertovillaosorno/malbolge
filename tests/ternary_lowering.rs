@@ -41,13 +41,15 @@ pub mod typed_ir;
 use std::fs::read_to_string;
 use std::str::from_utf8;
 
-use malbolge as _;
+use malbolge::current_profile;
 use ternary_lowering::{
     I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
     InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
-    RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
-    RuntimeIntrinsicRequest, TernaryLoweringError, TernaryOperation,
-    TypedIrInput, lower_runtime_intrinsic, lower_typed_ir,
+    MachineIoKind, MachineIoOperation, RuntimeIntrinsicLoweringError,
+    RuntimeIntrinsicOperation, RuntimeIntrinsicRequest,
+    RuntimeIoRealizationError, TargetProfileIo, TernaryLoweringError,
+    TernaryOperation, TypedIrInput, lower_runtime_intrinsic, lower_typed_ir,
+    realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
@@ -705,6 +707,67 @@ fn runtime_intrinsic_identities_match_guest_runtime_authority()
     }
     if !contract.contains("\"target_profile\": \"malbolge-2026\"") {
         return Err(String::from("guest-runtime target profile drifted"));
+    }
+    Ok(())
+}
+
+fn current_profile_io() -> TargetProfileIo {
+    let profile = current_profile();
+    TargetProfileIo {
+        eof_word: profile.eof_word(),
+        input_instruction: profile.input_instruction(),
+        output_instruction: profile.output_instruction(),
+        profile_id: String::from(profile.id()),
+    }
+}
+
+#[test]
+fn current_profile_realizes_runtime_io_from_authority() -> Result<(), String> {
+    let profile = current_profile();
+    let projection = current_profile_io();
+    let input =
+        realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &projection)
+            .map_err(|error| format!("realize input word: {error:?}"))?;
+    let output =
+        realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &projection)
+            .map_err(|error| format!("realize output byte: {error:?}"))?;
+    if input
+        != (MachineIoOperation {
+            eof_word: Some(profile.eof_word()),
+            instruction: profile.input_instruction(),
+            kind: MachineIoKind::InputWord,
+        })
+        || output
+            != (MachineIoOperation {
+                eof_word: None,
+                instruction: profile.output_instruction(),
+                kind: MachineIoKind::OutputByte,
+            })
+    {
+        return Err(String::from(
+            "profile-derived machine I/O realization drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_profile_io_projection_fails_closed() -> Result<(), String> {
+    let mut projection = current_profile_io();
+    projection.output_instruction = projection.input_instruction;
+    if realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &projection)
+        != Err(RuntimeIoRealizationError::InvalidProjection)
+    {
+        return Err(String::from(
+            "colliding profile opcodes were not rejected",
+        ));
+    }
+    projection = current_profile_io();
+    projection.profile_id = String::from("malbolge-1998");
+    if realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &projection)
+        != Err(RuntimeIoRealizationError::UnsupportedProfile)
+    {
+        return Err(String::from("profile identity drift was not rejected"));
     }
     Ok(())
 }

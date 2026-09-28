@@ -80,9 +80,15 @@ instruction.
   lowering them to distinct raw `InputWord`/`OutputByte` pre-layout operations.
   Tests cross-check both identities against the guest-runtime JSON authority and
   declaration header and reject unknown identities or profile drift.
+- A target-profile I/O projection now copies the canonical current descriptor's
+  exact profile identity, input/output instruction bytes, and EOF word. Runtime
+  I/O realization derives machine operations from those fields rather than
+  compiler-local `/`/`<` literals; tests compare directly with
+  `current_profile()`
+  and reject colliding opcodes or profile drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
-  one-shot heap startup binding, current-profile `/`/`<` opcode realization,
-  guest-runtime EOF decode/helper lowering, later runtime helpers, target
+  one-shot heap startup binding, encoded instruction-cell construction,
+  guest-runtime C EOF/helper lowering, later runtime helpers, target
   serialization, and executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

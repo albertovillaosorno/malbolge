@@ -98,6 +98,26 @@ impl TernaryI32Scalar {
     }
 }
 
+/// Machine I/O effect category after target-profile realization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineIoKind {
+    /// Raw profile input-word effect, including the EOF sentinel.
+    InputWord,
+    /// Exact guest-byte output effect.
+    OutputByte,
+}
+
+/// One decoded machine I/O operation bound to an exact target profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MachineIoOperation {
+    /// Canonical profile EOF word for input; absent for output.
+    pub eof_word: Option<u32>,
+    /// Decoded machine instruction byte selected by the profile.
+    pub instruction: u8,
+    /// Semantic I/O effect category.
+    pub kind: MachineIoKind,
+}
+
 /// One declaration-only guest-runtime operation before profile opcode encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeIntrinsicOperation {

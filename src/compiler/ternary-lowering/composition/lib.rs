@@ -41,8 +41,12 @@ mod lower;
 mod lower_runtime_intrinsic;
 #[path = "../domain/model.rs"]
 mod model;
+#[path = "../application/realize_runtime_io.rs"]
+mod realize_runtime_io;
 #[path = "../port-inbound/runtime_intrinsic.rs"]
 mod runtime_intrinsic_input;
+#[path = "../port-inbound/target_profile.rs"]
+mod target_profile_input;
 
 pub use input::*;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
@@ -50,4 +54,6 @@ pub use lower_runtime_intrinsic::{
     RuntimeIntrinsicLoweringError, lower_runtime_intrinsic,
 };
 pub use model::*;
+pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;
+pub use target_profile_input::TargetProfileIo;

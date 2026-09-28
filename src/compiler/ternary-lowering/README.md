@@ -30,9 +30,11 @@ exact `i32` constants/returns plus deterministic typed-IR `ByteInput` and
 scalars while source, ABI, typed-IR version, source digest, and target-profile
 provenance are preserved. Byte effects remain successful `u8` semantics.
 
-A separate runtime-intrinsic port now admits only the exact
+A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
 `malbolge_guest_intrinsic_output_byte` declarations under `malbolge-2026`,
 lowering them to distinct raw `InputWord` and `OutputByte` pre-layout semantics.
-Profile `/`/`<` opcode realization, downstream EOF decoding, layout, target
-serialization, and Malbolge encoding remain open.
+A target-profile port then copies canonical I/O instruction bytes and EOF state
+from the admitted profile descriptor and realizes those operations without
+hardcoded opcode characters. C EOF/helper lowering, layout, encoded instruction
+cells, target serialization, and complete Malbolge emission remain open.

@@ -68,6 +68,16 @@ parts:
     kind: application
     language: rust
     responsibility: Admit exact byte-I/O intrinsic identities fail closed.
+  - id: part-0007
+    path: port-inbound/target_profile.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Project canonical target-profile byte-I/O semantics.
+  - id: part-0008
+    path: application/realize_runtime_io.rs
+    kind: application
+    language: rust
+    responsibility: Bind raw runtime I/O semantics to profile machine opcodes.
 projects: []
 tests: []
 graph:

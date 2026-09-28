@@ -51,10 +51,18 @@ Those identities lower to distinct pre-layout `InputWord` and `OutputByte`
 operations; `InputWord` explicitly includes the selected profile's EOF word.
 Unknown intrinsic names or profile drift fail closed.
 
-This is executable compiler lowering but not target code generation. Layout,
-address assignment, current-profile `/`/`<` opcode realization, guest-runtime
-EOF decoding, target serialization, and Malbolge encoding remain downstream
-work.
+A separate target-profile projection copies the current descriptor's exact
+profile ID, input/output instruction bytes, and EOF word. Runtime I/O
+realization
+uses only that projection, producing profile-bound machine operations without
+hardcoded `/` or `<` characters; colliding projected input/output
+instructions or
+profile drift fail closed.
+
+This is executable compiler lowering but not complete target code generation.
+Layout, address assignment, encoded instruction-cell construction, guest-runtime
+C EOF/helper lowering, target serialization, and complete Malbolge emission
+remain downstream work.
 
 ### Authoritative Inputs
 
@@ -97,9 +105,10 @@ wire name.
 Malformed inbound projection identity, retained globals/proof obligations,
 non-`i32` or malformed constants, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
-runtime intrinsic names, runtime-intrinsic profile drift,
-multi-block/phi/parameterized function shapes, and unsupported instructions or
-terminators fail closed before a pre-layout target program is returned. Later
+runtime intrinsic names, runtime-intrinsic/profile drift, colliding projected
+profile I/O opcodes, multi-block/phi/parameterized function shapes, and
+unsupported instructions or terminators fail closed before a pre-layout target
+program is returned. Later
 layout/profile failures must likewise fail before accepted target code is
 emitted.
 
@@ -126,10 +135,12 @@ emitted.
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and
   `OutputByte` semantics, and rejects unknown names or profile drift.
-- Runtime identity admission is still below executable machine realization:
-  current-profile `/`/`<` opcode assignment and guest-runtime EOF decoding
-  remain
-  open target-lowering work.
+- Target-profile realization evidence projects exact I/O instruction bytes and
+  EOF state from `current_profile()` and proves the resulting machine I/O
+  operations match that descriptor without compiler-local opcode literals. It
+  rejects profile identity drift and colliding projected input/output opcodes.
+- Encoded instruction-cell construction and guest-runtime C EOF/helper lowering
+  remain open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
