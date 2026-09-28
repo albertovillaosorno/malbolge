@@ -53,6 +53,8 @@ mod model;
 mod plan_byte_stream_wrapper;
 #[path = "../application/plan_startup.rs"]
 mod plan_startup;
+#[path = "../application/program_codec.rs"]
+mod program_codec;
 #[path = "../application/realize_byte_stream_control_flow.rs"]
 mod realize_byte_stream_control_flow;
 #[path = "../application/realize_byte_stream_wrapper.rs"]
@@ -86,6 +88,11 @@ pub use plan_byte_stream_wrapper::{
     ByteStreamWrapperPlanningError, plan_byte_stream_wrapper,
 };
 pub use plan_startup::{StartupPlanningError, plan_startup};
+pub use program_codec::{
+    TERNARY_PROGRAM_CODEC_ID, TernaryProgramCodecError,
+    TernaryProgramValidationError, canonical_ternary_bytes,
+    canonical_ternary_program, validate_ternary_program,
+};
 pub use realize_byte_stream_control_flow::{
     ByteStreamControlFlowError, realize_byte_stream_control_flow,
 };

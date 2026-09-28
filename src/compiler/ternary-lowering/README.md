@@ -27,10 +27,17 @@ semantics.
 The executable slice lowers admitted no-argument, single-block functions using
 exact `i32` constants/returns, `i32` bitwise AND, `i32`-to-`u8` truncation, and
 deterministic typed-IR `ByteInput`/`ByteOutput` effects. Exact 32-bit bit
-patterns
-become fixed-width 21-trit scalars while source, ABI, typed-IR version, source
-digest, and target-profile provenance are preserved. Byte effects remain
+patterns become fixed-width 21-trit scalars while source, ABI, typed-IR version,
+source digest, and target-profile provenance are preserved. Byte effects remain
 successful `u8` semantics.
+
+Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
+`TernaryProgram` only after independent stage validation. The `MCTR` version-one
+wire uses fixed little-endian integers, length-prefixed UTF-8 identities,
+explicit
+operation tags, exact source spans, and 21 one-byte trits per `i32` scalar.
+Restoration rejects malformed, truncated, unknown-tag, noncanonical, or
+semantic-invalid state before returning a program.
 
 A separate pure runtime-helper port admits only
 `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the

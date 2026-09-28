@@ -148,11 +148,27 @@ reinterpreting them:
 - the guest-runtime contract's `host_fallback` value is `forbidden`, so none of
   these operations may be replaced by host callbacks in accepted lowering.
 
-No ternary-stage serialization identity is defined yet. The current in-memory
-model is deterministic but deliberately pre-serialization. A wire identity may
-be introduced only together with concrete canonical encoding and round-trip or
-normalized golden evidence; this document does not reserve an unimplemented
-wire name.
+The pre-layout program now has one concrete portable serialization identity,
+`malbolge-ternary-ir-v1`. Canonical bytes begin with `MCTR`, then little-endian
+wire version `1` and the retained typed-IR input version. ABI, target-profile,
+and source identities are length-prefixed UTF-8; the normalized-source SHA-256
+is copied as 32 raw bytes; functions remain ordered and carry dense IDs, names,
+source spans, and ordered operations.
+
+Version-one operation tags are explicit repository-owned bytes in semantic enum
+order: `AndI32=0`, `ByteInput=1`, `ByteOutput=2`, `MaterializeI32=3`,
+`Return=4`, and `TruncateI32ToU8=5`. Source positions use fixed little-endian
+`u32` byte/column/line fields. Materialized `i32` values encode exactly 21
+one-byte trits in least-significant-first order; trits outside `0..2` or ternary
+values outside the 32-bit domain fail restoration.
+
+Serialization first independently validates program identity, portable source
+identity, dense/unique function identity, contained source spans, SSA definition
+and use ordering, value kind, and one final `i32` return. Restoration performs
+the same validation and then requires byte-for-byte canonical re-encoding before
+acceptance. Rust enum discriminants, host widths, debug formatting, target
+layout
+addresses, and auxiliary startup/wrapper planning models are not wire authority.
 
 ## Invariants
 
@@ -244,6 +260,12 @@ emitted.
   Adversarial projections reject wrong result types and undefined AND/truncation
   operands. This closes the operation vocabulary needed by the runtime output
   helper body, not direct helper-call recognition.
+- Canonical ternary-codec evidence round-trips the constant-return, byte-I/O,
+  and low-byte fixtures across `malbolge-ternary-ir-v1`, covering every current
+  operation tag. It rejects every truncated prefix, wrong magic/version,
+  trailing
+  bytes, unknown operation tags, invalid trits, forged function identity, and
+  invalid in-memory program/profile/SSA state before acceptance.
 - Startup-plan evidence cross-checks the guest-runtime header and JSON contract,
   then proves a valid layout-resolved ABI pointer/capacity emits exactly one
   `BindHeap` before user entry. Tests reject ABI/profile/symbol drift, null or

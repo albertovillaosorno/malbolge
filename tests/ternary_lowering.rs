@@ -55,8 +55,10 @@ use ternary_lowering::{
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
-    StartupPlanningError, StartupRequest, TargetProfileIo,
-    TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
+    StartupPlanningError, StartupRequest, TERNARY_PROGRAM_CODEC_ID,
+    TargetProfileIo, TernaryLoweringError, TernaryOperation,
+    TernaryProgramCodecError, TernaryProgramValidationError, TypedIrInput,
+    canonical_ternary_bytes, canonical_ternary_program, encode_machine_io,
     lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
     plan_byte_stream_wrapper, plan_startup, realize_byte_stream_control_flow,
     realize_byte_stream_wrapper, realize_runtime_helper, realize_runtime_io,
@@ -869,6 +871,240 @@ fn low_byte_truncate_rejects_projection_drift() -> Result<(), String> {
         return Err(String::from(
             "undefined truncation source was not rejected",
         ));
+    }
+    Ok(())
+}
+
+fn first_function_id_offset(bytes: &[u8]) -> Result<usize, String> {
+    let mut offset = 8usize;
+    for _ in 0..3usize {
+        let raw: [u8; 4] = bytes
+            .get(offset..offset.saturating_add(4))
+            .ok_or_else(|| {
+                String::from("ternary header string length missing")
+            })?
+            .try_into()
+            .map_err(|_error| {
+                String::from("ternary header length malformed")
+            })?;
+        let length = usize::try_from(u32::from_le_bytes(raw))
+            .map_err(|_error| String::from("ternary header length overflow"))?;
+        offset = offset
+            .checked_add(4)
+            .and_then(|value| value.checked_add(length))
+            .ok_or_else(|| String::from("ternary header offset overflow"))?;
+    }
+    offset = offset
+        .checked_add(32)
+        .ok_or_else(|| String::from("ternary digest offset overflow"))?;
+    let count_raw: [u8; 4] = bytes
+        .get(offset..offset.saturating_add(4))
+        .ok_or_else(|| String::from("ternary function count missing"))?
+        .try_into()
+        .map_err(|_error| String::from("ternary function count malformed"))?;
+    if u32::from_le_bytes(count_raw) == 0 {
+        return Err(String::from("ternary fixture has no functions"));
+    }
+    offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("ternary function offset overflow"))
+}
+
+fn materialize_pattern(bits: u32, result: u32) -> Vec<u8> {
+    let mut pattern = vec![3];
+    pattern.extend_from_slice(&result.to_le_bytes());
+    pattern.extend_from_slice(
+        ternary_lowering::TernaryI32Scalar::from_bits(bits).trits(),
+    );
+    pattern
+}
+
+fn lowered_return_fixture() -> Result<ternary_lowering::TernaryProgram, String>
+{
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let input = project_typed_ir(&module)?;
+    lower_typed_ir(&input)
+        .map_err(|error| format!("lower return fixture: {error:?}"))
+}
+
+#[test]
+fn canonical_ternary_program_round_trips_exactly() -> Result<(), String> {
+    let program = lowered_return_fixture()?;
+    let first = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let second = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("repeat ternary encoding: {error:?}"))?;
+    if TERNARY_PROGRAM_CODEC_ID != "malbolge-ternary-ir-v1"
+        || first != second
+        || first.get(..6) != Some(&b"MCTR\x01\x00"[..])
+    {
+        return Err(String::from("ternary canonical identity drifted"));
+    }
+    let restored = canonical_ternary_program(&first)
+        .map_err(|error| format!("restore ternary program: {error:?}"))?;
+    if restored != program
+        || canonical_ternary_bytes(&restored)
+            .map_err(|error| format!("re-encode ternary program: {error:?}"))?
+            != first
+    {
+        return Err(String::from("ternary canonical round trip drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_codec_round_trips_all_lowered_operation_tags() -> Result<(), String>
+{
+    for module in [admitted_byte_io_fixture()?, admitted_low_byte_fixture()?] {
+        let program = lower_typed_ir(&project_typed_ir(&module)?)
+            .map_err(|error| format!("lower codec fixture: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode codec fixture: {error:?}"))?;
+        let restored = canonical_ternary_program(&bytes)
+            .map_err(|error| format!("restore codec fixture: {error:?}"))?;
+        if restored != program {
+            return Err(String::from("ternary operation codec drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_codec_rejects_invalid_in_memory_program() -> Result<(), String> {
+    let program = lowered_return_fixture()?;
+    let mut wrong_identity = program.clone();
+    wrong_identity.target_profile = String::from("malbolge-1998");
+    if canonical_ternary_bytes(&wrong_identity)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::ProgramIdentity,
+        ))
+    {
+        return Err(String::from("invalid ternary identity was serialized"));
+    }
+    let mut wrong_function = program.clone();
+    wrong_function
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("return fixture has no function"))?
+        .id = 7;
+    if canonical_ternary_bytes(&wrong_function)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::FunctionIdentity,
+        ))
+    {
+        return Err(String::from("invalid ternary function was serialized"));
+    }
+    let mut wrong_return = program;
+    let last = wrong_return
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("return fixture has no function"))?
+        .operations
+        .last_mut()
+        .ok_or_else(|| String::from("return fixture has no operations"))?;
+    let TernaryOperation::Return { value, .. } = last else {
+        return Err(String::from("return fixture has no final return"));
+    };
+    *value = 99;
+    if canonical_ternary_bytes(&wrong_return)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("undefined ternary return was serialized"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_decoder_revalidates_forged_function_identity() -> Result<(), String>
+{
+    let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let offset = first_function_id_offset(&bytes)?;
+    let mut forged = bytes;
+    forged
+        .get_mut(offset..offset.saturating_add(4))
+        .ok_or_else(|| String::from("ternary function ID bytes missing"))?
+        .copy_from_slice(&1u32.to_le_bytes());
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::FunctionIdentity,
+        ))
+    {
+        return Err(String::from("forged ternary function ID was restored"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_decoder_rejects_malformed_wire_state() -> Result<(), String> {
+    let program = lowered_return_fixture()?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let mut magic = bytes.clone();
+    *magic
+        .first_mut()
+        .ok_or_else(|| String::from("ternary magic missing"))? = b'X';
+    let mut version = bytes.clone();
+    *version
+        .get_mut(4)
+        .ok_or_else(|| String::from("ternary version missing"))? = 2;
+    let mut trailing = bytes;
+    trailing.push(0);
+    if canonical_ternary_program(&magic)
+        != Err(TernaryProgramCodecError::InvalidMagic)
+        || canonical_ternary_program(&version)
+            != Err(TernaryProgramCodecError::UnsupportedVersion)
+        || canonical_ternary_program(&trailing)
+            != Err(TernaryProgramCodecError::TrailingBytes)
+    {
+        return Err(String::from("malformed ternary wire state was accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_decoder_rejects_unknown_tag_and_invalid_trit() -> Result<(), String>
+{
+    let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let pattern = materialize_pattern(7, 0);
+    let offset = bytes
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+        .ok_or_else(|| String::from("materialize encoding pattern missing"))?;
+    let mut unknown_tag = bytes.clone();
+    *unknown_tag
+        .get_mut(offset)
+        .ok_or_else(|| String::from("ternary operation tag missing"))? = 99;
+    let mut invalid_trit = bytes;
+    *invalid_trit
+        .get_mut(offset.saturating_add(5))
+        .ok_or_else(|| String::from("ternary scalar trit missing"))? = 3;
+    if canonical_ternary_program(&unknown_tag)
+        != Err(TernaryProgramCodecError::UnknownTag)
+        || canonical_ternary_program(&invalid_trit)
+            != Err(TernaryProgramCodecError::InvalidScalar)
+    {
+        return Err(String::from(
+            "invalid ternary operation bytes were accepted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn every_truncated_ternary_prefix_fails_closed() -> Result<(), String> {
+    let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    for end in 0..bytes.len() {
+        let prefix = bytes
+            .get(..end)
+            .ok_or_else(|| String::from("ternary prefix range missing"))?;
+        if canonical_ternary_program(prefix).is_ok() {
+            return Err(format!("truncated ternary prefix {end} was accepted"));
+        }
     }
     Ok(())
 }

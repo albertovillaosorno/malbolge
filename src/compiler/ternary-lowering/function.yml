@@ -133,6 +133,11 @@ parts:
     kind: application
     language: rust
     responsibility: Expand stdio wrapper semantics into explicit control flow.
+  - id: part-0020
+    path: application/program_codec.rs
+    kind: application
+    language: rust
+    responsibility: Validate and canonically encode pre-layout ternary programs.
 projects: []
 tests: []
 graph:
