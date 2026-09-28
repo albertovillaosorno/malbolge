@@ -37,12 +37,16 @@
 mod byte_stream_wrapper_input;
 #[path = "../application/encode_machine_io.rs"]
 mod encode_machine_io;
+#[path = "../port-inbound/frame_helper.rs"]
+mod frame_helper_input;
 #[path = "../port-inbound/typed_ir.rs"]
 mod input;
 #[path = "../port-inbound/instruction_decoder.rs"]
 mod instruction_decoder_input;
 #[path = "../application/lower.rs"]
 mod lower;
+#[path = "../application/lower_frame_helper.rs"]
+mod lower_frame_helper;
 #[path = "../application/lower_runtime_helper.rs"]
 mod lower_runtime_helper;
 #[path = "../application/lower_runtime_intrinsic.rs"]
@@ -59,6 +63,8 @@ mod program_codec;
 mod realize_byte_stream_control_flow;
 #[path = "../application/realize_byte_stream_wrapper.rs"]
 mod realize_byte_stream_wrapper;
+#[path = "../application/realize_frame_helper.rs"]
+mod realize_frame_helper;
 #[path = "../application/realize_runtime_helper.rs"]
 mod realize_runtime_helper;
 #[path = "../application/realize_runtime_io.rs"]
@@ -74,9 +80,11 @@ mod target_profile_input;
 
 pub use byte_stream_wrapper_input::ByteStreamWrapperRequest;
 pub use encode_machine_io::{MachineIoEncodingError, encode_machine_io};
+pub use frame_helper_input::FrameHelperRequest;
 pub use input::*;
 pub use instruction_decoder_input::ProfileInstructionDecoder;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
+pub use lower_frame_helper::{FrameHelperLoweringError, lower_frame_helper};
 pub use lower_runtime_helper::{
     RuntimeHelperLoweringError, lower_runtime_helper,
 };
@@ -99,6 +107,7 @@ pub use realize_byte_stream_control_flow::{
 pub use realize_byte_stream_wrapper::{
     ByteStreamWrapperRealizationError, realize_byte_stream_wrapper,
 };
+pub use realize_frame_helper::realize_frame_helper;
 pub use realize_runtime_helper::realize_runtime_helper;
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_helper_input::RuntimeHelperRequest;

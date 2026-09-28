@@ -138,6 +138,21 @@ parts:
     kind: application
     language: rust
     responsibility: Validate and canonically encode pre-layout ternary programs.
+  - id: part-0021
+    path: port-inbound/frame_helper.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Carry exact call-frame helper identities into lowering.
+  - id: part-0022
+    path: application/lower_frame_helper.rs
+    kind: application
+    language: rust
+    responsibility: Bind frame validation to exact ABI/runtime semantics.
+  - id: part-0023
+    path: application/realize_frame_helper.rs
+    kind: application
+    language: rust
+    responsibility: Expand frame validation into explicit control flow.
 projects: []
 tests: []
 graph:

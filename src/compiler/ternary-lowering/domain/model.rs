@@ -98,6 +98,66 @@ impl TernaryI32Scalar {
     }
 }
 
+/// Declarative semantics for version-one hidden frame validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameValidationSemantics {
+    /// Required complete-frame alignment in logical bytes.
+    pub alignment: u32,
+    /// Fixed hidden frame-header size in bytes.
+    pub header_bytes: u32,
+    /// Runtime status for a null frame pointer.
+    pub invalid_argument_status: u32,
+    /// Runtime status for malformed frame contents.
+    pub invalid_frame_status: u32,
+    /// Required version-one flags value.
+    pub required_flags: u32,
+    /// Runtime status for an admitted frame.
+    pub valid_status: u32,
+}
+
+/// One admitted call-frame helper represented as declarative semantics.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameHelperOperation {
+    /// Validate one hidden version-one call-frame header.
+    Validate(FrameValidationSemantics),
+}
+
+/// One ordered condition in frame-validator control flow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameValidationCondition {
+    /// Required argument-block pointer is null.
+    ArgumentBlockNull,
+    /// Flags differ from the required version-one value.
+    FlagsNotEqual(u32),
+    /// Frame extent is smaller than the hidden header.
+    FrameExtentBelow(u32),
+    /// Frame extent is not a multiple of the required alignment.
+    FrameExtentMisaligned(u32),
+    /// Frame header pointer is null.
+    FramePointerNull,
+    /// No earlier ordered validation condition matched.
+    Otherwise,
+}
+
+/// One frame-validation branch exit and returned runtime status.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameValidationArm {
+    /// Ordered validation condition.
+    pub condition: FrameValidationCondition,
+    /// Runtime status returned by this branch.
+    pub status: u32,
+}
+
+/// One call-frame helper after explicit control-flow realization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FrameHelperExecutionPlan {
+    /// Ordered exits for version-one frame validation.
+    Validate {
+        /// First matching branch determines the returned status.
+        exits: Vec<FrameValidationArm>,
+    },
+}
+
 /// One ordered compiler-generated startup action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StartupAction {

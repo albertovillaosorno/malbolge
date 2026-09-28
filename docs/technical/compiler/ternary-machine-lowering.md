@@ -66,6 +66,19 @@ storage while publishing `INVALID_INPUT_WORD`. Output-helper realization keeps
 the exact low-byte mask. No branch addresses or host evaluation enter this
 representation.
 
+A separate call-frame helper port admits only
+`malbolge_guest_frame_validate` under exact `malbolge-c32-v1` and
+`malbolge-guest-runtime-v1` identity. Its declarative semantics bind the ABI's
+32-byte hidden header and 16-byte frame alignment plus runtime statuses
+`VALID=0`, `INVALID_ARGUMENT=1`, and `INVALID_FRAME=5`.
+
+Frame-validator realization preserves the checked-in C condition order as six
+pre-layout exits: null frame pointer, extent below 32 bytes, misaligned extent,
+null argument-block pointer, nonzero flags, then success. The first branch
+returns `INVALID_ARGUMENT`, the four shape branches return `INVALID_FRAME`, and
+the final branch returns `VALID`. Frame encode/decode memory reads, writes, and
+publication remain separate later work.
+
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
 function must own a reachable entry block. Therefore direct helper-call
@@ -189,7 +202,9 @@ or undefined truncation inputs, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
 runtime intrinsic names, runtime-intrinsic/profile drift, unknown pure runtime
 helper identities, helper/profile drift, ambiguous helper EOF projections,
-colliding projected profile I/O opcodes, invalid startup identities,
+frame-helper ABI/runtime/identity drift, colliding projected profile I/O
+opcodes,
+invalid startup identities,
 null/misaligned/undersized/
 overflowing heap extents, multi-block/phi/parameterized function shapes, and
 unsupported instructions or terminators fail closed before a pre-layout target
@@ -241,6 +256,13 @@ emitted.
   expands to the exact ordered null/byte/EOF/invalid exits with explicit result
   and status publications. Realized wrapper plans retain that helper execution
   alongside profile-bound machine I/O.
+- Frame-helper evidence cross-checks the ABI JSON, runtime header, and
+  checked-in
+  `frame.c`. It binds the exact frame-validator identity,
+  header/alignment/status
+  constants, proves the ordered null/extent/alignment/argument/flags/success
+  exits, and rejects ABI, runtime, or helper identity drift before publishing
+  control flow.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and

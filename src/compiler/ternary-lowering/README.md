@@ -48,6 +48,13 @@ a guest value on the host. Input helper realization now expands that recipe into
 ordered null-pointer, byte, EOF, and invalid-word exits with exact result and
 runtime-status publication; output realization retains its exact low-byte mask.
 
+A separate frame-helper boundary now admits only
+`malbolge_guest_frame_validate` under exact `malbolge-c32-v1` and
+`malbolge-guest-runtime-v1` authority. It binds the 32-byte header, 16-byte
+alignment, zero flags, and runtime statuses, then expands the C validator into
+ordered null/extent/alignment/argument/flags/success exits without reading guest
+values on the host. Frame encode/decode memory movement remains downstream.
+
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input
 intrinsic then decoder for `getchar`, helper then output intrinsic for

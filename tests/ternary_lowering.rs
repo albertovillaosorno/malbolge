@@ -46,12 +46,15 @@ use ternary_lowering::{
     ByteStreamControlFlowError, ByteStreamWrapperExecutionPlan,
     ByteStreamWrapperExecutionStep, ByteStreamWrapperOrder,
     ByteStreamWrapperPlanningError, ByteStreamWrapperRealizationError,
-    ByteStreamWrapperRequest, ByteStreamWrapperReturn, I32_TERNARY_TRITS,
-    InputBlock, InputDecodeArm, InputDecodeCondition, InputDecodeResult,
-    InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
-    InputSourceSpan, InputTerminator, InputWordDecodeControlFlow,
-    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
-    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
+    ByteStreamWrapperRequest, ByteStreamWrapperReturn,
+    FrameHelperExecutionPlan, FrameHelperLoweringError, FrameHelperOperation,
+    FrameHelperRequest, FrameValidationArm, FrameValidationCondition,
+    FrameValidationSemantics, I32_TERNARY_TRITS, InputBlock, InputDecodeArm,
+    InputDecodeCondition, InputDecodeResult, InputFunction, InputInstruction,
+    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
+    ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
@@ -59,9 +62,10 @@ use ternary_lowering::{
     TargetProfileIo, TernaryLoweringError, TernaryOperation,
     TernaryProgramCodecError, TernaryProgramValidationError, TypedIrInput,
     canonical_ternary_bytes, canonical_ternary_program, encode_machine_io,
-    lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
-    plan_byte_stream_wrapper, plan_startup, realize_byte_stream_control_flow,
-    realize_byte_stream_wrapper, realize_runtime_helper, realize_runtime_io,
+    lower_frame_helper, lower_runtime_helper, lower_runtime_intrinsic,
+    lower_typed_ir, plan_byte_stream_wrapper, plan_startup,
+    realize_byte_stream_control_flow, realize_byte_stream_wrapper,
+    realize_frame_helper, realize_runtime_helper, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -84,7 +88,9 @@ const GUEST_RUNTIME_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_runtime.h";
 const GUEST_BYTE_STREAM_SOURCE: &str =
     "src/runtime/guest-runtime/domain/byte_stream.c";
+const GUEST_FRAME_SOURCE: &str = "src/runtime/guest-runtime/domain/frame.c";
 const GUEST_STDIO_SOURCE: &str = "src/runtime/guest-c-library/domain/stdio.c";
+const ABI_CONTRACT: &str = "docs/technical/specification/c-abi-v1.json";
 const LIBC_CONTRACT: &str = "docs/technical/specification/c-libc-v1.json";
 
 struct VmProfileInstructionDecoder;
@@ -1390,6 +1396,122 @@ fn runtime_intrinsic_identities_match_guest_runtime_authority()
     }
     if !contract.contains("\"target_profile\": \"malbolge-2026\"") {
         return Err(String::from("guest-runtime target profile drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn frame_helper_authority_matches_abi_and_runtime() -> Result<(), String> {
+    let abi = read_to_string(ABI_CONTRACT)
+        .map_err(|error| format!("read ABI contract: {error}"))?;
+    let header = read_to_string(GUEST_RUNTIME_HEADER)
+        .map_err(|error| format!("read guest-runtime header: {error}"))?;
+    let source = read_to_string(GUEST_FRAME_SOURCE)
+        .map_err(|error| format!("read guest frame source: {error}"))?;
+    for expected in [
+        "malbolge_guest_frame_validate",
+        "FRAME_ALIGNMENT UINT32_C(16)",
+    ] {
+        if !source.contains(expected) {
+            return Err(format!("frame source authority missing {expected}"));
+        }
+    }
+    for expected in [
+        "MALBOLGE_GUEST_FRAME_HEADER_SIZE UINT32_C(32)",
+        "MALBOLGE_GUEST_RUNTIME_VALID = 0",
+        "MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT = 1",
+        "MALBOLGE_GUEST_RUNTIME_INVALID_FRAME = 5",
+    ] {
+        if !header.contains(expected) {
+            return Err(format!("frame header authority missing {expected}"));
+        }
+    }
+    for expected in [
+        "\"frame_header_bytes\": 32",
+        "\"name\": \"argument_block\"",
+        "\"name\": \"flags\"",
+    ] {
+        if !abi.contains(expected) {
+            return Err(format!("frame ABI authority missing {expected}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn frame_validator_realizes_exact_control_flow() -> Result<(), String> {
+    let operation = lower_frame_helper(&FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_frame_validate"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower frame helper: {error:?}"))?;
+    let expected_semantics = FrameValidationSemantics {
+        alignment: 16,
+        header_bytes: 32,
+        invalid_argument_status: 1,
+        invalid_frame_status: 5,
+        required_flags: 0,
+        valid_status: 0,
+    };
+    if operation != FrameHelperOperation::Validate(expected_semantics) {
+        return Err(String::from("frame validation semantics drifted"));
+    }
+    let expected = FrameHelperExecutionPlan::Validate {
+        exits: vec![
+            FrameValidationArm {
+                condition: FrameValidationCondition::FramePointerNull,
+                status: 1,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FrameExtentBelow(32),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FrameExtentMisaligned(16),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::ArgumentBlockNull,
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::FlagsNotEqual(0),
+                status: 5,
+            },
+            FrameValidationArm {
+                condition: FrameValidationCondition::Otherwise,
+                status: 0,
+            },
+        ],
+    };
+    if realize_frame_helper(operation) != expected {
+        return Err(String::from("frame validator control flow drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn frame_helper_identity_drift_fails_closed() -> Result<(), String> {
+    let base = FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from("malbolge_guest_frame_validate"),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    };
+    let mut wrong_abi = base.clone();
+    wrong_abi.abi_id = String::from("host-abi");
+    let mut wrong_runtime = base.clone();
+    wrong_runtime.runtime_id = String::from("malbolge-guest-runtime-v2");
+    let mut wrong_helper = base;
+    wrong_helper.identity = String::from("malbolge_guest_frame_decode");
+    if lower_frame_helper(&wrong_abi)
+        != Err(FrameHelperLoweringError::InvalidAuthority)
+        || lower_frame_helper(&wrong_runtime)
+            != Err(FrameHelperLoweringError::InvalidAuthority)
+        || lower_frame_helper(&wrong_helper)
+            != Err(FrameHelperLoweringError::UnsupportedIdentity)
+    {
+        return Err(String::from("frame-helper authority drift was accepted"));
     }
     Ok(())
 }
