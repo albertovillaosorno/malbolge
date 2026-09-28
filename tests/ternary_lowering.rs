@@ -43,22 +43,23 @@ use std::str::from_utf8;
 
 use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
-    ByteStreamWrapperOrder, ByteStreamWrapperPlanningError,
-    ByteStreamWrapperRealizationError, ByteStreamWrapperRequest,
-    ByteStreamWrapperReturn, I32_TERNARY_TRITS, InputBlock, InputDecodeArm,
-    InputDecodeCondition, InputDecodeResult, InputFunction, InputInstruction,
-    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
-    InputWordDecodeControlFlow, InputWordDecodeSemantics,
-    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
-    ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
+    ByteStreamControlFlowError, ByteStreamWrapperExecutionPlan,
+    ByteStreamWrapperExecutionStep, ByteStreamWrapperOrder,
+    ByteStreamWrapperPlanningError, ByteStreamWrapperRealizationError,
+    ByteStreamWrapperRequest, ByteStreamWrapperReturn, I32_TERNARY_TRITS,
+    InputBlock, InputDecodeArm, InputDecodeCondition, InputDecodeResult,
+    InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
+    InputSourceSpan, InputTerminator, InputWordDecodeControlFlow,
+    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
+    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TargetProfileIo,
     TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
     lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
-    plan_byte_stream_wrapper, plan_startup, realize_byte_stream_wrapper,
-    realize_runtime_helper, realize_runtime_io,
+    plan_byte_stream_wrapper, plan_startup, realize_byte_stream_control_flow,
+    realize_byte_stream_wrapper, realize_runtime_helper, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -1495,6 +1496,106 @@ fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
             })
     {
         return Err(String::from("putchar machine-I/O realization drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn getchar_control_flow_is_explicit() -> Result<(), String> {
+    let profile = current_profile_io();
+    let semantic = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan getchar: {error:?}"))?;
+    let machine = realize_byte_stream_wrapper(&semantic, &profile)
+        .map_err(|error| format!("realize getchar: {error:?}"))?;
+    let observed = realize_byte_stream_control_flow(&machine, &profile)
+        .map_err(|error| format!("realize getchar control flow: {error:?}"))?;
+    let expected = ByteStreamWrapperExecutionPlan {
+        identity: String::from("getchar"),
+        steps: vec![
+            ByteStreamWrapperExecutionStep::InitializeI32 { bits: u32::MAX },
+            ByteStreamWrapperExecutionStep::MachineIo(machine.machine_io),
+            ByteStreamWrapperExecutionStep::RuntimeHelper(Box::new(
+                machine.helper_execution,
+            )),
+            ByteStreamWrapperExecutionStep::StatusGuard {
+                accepted_status: 0,
+                failure_return_bits: u32::MAX,
+            },
+            ByteStreamWrapperExecutionStep::ReturnDecodedI32,
+        ],
+    };
+    if observed != expected {
+        return Err(String::from("getchar control-flow plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn putchar_control_flow_is_explicit() -> Result<(), String> {
+    let profile = current_profile_io();
+    let semantic = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("putchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan putchar: {error:?}"))?;
+    let machine = realize_byte_stream_wrapper(&semantic, &profile)
+        .map_err(|error| format!("realize putchar: {error:?}"))?;
+    let observed = realize_byte_stream_control_flow(&machine, &profile)
+        .map_err(|error| format!("realize putchar control flow: {error:?}"))?;
+    let expected = ByteStreamWrapperExecutionPlan {
+        identity: String::from("putchar"),
+        steps: vec![
+            ByteStreamWrapperExecutionStep::RuntimeHelper(Box::new(
+                machine.helper_execution,
+            )),
+            ByteStreamWrapperExecutionStep::MachineIo(machine.machine_io),
+            ByteStreamWrapperExecutionStep::ReturnEmittedByteAsI32,
+        ],
+    };
+    if observed != expected {
+        return Err(String::from("putchar control-flow plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_control_flow_rejects_forgery() -> Result<(), String> {
+    let profile = current_profile_io();
+    let semantic = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan getchar: {error:?}"))?;
+    let machine = realize_byte_stream_wrapper(&semantic, &profile)
+        .map_err(|error| format!("realize getchar: {error:?}"))?;
+    let mut forged = machine.clone();
+    forged.helper_execution =
+        RuntimeHelperExecutionPlan::OutputByte { mask: 255 };
+    if realize_byte_stream_control_flow(&forged, &profile)
+        != Err(ByteStreamControlFlowError::InvalidPlan)
+    {
+        return Err(String::from("forged helper execution was not rejected"));
+    }
+    let mut wrong_profile = profile;
+    wrong_profile.profile_id = String::from("malbolge-1998");
+    if realize_byte_stream_control_flow(&machine, &wrong_profile)
+        != Err(ByteStreamControlFlowError::InvalidProfile)
+    {
+        return Err(String::from(
+            "wrapper control-flow profile drift accepted",
+        ));
     }
     Ok(())
 }

@@ -157,6 +157,40 @@ pub struct ByteStreamWrapperPlan {
     pub return_kind: ByteStreamWrapperReturn,
 }
 
+/// One explicit pre-layout public wrapper execution step.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ByteStreamWrapperExecutionStep {
+    /// Initialize the wrapper-local decoded `i32` result storage.
+    InitializeI32 {
+        /// Exact two's-complement initial bit pattern.
+        bits: u32,
+    },
+    /// Execute one profile-bound raw machine I/O operation.
+    MachineIo(MachineIoOperation),
+    /// Return the helper-published decoded `i32` value.
+    ReturnDecodedI32,
+    /// Return the emitted byte widened to guest `int`.
+    ReturnEmittedByteAsI32,
+    /// Execute one explicit pure runtime-helper plan.
+    RuntimeHelper(Box<RuntimeHelperExecutionPlan>),
+    /// Continue only for one accepted helper status; otherwise return a value.
+    StatusGuard {
+        /// Runtime status that continues to the success return.
+        accepted_status: u32,
+        /// Exact `i32` bits returned when status does not match.
+        failure_return_bits: u32,
+    },
+}
+
+/// One public wrapper after helper and status control flow is explicit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ByteStreamWrapperExecutionPlan {
+    /// Exact public libc routine identity.
+    pub identity: String,
+    /// Ordered pre-layout execution steps.
+    pub steps: Vec<ByteStreamWrapperExecutionStep>,
+}
+
 /// Public byte-stream wrapper plan after raw I/O profile realization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachineByteStreamWrapperPlan {

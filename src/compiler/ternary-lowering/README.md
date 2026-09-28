@@ -46,10 +46,14 @@ raw intrinsic semantics in the exact order implemented by guest stdio: input
 intrinsic then decoder for `getchar`, helper then output intrinsic for
 `putchar`. The raw intrinsic step can now be rebound through the canonical
 target-profile projection to the selected machine opcode while preserving the
-helper recipe, order, and return semantics. Machine wrapper plans now also carry
-the explicit helper execution plan. The canonical libc manifest remains
-unchanged and still marks both routines contracted-unavailable pending wrapper
-branch layout and complete target layout.
+helper recipe, order, and return semantics. Machine wrapper plans also carry
+the explicit helper execution plan.
+
+A follow-on wrapper-control-flow step makes `getchar` initialization/status
+guarding and `putchar` helper/I/O/return order explicit without assigning branch
+addresses. The canonical libc manifest remains unchanged and still marks both
+routines contracted-unavailable pending source-cell placement and complete
+target layout.
 
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
@@ -65,6 +69,6 @@ Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
 one `BindHeap` action before `EnterUserCode` while retaining the exact
 `malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
-bind-call encoding, typed-IR external-call binding, wrapper branch/source
-layout, global layout, target serialization, and complete Malbolge emission
-remain open.
+bind-call encoding, typed-IR external-call binding, wrapper branch-address and
+source-cell placement, global layout, target serialization, and complete
+Malbolge emission remain open.

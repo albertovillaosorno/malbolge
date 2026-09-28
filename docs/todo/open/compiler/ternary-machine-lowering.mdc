@@ -83,6 +83,12 @@ instruction.
   target-profile projection, proving `getchar` uses selected-profile input and
   `putchar` selected-profile output while preserving helper/order/return state.
   Forged plans and colliding profile opcodes fail closed.
+- Wrapper-control-flow realization now re-derives the machine plan before
+  publishing explicit public stdio execution steps. `getchar` initializes EOF,
+  performs machine input, runs helper control flow, guards `VALID`, and returns
+  EOF on helper failure; `putchar` runs its low-byte helper, machine output, and
+  widened return in exact order. Forged helper execution or profile drift fails
+  closed.
 - A pure runtime-helper boundary now admits only
   `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
   current profile. It emits declarative input byte/EOF/status and output
@@ -127,7 +133,8 @@ instruction.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
-  branch/source layout, later runtime helpers, target serialization, and
+  branch-address/source-cell placement, later runtime helpers, target
+  serialization, and
   executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

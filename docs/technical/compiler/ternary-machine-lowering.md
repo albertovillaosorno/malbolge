@@ -79,8 +79,19 @@ intrinsic operations using the checked-in guest stdio order. `getchar` plans
 byte widened to `i32`. A follow-on realization step revalidates the complete
 wrapper plan and replaces only the raw intrinsic with the profile-bound
 `MachineIoOperation`; forged plan order and malformed/colliding profile
-projections fail closed. The canonical libc manifest remains unchanged and both
-routines stay `contracted_unavailable` until helper control flow and target
+projections fail closed.
+
+Wrapper-control-flow realization then re-derives the machine plan before making
+the public wrapper sequence explicit. `getchar` initializes decoded storage to
+EOF, performs machine input, executes the input-helper control flow, guards for
+`VALID`, returns EOF on helper failure, and otherwise returns the decoded `i32`.
+`putchar` executes low-byte helper semantics, performs machine output, and
+returns
+the emitted byte widened to `i32`. No branch address or source-cell placement is
+assigned at this stage.
+
+The canonical libc manifest remains unchanged and both routines stay
+`contracted_unavailable` until wrapper source placement and complete target
 layout are executable.
 
 The separate raw runtime-intrinsic port admits only
@@ -115,8 +126,8 @@ place allocation-capable user code before the required bind.
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
 runtime-call encoding, complete source sequencing, typed-IR external-call
-binding, wrapper branch/source layout, target serialization, and complete
-Malbolge emission remain downstream work.
+binding, wrapper branch-address/source-cell placement, target serialization, and
+complete Malbolge emission remain downstream work.
 
 ### Authoritative Inputs
 
@@ -197,6 +208,12 @@ emitted.
   `getchar`/`putchar` raw I/O to current-profile input/output machine opcodes,
   preserves helper/order/return semantics, and rejects forged order or colliding
   profile opcode projections before publishing a machine operation.
+- Wrapper-control-flow evidence re-derives the machine plan and proves exact
+  `getchar` initialization, machine-input, helper, status-guard, and
+  success-return
+  ordering plus exact `putchar` helper, machine-output, and widened-return
+  ordering. Forged helper execution and target-profile drift fail closed before
+  publishing wrapper control flow.
 - Pure runtime-helper evidence cross-checks the guest-runtime JSON contract, C
   declarations, and byte-stream implementation. It binds only the exact decode
   and low-byte helper identities, copies EOF from `current_profile()`, records
@@ -233,8 +250,8 @@ emitted.
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
 - Global heap placement, executable bind-call/source sequencing, typed-IR
-  external-call binding, and wrapper branch/source layout remain open
-  target-lowering work.
+  external-call binding, and wrapper branch-address/source-cell placement remain
+  open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
