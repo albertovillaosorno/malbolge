@@ -32,7 +32,8 @@
 
 //! End-to-end top-level CLI argument-policy evidence.
 
-use std::process::Command;
+use std::path::Path;
+use std::process::{Command, id};
 
 use malbolge as _;
 
@@ -48,6 +49,8 @@ fn help_is_accepted_only_as_the_sole_argument() -> Result<(), String> {
                 .contains("Usage: malbolge <program.malbolge>")
             || !String::from_utf8_lossy(&output.stdout)
                 .contains("malbolge <program.c> [program args...]")
+            || !String::from_utf8_lossy(&output.stdout)
+                .contains("malbolge --checkpoint-info")
             || !output.stderr.is_empty()
         {
             return Err(format!(
@@ -102,6 +105,80 @@ fn missing_source_is_a_diagnostic_not_help() -> Result<(), String> {
         Err(format!(
             concat!(
                 "missing-source policy mismatch: status={} ",
+                "stdout={} stderr={}",
+            ),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            stderr,
+        ))
+    }
+}
+
+#[test]
+fn checkpoint_info_requires_exactly_one_progress_path() -> Result<(), String> {
+    for arguments in [vec!["--checkpoint-info"], vec![
+        "--checkpoint-info",
+        "first.progress.json",
+        "second.progress.json",
+    ]] {
+        let output =
+            Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .args(&arguments)
+                .output()
+                .map_err(|error| {
+                    format!(
+                        "run checkpoint-info arity case {arguments:?}: {error}",
+                    )
+                })?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success()
+            || !output.stdout.is_empty()
+            || !stderr.contains(
+                "--checkpoint-info requires exactly one progress sidecar path",
+            )
+        {
+            return Err(format!(
+                concat!(
+                    "checkpoint-info arity did not fail closed: {:?}: ",
+                    "status={} stdout={} stderr={}",
+                ),
+                arguments,
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                stderr,
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn checkpoint_info_delegates_validation_to_trusted_inspector()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let missing = root.join(".temp").join(format!(
+        "missing-cli-progress-{}.malbolge.progress.json",
+        id(),
+    ));
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", root)
+        .arg("--checkpoint-info")
+        .arg(&missing)
+        .output()
+        .map_err(|error| {
+            format!("run checkpoint-info inspector case: {error}")
+        })?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains("portable checkpoint inspection failed:")
+        && stderr.contains("progress sidecar is unavailable")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "checkpoint-info did not delegate to inspector: status={} ",
                 "stdout={} stderr={}",
             ),
             output.status,

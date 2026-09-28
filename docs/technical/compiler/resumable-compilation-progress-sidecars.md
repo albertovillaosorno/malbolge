@@ -186,8 +186,12 @@ checkpoint state to execute automatically.
 The optimizer still consumes an explicit extracted file. Typed-IR compiler
 composition now has `resume_typed_ir_from_progress()`, a composition bridge that
 invokes the verified extractor for `malbolge-typed-ir-v1` and immediately reruns
-complete typed-IR checkpoint admission. Product CLI selection of interpreter,
-inspector, and progress path remains open.
+complete typed-IR checkpoint admission. The product `malbolge` CLI now exposes
+`--checkpoint-info PROGRESS.json`: command-line composition selects the
+repository-pinned Python 3.14.6 interpreter plus this trusted inspector and
+delegates metadata validation without parsing sidecar JSON in Rust. Product
+compiler resume selection/wiring remains open because no product compilation
+command yet consumes restored typed IR.
 
 Compiler integration tests now publish real canonical typed-IR generations
 through the production Python sidecar writer, inject process death at every
@@ -219,7 +223,9 @@ publish
 that state itself. Generic checkpoint metadata discovery remains available
 through the progress inspector.
 
-Product CLI sidecar selection/wiring, later compiler-stage codecs, later-stage
+Product CLI metadata inspection is now wired through the trusted inspector.
+Product compiler resume selection/wiring, later compiler-stage codecs,
+later-stage
 and final-artifact crash injection, and later compiler-execution CPU/CUDA resume
 equivalence remain unimplemented.
 

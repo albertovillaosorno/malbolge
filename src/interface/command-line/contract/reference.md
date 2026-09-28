@@ -5,13 +5,34 @@
 ```text
 malbolge <path-to-program.c>
 malbolge <path-to-program.malbolge>
+malbolge --checkpoint-info <path-to-program.malbolge.progress.json>
 ```
 
-The two extensions intentionally mean different things. `--help` and `-h` are
+The two source extensions intentionally mean different things.
+`--checkpoint-info` is a separate progress-inspection command. `--help` and
+`-h` are
 accepted only as standalone arguments; combining help with a path or another
 argument fails closed instead of hiding malformed input. Invoking the command
 without a source path also fails with a diagnostic on stderr and points to
 `--help`; it does not print successful help text to stdout.
+
+## Progress checkpoint inspection
+
+`malbolge --checkpoint-info program.malbolge.progress.json` selects the
+repository-pinned Python 3.14.6 interpreter and the trusted
+`progress_sidecar.py` inspector from the same repository root used by the
+product CLI. The Rust command does not parse sidecar JSON or checkpoint
+payloads.
+It delegates `--checkpoint-info` unchanged, inherits the inspector's
+stdout/stderr, and returns the inspector process status.
+
+The inspector therefore remains the single validation authority for mutable
+sidecar identity, the referenced immutable generation, portable checkpoint
+envelope, resume position, state codec, and payload digest. Missing repository
+tools fail closed before launch. A malformed, missing, or incompatible progress
+path fails through the inspector's existing stable diagnostic boundary. This
+command exposes verified metadata only; opaque checkpoint extraction and
+compiler-stage continuation remain separate capabilities.
 
 ## `.malbolge`: canonical guest execution
 

@@ -55,6 +55,7 @@ use malbolge::{
     parse_capsule,
 };
 
+const CHECKPOINT_INFO_ARGUMENT: &str = "--checkpoint-info";
 const C_EXTENSION: &str = "c";
 const DOOM_IWAD_NAMES: [&str; 8] = [
     "freedoom1.wad",
@@ -506,11 +507,71 @@ fn run() -> Result<ExitCode, String> {
         write_usage()?;
         return Ok(ExitCode::SUCCESS);
     }
+    if first_argument == OsStr::new(CHECKPOINT_INFO_ARGUMENT) {
+        let Some(progress_argument) = arguments.next() else {
+            return Err(String::from(
+                "--checkpoint-info requires exactly one progress sidecar path",
+            ));
+        };
+        if arguments.next().is_some() {
+            return Err(String::from(
+                "--checkpoint-info requires exactly one progress sidecar path",
+            ));
+        }
+        let root = repository_root().ok_or_else(|| {
+            String::from(
+                "cannot locate repository root for progress sidecar inspector",
+            )
+        })?;
+        return run_checkpoint_info(&root, Path::new(&progress_argument));
+    }
     let canonical = PathBuf::from(first_argument)
         .canonicalize()
         .map_err(|error| format!("cannot open source path: {error}"))?;
     let forwarded = arguments.collect::<Vec<_>>();
     dispatch(&canonical, &forwarded)
+}
+
+fn run_checkpoint_info(
+    root: &Path,
+    progress_path: &Path,
+) -> Result<ExitCode, String> {
+    let interpreter = if cfg!(windows) {
+        root.join(".dependencies/python/3.14.6/python.exe")
+    } else {
+        root.join(".dependencies/python/3.14.6/bin/python")
+    };
+    if !interpreter.is_file() {
+        return Err(format!(
+            "repository Python 3.14.6 is missing: {}",
+            interpreter.display(),
+        ));
+    }
+    let inspector = root.join(concat!(
+        "src/automation/repository/composition/scripts/",
+        "progress_sidecar.py",
+    ));
+    if !inspector.is_file() {
+        return Err(format!(
+            "progress sidecar inspector is missing: {}",
+            inspector.display(),
+        ));
+    }
+    let status = Command::new(&interpreter)
+        .arg(&inspector)
+        .arg(CHECKPOINT_INFO_ARGUMENT)
+        .arg(progress_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|error| {
+            format!(
+                "failed to start progress sidecar inspector with '{}': {error}",
+                interpreter.display(),
+            )
+        })?;
+    Ok(exit_code(status))
 }
 
 fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
@@ -720,10 +781,14 @@ fn write_usage() -> Result<(), String> {
     let usage = concat!(
         "Usage: malbolge <program.malbolge>\n",
         "       malbolge <program.c> [program args...]\n",
+        "       malbolge --checkpoint-info ",
+        "<program.malbolge.progress.json>\n",
         "\n",
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
         "  .c         Debug-run C directly on the host via a ",
         "temporary binary.\n",
+        "  --checkpoint-info  Validate and inspect durable checkpoint ",
+        "metadata.\n",
     );
     io::stdout()
         .lock()

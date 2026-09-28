@@ -192,9 +192,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   restore the prior CPU generation; post-replacement crashes restore the new
   CUDA-labelled generation, while checkpoint compatibility remains backend
   neutral.
-- Product CLI sidecar selection/wiring, later compiler-stage codecs,
-  later-stage/final-artifact crash injection, and later compiler-execution
-  CPU/CUDA resume equivalence remain open; this TODO is therefore active.
+- Product CLI metadata inspection now selects repository-pinned Python 3.14.6
+  and the trusted progress inspector for `--checkpoint-info` without duplicating
+  sidecar parsing in Rust. Product compiler resume selection/wiring, later
+  compiler-stage codecs, later-stage/final-artifact crash injection, and later
+  compiler-execution CPU/CUDA resume equivalence remain open; this TODO is
+  therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.
