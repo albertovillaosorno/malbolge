@@ -56,6 +56,7 @@ use super::direct::{
     VerifiedExecutionGeometryNativeArtifact,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedInputNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
@@ -85,7 +86,8 @@ use super::lifecycle::{
 use super::loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
-    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedInputLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationHaltLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationPairLoadImage,
@@ -295,6 +297,13 @@ pub enum VerifiedRegisterMaskedInvocationError {
         /// Data pointer supplied by the rebased runtime observation.
         observed: u32,
     },
+    /// The runtime input cursor differs from the required live history.
+    EntryInputConsumed {
+        /// Input cursor retained by the verified v6 program.
+        expected: usize,
+        /// Input cursor supplied by the rebased runtime observation.
+        observed: usize,
+    },
     /// The runtime output length differs from the required live history.
     EntryOutputLength {
         /// Output length retained by the verified v6 program.
@@ -353,6 +362,18 @@ pub struct PreparedRegisterMaskedCrazyInvocation<'artifact, 'buffers> {
     artifact: &'artifact VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedCrazyLoadImage,
+}
+
+/// One verified v6 input artifact bound to a rebased ABI transition.
+///
+/// C/D and input history remain exact live-ins while entry A and output history
+/// may rebase. This value proves exact preparation/completion and grants no
+/// executable lifecycle or runner authority.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedInputInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedRegisterMaskedInputNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedInputLoadImage,
 }
 
 /// One verified v6 output artifact bound to a rebased ABI transition.
@@ -706,6 +727,9 @@ impl VerifiedRegisterMaskedInvocationError {
             },
             Self::EntryDataPointer { .. } => {
                 "rebased v6 entry changed the required data pointer"
+            },
+            Self::EntryInputConsumed { .. } => {
+                "rebased v6 entry changed the required input cursor"
             },
             Self::EntryOutputLength { .. } => {
                 "rebased v6 entry changed the required output length"
@@ -1126,6 +1150,119 @@ impl<'artifact, 'buffers>
 
     /// Returns the mutable ABI state pointer for contract-only completion
     /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared v6 call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedRegisterMaskedInputInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete rebased entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed input transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified v6 input artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedInputNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Admits one raw status through the rebased input contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error when exact application or atomic
+    /// guard-miss requirements are violated.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful observation derived from the rebased entry.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free v6 input image.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedRegisterMaskedInputLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified input call over a mask-preserving entry.
+    ///
+    /// C, D, and the input cursor must match their source live-ins. Entry A and
+    /// output history may rebase because input overwrites A and emits no
+    /// output.
+    ///
+    /// # Errors
+    ///
+    /// Returns a v6 invocation error for identity, live register, input cursor,
+    /// buffer, memory, or load-image disagreement.
+    pub fn new(
+        artifact: &'artifact VerifiedRegisterMaskedInputNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_input_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image = VerifiedRegisterMaskedInputLoadImage::new(artifact)
+            .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::new_register_masked_input(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the prepared v6 artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only tests.
     #[must_use]
     pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
         self.invocation.state_mut_ptr()
@@ -4330,6 +4467,35 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    fn new_register_masked_input(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [source] = program.effects.as_slice() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if program.step_budget != 1
+            || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+            || source.before.termination.is_some()
+            || source.after.termination.is_some()
+            || source.input.is_none()
+            || source.output.is_some()
+            || program.memory_live_ins.len() != 1
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let mut effect = *source;
+        effect.before = entry;
+        effect.after.output_len = entry.output_len;
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            buffers,
+        )
+    }
+
     fn new_register_masked_no_operation(
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
@@ -4751,6 +4917,39 @@ fn validate_register_masked_crazy_rebased_entry(
             expected: expected_data_pointer,
             observed: observed_data_pointer,
         });
+    }
+    Ok(())
+}
+
+fn validate_register_masked_input_rebased_entry(
+    artifact_key: &NativeArtifactKey,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), VerifiedRegisterMaskedInvocationError> {
+    validate_register_masked_rebased_entry(artifact_key, program, entry)?;
+    let source_entry =
+        program.effects.first().map(|effect| effect.before).ok_or(
+            VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::ProgramShape,
+            ),
+        )?;
+    let expected_data_pointer = source_entry.registers.data_pointer;
+    let observed_data_pointer = entry.registers.data_pointer;
+    if observed_data_pointer != expected_data_pointer {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected: expected_data_pointer,
+            observed: observed_data_pointer,
+        });
+    }
+    let expected = source_entry.input_consumed;
+    let observed = entry.input_consumed;
+    if observed != expected {
+        return Err(
+            VerifiedRegisterMaskedInvocationError::EntryInputConsumed {
+                expected,
+                observed,
+            },
+        );
     }
     Ok(())
 }

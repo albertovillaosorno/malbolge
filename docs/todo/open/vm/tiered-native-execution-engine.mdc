@@ -889,9 +889,13 @@ behavior.
   canonical x86-64/AArch64 COFF. Tests prove dead entry accumulator state can
   change complete artifact identity without changing machine text, while live
   input state changes the reviewed object bytes; byte and EOF shapes both pass
-  exact verification. Sealed register-masked AOT preparation now includes Input
-  objects. Executable Input lifecycle/mapping/invocation and both jump
-  instruction families remain open and fail closed.
+  exact verification. Sealed register-masked AOT preparation includes Input
+  objects.
+
+  Relocation-free load images and semantic invocation preparation now
+  retain exact C/D plus input cursor state while allowing dead A/output-history
+  rebasing for byte and EOF transitions. Executable Input mapping/binding/runner
+  coverage and both jump instruction families remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

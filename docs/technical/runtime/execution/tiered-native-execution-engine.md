@@ -2281,11 +2281,14 @@ input derivation with the v6 profile capacity supplied explicitly.
 x86-64/AArch64 COFF for both byte and EOF input. Machine text guards live C/D,
 the exact input cursor/value state, code live-in, memory extent, and prior
 termination while omitting dead entry accumulator and output history. Object
-authority is available to sealed AOT preparation, but executable lifecycle,
-mapping, and invocation remain explicitly unavailable and fail closed.
+authority is available to sealed AOT preparation.
 
-Register-masked Input lifecycle coverage and both JumpCode and JumpData families
-remain open; unsupported v6 execution remains fail-closed.
+Input now also has a relocation-free load image and a semantic invocation
+boundary before executable mapping. Preparation requires exact C/D and input
+cursor live state, permits entry A and output-history rebasing, and validates
+byte/EOF completion against the same atomic invocation contract used by the
+other v6 one-step forms. Executable mapping/binding/runner coverage and both
+JumpCode and JumpData families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

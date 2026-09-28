@@ -505,6 +505,7 @@ use execution_native::{
     PreparedRegisterMaskedCrazyInvocation,
     PreparedRegisterMaskedCrazyNativeInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
+    PreparedRegisterMaskedInputInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNoOperationNativeInvocation,
@@ -647,6 +648,7 @@ use execution_native::{
     VerifiedRegisterMaskedCrazyLoadImage,
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedInputLoadImage,
     VerifiedRegisterMaskedInputNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
@@ -7286,6 +7288,162 @@ fn register_masked_v6_input_verifier_rejects_drift() -> TieredTestResult {
                 "v6 input verifier lost backend identity",
             ));
         }
+    }
+    Ok(())
+}
+
+fn apply_register_masked_input_expected(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 input expected effect missing"))?;
+    for write in [effect.memory_delta.data, effect.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 input expected address: {error}"))?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 input expected write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_load_images_cover_byte_and_eof() -> TieredTestResult
+{
+    for input in [vec![0x41], Vec::new()] {
+        let program = canonical_register_masked_input_program(input)?;
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            let artifact = verified_register_masked_input(&program, isa)?;
+            let image = VerifiedRegisterMaskedInputLoadImage::new(&artifact)
+                .map_err(|error| {
+                    format!("v6 {isa:?} input load image: {error}")
+                })?;
+            if image.key() != artifact.key()
+                || image.target() != artifact.key().target()
+                || image.target_triple() != artifact.target_triple()
+                || image.code().is_empty()
+                || image.entry_code().is_empty()
+            {
+                return Err(format!(
+                    "v6 {isa:?} input load-image identity drifted",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_invocation_rebases_dead_state() -> TieredTestResult
+{
+    for input in [vec![0x41], Vec::new()] {
+        let program = canonical_register_masked_input_program(input.clone())?;
+        let artifact =
+            verified_register_masked_input(&program, HostIsa::X86_64)?;
+        let source = program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 input invocation effect missing")
+        })?;
+        let mut entry = source.before;
+        entry.registers.accumulator ^= 0x55aa_33cc;
+        entry.output_len = 2;
+        let mut expected = source.after;
+        expected.output_len = entry.output_len;
+        let mut memory = register_masked_program_memory(&program)?;
+        let mut expected_memory = memory.clone();
+        apply_register_masked_input_expected(&program, &mut expected_memory)?;
+        let mut output = [9u8, 8, 7, 6];
+        let expected_output = output;
+        let mut prepared = PreparedRegisterMaskedInputInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 input invocation prepare: {error}"))?;
+        if prepared.expected_observation() != expected
+            || prepared.load_image().key() != artifact.key()
+        {
+            return Err(String::from("v6 input rebased preparation drifted"));
+        }
+        prepared.apply_expected_for_test();
+        let outcome = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("v6 input completion: {error}"))?;
+        if outcome != NativeRegionInvocationOutcome::Applied(expected)
+            || memory != expected_memory
+            || output != expected_output
+        {
+            return Err(String::from("v6 input rebased application drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_invocation_rejects_live_state_drift()
+-> TieredTestResult {
+    let input = vec![0x41];
+    let program = canonical_register_masked_input_program(input.clone())?;
+    let artifact = verified_register_masked_input(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 input live-state effect missing")
+        })?;
+
+    let mut cursor_entry = source.before;
+    let expected_cursor = cursor_entry.input_consumed;
+    cursor_entry.input_consumed = cursor_entry.input_consumed.saturating_add(1);
+    let observed_cursor = cursor_entry.input_consumed;
+    let mut cursor_memory = register_masked_program_memory(&program)?;
+    let mut cursor_output = [0u8; 4];
+    let cursor_result = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        cursor_entry,
+        NativeRegionBuffers::new(
+            &mut cursor_memory,
+            &input,
+            &mut cursor_output,
+        ),
+    );
+    if !matches!(
+        cursor_result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryInputConsumed {
+            expected,
+            observed,
+        }) if expected == expected_cursor && observed == observed_cursor
+    ) {
+        return Err(String::from("v6 input cursor drift was admitted"));
+    }
+
+    let mut data_entry = source.before;
+    let expected_data = data_entry.registers.data_pointer;
+    data_entry.registers.data_pointer =
+        data_entry.registers.data_pointer.wrapping_add(1);
+    let observed_data = data_entry.registers.data_pointer;
+    let mut data_memory = register_masked_program_memory(&program)?;
+    let mut data_output = [0u8; 4];
+    let data_result = PreparedRegisterMaskedInputInvocation::new(
+        &artifact,
+        &program,
+        data_entry,
+        NativeRegionBuffers::new(&mut data_memory, &input, &mut data_output),
+    );
+    if !matches!(
+        data_result,
+        Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected,
+            observed,
+        }) if expected == expected_data && observed == observed_data
+    ) {
+        return Err(String::from("v6 input data-pointer drift was admitted"));
     }
     Ok(())
 }
