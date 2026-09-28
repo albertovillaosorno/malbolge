@@ -123,6 +123,8 @@ use super::{
     validate_output_target, validate_register_masked_crazy_program,
     validate_register_masked_halt_fetch_program,
     validate_register_masked_input_program,
+    validate_register_masked_jump_code_program,
+    validate_register_masked_jump_data_program,
     validate_register_masked_no_operation_program,
     validate_register_masked_non_graphical_program,
     validate_register_masked_output_program,
@@ -852,6 +854,39 @@ fn emit_verified_no_operation(
     Ok(VerifiedDirectNativeArtifact::NoOperation(verified))
 }
 
+fn register_masked_direct_kind(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Option<DirectNativeKind> {
+    if validate_register_masked_halt_fetch_program(program).is_ok() {
+        return Some(DirectNativeKind::HaltFetch);
+    }
+    if validate_register_masked_non_graphical_program(program).is_ok() {
+        return Some(DirectNativeKind::NonGraphical);
+    }
+    if validate_register_masked_no_operation_program(program).is_ok() {
+        return Some(DirectNativeKind::NoOperation);
+    }
+    if validate_register_masked_crazy_program(program).is_ok() {
+        return Some(DirectNativeKind::Crazy);
+    }
+    if validate_register_masked_input_program(program).is_ok() {
+        return Some(DirectNativeKind::Input);
+    }
+    if validate_register_masked_jump_code_program(program).is_ok() {
+        return Some(DirectNativeKind::JumpCode);
+    }
+    if validate_register_masked_jump_data_program(program).is_ok() {
+        return Some(DirectNativeKind::JumpData);
+    }
+    if validate_register_masked_output_program(program).is_ok() {
+        return Some(DirectNativeKind::Output);
+    }
+    if validate_register_masked_rotate_program(program).is_ok() {
+        return Some(DirectNativeKind::Rotate);
+    }
+    None
+}
+
 /// Admits one reviewed register-masked v6 semantic shape without host code.
 ///
 /// Canonical profile identity and portable profile/runtime preflight run before
@@ -885,49 +920,9 @@ pub fn admit_register_masked_direct_native<'requirement>(
     .map_err(RegisterMaskedDirectAdmissionError::profile)?;
     let identity = RegionEffectIdentity::new_register_masked(program)
         .map_err(RegisterMaskedDirectAdmissionError::identity)?;
-    if validate_register_masked_halt_fetch_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::HaltFetch,
-        ));
-    }
-    if validate_register_masked_non_graphical_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::NonGraphical,
-        ));
-    }
-    if validate_register_masked_no_operation_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::NoOperation,
-        ));
-    }
-    if validate_register_masked_crazy_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::Crazy,
-        ));
-    }
-    if validate_register_masked_input_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::Input,
-        ));
-    }
-    if validate_register_masked_output_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::Output,
-        ));
-    }
-    if validate_register_masked_rotate_program(program).is_ok() {
-        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
-            identity,
-            DirectNativeKind::Rotate,
-        ));
-    }
-    Err(RegisterMaskedDirectAdmissionError::unsupported_program())
+    let kind = register_masked_direct_kind(program)
+        .ok_or_else(RegisterMaskedDirectAdmissionError::unsupported_program)?;
+    Ok(VerifiedRegisterMaskedDirectAdmission::new(identity, kind))
 }
 
 /// Selects and independently verifies one reviewed explicit-geometry template.

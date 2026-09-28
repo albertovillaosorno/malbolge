@@ -370,6 +370,11 @@ adapter work on hits and enforces entry, mapping, and mapped-byte limits.
 Borrowed cached chains execute through retained mappings. Invalidation and
 eviction, reconfiguration, and release failures preserve retry ownership.
 
+Register-masked JumpCode and JumpData now have host-independent v6 semantic
+admission with exact C/D read/write masks. Existing jump semantics are reused
+with v6 profile memory geometry supplied explicitly; native object and residency
+authority for those two families remains fail closed.
+
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
 live-in, exact memory extent, prior termination, and output capacity. Input

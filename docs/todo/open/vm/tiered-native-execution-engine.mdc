@@ -936,7 +936,13 @@ behavior.
   Borrowed cached chains execute through retained mappings. Invalidation,
   eviction, reconfiguration, and release failures preserve retry ownership.
 
-  Both jump instruction families remain open and fail closed.
+  Register-masked JumpCode and JumpData now have host-independent v6 semantic
+  admission. Both require exact C/D live-ins and C/D writes while accumulator
+  remains dead; existing jump derivation is reused with v6 profile memory
+  geometry supplied explicitly.
+
+  JumpCode/JumpData v6 object emission, verification, loading, execution, and
+  residency remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

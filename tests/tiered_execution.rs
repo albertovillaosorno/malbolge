@@ -4679,6 +4679,46 @@ fn canonical_register_masked_input_program(
         .map_err(|error| format!("v6 input projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_jump_code_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_jump_code_jump_data_sequence_state()?,
+    );
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| {
+            format!("v6 jump-code fixture step failed: {error}")
+        })?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 jump-code fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 jump-code trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 jump-code projection failed: {error:?}"))
+}
+
+fn canonical_register_masked_jump_data_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut machine = ProfileMachine::from_snapshot(
+        direct_jump_data_jump_code_sequence_state()?,
+    );
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| {
+            format!("v6 jump-data fixture step failed: {error}")
+        })?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 jump-data fixture did not continue"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 jump-data trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 jump-data projection failed: {error:?}"))
+}
+
 fn canonical_register_masked_input_programs()
 -> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
     let state = direct_input_data_state(
@@ -7070,6 +7110,93 @@ fn register_masked_v6_input_admission_tracks_masks() -> TieredTestResult {
         assert_register_masked_input_mask_rejections(&program)?;
     }
     Ok(())
+}
+
+fn assert_register_masked_jump_masks(
+    program: &RegisterMaskedRegionEffectProgram,
+    kind: DirectNativeKind,
+) -> TieredTestResult {
+    let expected = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if program.register_live_ins != expected
+        || program.register_writes.as_slice() != [expected]
+    {
+        return Err(format!("v6 {kind:?} trace masks drifted"));
+    }
+    let admission = admit_register_masked_direct_native(
+        program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 {kind:?} admission failed: {error}"))?;
+    if admission.kind() != kind {
+        return Err(format!("v6 {kind:?} admission selected wrong kind"));
+    }
+
+    let mut invented_accumulator_read = program.clone();
+    invented_accumulator_read.register_live_ins.accumulator = true;
+    if admit_register_masked_direct_native(
+        &invented_accumulator_read,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(format!("v6 {kind:?} admitted invented accumulator read"));
+    }
+
+    let mut missing_data_write = program.clone();
+    let writes = missing_data_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| format!("v6 {kind:?} write mask missing"))?;
+    writes.data_pointer = false;
+    if admit_register_masked_direct_native(
+        &missing_data_write,
+        safe_rust_profiled_capability(),
+    )
+    .is_ok()
+    {
+        return Err(format!("v6 {kind:?} admitted missing data write"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_code_admission_tracks_masks() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 JumpCode admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 JumpCode identity failed: {error:?}"))?;
+    if admission.identity() != &identity {
+        return Err(String::from(
+            "v6 JumpCode admission lost complete identity",
+        ));
+    }
+    assert_register_masked_jump_masks(&program, DirectNativeKind::JumpCode)
+}
+
+#[test]
+fn register_masked_v6_jump_data_admission_tracks_masks() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 JumpData admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 JumpData identity failed: {error:?}"))?;
+    if admission.identity() != &identity {
+        return Err(String::from(
+            "v6 JumpData admission lost complete identity",
+        ));
+    }
+    assert_register_masked_jump_masks(&program, DirectNativeKind::JumpData)
 }
 
 fn assert_register_masked_output_mask_rejections(

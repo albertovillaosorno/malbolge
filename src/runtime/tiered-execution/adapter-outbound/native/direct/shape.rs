@@ -1124,6 +1124,74 @@ pub(super) fn validate_register_masked_non_graphical_program(
     }
 }
 
+fn register_masked_jump_masks_supported(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> bool {
+    let expected = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied() == Some(expected)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_jump_code_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectJumpCodeProgram, DirectJumpCodeError> {
+    if !register_masked_jump_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 3
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectJumpCodeError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectJumpCodeError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectJumpCodeError::ProgramShape)?;
+    derive_jump_code_program_with_memory_words(
+        &program.program,
+        effect,
+        memory_words,
+    )
+    .ok_or(DirectJumpCodeError::ProgramShape)
+}
+
+pub(super) fn validate_register_masked_jump_data_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectJumpDataProgram, DirectJumpDataError> {
+    if !register_masked_jump_masks_supported(program)
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectJumpDataError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectJumpDataError::ProgramShape)?;
+    let memory_words = u32::try_from(program.profile_requirement.memory_words)
+        .map_err(|_error| DirectJumpDataError::ProgramShape)?;
+    derive_jump_data_program_with_memory_words(
+        &program.program,
+        effect,
+        memory_words,
+    )
+    .ok_or(DirectJumpDataError::ProgramShape)
+}
+
 fn register_masked_no_operation_masks_supported(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> bool {
@@ -1603,6 +1671,15 @@ pub(super) fn derive_jump_code_program(
     program: &RegionEffectProgram,
     effect: EffectOp,
 ) -> Option<DirectJumpCodeProgram> {
+    let memory_words = direct_memory_words(program)?;
+    derive_jump_code_program_with_memory_words(program, effect, memory_words)
+}
+
+fn derive_jump_code_program_with_memory_words(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    memory_words: u32,
+) -> Option<DirectJumpCodeProgram> {
     let before = effect.before;
     let code_pointer = before.registers.code_pointer;
     let data_pointer = before.registers.data_pointer;
@@ -1615,7 +1692,6 @@ pub(super) fn derive_jump_code_program(
     {
         return None;
     }
-    let memory_words = direct_memory_words(program)?;
     let encryption_pointer = data_live_in.value;
     let encrypted_value = encrypt_profile_cell(encryption_live_in.value)?;
     let next_code_pointer =
@@ -1726,6 +1802,15 @@ pub(super) fn derive_jump_data_program(
     program: &RegionEffectProgram,
     effect: EffectOp,
 ) -> Option<DirectJumpDataProgram> {
+    let memory_words = direct_memory_words(program)?;
+    derive_jump_data_program_with_memory_words(program, effect, memory_words)
+}
+
+fn derive_jump_data_program_with_memory_words(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    memory_words: u32,
+) -> Option<DirectJumpDataProgram> {
     let before = effect.before;
     let code_pointer = before.registers.code_pointer;
     let (code_live_in, data_live_in) = jump_data_live_ins(program, before)?;
@@ -1734,7 +1819,6 @@ pub(super) fn derive_jump_data_program(
     {
         return None;
     }
-    let memory_words = direct_memory_words(program)?;
     let encrypted_value = encrypt_profile_cell(code_live_in.value)?;
     let next_code_pointer =
         profile_pointer_successor(code_pointer, memory_words)?;

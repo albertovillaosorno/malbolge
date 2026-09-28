@@ -2331,7 +2331,13 @@ adapter work on hits and enforces entry, mapping, and mapped-byte limits.
 Borrowed cached chains execute through retained mappings. Invalidation and
 eviction, reconfiguration, and release failures preserve retry ownership.
 
-Both JumpCode and JumpData v6 families remain open and fail closed.
+Register-masked JumpCode and JumpData now have host-independent v6 semantic
+admission. Both require exact C/D live-ins and C/D writes with dead accumulator
+state excluded from semantic dependencies; their existing jump derivation is
+reused with v6 profile memory geometry supplied explicitly.
+
+JumpCode/JumpData v6 object emission, verification, loading, execution, and
+residency remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
