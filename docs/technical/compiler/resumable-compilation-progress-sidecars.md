@@ -156,10 +156,12 @@ behavior at the call site.
 Focused differential evidence now covers both accelerator-backed search
 strategies. Rotate-target and crazy-target each produce byte-identical CPU/CUDA
 checkpoint payloads, resume CPU-produced state on CUDA, resume CUDA-produced
-state on CPU, and match uninterrupted CPU proposals. Prepared checkpoint resume
-additionally proves a CPU-produced projected prefix resumes on live CUDA with
-matching proposals. Full bidirectional prepared and later compiler-execution
-CPU/CUDA resume equivalence remain open.
+state on CPU, and match uninterrupted CPU proposals. Prepared resume now proves
+the same bidirectional backend neutrality: crazy-target carries a non-empty
+partial prefix across CPU-to-CUDA and CUDA-to-CPU execution, while rotate-target
+proves its one-item completed projection is byte-identical and accepted by both
+backend consumers. Later compiler-execution CPU/CUDA resume equivalence remains
+open.
 
 Canonical typed-IR durable state is already backend-identity neutral.
 
@@ -422,7 +424,8 @@ jobs that requested resumability.
   pointer, proving backend identity does not become ternary checkpoint state.
 - Prepared-search resume tests cover partial and completed projected prefixes,
   empty rotate prefixes, exact projected-batch binding, uninterrupted prepared
-  equivalence, and CPU-produced checkpoint resume through live CUDA.
+  equivalence, and live bidirectional CPU/CUDA resume for rotate and crazy
+  targets with byte-identical backend-neutral checkpoint state.
 - Search CLI tests cover CPU resume, unavailable-CUDA fallback, live CUDA
   resume, unsupported-algorithm rejection, checkpoint file loading,
   malformed-state rejection, resumed JSON checkpoint/executor provenance, and

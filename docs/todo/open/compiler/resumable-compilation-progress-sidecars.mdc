@@ -155,7 +155,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   explicit primitive suffix preparers.
   `tests/optimizer/test_resumable_prepared_search.py` covers partial/completed
   prefixes, projected-batch mismatch rejection, uninterrupted equivalence, and
-  CPU checkpoint resume through live CUDA.
+  live bidirectional CPU/CUDA resume. Crazy-target moves a non-empty partial
+  prefix in both directions with byte-identical checkpoints; rotate-target's
+  one-item prepared projection proves completed CPU/CUDA state is also
+  byte-identical and accepted by either backend consumer.
 - `optimizer.cli` accepts `--resume-checkpoint` for rotate/crazy inner search
   state, preserves configured/actual backend identity and accelerator-failure
   fallback, rejects malformed/unsupported resume state, and emits checkpoint

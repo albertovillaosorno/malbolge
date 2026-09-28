@@ -58,6 +58,7 @@ from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import cpu_rotate_target_prepared_resume_execution
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_prepared_resume_execution
 import pytest
 
 if TYPE_CHECKING:
@@ -71,10 +72,10 @@ CUDA_BACKEND = "cuda"
 ROTATE_ONE = 19_683
 
 
-def _prefix_checkpoint(
+def _prefix_checkpoint_with_evaluator(
     execution: ResumablePreparedEvaluatedSearchExecution,
     request: SearchRequest,
-    kind: PrimitiveKind,
+    evaluator: PrimitiveCandidateEvaluationAdapter,
     *,
     completed: int,
 ) -> tuple[bytes, CandidateEvaluationBatch]:
@@ -83,16 +84,31 @@ def _prefix_checkpoint(
         evaluator_id=batch.evaluator_id,
         items=tuple(batch.items[index] for index in range(completed)),
     ).validated()
-    evaluator = PrimitiveCandidateEvaluationAdapter(
-        CpuExactPrimitiveAdapter(),
-        kind,
-    )
     result = evaluator.evaluate(prefix_batch)
     evidence = result.materialized_items_against(
         prefix_batch,
         evaluator.capability(),
     )
     return encode_search_checkpoint(request, batch, evidence), batch
+
+
+def _prefix_checkpoint(
+    execution: ResumablePreparedEvaluatedSearchExecution,
+    request: SearchRequest,
+    kind: PrimitiveKind,
+    *,
+    completed: int,
+) -> tuple[bytes, CandidateEvaluationBatch]:
+    evaluator = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        kind,
+    )
+    return _prefix_checkpoint_with_evaluator(
+        execution,
+        request,
+        evaluator,
+        completed=completed,
+    )
 
 
 def _crazy_request() -> SearchRequest:
@@ -225,3 +241,99 @@ def test_cpu_prepared_checkpoint_resumes_on_live_cuda() -> None:
     assert observed.proposals == expected.proposals
     assert observed.seed == expected.seed
     assert observed.capability.backend_id == CUDA_BACKEND
+
+
+def test_cuda_prepared_checkpoint_resumes_on_cpu_without_drift() -> None:
+    """CUDA prepared prefix is byte-identical and resumes through CPU."""
+    request = _crazy_request()
+    cpu_execution = cpu_crazy_target_prepared_resume_execution()
+    cpu_checkpoint = _prefix_checkpoint(
+        cpu_execution,
+        request,
+        PrimitiveKind.CRAZY,
+        completed=1,
+    )[0]
+    reference = cpu_crazy_target_search_adapter()
+    expected = reference.search_prepared(reference.prepare(request))
+    try:
+        cuda = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with cuda:
+        evaluator = PrimitiveCandidateEvaluationAdapter(
+            cuda,
+            PrimitiveKind.CRAZY,
+        )
+        cuda_checkpoint, _ = _prefix_checkpoint_with_evaluator(
+            crazy_target_prepared_resume_execution(cuda),
+            request,
+            evaluator,
+            completed=1,
+        )
+    observed = cpu_execution.resume(request, cuda_checkpoint)
+
+    assert cuda_checkpoint == cpu_checkpoint
+    assert observed == expected
+    assert observed.capability == expected.capability
+
+
+def test_rotate_cpu_prepared_checkpoint_resumes_on_live_cuda() -> None:
+    """Completed CPU rotate checkpoint remains valid on the CUDA consumer."""
+    request = _rotate_request()
+    cpu_execution = cpu_rotate_target_prepared_resume_execution()
+    checkpoint, batch = _prefix_checkpoint(
+        cpu_execution,
+        request,
+        PrimitiveKind.ROTATE,
+        completed=1,
+    )
+    reference = cpu_rotate_target_search_adapter()
+    expected = reference.search_prepared(reference.prepare(request))
+    try:
+        cuda = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with cuda:
+        observed = rotate_target_prepared_resume_execution(cuda).resume(
+            request,
+            checkpoint,
+        )
+
+    assert len(batch.items) == 1
+    assert observed.proposals == expected.proposals
+    assert observed.seed == expected.seed
+    assert observed.capability.backend_id == CUDA_BACKEND
+
+
+def test_cuda_rotate_prepared_checkpoint_resumes_on_cpu_without_drift() -> None:
+    """Completed CUDA rotate state encodes identically and resumes on CPU."""
+    request = _rotate_request()
+    cpu_execution = cpu_rotate_target_prepared_resume_execution()
+    cpu_checkpoint, _ = _prefix_checkpoint(
+        cpu_execution,
+        request,
+        PrimitiveKind.ROTATE,
+        completed=1,
+    )
+    reference = cpu_rotate_target_search_adapter()
+    expected = reference.search_prepared(reference.prepare(request))
+    try:
+        cuda = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with cuda:
+        evaluator = PrimitiveCandidateEvaluationAdapter(
+            cuda,
+            PrimitiveKind.ROTATE,
+        )
+        cuda_checkpoint, _ = _prefix_checkpoint_with_evaluator(
+            rotate_target_prepared_resume_execution(cuda),
+            request,
+            evaluator,
+            completed=1,
+        )
+    observed = cpu_execution.resume(request, cuda_checkpoint)
+
+    assert cuda_checkpoint == cpu_checkpoint
+    assert observed == expected
+    assert observed.capability == expected.capability
