@@ -90,6 +90,11 @@ instruction.
   realized opcode at an already-chosen code position; tests exhaust all 94 VM
   decode phases for both current-profile I/O operations and reject missing or
   ambiguous inverse decoders.
+- The typed semantic slice now also lowers `i32` bitwise AND and validated
+  `i32`-to-`u8` truncation. A canonical round-trip fixture proves the exact
+  `value & 255` then truncate path can feed `ByteOutput`, matching the operation
+  vocabulary required by `malbolge_guest_output_byte`; fabricated type or SSA
+  drift fails closed. Direct runtime-helper call recognition remains separate.
 - A layout-resolved startup request now carries the exact ABI/profile/bind
   symbol,
   guest arena pointer/capacity, and user entry identity. Startup planning
@@ -99,8 +104,8 @@ instruction.
   runtime header/JSON authority and reject identity or extent drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
-  layout/source sequencing, guest-runtime C EOF/helper lowering, later runtime
-  helpers, target
+  layout/source sequencing, direct runtime-helper call integration, input EOF
+  mapping, later runtime helpers, target
   serialization, and executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

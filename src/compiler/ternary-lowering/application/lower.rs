@@ -49,6 +49,18 @@ const ABI_ID: &str = "malbolge-c32-v1";
 const TARGET_PROFILE: &str = "malbolge-2026";
 const TYPED_IR_VERSION: u16 = 1;
 
+type BinaryAndInput = (u32, u32, u32, InputSourceSpan, InputScalarType);
+type ByteInput = (u32, InputSourceSpan, InputScalarType);
+type ConstantI32Input<'input> =
+    (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
+type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
+
+#[derive(Default)]
+struct LoweringState {
+    byte_values: Vec<u32>,
+    i32_values: Vec<u32>,
+}
+
 /// Stable failures for the implemented ternary lowering slice.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryLoweringError {
@@ -93,15 +105,10 @@ fn lower_function(
         return Err(TernaryLoweringError::UnsupportedFunction);
     }
 
-    let mut byte_values = Vec::new();
-    let mut i32_values = Vec::new();
+    let mut state = LoweringState::default();
     let mut operations = Vec::new();
     for instruction in &block.instructions {
-        operations.push(lower_instruction(
-            instruction,
-            &mut byte_values,
-            &mut i32_values,
-        )?);
+        operations.push(lower_instruction(instruction, &mut state)?);
     }
 
     let InputTerminator::Return { span: return_span, value } = block.terminator
@@ -111,7 +118,7 @@ fn lower_function(
     let Some(return_value) = value else {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
-    if !i32_values.contains(&return_value) {
+    if !state.i32_values.contains(&return_value) {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     }
     operations.push(TernaryOperation::Return {
@@ -129,29 +136,23 @@ fn lower_function(
 
 fn lower_instruction(
     instruction: &InputInstruction,
-    byte_values: &mut Vec<u32>,
-    i32_values: &mut Vec<u32>,
+    state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     match instruction {
+        InputInstruction::BinaryAnd {
+            left,
+            result,
+            right,
+            span,
+            type_kind,
+        } => {
+            lower_binary_and((*left, *result, *right, *span, *type_kind), state)
+        },
         InputInstruction::ByteInput { result, span, type_kind } => {
-            if *type_kind != InputScalarType::U8 {
-                return Err(TernaryLoweringError::UnsupportedInstruction);
-            }
-            ensure_new_value(byte_values, i32_values, *result)?;
-            byte_values.push(*result);
-            Ok(TernaryOperation::ByteInput {
-                result: *result,
-                span: copy_span(*span),
-            })
+            lower_byte_input((*result, *span, *type_kind), state)
         },
         InputInstruction::ByteOutput { span, value } => {
-            if !byte_values.contains(value) {
-                return Err(TernaryLoweringError::UnsupportedInstruction);
-            }
-            Ok(TernaryOperation::ByteOutput {
-                span: copy_span(*span),
-                value: *value,
-            })
+            lower_byte_output(*span, *value, state)
         },
         InputInstruction::ConstantInteger {
             bit_width,
@@ -159,34 +160,124 @@ fn lower_instruction(
             result,
             span,
             type_kind,
-        } => {
-            if *bit_width != 32 || *type_kind != InputScalarType::I32 {
-                return Err(TernaryLoweringError::UnsupportedInstruction);
-            }
-            let bytes: [u8; 4] =
-                little_endian.as_slice().try_into().map_err(|_error| {
-                    TernaryLoweringError::UnsupportedInstruction
-                })?;
-            ensure_new_value(byte_values, i32_values, *result)?;
-            i32_values.push(*result);
-            Ok(TernaryOperation::MaterializeI32 {
-                result: *result,
-                scalar: TernaryI32Scalar::from_bits(u32::from_le_bytes(bytes)),
-                span: copy_span(*span),
-            })
-        },
+        } => lower_constant_i32(
+            (
+                *bit_width,
+                little_endian.as_slice(),
+                *result,
+                *span,
+                *type_kind,
+            ),
+            state,
+        ),
+        InputInstruction::TruncateInteger {
+            result,
+            span,
+            type_kind,
+            value,
+        } => lower_truncate_i32_to_u8(
+            (*result, *span, *type_kind, *value),
+            state,
+        ),
         InputInstruction::Unsupported => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
 }
 
+fn lower_binary_and(
+    input: BinaryAndInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right, span, type_kind) = input;
+    if type_kind != InputScalarType::I32
+        || !state.i32_values.contains(&left)
+        || !state.i32_values.contains(&right)
+    {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    state.i32_values.push(result);
+    Ok(TernaryOperation::AndI32 {
+        left,
+        result,
+        right,
+        span: copy_span(span),
+    })
+}
+
+fn lower_byte_input(
+    input: ByteInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind) = input;
+    if type_kind != InputScalarType::U8 {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    state.byte_values.push(result);
+    Ok(TernaryOperation::ByteInput {
+        result,
+        span: copy_span(span),
+    })
+}
+
+fn lower_byte_output(
+    span: InputSourceSpan,
+    value: u32,
+    state: &LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    if !state.byte_values.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    Ok(TernaryOperation::ByteOutput {
+        span: copy_span(span),
+        value,
+    })
+}
+
+fn lower_constant_i32(
+    input: ConstantI32Input<'_>,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (bit_width, little_endian, result, span, type_kind) = input;
+    if bit_width != 32 || type_kind != InputScalarType::I32 {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let bytes: [u8; 4] = little_endian
+        .try_into()
+        .map_err(|_error| TernaryLoweringError::UnsupportedInstruction)?;
+    ensure_new_value(state, result)?;
+    state.i32_values.push(result);
+    Ok(TernaryOperation::MaterializeI32 {
+        result,
+        scalar: TernaryI32Scalar::from_bits(u32::from_le_bytes(bytes)),
+        span: copy_span(span),
+    })
+}
+
+fn lower_truncate_i32_to_u8(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    if type_kind != InputScalarType::U8 || !state.i32_values.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    state.byte_values.push(result);
+    Ok(TernaryOperation::TruncateI32ToU8 {
+        result,
+        span: copy_span(span),
+        value,
+    })
+}
+
 fn ensure_new_value(
-    byte_values: &[u32],
-    i32_values: &[u32],
+    state: &LoweringState,
     value: u32,
 ) -> Result<(), TernaryLoweringError> {
-    if byte_values.contains(&value) || i32_values.contains(&value) {
+    if state.byte_values.contains(&value) || state.i32_values.contains(&value) {
         return Err(TernaryLoweringError::InvalidProjection);
     }
     Ok(())
@@ -210,8 +301,8 @@ fn validate_projection(
 /// # Errors
 ///
 /// Returns [`TernaryLoweringError`] when the projection is malformed or uses
-/// semantics outside the implemented `i32` constant/return and successful
-/// `u8` byte-effect slice.
+/// semantics outside the implemented `i32` constant/AND, `i32`-to-`u8`
+/// truncation, return, and successful byte-effect slice.
 pub fn lower_typed_ir(
     input: &TypedIrInput,
 ) -> Result<TernaryProgram, TernaryLoweringError> {

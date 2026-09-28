@@ -54,17 +54,18 @@ use ternary_lowering::{
     plan_startup, realize_runtime_io,
 };
 use typed_ir::{
-    BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
-    Instruction, IntegerConstant, LocatedInstruction, Module, ModuleSpec,
-    SourcePosition, SourceSpan, TYPED_IR_CODEC_ID, Terminator, TypeDef,
-    TypeEntry, TypeId, ValueId, canonical_bytes, canonical_module,
-    validate_module,
+    BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
+    FunctionId, FunctionSpec, Instruction, IntegerConstant, LocatedInstruction,
+    Module, ModuleSpec, SourcePosition, SourceSpan, TYPED_IR_CODEC_ID,
+    Terminator, TypeDef, TypeEntry, TypeId, ValueId, canonical_bytes,
+    canonical_module, validate_module,
 };
 
 const RETURN_GOLDEN: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
 const SELECT_GOLDEN: &str = "tests/compiler/typed-ir/golden/select.hex";
 const BYTE_IO_SOURCE_HASH: [u8; 32] = [0x6b; 32];
+const LOW_BYTE_SOURCE_HASH: [u8; 32] = [0x7c; 32];
 const GUEST_INTRINSICS_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_intrinsics.h";
 const GUEST_RUNTIME_CONTRACT: &str =
@@ -117,6 +118,20 @@ fn admitted_byte_io_fixture() -> Result<Module, String> {
         .map_err(|error| format!("restore byte-I/O fixture: {error:?}"))?;
     if restored != module {
         return Err(String::from("byte-I/O canonical round trip drifted"));
+    }
+    Ok(restored)
+}
+
+fn admitted_low_byte_fixture() -> Result<Module, String> {
+    let module = low_byte_module();
+    validate_module(&module)
+        .map_err(|error| format!("validate low-byte fixture: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("canonicalize low-byte fixture: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore low-byte fixture: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("low-byte canonical round trip drifted"));
     }
     Ok(restored)
 }
@@ -389,6 +404,98 @@ fn byte_io_module() -> Module {
     })
 }
 
+fn low_byte_module() -> Module {
+    let u8_type = TypeId::new(0);
+    let i32_type = TypeId::new(1);
+    let function_type = TypeId::new(2);
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: low_byte_instructions(u8_type, i32_type),
+        phis: Vec::new(),
+        span: fixture_span(0, 6),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(2)),
+        },
+        terminator_span: fixture_span(5, 6),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![block],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from("low_byte"),
+        parameters: Vec::new(),
+        signature: function_type,
+        span: fixture_span(0, 6),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![function],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/low-byte.c"),
+        source_sha256: LOW_BYTE_SOURCE_HASH,
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(u8_type, TypeDef::U8),
+            TypeEntry::new(i32_type, TypeDef::I32),
+            TypeEntry::new(
+                function_type,
+                TypeDef::function(Vec::new(), Some(i32_type), false),
+            ),
+        ],
+    })
+}
+
+fn low_byte_instructions(
+    u8_type: TypeId,
+    i32_type: TypeId,
+) -> Vec<LocatedInstruction> {
+    vec![
+        low_byte_constant(0xffff_ffff, 0, 0, i32_type),
+        low_byte_constant(0xff, 1, 1, i32_type),
+        LocatedInstruction::new(
+            Instruction::Binary {
+                left: ValueId::new(0),
+                operation: BinaryOp::And,
+                result: ValueId::new(2),
+                right: ValueId::new(1),
+                type_id: i32_type,
+            },
+            fixture_span(2, 3),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::Truncate,
+                result: ValueId::new(3),
+                type_id: u8_type,
+                value: ValueId::new(2),
+            },
+            fixture_span(3, 4),
+        ),
+        LocatedInstruction::new(
+            Instruction::ByteOutput { value: ValueId::new(3) },
+            fixture_span(4, 5),
+        ),
+    ]
+}
+
+fn low_byte_constant(
+    bits: u32,
+    result: u32,
+    span_begin: u32,
+    type_id: TypeId,
+) -> LocatedInstruction {
+    LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(32, Vec::from(bits.to_le_bytes())),
+            result: ValueId::new(result),
+            type_id,
+        },
+        fixture_span(span_begin, span_begin.saturating_add(1)),
+    )
+}
+
 const fn fixture_position(byte: u32) -> SourcePosition {
     SourcePosition::new(byte, 1, byte.saturating_add(1))
 }
@@ -454,6 +561,22 @@ fn input_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
 ) -> InputInstruction {
+    if let Instruction::Binary {
+        left,
+        operation: BinaryOp::And,
+        result,
+        right,
+        type_id,
+    } = instruction.instruction()
+    {
+        return InputInstruction::BinaryAnd {
+            left: left.value(),
+            result: result.value(),
+            right: right.value(),
+            span: input_span(instruction.span()),
+            type_kind: input_scalar_type(module, *type_id),
+        };
+    }
     if let Instruction::ByteInput { result, type_id } =
         instruction.instruction()
     {
@@ -481,6 +604,20 @@ fn input_instruction(
             result: result.value(),
             span: input_span(instruction.span()),
             type_kind: input_scalar_type(module, *type_id),
+        };
+    }
+    if let Instruction::Cast {
+        operation: CastOp::Truncate,
+        result,
+        type_id,
+        value,
+    } = instruction.instruction()
+    {
+        return InputInstruction::TruncateInteger {
+            result: result.value(),
+            span: input_span(instruction.span()),
+            type_kind: input_scalar_type(module, *type_id),
+            value: value.value(),
         };
     }
     InputInstruction::Unsupported
@@ -571,6 +708,11 @@ fn projected_byte_io_fixture() -> Result<TypedIrInput, String> {
     project_typed_ir(&module)
 }
 
+fn projected_low_byte_fixture() -> Result<TypedIrInput, String> {
+    let module = admitted_low_byte_fixture()?;
+    project_typed_ir(&module)
+}
+
 #[test]
 fn byte_input_requires_u8_projection() -> Result<(), String> {
     let mut input = projected_byte_io_fixture()?;
@@ -639,6 +781,87 @@ fn duplicate_projection_value_ids_fail_closed() -> Result<(), String> {
 }
 
 #[test]
+fn low_byte_and_rejects_projection_drift() -> Result<(), String> {
+    let input = projected_low_byte_fixture()?;
+    let mut wrong_type = input.clone();
+    let instruction = wrong_type
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("low-byte projection has no AND"))?;
+    let InputInstruction::BinaryAnd { type_kind, .. } = instruction else {
+        return Err(String::from("low-byte projection AND is missing"));
+    };
+    *type_kind = InputScalarType::Other;
+    if lower_typed_ir(&wrong_type)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("non-i32 AND projection was not rejected"));
+    }
+    let mut undefined = input;
+    let undefined_instruction = undefined
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("low-byte projection has no AND"))?;
+    let InputInstruction::BinaryAnd { right, .. } = undefined_instruction
+    else {
+        return Err(String::from("low-byte projection AND is missing"));
+    };
+    *right = 99;
+    if lower_typed_ir(&undefined)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("undefined AND operand was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn low_byte_truncate_rejects_projection_drift() -> Result<(), String> {
+    let input = projected_low_byte_fixture()?;
+    let mut wrong_type = input.clone();
+    let instruction = wrong_type
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(3))
+        .ok_or_else(|| String::from("low-byte projection has no truncate"))?;
+    let InputInstruction::TruncateInteger { type_kind, .. } = instruction
+    else {
+        return Err(String::from("low-byte projection truncate is missing"));
+    };
+    *type_kind = InputScalarType::I32;
+    if lower_typed_ir(&wrong_type)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("non-u8 truncation result was not rejected"));
+    }
+    let mut undefined = input;
+    let undefined_instruction = undefined
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(3))
+        .ok_or_else(|| String::from("low-byte projection has no truncate"))?;
+    let InputInstruction::TruncateInteger { value, .. } = undefined_instruction
+    else {
+        return Err(String::from("low-byte projection truncate is missing"));
+    };
+    *value = 99;
+    if lower_typed_ir(&undefined)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from(
+            "undefined truncation source was not rejected",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn i32_constant_return_lowers_to_exact_ternary_bits() -> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
     let input = project_typed_ir(&module)?;
@@ -665,6 +888,90 @@ fn byte_io_effects_lower_after_canonical_typed_ir_round_trip()
         return Err(String::from("byte-I/O lowering is not deterministic"));
     }
     assert_byte_io_program(&module, &first)
+}
+
+fn assert_low_byte_and(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .get(2)
+        .ok_or_else(|| String::from("missing low-byte AND"))?;
+    let TernaryOperation::AndI32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    else {
+        return Err(String::from("low-byte path did not lower bitwise AND"));
+    };
+    if (*left, *result, *right) != (0, 2, 1)
+        || *span != output_span(fixture_span(2, 3))
+    {
+        return Err(String::from("low-byte AND operands drifted"));
+    }
+    Ok(())
+}
+
+fn assert_low_byte_output(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .get(4)
+        .ok_or_else(|| String::from("missing low-byte output"))?;
+    if *operation
+        != (TernaryOperation::ByteOutput {
+            span: output_span(fixture_span(4, 5)),
+            value: 3,
+        })
+    {
+        return Err(String::from("low-byte output did not consume u8 result"));
+    }
+    Ok(())
+}
+
+fn assert_low_byte_truncate(
+    function: &ternary_lowering::TernaryFunction,
+) -> Result<(), String> {
+    let operation = function
+        .operations
+        .get(3)
+        .ok_or_else(|| String::from("missing low-byte truncation"))?;
+    let TernaryOperation::TruncateI32ToU8 {
+        result: truncate_result,
+        span: truncate_span,
+        value: truncate_value,
+    } = operation
+    else {
+        return Err(String::from("low-byte path did not lower truncation"));
+    };
+    if (*truncate_result, *truncate_value) != (3, 2)
+        || *truncate_span != output_span(fixture_span(3, 4))
+    {
+        return Err(String::from("low-byte truncation operands drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn low_byte_helper_path_round_trips_and_lowers() -> Result<(), String> {
+    let module = admitted_low_byte_fixture()?;
+    let input = project_typed_ir(&module)?;
+    let program = lower_typed_ir(&input)
+        .map_err(|error| format!("lower low-byte projection: {error:?}"))?;
+    assert_program_provenance(&module, &program)?;
+    let function = program
+        .functions
+        .first()
+        .ok_or_else(|| String::from("low-byte lowering emitted no function"))?;
+    if function.operations.len() != 6 {
+        return Err(String::from("unexpected low-byte operation count"));
+    }
+    assert_low_byte_and(function)?;
+    assert_low_byte_truncate(function)?;
+    assert_low_byte_output(function)
 }
 
 #[test]

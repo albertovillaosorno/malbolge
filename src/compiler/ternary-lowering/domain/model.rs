@@ -167,6 +167,17 @@ pub enum RuntimeIntrinsicOperation {
 /// One deterministic pre-layout ternary operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryOperation {
+    /// Apply exact 32-bit bitwise AND to two previously materialized values.
+    AndI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Read one successful guest `u8` byte effect.
     ///
     /// This is not the raw profile input word and therefore cannot represent
@@ -201,6 +212,15 @@ pub enum TernaryOperation {
         value: u32,
         /// Original terminator provenance.
         span: TernarySourceSpan,
+    },
+    /// Truncate one exact `i32` value to its low eight bits as `u8`.
+    TruncateI32ToU8 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+        /// Upstream SSA source value identity.
+        value: u32,
     },
 }
 

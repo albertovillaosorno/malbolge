@@ -67,6 +67,19 @@ pub enum InputScalarType {
 /// One projected non-terminating typed-IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputInstruction {
+    /// Apply bitwise AND to two previously defined exact `i32` values.
+    BinaryAnd {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
     /// Read one deterministic successful guest byte effect.
     ByteInput {
         /// Upstream SSA result identity.
@@ -95,6 +108,17 @@ pub enum InputInstruction {
         span: InputSourceSpan,
         /// Admitted scalar type category.
         type_kind: InputScalarType,
+    },
+    /// Truncate one previously defined exact `i32` value to `u8`.
+    TruncateInteger {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted destination scalar type category.
+        type_kind: InputScalarType,
+        /// Upstream SSA source value identity.
+        value: u32,
     },
     /// An admitted typed-IR instruction not implemented by this lowering slice.
     Unsupported,

@@ -25,10 +25,12 @@ semantics.
 ## Status
 
 The executable slice lowers admitted no-argument, single-block functions using
-exact `i32` constants/returns plus deterministic typed-IR `ByteInput` and
-`ByteOutput` effects. Exact 32-bit bit patterns become fixed-width 21-trit
-scalars while source, ABI, typed-IR version, source digest, and target-profile
-provenance are preserved. Byte effects remain successful `u8` semantics.
+exact `i32` constants/returns, `i32` bitwise AND, `i32`-to-`u8` truncation, and
+deterministic typed-IR `ByteInput`/`ByteOutput` effects. Exact 32-bit bit
+patterns
+become fixed-width 21-trit scalars while source, ABI, typed-IR version, source
+digest, and target-profile provenance are preserved. Byte effects remain
+successful `u8` semantics.
 
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
@@ -44,6 +46,5 @@ Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
 one `BindHeap` action before `EnterUserCode` while retaining the exact
 `malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
-bind-call
-encoding, C EOF/helper lowering, global layout, target serialization, and
-complete Malbolge emission remain open.
+bind-call encoding, direct runtime-helper call lowering, input EOF mapping,
+global layout, target serialization, and complete Malbolge emission remain open.

@@ -27,10 +27,9 @@ This document governs the following declared TODO scope:
 model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
-entry block, no phi nodes, exact `i32` constant materialization/return
-semantics,
-and typed-IR `ByteInput`/`ByteOutput` effects. Other admitted typed-IR shapes
-fail explicitly.
+entry block, no phi nodes, exact `i32` constant materialization/return, `i32`
+bitwise AND, `i32`-to-`u8` truncation, and typed-IR `ByteInput`/`ByteOutput`
+effects. Other admitted typed-IR shapes fail explicitly.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
@@ -43,6 +42,13 @@ Typed `ByteInput`/`ByteOutput` lower in source order to explicit target
 byte-effect operations with SSA type/order validation. These operations preserve
 the typed IR's successful `u8` semantics and do not impersonate the raw profile
 input word or its EOF case.
+
+The same SSA boundary now lowers typed `i32` bitwise AND and validated
+`i32`-to-`u8` truncation. Together with constant materialization and
+`ByteOutput`, these operations express the exact low-eight-bit transformation
+used by `malbolge_guest_output_byte` without evaluating guest values on the
+host.
+Direct calls to that runtime helper are not yet recognized by this stage.
 
 The separate raw runtime-intrinsic port admits only
 `malbolge_guest_intrinsic_input_word` and
@@ -75,9 +81,9 @@ place allocation-capable user code before the required bind.
 
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
-runtime-call encoding, complete source sequencing, guest-runtime C EOF/helper
-lowering, target serialization, and complete Malbolge emission remain downstream
-work.
+runtime-call encoding, complete source sequencing, direct runtime-helper call
+integration, input EOF mapping, target serialization, and complete Malbolge
+emission remain downstream work.
 
 ### Authoritative Inputs
 
@@ -118,7 +124,8 @@ wire name.
 ## Failure Behavior
 
 Malformed inbound projection identity, retained globals/proof obligations,
-non-`i32` or malformed constants, non-`u8` byte input, byte output before a byte
+non-`i32` or malformed constants, invalid/undefined `i32` AND operands, invalid
+or undefined truncation inputs, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
 runtime intrinsic names, runtime-intrinsic/profile drift, colliding projected
 profile I/O opcodes, invalid startup identities, null/misaligned/undersized/
@@ -159,14 +166,21 @@ emitted.
   through an inbound decoder port. Tests exhaust all 94 decode phases for both
   profile-derived I/O operations and prove every emitted cell is graphical and
   decodes back exactly; missing or ambiguous decoder behavior fails closed.
+- Low-byte helper-path evidence admits a valid typed-IR `i32` AND plus
+  `i32`-to-`u8` truncation sequence, canonicalizes/restores it exactly, lowers
+  it
+  through the same SSA boundary, and feeds the `u8` result to `ByteOutput`.
+  Adversarial projections reject wrong result types and undefined AND/truncation
+  operands. This closes the operation vocabulary needed by the runtime output
+  helper body, not direct helper-call recognition.
 - Startup-plan evidence cross-checks the guest-runtime header and JSON contract,
   then proves a valid layout-resolved ABI pointer/capacity emits exactly one
   `BindHeap` before user entry. Tests reject ABI/profile/symbol drift, null or
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
-- Global heap placement, executable bind-call/source sequencing, and
-  guest-runtime
-  C EOF/helper lowering remain open target-lowering work.
+- Global heap placement, executable bind-call/source sequencing, direct
+  runtime-helper call integration, and input EOF decoding remain open
+  target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
