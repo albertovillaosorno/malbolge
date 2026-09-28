@@ -38,6 +38,12 @@ A target-profile port then copies canonical I/O instruction bytes and EOF state
 from the admitted profile descriptor and realizes those operations without
 hardcoded opcode characters. An instruction-decoder port lets lowering invert
 the canonical VM decode relation without copying XLAT1, producing one unique
-graphical source cell for an already-selected code position. C EOF/helper
-lowering, global layout, target serialization, and complete Malbolge emission
-remain open.
+graphical source cell for an already-selected code position.
+
+Startup planning now accepts only a layout-resolved guest heap extent, validates
+the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
+one `BindHeap` action before `EnterUserCode` while retaining the exact
+`malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
+bind-call
+encoding, C EOF/helper lowering, global layout, target serialization, and
+complete Malbolge emission remain open.

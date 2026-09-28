@@ -98,6 +98,32 @@ impl TernaryI32Scalar {
     }
 }
 
+/// One ordered compiler-generated startup action.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartupAction {
+    /// Bind the resolved guest heap exactly once before user code.
+    BindHeap {
+        /// ABI-encoded object pointer to the first arena byte.
+        arena_pointer: u32,
+        /// Resolved arena capacity in logical bytes.
+        capacity: u32,
+    },
+    /// Transfer control to the selected user entry function.
+    EnterUserCode {
+        /// Module-local user entry function identity.
+        function: u32,
+    },
+}
+
+/// Ordered compiler-generated startup plan before target layout/encoding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartupPlan {
+    /// Ordered actions; valid plans contain bind then user entry exactly once.
+    pub actions: Vec<StartupAction>,
+    /// Exact runtime symbol realized by the first startup action.
+    pub bind_identity: String,
+}
+
 /// One graphical source cell encoding a realized machine I/O operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EncodedMachineIo {

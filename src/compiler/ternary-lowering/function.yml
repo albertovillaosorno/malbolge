@@ -88,6 +88,16 @@ parts:
     kind: application
     language: rust
     responsibility: Invert canonical decoding into unique graphical I/O cells.
+  - id: part-0011
+    path: port-inbound/startup.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Carry layout-resolved one-shot heap startup inputs.
+  - id: part-0012
+    path: application/plan_startup.rs
+    kind: application
+    language: rust
+    responsibility: Sequence validated heap binding before user entry.
 projects: []
 tests: []
 graph:

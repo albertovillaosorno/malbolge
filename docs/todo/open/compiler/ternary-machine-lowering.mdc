@@ -90,9 +90,17 @@ instruction.
   realized opcode at an already-chosen code position; tests exhaust all 94 VM
   decode phases for both current-profile I/O operations and reject missing or
   ambiguous inverse decoders.
+- A layout-resolved startup request now carries the exact ABI/profile/bind
+  symbol,
+  guest arena pointer/capacity, and user entry identity. Startup planning
+  validates
+  ABI pointer alignment/address containment plus runtime heap geometry and emits
+  exactly one `BindHeap` action before `EnterUserCode`; tests cross-check the
+  runtime header/JSON authority and reject identity or extent drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
-  one-shot heap startup binding, global target layout/source sequencing,
-  guest-runtime C EOF/helper lowering, later runtime helpers, target
+  global heap placement and executable bind-call realization, global target
+  layout/source sequencing, guest-runtime C EOF/helper lowering, later runtime
+  helpers, target
   serialization, and executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

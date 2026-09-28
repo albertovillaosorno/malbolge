@@ -48,9 +48,10 @@ use ternary_lowering::{
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeIntrinsicLoweringError,
     RuntimeIntrinsicOperation, RuntimeIntrinsicRequest,
-    RuntimeIoRealizationError, TargetProfileIo, TernaryLoweringError,
-    TernaryOperation, TypedIrInput, encode_machine_io, lower_runtime_intrinsic,
-    lower_typed_ir, realize_runtime_io,
+    RuntimeIoRealizationError, StartupAction, StartupPlanningError,
+    StartupRequest, TargetProfileIo, TernaryLoweringError, TernaryOperation,
+    TypedIrInput, encode_machine_io, lower_runtime_intrinsic, lower_typed_ir,
+    plan_startup, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId, FunctionSpec,
@@ -68,6 +69,8 @@ const GUEST_INTRINSICS_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_intrinsics.h";
 const GUEST_RUNTIME_CONTRACT: &str =
     "src/runtime/guest-runtime/contract/guest-runtime-v1.json";
+const GUEST_RUNTIME_HEADER: &str =
+    "src/runtime/guest-runtime/contract/guest_runtime.h";
 
 struct VmProfileInstructionDecoder;
 
@@ -90,6 +93,17 @@ struct MissingInstructionDecoder;
 impl ProfileInstructionDecoder for MissingInstructionDecoder {
     fn decode(&self, _cell: u32, _code_pointer: u32) -> Option<u8> {
         None
+    }
+}
+
+fn valid_startup_request() -> StartupRequest {
+    StartupRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        arena_pointer: 0x101,
+        bind_identity: String::from("malbolge_guest_runtime_bind_heap"),
+        capacity: 0x100,
+        target_profile: String::from("malbolge-2026"),
+        user_entry_function: 7,
     }
 }
 
@@ -709,6 +723,95 @@ fn projection_identity_drift_fails_closed() -> Result<(), String> {
     input.target_profile = String::from("other-profile");
     if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
         return Err(String::from("target profile drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn startup_plan_binds_heap_before_user_entry() -> Result<(), String> {
+    let request = valid_startup_request();
+    let first = plan_startup(&request)
+        .map_err(|error| format!("plan startup: {error:?}"))?;
+    let second = plan_startup(&request)
+        .map_err(|error| format!("repeat startup plan: {error:?}"))?;
+    if first != second
+        || first.bind_identity != "malbolge_guest_runtime_bind_heap"
+        || first.actions
+            != vec![
+                StartupAction::BindHeap {
+                    arena_pointer: 0x101,
+                    capacity: 0x100,
+                },
+                StartupAction::EnterUserCode { function: 7 },
+            ]
+    {
+        return Err(String::from("startup bind-before-entry plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn startup_plan_rejects_identity_drift() -> Result<(), String> {
+    for mutate in 0u8..3u8 {
+        let mut request = valid_startup_request();
+        match mutate {
+            0 => request.abi_id = String::from("host-abi"),
+            1 => request.bind_identity = String::from("malloc"),
+            _ => request.target_profile = String::from("malbolge-2026.3"),
+        }
+        if plan_startup(&request) != Err(StartupPlanningError::InvalidIdentity)
+        {
+            return Err(format!(
+                "startup identity drift {mutate} was accepted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn startup_plan_rejects_invalid_heap_layout() -> Result<(), String> {
+    for (arena_pointer, capacity) in [
+        (0u32, 0x100u32),
+        (0x102, 0x100),
+        (0x101, 16),
+        (0x101, 33),
+        (0xffff_fff1, 32),
+    ] {
+        let mut request = valid_startup_request();
+        request.arena_pointer = arena_pointer;
+        request.capacity = capacity;
+        if plan_startup(&request) != Err(StartupPlanningError::InvalidLayout) {
+            return Err(format!(
+                "invalid heap layout {arena_pointer:#x}/{capacity} accepted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn startup_authority_matches_guest_runtime_contract() -> Result<(), String> {
+    let contract = read_to_string(GUEST_RUNTIME_CONTRACT)
+        .map_err(|error| format!("read guest-runtime contract: {error}"))?;
+    let header = read_to_string(GUEST_RUNTIME_HEADER)
+        .map_err(|error| format!("read guest-runtime header: {error}"))?;
+    for expected in [
+        "\"heap_binding\": \"one-shot\"",
+        "\"alignment\": 16",
+        "\"header_bytes\": 16",
+    ] {
+        if !contract.contains(expected) {
+            return Err(format!(
+                "runtime startup authority missing {expected}"
+            ));
+        }
+    }
+    if !header.contains("malbolge_guest_runtime_bind_heap")
+        || !header.contains("MALBOLGE_GUEST_HEAP_ALIGNMENT UINT32_C(16)")
+        || !header.contains("MALBOLGE_GUEST_HEAP_HEADER_SIZE UINT32_C(16)")
+    {
+        return Err(String::from("guest-runtime startup header drifted"));
     }
     Ok(())
 }

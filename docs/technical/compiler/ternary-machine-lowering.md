@@ -64,10 +64,20 @@ requires exactly one source cell whose VM decode equals the realized operation.
 The compiler therefore does not copy XLAT1. Missing or ambiguous inverse
 encodings fail closed.
 
+A separate startup port accepts a heap extent only after another stage has
+resolved its guest logical location. Startup planning validates the exact
+`malbolge-c32-v1` object-pointer encoding, 16-byte arena alignment, aligned
+capacity of at least 32 bytes, `u32` logical-address containment, exact
+`malbolge-2026` profile identity, and exact
+`malbolge_guest_runtime_bind_heap` symbol. The resulting plan contains exactly
+one bind action followed by user entry, so later layout/linkage cannot silently
+place allocation-capable user code before the required bind.
+
 This is executable compiler lowering but not complete target code generation.
-Global layout/address assignment, complete source sequencing, guest-runtime C
-EOF/helper lowering, target serialization, and complete Malbolge emission remain
-downstream work.
+Global layout/address assignment, concrete heap-arena placement, executable
+runtime-call encoding, complete source sequencing, guest-runtime C EOF/helper
+lowering, target serialization, and complete Malbolge emission remain downstream
+work.
 
 ### Authoritative Inputs
 
@@ -111,7 +121,8 @@ Malformed inbound projection identity, retained globals/proof obligations,
 non-`i32` or malformed constants, non-`u8` byte input, byte output before a byte
 definition, duplicate projected SSA identities, byte-valued returns, unknown raw
 runtime intrinsic names, runtime-intrinsic/profile drift, colliding projected
-profile I/O opcodes, multi-block/phi/parameterized function shapes, and
+profile I/O opcodes, invalid startup identities, null/misaligned/undersized/
+overflowing heap extents, multi-block/phi/parameterized function shapes, and
 unsupported instructions or terminators fail closed before a pre-layout target
 program is returned. Later
 layout/profile failures must likewise fail before accepted target code is
@@ -148,8 +159,14 @@ emitted.
   through an inbound decoder port. Tests exhaust all 94 decode phases for both
   profile-derived I/O operations and prove every emitted cell is graphical and
   decodes back exactly; missing or ambiguous decoder behavior fails closed.
-- Global layout/source sequencing and guest-runtime C EOF/helper lowering remain
-  open target-lowering work.
+- Startup-plan evidence cross-checks the guest-runtime header and JSON contract,
+  then proves a valid layout-resolved ABI pointer/capacity emits exactly one
+  `BindHeap` before user entry. Tests reject ABI/profile/symbol drift, null or
+  misaligned arena pointers, capacities below one header-plus-payload span,
+  misaligned capacities, and logical-address overflow.
+- Global heap placement, executable bind-call/source sequencing, and
+  guest-runtime
+  C EOF/helper lowering remain open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
