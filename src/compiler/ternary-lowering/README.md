@@ -37,17 +37,19 @@ A separate pure runtime-helper port admits only
 current profile. It lowers them to declarative target recipes: input accepts raw
 words `0..255` or the profile EOF word and carries exact valid/invalid statuses,
 while output carries the exact low-eight-bit mask. These recipes never evaluate
-a guest value on the host.
+a guest value on the host. Input helper realization now expands that recipe into
+ordered null-pointer, byte, EOF, and invalid-word exits with exact result and
+runtime-status publication; output realization retains its exact low-byte mask.
 
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input
 intrinsic then decoder for `getchar`, helper then output intrinsic for
 `putchar`. The raw intrinsic step can now be rebound through the canonical
 target-profile projection to the selected machine opcode while preserving the
-helper recipe, order, and return semantics. The canonical libc manifest remains
-unchanged and still marks both routines contracted-unavailable pending
-executable
-helper control flow and target layout.
+helper recipe, order, and return semantics. Machine wrapper plans now also carry
+the explicit helper execution plan. The canonical libc manifest remains
+unchanged and still marks both routines contracted-unavailable pending wrapper
+branch layout and complete target layout.
 
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
@@ -63,6 +65,6 @@ Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
 one `BindHeap` action before `EnterUserCode` while retaining the exact
 `malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
-bind-call encoding, typed-IR external-call binding, executable helper
-branching/status publication, global layout, target serialization, and complete
-Malbolge emission remain open.
+bind-call encoding, typed-IR external-call binding, wrapper branch/source
+layout, global layout, target serialization, and complete Malbolge emission
+remain open.

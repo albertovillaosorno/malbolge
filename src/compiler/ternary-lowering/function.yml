@@ -123,6 +123,11 @@ parts:
     kind: application
     language: rust
     responsibility: Bind wrapper raw I/O steps to profile machine opcodes.
+  - id: part-0018
+    path: application/realize_runtime_helper.rs
+    kind: application
+    language: rust
+    responsibility: Expand pure helper semantics into explicit control flow.
 projects: []
 tests: []
 graph:

@@ -55,6 +55,8 @@ mod plan_byte_stream_wrapper;
 mod plan_startup;
 #[path = "../application/realize_byte_stream_wrapper.rs"]
 mod realize_byte_stream_wrapper;
+#[path = "../application/realize_runtime_helper.rs"]
+mod realize_runtime_helper;
 #[path = "../application/realize_runtime_io.rs"]
 mod realize_runtime_io;
 #[path = "../port-inbound/runtime_helper.rs"]
@@ -85,6 +87,7 @@ pub use plan_startup::{StartupPlanningError, plan_startup};
 pub use realize_byte_stream_wrapper::{
     ByteStreamWrapperRealizationError, realize_byte_stream_wrapper,
 };
+pub use realize_runtime_helper::realize_runtime_helper;
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_helper_input::RuntimeHelperRequest;
 pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;

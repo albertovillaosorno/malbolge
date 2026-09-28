@@ -162,6 +162,8 @@ pub struct ByteStreamWrapperPlan {
 pub struct MachineByteStreamWrapperPlan {
     /// Pure runtime helper semantics used by the wrapper.
     pub helper: RuntimeHelperOperation,
+    /// Explicit pre-layout execution plan for the helper semantics.
+    pub helper_execution: RuntimeHelperExecutionPlan,
     /// Exact public libc routine identity.
     pub identity: String,
     /// Profile-bound raw machine I/O operation.
@@ -212,10 +214,66 @@ pub struct InputWordDecodeSemantics {
     pub eof_value_bits: u32,
     /// Canonical selected-profile EOF word.
     pub eof_word: u32,
+    /// Runtime status for a null result pointer.
+    pub invalid_argument_status: u32,
     /// Runtime status for impossible intermediate input words.
     pub invalid_input_status: u32,
     /// Runtime status for byte and EOF mappings.
     pub valid_status: u32,
+}
+
+/// One ordered condition in the input-word helper control flow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputDecodeCondition {
+    /// No earlier ordered condition matched.
+    Otherwise,
+    /// Result storage is the null guest pointer.
+    ResultPointerNull,
+    /// Raw input word is at most the supplied inclusive bound.
+    WordAtMost(u32),
+    /// Raw input word equals one exact sentinel.
+    WordEquals(u32),
+}
+
+/// Result publication behavior for one input-helper exit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputDecodeResult {
+    /// Publish one exact `i32` bit pattern.
+    ConstantI32Bits(u32),
+    /// Publish the raw `0..255` input word as exact guest `i32`.
+    InputWordAsI32,
+    /// Preserve the caller-provided result storage unchanged.
+    Unchanged,
+}
+
+/// One ordered input-helper branch exit and its publications.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InputDecodeArm {
+    /// Ordered branch condition.
+    pub condition: InputDecodeCondition,
+    /// Result-storage publication behavior.
+    pub result: InputDecodeResult,
+    /// Runtime status returned by this branch.
+    pub status: u32,
+}
+
+/// Explicit pre-layout control flow for raw input-word decoding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InputWordDecodeControlFlow {
+    /// Ordered branch exits; the first matching condition wins.
+    pub exits: Vec<InputDecodeArm>,
+}
+
+/// One pure runtime helper after explicit control-flow realization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeHelperExecutionPlan {
+    /// Four-way input decoder with explicit result/status publication.
+    DecodeInputWord(Box<InputWordDecodeControlFlow>),
+    /// Low-eight-bit output mapping before the raw output intrinsic.
+    OutputByte {
+        /// Exact low-byte mask.
+        mask: u32,
+    },
 }
 
 /// One pure guest-runtime helper represented as declarative target semantics.

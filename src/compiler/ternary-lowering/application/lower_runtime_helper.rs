@@ -77,6 +77,7 @@ pub fn lower_runtime_helper(
                 byte_max: 255,
                 eof_value_bits: u32::MAX,
                 eof_word: profile.eof_word,
+                invalid_argument_status: 1,
                 invalid_input_status: 4,
                 valid_status: 0,
             }),

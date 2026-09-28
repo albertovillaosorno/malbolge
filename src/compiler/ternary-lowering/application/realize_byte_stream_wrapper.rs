@@ -38,6 +38,7 @@ use super::model::{ByteStreamWrapperPlan, MachineByteStreamWrapperPlan};
 use super::plan_byte_stream_wrapper::{
     ByteStreamWrapperPlanningError, plan_byte_stream_wrapper,
 };
+use super::realize_runtime_helper::realize_runtime_helper;
 use super::realize_runtime_io::{
     RuntimeIoRealizationError, realize_runtime_io,
 };
@@ -77,6 +78,7 @@ pub fn realize_byte_stream_wrapper(
         .map_err(map_runtime_io_error)?;
     Ok(MachineByteStreamWrapperPlan {
         helper: plan.helper.clone(),
+        helper_execution: realize_runtime_helper(&plan.helper),
         identity: plan.identity.clone(),
         machine_io,
         order: plan.order,

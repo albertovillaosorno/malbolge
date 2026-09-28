@@ -45,10 +45,12 @@ use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
     ByteStreamWrapperOrder, ByteStreamWrapperPlanningError,
     ByteStreamWrapperRealizationError, ByteStreamWrapperRequest,
-    ByteStreamWrapperReturn, I32_TERNARY_TRITS, InputBlock, InputFunction,
-    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
-    InputTerminator, InputWordDecodeSemantics, MachineIoEncodingError,
-    MachineIoKind, MachineIoOperation, ProfileInstructionDecoder,
+    ByteStreamWrapperReturn, I32_TERNARY_TRITS, InputBlock, InputDecodeArm,
+    InputDecodeCondition, InputDecodeResult, InputFunction, InputInstruction,
+    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    MachineIoEncodingError, MachineIoKind, MachineIoOperation,
+    ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
@@ -56,7 +58,7 @@ use ternary_lowering::{
     TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
     lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
     plan_byte_stream_wrapper, plan_startup, realize_byte_stream_wrapper,
-    realize_runtime_io,
+    realize_runtime_helper, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -1180,6 +1182,15 @@ fn runtime_helper_authority_matches_guest_runtime() -> Result<(), String> {
             return Err(format!("runtime helper contract missing {expected}"));
         }
     }
+    for expected in [
+        "MALBOLGE_GUEST_RUNTIME_VALID = 0",
+        "MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT = 1",
+        "MALBOLGE_GUEST_RUNTIME_INVALID_INPUT_WORD = 4",
+    ] {
+        if !header.contains(expected) {
+            return Err(format!("runtime helper status missing {expected}"));
+        }
+    }
     Ok(())
 }
 
@@ -1201,6 +1212,7 @@ fn pure_byte_stream_helpers_lower_to_declarative_semantics()
                 byte_max: 255,
                 eof_value_bits: u32::MAX,
                 eof_word: current_profile().eof_word(),
+                invalid_argument_status: 1,
                 invalid_input_status: 4,
                 valid_status: 0,
             },
@@ -1209,6 +1221,70 @@ fn pure_byte_stream_helpers_lower_to_declarative_semantics()
             != Ok(RuntimeHelperOperation::OutputByte { mask: 255 })
     {
         return Err(String::from("pure runtime-helper semantics drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn input_helper_control_flow_publishes_exact_exits() -> Result<(), String> {
+    let profile = current_profile_io();
+    let operation = lower_runtime_helper(
+        &RuntimeHelperRequest {
+            identity: String::from("malbolge_guest_decode_input_word"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("lower input helper: {error:?}"))?;
+    let observed = realize_runtime_helper(&operation);
+    let expected = RuntimeHelperExecutionPlan::DecodeInputWord(Box::new(
+        InputWordDecodeControlFlow {
+            exits: vec![
+                InputDecodeArm {
+                    condition: InputDecodeCondition::ResultPointerNull,
+                    result: InputDecodeResult::Unchanged,
+                    status: 1,
+                },
+                InputDecodeArm {
+                    condition: InputDecodeCondition::WordAtMost(255),
+                    result: InputDecodeResult::InputWordAsI32,
+                    status: 0,
+                },
+                InputDecodeArm {
+                    condition: InputDecodeCondition::WordEquals(
+                        current_profile().eof_word(),
+                    ),
+                    result: InputDecodeResult::ConstantI32Bits(u32::MAX),
+                    status: 0,
+                },
+                InputDecodeArm {
+                    condition: InputDecodeCondition::Otherwise,
+                    result: InputDecodeResult::Unchanged,
+                    status: 4,
+                },
+            ],
+        },
+    ));
+    if observed != expected {
+        return Err(String::from("input-helper control flow drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn output_helper_execution_preserves_low_byte_mask() -> Result<(), String> {
+    let operation = lower_runtime_helper(
+        &RuntimeHelperRequest {
+            identity: String::from("malbolge_guest_output_byte"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &current_profile_io(),
+    )
+    .map_err(|error| format!("lower output helper: {error:?}"))?;
+    if realize_runtime_helper(&operation)
+        != (RuntimeHelperExecutionPlan::OutputByte { mask: 255 })
+    {
+        return Err(String::from("output-helper execution mask drifted"));
     }
     Ok(())
 }
@@ -1310,6 +1386,7 @@ fn byte_stream_wrapper_plans_preserve_guest_order() -> Result<(), String> {
                     byte_max: 255,
                     eof_value_bits: u32::MAX,
                     eof_word: current_profile().eof_word(),
+                    invalid_argument_status: 1,
                     invalid_input_status: 4,
                     valid_status: 0,
                 },
@@ -1380,6 +1457,8 @@ fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
     let realized_getchar = realize_byte_stream_wrapper(&getchar, &profile)
         .map_err(|error| format!("realize getchar: {error:?}"))?;
     if realized_getchar.helper != getchar.helper
+        || realized_getchar.helper_execution
+            != realize_runtime_helper(&getchar.helper)
         || realized_getchar.identity != getchar.identity
         || realized_getchar.order != getchar.order
         || realized_getchar.return_kind != getchar.return_kind
@@ -1403,6 +1482,8 @@ fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
     let realized_putchar = realize_byte_stream_wrapper(&putchar, &profile)
         .map_err(|error| format!("realize putchar: {error:?}"))?;
     if realized_putchar.helper != putchar.helper
+        || realized_putchar.helper_execution
+            != realize_runtime_helper(&putchar.helper)
         || realized_putchar.identity != putchar.identity
         || realized_putchar.order != putchar.order
         || realized_putchar.return_kind != putchar.return_kind

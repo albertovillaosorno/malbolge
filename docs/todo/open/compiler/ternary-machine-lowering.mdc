@@ -90,6 +90,12 @@ instruction.
   recipes sourced from runtime/profile authority without host evaluation; tests
   reject unknown helpers, profile drift, and EOF overlap with `0..255`. Direct
   external helper calls are not representable by typed IR yet.
+- Runtime-helper realization now expands input decoding into the exact ordered
+  null-pointer/byte/EOF/invalid-word exits with explicit result and status
+  publication, including header-bound status values `1/0/0/4`. Output
+  realization
+  retains the exact low-byte mask, and realized stdio wrapper plans carry the
+  helper execution plan beside profile-bound machine I/O.
 - A separate inbound runtime-intrinsic request now admits only the exact
   `malbolge_guest_intrinsic_input_word` and
   `malbolge_guest_intrinsic_output_byte` identities under `malbolge-2026`,
@@ -120,9 +126,9 @@ instruction.
   runtime header/JSON authority and reject identity or extent drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
-  layout/source sequencing, typed-IR external-call binding, executable helper
-  branching/status publication, later runtime helpers, target
-  serialization, and executable Malbolge-oriented lowering evidence. No
+  layout/source sequencing, typed-IR external-call binding, wrapper
+  branch/source layout, later runtime helpers, target serialization, and
+  executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

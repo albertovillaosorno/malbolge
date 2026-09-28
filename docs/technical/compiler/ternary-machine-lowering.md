@@ -58,11 +58,19 @@ profile-projected EOF word, exact `EOF == -1` bits, and valid/invalid runtime
 statuses; output records the low-eight-bit mask. An EOF projection overlapping
 the byte domain fails closed.
 
+Input-helper realization now expands the canonical recipe into four ordered
+pre-layout exits: null result pointer publishes `INVALID_ARGUMENT` without a
+write, byte input publishes the raw word as `i32` plus `VALID`, exact EOF
+publishes `-1` plus `VALID`, and the final unmatched branch preserves result
+storage while publishing `INVALID_INPUT_WORD`. Output-helper realization keeps
+the exact low-byte mask. No branch addresses or host evaluation enter this
+representation.
+
 The current typed IR cannot yet represent declaration-only external helper
 callees: direct `Call` targets resolve only to module-local functions, and every
-function must own a reachable entry block. Therefore this helper recipe is
-semantic lowering evidence, while direct helper-call integration and executable
-branch/status publication remain open.
+function must own a reachable entry block. Therefore direct helper-call
+integration remains open even though helper branch/result/status semantics now
+have an explicit pre-layout execution plan.
 
 A public byte-stream wrapper planner composes those helper recipes with the raw
 intrinsic operations using the checked-in guest stdio order. `getchar` plans
@@ -107,8 +115,8 @@ place allocation-capable user code before the required bind.
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
 runtime-call encoding, complete source sequencing, typed-IR external-call
-binding, executable helper branching/status publication, target serialization,
-and complete Malbolge emission remain downstream work.
+binding, wrapper branch/source layout, target serialization, and complete
+Malbolge emission remain downstream work.
 
 ### Authoritative Inputs
 
@@ -195,6 +203,11 @@ emitted.
   `0..255`, `-1`, status, and mask semantics without accepting concrete guest
   values, and rejects identity/profile drift or EOF overlap with the byte
   domain.
+- Helper-execution evidence binds `VALID=0`, `INVALID_ARGUMENT=1`, and
+  `INVALID_INPUT_WORD=4` to the runtime header, then proves the input decoder
+  expands to the exact ordered null/byte/EOF/invalid exits with explicit result
+  and status publications. Realized wrapper plans retain that helper execution
+  alongside profile-bound machine I/O.
 - Raw intrinsic identity evidence reads the guest-runtime JSON contract and
   declaration header, proves the exact input/output names remain synchronized,
   lowers only those names under `malbolge-2026` to distinct `InputWord` and
@@ -220,8 +233,8 @@ emitted.
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
 - Global heap placement, executable bind-call/source sequencing, typed-IR
-  external-call binding, and executable helper branching/status publication
-  remain open target-lowering work.
+  external-call binding, and wrapper branch/source layout remain open
+  target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
