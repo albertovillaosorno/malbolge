@@ -2326,8 +2326,12 @@ mappings without adapter work. Guard miss returns the current resume boundary;
 current-step failure rolls back that step while preserving the committed prefix
 and reusable residency.
 
-Input sequence cache residency plus both JumpCode and JumpData families remain
-open and fail closed.
+A weighted FIFO Input sequence cache now reuses exact loaded chains without
+adapter work on hits and enforces entry, mapping, and mapped-byte limits.
+Borrowed cached chains execute through retained mappings. Invalidation and
+eviction, reconfiguration, and release failures preserve retry ownership.
+
+Both JumpCode and JumpData v6 families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

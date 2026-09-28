@@ -558,7 +558,7 @@ use execution_native::{
     RegisterMaskedInputNativeResidentCacheRelease,
     RegisterMaskedInputNativeResidentLease,
     RegisterMaskedInputNativeResidentLeaseCache,
-    RegisterMaskedInputNativeRunner,
+    RegisterMaskedInputNativeRunner, RegisterMaskedInputNativeSequenceCache,
     RegisterMaskedInputNativeSequenceExecutionFailure,
     RegisterMaskedInputNativeSequenceKey,
     RegisterMaskedInputNativeSequenceOutcome,
@@ -23631,6 +23631,145 @@ fn register_masked_crazy_weighted_reconfiguration_fixture()
     )?;
     let third = register_masked_crazy_loaded_sequence_fixture()?;
     Ok((first, second, third))
+}
+
+#[test]
+fn register_masked_v6_input_sequence_cache_tracks_weighted_usage()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mapped_bytes = mapped_lengths.iter().sum::<usize>();
+    let entry_limit = nonzero_test_limit(2, "v6 input cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(3, "v6 input cache mapping limit")?;
+    let byte_limit = nonzero_test_limit(40_000, "v6 input cache byte limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = RegisterMaskedInputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(610)?,
+        native_executable_address(0xa8000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let inserted = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 input weighted insert: {error}"))?
+        .disposition()
+        .clone();
+    let usage = cache.usage();
+    let operations = adapter.operations.clone();
+    let hit = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 input weighted hit: {error}"))?
+        .disposition()
+        .clone();
+    if inserted.is_hit()
+        || usage.entries() != 1
+        || usage.mappings() != 2
+        || usage.mapped_bytes() != mapped_bytes
+        || !hit.is_hit()
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 input weighted usage drifted"));
+    }
+    if !cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| format!("v6 input weighted invalidate: {error}"))?
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+    {
+        return Err(String::from("v6 input weighted invalidation drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_sequence_cache_rejects_mapping_oversize()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let entry_limit = nonzero_test_limit(2, "v6 input cache entry limit")?;
+    let mapping_limit = nonzero_test_limit(1, "v6 input cache mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = RegisterMaskedInputNativeSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(611)?,
+        native_executable_address(0xa9000)?,
+    );
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("v6 input mapping oversize was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::Mappings {
+        limit: mapping_limit,
+        required: 2,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || error.eviction_failure().is_some()
+        || error.load_failure().is_some()
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 input mapping oversize evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_sequence_cache_executes_borrowed_chain()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("v6 input cache capacity missing"))?;
+    let mut cache = RegisterMaskedInputNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(612)?,
+        native_executable_address(0xaa000)?,
+    );
+    {
+        let entry =
+            cache.ensure_plan(&mut adapter, &plan).map_err(|error| {
+                format!("v6 input cached execute load: {error}")
+            })?;
+        let loaded_operations = adapter.operations.clone();
+        let state = direct_input_data_state(
+            (DirectNativeKind::Input, DirectNativeKind::Input),
+            vec![0x41, 0x42],
+        )?;
+        let mut memory = state.memory().to_vec();
+        let mut expected_memory = memory.clone();
+        let input = [0x41u8, 0x42];
+        let mut output = [9u8, 8, 7, 6];
+        let expected_output = output;
+        for program in plan.programs() {
+            apply_register_masked_input_expected(
+                program,
+                &mut expected_memory,
+            )?;
+        }
+        let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+            FakeNativeRunnerBehavior::Applied,
+        );
+        let outcome = execute_loaded_register_masked_input_native_sequence(
+            entry.sequence(),
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 input cached execute: {error}"))?;
+        if outcome.completed_steps() != 2
+            || outcome.observation() != plan.exit()
+            || memory != expected_memory
+            || output != expected_output
+            || runner.calls != 2
+            || adapter.operations != loaded_operations
+        {
+            return Err(String::from("v6 input cached execution drifted"));
+        }
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 input cached execute release: {error}"))
 }
 
 #[test]

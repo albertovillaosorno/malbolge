@@ -363,8 +363,12 @@ exact executable ownership for retry.
 Loaded Input sequence execution now advances exact observations through retained
 mappings without adapter work. Guard miss returns the current resume boundary;
 current-step failure rolls back that step while preserving the committed prefix
-and reusable residency. Sequence cache residency remains a separate fail-closed
-boundary.
+and reusable residency.
+
+A weighted FIFO Input sequence cache now reuses exact loaded chains without
+adapter work on hits and enforces entry, mapping, and mapped-byte limits.
+Borrowed cached chains execute through retained mappings. Invalidation and
+eviction, reconfiguration, and release failures preserve retry ownership.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

@@ -931,8 +931,12 @@ behavior.
   boundary; current-step failure rolls back that step while preserving the
   committed prefix and reusable residency.
 
-  Input sequence cache residency and both jump instruction families remain open
-  and fail closed.
+  A weighted FIFO Input sequence cache now reuses exact loaded chains without
+  adapter work on hits and enforces entry, mapping, and mapped-byte limits.
+  Borrowed cached chains execute through retained mappings. Invalidation,
+  eviction, reconfiguration, and release failures preserve retry ownership.
+
+  Both jump instruction families remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

@@ -92,6 +92,7 @@ mod register_masked_graph_resident;
 mod register_masked_input_lease_cache;
 mod register_masked_input_loaded_sequence;
 mod register_masked_input_sequence;
+mod register_masked_input_sequence_cache;
 mod register_masked_input_sequence_execution;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -945,6 +946,24 @@ pub use register_masked_input_sequence::{
     RegisterMaskedInputNativeSequenceKey,
     RegisterMaskedInputNativeSequencePlan,
     RegisterMaskedInputNativeSequencePlanError,
+};
+pub use register_masked_input_sequence_cache::{
+    RegisterMaskedInputNativeSequenceCache,
+    RegisterMaskedInputNativeSequenceCacheCapacityError,
+    RegisterMaskedInputNativeSequenceCacheDisposition,
+    RegisterMaskedInputNativeSequenceCacheEntry,
+    RegisterMaskedInputNativeSequenceCacheInvalidationResult,
+    RegisterMaskedInputNativeSequenceCacheInvariantError,
+    RegisterMaskedInputNativeSequenceCacheLimits,
+    RegisterMaskedInputNativeSequenceCacheLoadFailure,
+    RegisterMaskedInputNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedInputNativeSequenceCacheLoadResult,
+    RegisterMaskedInputNativeSequenceCacheReconfiguration,
+    RegisterMaskedInputNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedInputNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedInputNativeSequenceCacheReleaseFailure,
+    RegisterMaskedInputNativeSequenceCacheReleaseResult,
+    RegisterMaskedInputNativeSequenceCacheUsage,
 };
 pub use register_masked_input_sequence_execution::{
     RegisterMaskedInputNativeSequenceExecutionFailure,
