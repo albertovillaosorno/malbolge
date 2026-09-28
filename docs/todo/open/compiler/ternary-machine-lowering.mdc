@@ -79,6 +79,10 @@ instruction.
   decoded-`i32`/EOF versus emitted-byte return behavior. Tests bind the plan to
   `c-libc-v1.json` and `stdio.c` while leaving both routines
   `contracted_unavailable` until executable target realization is complete.
+- The wrapper raw-I/O step now revalidates and realizes through the canonical
+  target-profile projection, proving `getchar` uses selected-profile input and
+  `putchar` selected-profile output while preserving helper/order/return state.
+  Forged plans and colliding profile opcodes fail closed.
 - A pure runtime-helper boundary now admits only
   `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
   current profile. It emits declarative input byte/EOF/status and output

@@ -44,18 +44,19 @@ use std::str::from_utf8;
 use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
     ByteStreamWrapperOrder, ByteStreamWrapperPlanningError,
-    ByteStreamWrapperRequest, ByteStreamWrapperReturn, I32_TERNARY_TRITS,
-    InputBlock, InputFunction, InputInstruction, InputScalarType,
-    InputSourcePosition, InputSourceSpan, InputTerminator,
-    InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
-    MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperLoweringError,
-    RuntimeHelperOperation, RuntimeHelperRequest,
+    ByteStreamWrapperRealizationError, ByteStreamWrapperRequest,
+    ByteStreamWrapperReturn, I32_TERNARY_TRITS, InputBlock, InputFunction,
+    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
+    InputTerminator, InputWordDecodeSemantics, MachineIoEncodingError,
+    MachineIoKind, MachineIoOperation, ProfileInstructionDecoder,
+    RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TargetProfileIo,
     TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
     lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
-    plan_byte_stream_wrapper, plan_startup, realize_runtime_io,
+    plan_byte_stream_wrapper, plan_startup, realize_byte_stream_wrapper,
+    realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -1361,6 +1362,93 @@ fn byte_stream_wrapper_plan_rejects_drift() -> Result<(), String> {
         ) != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
     {
         return Err(String::from("byte-stream wrapper drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
+    let profile = current_profile_io();
+    let getchar = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan getchar: {error:?}"))?;
+    let realized_getchar = realize_byte_stream_wrapper(&getchar, &profile)
+        .map_err(|error| format!("realize getchar: {error:?}"))?;
+    if realized_getchar.helper != getchar.helper
+        || realized_getchar.identity != getchar.identity
+        || realized_getchar.order != getchar.order
+        || realized_getchar.return_kind != getchar.return_kind
+        || realized_getchar.machine_io
+            != (MachineIoOperation {
+                eof_word: Some(current_profile().eof_word()),
+                instruction: current_profile().input_instruction(),
+                kind: MachineIoKind::InputWord,
+            })
+    {
+        return Err(String::from("getchar machine-I/O realization drifted"));
+    }
+    let putchar = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("putchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan putchar: {error:?}"))?;
+    let realized_putchar = realize_byte_stream_wrapper(&putchar, &profile)
+        .map_err(|error| format!("realize putchar: {error:?}"))?;
+    if realized_putchar.helper != putchar.helper
+        || realized_putchar.identity != putchar.identity
+        || realized_putchar.order != putchar.order
+        || realized_putchar.return_kind != putchar.return_kind
+        || realized_putchar.machine_io
+            != (MachineIoOperation {
+                eof_word: None,
+                instruction: current_profile().output_instruction(),
+                kind: MachineIoKind::OutputByte,
+            })
+    {
+        return Err(String::from("putchar machine-I/O realization drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_machine_io_rejects_forgery() -> Result<(), String> {
+    let profile = current_profile_io();
+    let mut forged = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan getchar: {error:?}"))?;
+    forged.order = ByteStreamWrapperOrder::HelperThenIntrinsic;
+    if realize_byte_stream_wrapper(&forged, &profile)
+        != Err(ByteStreamWrapperRealizationError::InvalidPlan)
+    {
+        return Err(String::from("forged wrapper order was not rejected"));
+    }
+    let valid = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("re-plan getchar: {error:?}"))?;
+    let mut colliding = profile;
+    colliding.output_instruction = colliding.input_instruction;
+    if realize_byte_stream_wrapper(&valid, &colliding)
+        != Err(ByteStreamWrapperRealizationError::InvalidProfile)
+    {
+        return Err(String::from("colliding wrapper profile was not rejected"));
     }
     Ok(())
 }

@@ -42,9 +42,12 @@ a guest value on the host.
 Public `getchar`/`putchar` planning now composes those helper recipes with the
 raw intrinsic semantics in the exact order implemented by guest stdio: input
 intrinsic then decoder for `getchar`, helper then output intrinsic for
-`putchar`.
-The canonical libc manifest remains unchanged and still marks both routines
-contracted-unavailable pending executable target realization.
+`putchar`. The raw intrinsic step can now be rebound through the canonical
+target-profile projection to the selected machine opcode while preserving the
+helper recipe, order, and return semantics. The canonical libc manifest remains
+unchanged and still marks both routines contracted-unavailable pending
+executable
+helper control flow and target layout.
 
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and

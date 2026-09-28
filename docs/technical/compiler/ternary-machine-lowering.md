@@ -68,9 +68,12 @@ A public byte-stream wrapper planner composes those helper recipes with the raw
 intrinsic operations using the checked-in guest stdio order. `getchar` plans
 `InputWord` before decode and returns decoded `i32` byte-or-EOF semantics;
 `putchar` plans low-byte reduction before `OutputByte` and returns the emitted
-byte widened to `i32`. This plan is compiler evidence only: the canonical libc
-manifest intentionally remains unchanged and both routines stay
-`contracted_unavailable` until executable target lowering is complete.
+byte widened to `i32`. A follow-on realization step revalidates the complete
+wrapper plan and replaces only the raw intrinsic with the profile-bound
+`MachineIoOperation`; forged plan order and malformed/colliding profile
+projections fail closed. The canonical libc manifest remains unchanged and both
+routines stay `contracted_unavailable` until helper control flow and target
+layout are executable.
 
 The separate raw runtime-intrinsic port admits only
 `malbolge_guest_intrinsic_input_word` and
@@ -182,6 +185,10 @@ emitted.
   checked-in guest `stdio.c` implementation, proving intrinsic/helper order for
   both `getchar` and `putchar`, exact wrapper return semantics, and fail-closed
   rejection of wrapper/profile/EOF drift without changing libc availability.
+- Wrapper profile-realization evidence revalidates the canonical plan, binds
+  `getchar`/`putchar` raw I/O to current-profile input/output machine opcodes,
+  preserves helper/order/return semantics, and rejects forged order or colliding
+  profile opcode projections before publishing a machine operation.
 - Pure runtime-helper evidence cross-checks the guest-runtime JSON contract, C
   declarations, and byte-stream implementation. It binds only the exact decode
   and low-byte helper identities, copies EOF from `current_profile()`, records

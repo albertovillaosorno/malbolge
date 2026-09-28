@@ -157,6 +157,21 @@ pub struct ByteStreamWrapperPlan {
     pub return_kind: ByteStreamWrapperReturn,
 }
 
+/// Public byte-stream wrapper plan after raw I/O profile realization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MachineByteStreamWrapperPlan {
+    /// Pure runtime helper semantics used by the wrapper.
+    pub helper: RuntimeHelperOperation,
+    /// Exact public libc routine identity.
+    pub identity: String,
+    /// Profile-bound raw machine I/O operation.
+    pub machine_io: MachineIoOperation,
+    /// Relative helper/machine-I/O execution order.
+    pub order: ByteStreamWrapperOrder,
+    /// Guest-visible wrapper return behavior.
+    pub return_kind: ByteStreamWrapperReturn,
+}
+
 /// One graphical source cell encoding a realized machine I/O operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EncodedMachineIo {

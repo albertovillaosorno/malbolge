@@ -118,6 +118,11 @@ parts:
     kind: application
     language: rust
     responsibility: Compose helper and intrinsic semantics in wrapper order.
+  - id: part-0017
+    path: application/realize_byte_stream_wrapper.rs
+    kind: application
+    language: rust
+    responsibility: Bind wrapper raw I/O steps to profile machine opcodes.
 projects: []
 tests: []
 graph:
