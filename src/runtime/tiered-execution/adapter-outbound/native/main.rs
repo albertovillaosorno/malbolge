@@ -90,6 +90,7 @@ mod register_masked_crazy_sequence_execution;
 mod register_masked_crazy_sequence_lease_cache;
 mod register_masked_graph_resident;
 mod register_masked_input_lease_cache;
+mod register_masked_input_loaded_sequence;
 mod register_masked_input_sequence;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -930,6 +931,14 @@ pub use register_masked_input_lease_cache::{
     RegisterMaskedInputLeaseCacheReleaseResult,
     RegisterMaskedInputLeaseCacheReleaseSummary,
     RegisterMaskedInputLeaseCacheUsage,
+};
+pub use register_masked_input_loaded_sequence::{
+    LoadedRegisterMaskedInputNativeSequence,
+    RegisterMaskedInputNativeSequenceLoadFailure,
+    RegisterMaskedInputNativeSequenceLoadResult,
+    RegisterMaskedInputNativeSequenceReleaseFailure,
+    RegisterMaskedInputNativeSequenceReleaseResult,
+    load_register_masked_input_native_sequence,
 };
 pub use register_masked_input_sequence::{
     RegisterMaskedInputNativeSequenceKey,

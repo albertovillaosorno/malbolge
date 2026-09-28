@@ -743,6 +743,7 @@ use execution_native::{
     load_register_masked_crazy_native_executable,
     load_register_masked_crazy_native_sequence,
     load_register_masked_input_native_executable,
+    load_register_masked_input_native_sequence,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_no_operation_native_sequence as load_noop_sequence,
@@ -22149,6 +22150,134 @@ fn assert_output_sequence_runner_failure(
         Ok(())
     } else {
         Err(String::from("v6 Output sequence runner rollback drifted"))
+    }
+}
+
+fn register_masked_input_loaded_sequence_fixture()
+-> Result<RegisterMaskedInputNativeSequencePlan, String> {
+    let programs = canonical_register_masked_input_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| verified_register_masked_input(program, HostIsa::X86_64))
+        .collect::<Result<Vec<_>, _>>()?;
+    RegisterMaskedInputNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 input loaded plan: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_loaded_sequence_loads_and_releases()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(603)?,
+        native_executable_address(0xa1000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input sequence load: {error}"))?;
+    if loaded.len() != 2
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_lengths.iter().sum())
+        || loaded.plan() != &plan
+    {
+        return Err(String::from("v6 input loaded sequence ownership drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input sequence release: {error}"))?;
+    if adapter.release_attempts == 2
+        && adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input loaded sequence did not release"))
+    }
+}
+
+#[test]
+fn register_masked_v6_input_loaded_sequence_load_failure_is_atomic()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(604)?,
+        native_executable_address(0xa2000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 2);
+    let Err(error) =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from(
+            "v6 input sequence ignored late load failure",
+        ));
+    };
+    if error.index() != 1
+        || error.loaded_count() != 1
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            RegisterMaskedInputNativeOwnerLoadFailure::Load(_),
+        )
+        || adapter.release_attempts != 2
+        || !adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Copy,
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        return Err(String::from(
+            "v6 input sequence late-load cleanup evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_input_loaded_sequence_release_failure_retries()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let expected_keys = plan
+        .artifacts()
+        .iter()
+        .rev()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(605)?,
+        native_executable_address(0xa3000)?,
+    )
+    .with_release_failure_at(1);
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v6 input sequence ignored release failure"));
+    };
+    if failure.attempted_count() != 2
+        || failure.released_count() != 1
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != expected_keys.first()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 input sequence release evidence drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 input sequence release retry: {error}"))?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 input sequence release retry count drifted",
+        ))
     }
 }
 

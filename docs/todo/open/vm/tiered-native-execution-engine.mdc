@@ -921,8 +921,13 @@ behavior.
   rejects discontinuity, target drift, premature termination, or artifact
   identity mismatch.
 
-  Input loaded-sequence ownership/execution/cache residency and both jump
-  instruction families remain open and fail closed.
+  Loaded Input sequence ownership now maps every admitted step before
+  publication, reports aggregate platform mapped bytes, releases in reverse
+  semantic order, and cleans a complete ready prefix after late load failure.
+  Failed cleanup preserves exact executable ownership for retry.
+
+  Input sequence execution/cache residency and both jump instruction families
+  remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

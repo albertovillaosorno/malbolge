@@ -2316,8 +2316,13 @@ one-step chains before mapping, preserves ordered artifact identity, and rejects
 empty/count drift, discontinuous observations, target drift, premature
 termination, or artifact identity mismatch.
 
-Input loaded-sequence ownership/execution/cache residency plus both JumpCode and
-JumpData families remain open and fail closed.
+Loaded Input sequence ownership now maps every admitted step before publication,
+reports aggregate platform mapped bytes, releases in reverse semantic order, and
+rolls back a complete ready prefix after late load failure. Failed cleanup
+retains exact executable ownership for explicit retry.
+
+Input sequence execution/cache residency plus both JumpCode and JumpData
+families remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

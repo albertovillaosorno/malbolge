@@ -353,9 +353,13 @@ keyed retry ownership.
 Exact Input sequence planning now admits continuous same-profile/same-target
 one-step chains before mapping and preserves ordered artifact identity. Empty or
 count drift, discontinuous observations, target drift, premature termination,
-and artifact mismatch reject before executable ownership is created. Loaded
-sequence ownership/execution/cache residency remains a separate fail-closed
-boundary.
+and artifact mismatch reject before executable ownership is created.
+
+Loaded Input sequence ownership now maps every admitted step before publication,
+reports aggregate platform mapped bytes, releases in reverse semantic order, and
+cleans a complete ready prefix after late load failure. Failed cleanup preserves
+exact executable ownership for retry. Sequence execution/cache residency remains
+a separate fail-closed boundary.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
