@@ -64,6 +64,14 @@ function must own a reachable entry block. Therefore this helper recipe is
 semantic lowering evidence, while direct helper-call integration and executable
 branch/status publication remain open.
 
+A public byte-stream wrapper planner composes those helper recipes with the raw
+intrinsic operations using the checked-in guest stdio order. `getchar` plans
+`InputWord` before decode and returns decoded `i32` byte-or-EOF semantics;
+`putchar` plans low-byte reduction before `OutputByte` and returns the emitted
+byte widened to `i32`. This plan is compiler evidence only: the canonical libc
+manifest intentionally remains unchanged and both routines stay
+`contracted_unavailable` until executable target lowering is complete.
+
 The separate raw runtime-intrinsic port admits only
 `malbolge_guest_intrinsic_input_word` and
 `malbolge_guest_intrinsic_output_byte` under the exact `malbolge-2026` profile.
@@ -95,9 +103,9 @@ place allocation-capable user code before the required bind.
 
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
-runtime-call encoding, complete source sequencing, direct runtime-helper call
-integration, executable input-helper branching/status publication, target
-serialization, and complete Malbolge emission remain downstream work.
+runtime-call encoding, complete source sequencing, typed-IR external-call
+binding, executable helper branching/status publication, target serialization,
+and complete Malbolge emission remain downstream work.
 
 ### Authoritative Inputs
 
@@ -170,6 +178,10 @@ emitted.
   `i32` return path. Adversarial projection tests reject non-`u8` input,
   undefined
   output values, duplicate SSA IDs, and byte-valued returns.
+- Public byte-stream wrapper-plan evidence cross-checks `c-libc-v1.json` and the
+  checked-in guest `stdio.c` implementation, proving intrinsic/helper order for
+  both `getchar` and `putchar`, exact wrapper return semantics, and fail-closed
+  rejection of wrapper/profile/EOF drift without changing libc availability.
 - Pure runtime-helper evidence cross-checks the guest-runtime JSON contract, C
   declarations, and byte-stream implementation. It binds only the exact decode
   and low-byte helper identities, copies EOF from `current_profile()`, records
@@ -200,9 +212,9 @@ emitted.
   `BindHeap` before user entry. Tests reject ABI/profile/symbol drift, null or
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
-- Global heap placement, executable bind-call/source sequencing, direct
-  runtime-helper call integration, and executable input-helper branching/status
-  publication remain open target-lowering work.
+- Global heap placement, executable bind-call/source sequencing, typed-IR
+  external-call binding, and executable helper branching/status publication
+  remain open target-lowering work.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`, and
   `tests/ternary_lowering.rs`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

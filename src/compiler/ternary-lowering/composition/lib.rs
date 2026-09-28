@@ -33,6 +33,8 @@
 
 //! Canonical module topology for pre-layout ternary machine lowering.
 
+#[path = "../port-inbound/byte_stream_wrapper.rs"]
+mod byte_stream_wrapper_input;
 #[path = "../application/encode_machine_io.rs"]
 mod encode_machine_io;
 #[path = "../port-inbound/typed_ir.rs"]
@@ -47,6 +49,8 @@ mod lower_runtime_helper;
 mod lower_runtime_intrinsic;
 #[path = "../domain/model.rs"]
 mod model;
+#[path = "../application/plan_byte_stream_wrapper.rs"]
+mod plan_byte_stream_wrapper;
 #[path = "../application/plan_startup.rs"]
 mod plan_startup;
 #[path = "../application/realize_runtime_io.rs"]
@@ -60,6 +64,7 @@ mod startup_input;
 #[path = "../port-inbound/target_profile.rs"]
 mod target_profile_input;
 
+pub use byte_stream_wrapper_input::ByteStreamWrapperRequest;
 pub use encode_machine_io::{MachineIoEncodingError, encode_machine_io};
 pub use input::*;
 pub use instruction_decoder_input::ProfileInstructionDecoder;
@@ -71,6 +76,9 @@ pub use lower_runtime_intrinsic::{
     RuntimeIntrinsicLoweringError, lower_runtime_intrinsic,
 };
 pub use model::*;
+pub use plan_byte_stream_wrapper::{
+    ByteStreamWrapperPlanningError, plan_byte_stream_wrapper,
+};
 pub use plan_startup::{StartupPlanningError, plan_startup};
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_helper_input::RuntimeHelperRequest;

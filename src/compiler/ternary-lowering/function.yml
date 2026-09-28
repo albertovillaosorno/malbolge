@@ -108,6 +108,16 @@ parts:
     kind: application
     language: rust
     responsibility: Bind pure byte-stream helpers to profile-aware semantics.
+  - id: part-0015
+    path: port-inbound/byte_stream_wrapper.rs
+    kind: port-inbound
+    language: rust
+    responsibility: Carry exact public getchar and putchar wrapper identities.
+  - id: part-0016
+    path: application/plan_byte_stream_wrapper.rs
+    kind: application
+    language: rust
+    responsibility: Compose helper and intrinsic semantics in wrapper order.
 projects: []
 tests: []
 graph:

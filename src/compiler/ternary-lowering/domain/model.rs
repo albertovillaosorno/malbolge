@@ -124,6 +124,39 @@ pub struct StartupPlan {
     pub bind_identity: String,
 }
 
+/// Relative ordering of helper and raw intrinsic in one byte-stream wrapper.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ByteStreamWrapperOrder {
+    /// Pure byte mapping executes before raw machine output.
+    HelperThenIntrinsic,
+    /// Raw machine input executes before pure byte/EOF decoding.
+    IntrinsicThenHelper,
+}
+
+/// Guest-visible return semantics for one public byte-stream wrapper.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ByteStreamWrapperReturn {
+    /// Return decoded byte as `i32`, or `-1` for EOF/invalid input.
+    DecodedI32OrEof,
+    /// Return the emitted unsigned byte widened to guest `int`.
+    EmittedByteAsI32,
+}
+
+/// Ordered semantic plan for one public guest byte-stream wrapper.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ByteStreamWrapperPlan {
+    /// Pure runtime helper semantics used by the wrapper.
+    pub helper: RuntimeHelperOperation,
+    /// Exact public libc routine identity.
+    pub identity: String,
+    /// Raw target I/O intrinsic semantics used by the wrapper.
+    pub intrinsic: RuntimeIntrinsicOperation,
+    /// Relative helper/intrinsic execution order.
+    pub order: ByteStreamWrapperOrder,
+    /// Guest-visible wrapper return behavior.
+    pub return_kind: ByteStreamWrapperReturn,
+}
+
 /// One graphical source cell encoding a realized machine I/O operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EncodedMachineIo {

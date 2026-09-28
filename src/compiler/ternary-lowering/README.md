@@ -39,6 +39,13 @@ words `0..255` or the profile EOF word and carries exact valid/invalid statuses,
 while output carries the exact low-eight-bit mask. These recipes never evaluate
 a guest value on the host.
 
+Public `getchar`/`putchar` planning now composes those helper recipes with the
+raw intrinsic semantics in the exact order implemented by guest stdio: input
+intrinsic then decoder for `getchar`, helper then output intrinsic for
+`putchar`.
+The canonical libc manifest remains unchanged and still marks both routines
+contracted-unavailable pending executable target realization.
+
 A separate runtime-intrinsic port admits only the exact
 `malbolge_guest_intrinsic_input_word` and
 `malbolge_guest_intrinsic_output_byte` declarations under `malbolge-2026`,
@@ -53,6 +60,6 @@ Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly
 one `BindHeap` action before `EnterUserCode` while retaining the exact
 `malbolge_guest_runtime_bind_heap` identity. Arena placement, executable
-bind-call encoding, direct runtime-helper call integration, executable input
-helper branching/status publication, global layout, target serialization, and
-complete Malbolge emission remain open.
+bind-call encoding, typed-IR external-call binding, executable helper
+branching/status publication, global layout, target serialization, and complete
+Malbolge emission remain open.

@@ -74,6 +74,11 @@ instruction.
   projections with non-`u8` input, undefined output, duplicate SSA identity, or
   byte-valued return fail closed. These target effects deliberately do not claim
   raw profile-word/EOF or declaration-only intrinsic realization.
+- Public `getchar`/`putchar` planning now composes the verified helper and raw
+  intrinsic semantics in the exact checked-in guest stdio order, with explicit
+  decoded-`i32`/EOF versus emitted-byte return behavior. Tests bind the plan to
+  `c-libc-v1.json` and `stdio.c` while leaving both routines
+  `contracted_unavailable` until executable target realization is complete.
 - A pure runtime-helper boundary now admits only
   `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
   current profile. It emits declarative input byte/EOF/status and output
@@ -111,8 +116,8 @@ instruction.
   runtime header/JSON authority and reject identity or extent drift.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
-  layout/source sequencing, direct runtime-helper call integration, executable
-  input-helper branching/status publication, later runtime helpers, target
+  layout/source sequencing, typed-IR external-call binding, executable helper
+  branching/status publication, later runtime helpers, target
   serialization, and executable Malbolge-oriented lowering evidence. No
   ternary-stage wire identity exists yet.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

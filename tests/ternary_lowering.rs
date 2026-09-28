@@ -43,8 +43,10 @@ use std::str::from_utf8;
 
 use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
-    I32_TERNARY_TRITS, InputBlock, InputFunction, InputInstruction,
-    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    ByteStreamWrapperOrder, ByteStreamWrapperPlanningError,
+    ByteStreamWrapperRequest, ByteStreamWrapperReturn, I32_TERNARY_TRITS,
+    InputBlock, InputFunction, InputInstruction, InputScalarType,
+    InputSourcePosition, InputSourceSpan, InputTerminator,
     InputWordDecodeSemantics, MachineIoEncodingError, MachineIoKind,
     MachineIoOperation, ProfileInstructionDecoder, RuntimeHelperLoweringError,
     RuntimeHelperOperation, RuntimeHelperRequest,
@@ -53,7 +55,7 @@ use ternary_lowering::{
     StartupPlanningError, StartupRequest, TargetProfileIo,
     TernaryLoweringError, TernaryOperation, TypedIrInput, encode_machine_io,
     lower_runtime_helper, lower_runtime_intrinsic, lower_typed_ir,
-    plan_startup, realize_runtime_io,
+    plan_byte_stream_wrapper, plan_startup, realize_runtime_io,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, Function,
@@ -76,6 +78,8 @@ const GUEST_RUNTIME_HEADER: &str =
     "src/runtime/guest-runtime/contract/guest_runtime.h";
 const GUEST_BYTE_STREAM_SOURCE: &str =
     "src/runtime/guest-runtime/domain/byte_stream.c";
+const GUEST_STDIO_SOURCE: &str = "src/runtime/guest-c-library/domain/stdio.c";
+const LIBC_CONTRACT: &str = "docs/technical/specification/c-libc-v1.json";
 
 struct VmProfileInstructionDecoder;
 
@@ -1244,6 +1248,119 @@ fn runtime_helper_identity_or_profile_drift_fails_closed() -> Result<(), String>
         ) != Err(RuntimeHelperLoweringError::UnsupportedProfile)
     {
         return Err(String::from("runtime-helper drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_authority_matches_libc_source() -> Result<(), String> {
+    let libc = read_to_string(LIBC_CONTRACT)
+        .map_err(|error| format!("read libc contract: {error}"))?;
+    let source = read_to_string(GUEST_STDIO_SOURCE)
+        .map_err(|error| format!("read guest stdio source: {error}"))?;
+    for expected in [
+        "\"name\": \"getchar\"",
+        "\"name\": \"putchar\"",
+        "guest-byte-input-or-minus-one-eof",
+        "guest-low-eight-bit-output-or-minus-one-failure",
+    ] {
+        if !libc.contains(expected) {
+            return Err(format!(
+                "libc byte-stream authority missing {expected}"
+            ));
+        }
+    }
+    let input_intrinsic = source
+        .find("malbolge_guest_intrinsic_input_word")
+        .ok_or_else(|| String::from("getchar input intrinsic missing"))?;
+    let input_helper = source
+        .find("malbolge_guest_decode_input_word")
+        .ok_or_else(|| String::from("getchar decode helper missing"))?;
+    let output_helper = source
+        .find("malbolge_guest_output_byte")
+        .ok_or_else(|| String::from("putchar output helper missing"))?;
+    let output_intrinsic = source
+        .find("malbolge_guest_intrinsic_output_byte")
+        .ok_or_else(|| String::from("putchar output intrinsic missing"))?;
+    if input_intrinsic >= input_helper || output_helper >= output_intrinsic {
+        return Err(String::from("guest stdio wrapper order drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_plans_preserve_guest_order() -> Result<(), String> {
+    let profile = current_profile_io();
+    let getchar = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("getchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan getchar: {error:?}"))?;
+    if getchar.identity != "getchar"
+        || getchar.intrinsic != RuntimeIntrinsicOperation::InputWord
+        || getchar.order != ByteStreamWrapperOrder::IntrinsicThenHelper
+        || getchar.return_kind != ByteStreamWrapperReturn::DecodedI32OrEof
+        || getchar.helper
+            != RuntimeHelperOperation::DecodeInputWord(Box::new(
+                InputWordDecodeSemantics {
+                    byte_max: 255,
+                    eof_value_bits: u32::MAX,
+                    eof_word: current_profile().eof_word(),
+                    invalid_input_status: 4,
+                    valid_status: 0,
+                },
+            ))
+    {
+        return Err(String::from("getchar semantic plan drifted"));
+    }
+    let putchar = plan_byte_stream_wrapper(
+        &ByteStreamWrapperRequest {
+            identity: String::from("putchar"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("plan putchar: {error:?}"))?;
+    if putchar.identity != "putchar"
+        || putchar.helper != (RuntimeHelperOperation::OutputByte { mask: 255 })
+        || putchar.intrinsic != RuntimeIntrinsicOperation::OutputByte
+        || putchar.order != ByteStreamWrapperOrder::HelperThenIntrinsic
+        || putchar.return_kind != ByteStreamWrapperReturn::EmittedByteAsI32
+    {
+        return Err(String::from("putchar semantic plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_stream_wrapper_plan_rejects_drift() -> Result<(), String> {
+    let profile = current_profile_io();
+    let unknown = ByteStreamWrapperRequest {
+        identity: String::from("host_getchar"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    let wrong_profile = ByteStreamWrapperRequest {
+        identity: String::from("getchar"),
+        target_profile: String::from("malbolge-1998"),
+    };
+    let mut ambiguous_eof = profile.clone();
+    ambiguous_eof.eof_word = 255;
+    if plan_byte_stream_wrapper(&unknown, &profile)
+        != Err(ByteStreamWrapperPlanningError::UnsupportedIdentity)
+        || plan_byte_stream_wrapper(&wrong_profile, &profile)
+            != Err(ByteStreamWrapperPlanningError::UnsupportedProfile)
+        || plan_byte_stream_wrapper(
+            &ByteStreamWrapperRequest {
+                identity: String::from("getchar"),
+                target_profile: String::from("malbolge-2026"),
+            },
+            &ambiguous_eof,
+        ) != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
+    {
+        return Err(String::from("byte-stream wrapper drift was not rejected"));
     }
     Ok(())
 }
