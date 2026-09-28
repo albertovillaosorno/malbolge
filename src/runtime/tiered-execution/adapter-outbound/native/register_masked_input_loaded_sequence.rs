@@ -222,6 +222,12 @@ impl LoadedRegisterMaskedInputNativeSequence {
         })
     }
 
+    /// Returns retained owners to sibling native sequence coordinators only.
+    #[must_use]
+    pub(super) fn owners(&self) -> &[RegisterMaskedInputNativeExecutableOwner] {
+        &self.owners
+    }
+
     /// Returns the exact admitted sequence plan retained beside the mappings.
     #[must_use]
     pub const fn plan(

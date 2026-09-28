@@ -926,8 +926,13 @@ behavior.
   semantic order, and cleans a complete ready prefix after late load failure.
   Failed cleanup preserves exact executable ownership for retry.
 
-  Input sequence execution/cache residency and both jump instruction families
-  remain open and fail closed.
+  Loaded Input sequence execution now advances exact observations through
+  retained mappings without adapter work. Guard miss returns the current resume
+  boundary; current-step failure rolls back that step while preserving the
+  committed prefix and reusable residency.
+
+  Input sequence cache residency and both jump instruction families remain open
+  and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

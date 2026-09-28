@@ -558,7 +558,10 @@ use execution_native::{
     RegisterMaskedInputNativeResidentCacheRelease,
     RegisterMaskedInputNativeResidentLease,
     RegisterMaskedInputNativeResidentLeaseCache,
-    RegisterMaskedInputNativeRunner, RegisterMaskedInputNativeSequenceKey,
+    RegisterMaskedInputNativeRunner,
+    RegisterMaskedInputNativeSequenceExecutionFailure,
+    RegisterMaskedInputNativeSequenceKey,
+    RegisterMaskedInputNativeSequenceOutcome,
     RegisterMaskedInputNativeSequencePlan,
     RegisterMaskedInputNativeSequencePlanError,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
@@ -710,6 +713,7 @@ use execution_native::{
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_crazy_native_sequence,
+    execute_loaded_register_masked_input_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
     execute_loaded_register_masked_output_native_sequence,
     execute_loaded_register_masked_rotate_native_sequence,
@@ -2693,6 +2697,17 @@ impl FakeRegisterMaskedInputNativeRunner {
         Self {
             behavior,
             behaviors: Vec::new(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+
+    const fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+        Self {
+            behavior: FakeNativeRunnerBehavior::GuardMiss,
+            behaviors,
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -22153,6 +22168,34 @@ fn assert_output_sequence_runner_failure(
     }
 }
 
+fn assert_input_sequence_runner_failure(
+    failure: &RegisterMaskedInputNativeSequenceExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+    completed_steps: usize,
+    observation: ProfileMachineObservation,
+    state_ok: (bool, bool, bool, bool),
+) -> TieredTestResult {
+    let (memory_ok, output_ok, residency_ok, calls_ok) = state_ok;
+    if failure.completed_steps() == completed_steps
+        && failure.step_index() == completed_steps
+        && failure.resume_index() == completed_steps
+        && failure.observation() == observation
+        && matches!(
+            failure.execution_failure(),
+            RegisterMaskedInputNativeOwnerExecutionFailure::Execution(_)
+        )
+        && memory_ok
+        && output_ok
+        && residency_ok
+        && calls_ok
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 input sequence runner rollback drifted"))
+    }
+}
+
 fn register_masked_input_loaded_sequence_fixture()
 -> Result<RegisterMaskedInputNativeSequencePlan, String> {
     let programs = canonical_register_masked_input_programs()?;
@@ -22279,6 +22322,236 @@ fn register_masked_v6_input_loaded_sequence_release_failure_retries()
             "v6 input sequence release retry count drifted",
         ))
     }
+}
+
+#[test]
+fn register_masked_v6_input_sequence_executes_pair() -> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(606)?,
+        native_executable_address(0xa4000)?,
+    );
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41, 0x42],
+    )?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let input = [0x41u8, 0x42];
+    let mut output = [9u8, 8, 7, 6];
+    let expected_output = output;
+    for program in plan.programs() {
+        apply_register_masked_input_expected(program, &mut expected_memory)?;
+    }
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_input_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input sequence execute: {error}"))?;
+    let expected = RegisterMaskedInputNativeSequenceOutcome::Applied {
+        observation: plan.exit(),
+        steps: 2,
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 input sequence applied outcome drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_sequence_guard_miss_is_atomic() -> TieredTestResult
+{
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(607)?,
+        native_executable_address(0xa5000)?,
+    );
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41, 0x42],
+    )?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = [0x41u8, 0x42];
+    let mut output = [9u8, 8, 7, 6];
+    let entry_output = output;
+    let mut runner = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_register_masked_input_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input guard execute: {error}"))?;
+    let expected = RegisterMaskedInputNativeSequenceOutcome::GuardMiss {
+        index: 0,
+        observation: plan.entry(),
+    };
+    if outcome != expected
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 input sequence guard-miss boundary drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_sequence_runner_failure_reuses_mapping()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(608)?,
+        native_executable_address(0xa6000)?,
+    );
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input reusable load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41, 0x42],
+    )?;
+    let mut memory = state.memory().to_vec();
+    let input = [0x41u8, 0x42];
+    let mut output = [9u8, 8, 7, 6];
+    let entry_output = output;
+    let mut failing = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = execute_loaded_register_masked_input_native_sequence(
+        &loaded,
+        &mut failing,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 input sequence runner failure ignored"));
+    };
+    assert_input_sequence_runner_failure(
+        failure.as_ref(),
+        0,
+        plan.entry(),
+        (
+            memory.as_slice() == state.memory(),
+            output == entry_output,
+            adapter.operations == loaded_operations,
+            failing.calls == 1,
+        ),
+    )?;
+    let mut succeeding = FakeRegisterMaskedInputNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_input_native_sequence(
+        &loaded,
+        &mut succeeding,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 input reusable execute: {error}"))?;
+    if !matches!(
+        outcome,
+        RegisterMaskedInputNativeSequenceOutcome::Applied { .. }
+    ) || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 input sequence remapped after failure"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input reusable release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_input_sequence_late_failure_keeps_prefix()
+-> TieredTestResult {
+    let plan = register_masked_input_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(609)?,
+        native_executable_address(0xa7000)?,
+    );
+    let loaded =
+        load_register_masked_input_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 input late-failure load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41, 0x42],
+    )?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let input = [0x41u8, 0x42];
+    let mut output = [9u8, 8, 7, 6];
+    let entry_output = output;
+    let first_program = plan
+        .programs()
+        .first()
+        .ok_or_else(|| String::from("v6 input sequence first step missing"))?;
+    apply_register_masked_input_expected(first_program, &mut expected_memory)?;
+    let first_observation = first_program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 input sequence first effect missing"))?
+        .after;
+    let mut runner = FakeRegisterMaskedInputNativeRunner::scripted(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = execute_loaded_register_masked_input_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v6 input sequence ignored late runner failure",
+        ));
+    };
+    assert_input_sequence_runner_failure(
+        failure.as_ref(),
+        1,
+        first_observation,
+        (
+            memory == expected_memory,
+            output == entry_output,
+            adapter.operations == loaded_operations,
+            runner.calls == 2,
+        ),
+    )?;
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 input late-failure release: {error}"))
 }
 
 fn register_masked_output_loaded_sequence_fixture()

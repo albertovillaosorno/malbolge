@@ -92,6 +92,7 @@ mod register_masked_graph_resident;
 mod register_masked_input_lease_cache;
 mod register_masked_input_loaded_sequence;
 mod register_masked_input_sequence;
+mod register_masked_input_sequence_execution;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -944,6 +945,12 @@ pub use register_masked_input_sequence::{
     RegisterMaskedInputNativeSequenceKey,
     RegisterMaskedInputNativeSequencePlan,
     RegisterMaskedInputNativeSequencePlanError,
+};
+pub use register_masked_input_sequence_execution::{
+    RegisterMaskedInputNativeSequenceExecutionFailure,
+    RegisterMaskedInputNativeSequenceExecutionResult,
+    RegisterMaskedInputNativeSequenceOutcome,
+    execute_loaded_register_masked_input_native_sequence,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
