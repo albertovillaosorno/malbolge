@@ -70,6 +70,16 @@ use super::runner::{
     RegisterMaskedRotateNoOperationNativeRunner,
 };
 
+type NoOperationRotateNativeInvocation<'buffers, 'executable> =
+    PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type RotateNoOperationNativeInvocation<'buffers, 'executable> =
+    PreparedRegisterMaskedRotateNoOperationNativeInvocation<
+        'buffers,
+        'executable,
+    >;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NativeProcessHostErrorKind {
     CallResponse,
@@ -365,11 +375,7 @@ impl NativeProcessHost {
 
     fn exchange_register_masked_no_operation_rotate_call(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedNoOperationRotateNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationRotateNativeInvocation<'_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
         let encoded = encode_native_process_call_request(&request)
@@ -389,11 +395,7 @@ impl NativeProcessHost {
 
     fn exchange_register_masked_rotate_no_operation_call(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedRotateNoOperationNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut RotateNoOperationNativeInvocation<'_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
         let encoded = encode_native_process_call_request(&request)
@@ -535,11 +537,7 @@ impl RegisterMaskedNoOperationRotateNativeRunner for NativeProcessHost {
 
     fn run(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedNoOperationRotateNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationRotateNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.exchange_register_masked_no_operation_rotate_call(invocation)
     }
@@ -550,11 +548,7 @@ impl RegisterMaskedRotateNoOperationNativeRunner for NativeProcessHost {
 
     fn run(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedRotateNoOperationNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut RotateNoOperationNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.exchange_register_masked_rotate_no_operation_call(invocation)
     }

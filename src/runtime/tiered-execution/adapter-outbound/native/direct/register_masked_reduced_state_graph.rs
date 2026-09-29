@@ -230,10 +230,12 @@ impl Display for AheadOfExecutionRegisterMaskedReducedStateGraphError {
                 f,
                 "reduced v6 edge {index}->{successor} missed successor guard"
             ),
-            Self::TerminalSuccessor { index } => write!(
-                f,
-                "reduced v6 AOT terminal node {index} has a successor"
-            ),
+            Self::TerminalSuccessor { index } => {
+                write!(
+                    f,
+                    "reduced v6 AOT terminal node {index} has a successor"
+                )
+            },
             Self::Unreachable { index } => {
                 write!(f, "reduced v6 AOT graph node {index} is unreachable")
             },

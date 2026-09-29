@@ -160,11 +160,10 @@ where
     let expected_bytes = expected
         .map(|retention| encode_file_blob_pair_retention(retention.revisions()))
         .transpose()
-        .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
-    let replacement_bytes = encode_file_blob_pair_retention(
-        replacement.revisions(),
-    )
-    .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
+        .map_err(JournalError::Codec)?;
+    let replacement_bytes =
+        encode_file_blob_pair_retention(replacement.revisions())
+            .map_err(JournalError::Codec)?;
     let outcome = compare_and_swap_blob_durably(
         store,
         expected_bytes.as_deref(),
@@ -173,22 +172,20 @@ where
     )
     .map_err(NativeContinuationFileBlobPairRetentionJournalError::Blob)?;
     match outcome {
-        NativeContinuationBlobConditionalDurablePersistence::Conflict {
-            current,
-        } => Ok(NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
-            current: current
-                .as_deref()
-                .map(decode_retention_owner)
-                .transpose()
-                .map_err(
-                    NativeContinuationFileBlobPairRetentionJournalError::Codec,
-                )?,
-        }),
-        NativeContinuationBlobConditionalDurablePersistence::Durable {
-            write,
-        } => Ok(NativeContinuationFileBlobPairRetentionJournalCas::Durable {
-            bytes: write.bytes(),
-        }),
+        ConditionalDurablePersistence::Conflict { current } => Ok(
+            NativeContinuationFileBlobPairRetentionJournalCas::Conflict {
+                current: current
+                    .as_deref()
+                    .map(decode_retention_owner)
+                    .transpose()
+                    .map_err(JournalError::Codec)?,
+            },
+        ),
+        ConditionalDurablePersistence::Durable { write } => {
+            Ok(NativeContinuationFileBlobPairRetentionJournalCas::Durable {
+                bytes: write.bytes(),
+            })
+        },
         NativeContinuationBlobConditionalDurablePersistence::Published {
             durability_error,
             write,
@@ -218,7 +215,7 @@ where
     Store: NativeContinuationDurableBlobStore,
 {
     let bytes = encode_file_blob_pair_retention(retention.revisions())
-        .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
+        .map_err(JournalError::Codec)?;
     persist_blob_durably(store, &bytes, maximum_bytes)
         .map_err(NativeContinuationFileBlobPairRetentionJournalError::Blob)
 }
@@ -243,8 +240,8 @@ where
     let NativeContinuationBlobPersistenceLoad::Present { bytes } = load else {
         return Ok(NativeContinuationFileBlobPairRetentionJournalLoad::Missing);
     };
-    let retention = decode_retention_owner(&bytes)
-        .map_err(NativeContinuationFileBlobPairRetentionJournalError::Codec)?;
+    let retention =
+        decode_retention_owner(&bytes).map_err(JournalError::Codec)?;
     Ok(
         NativeContinuationFileBlobPairRetentionJournalLoad::Present {
             retention,
@@ -265,3 +262,7 @@ fn decode_retention_owner(
     }
     Ok(retention)
 }
+
+type ConditionalDurablePersistence<E> =
+    NativeContinuationBlobConditionalDurablePersistence<E>;
+type JournalError<E> = NativeContinuationFileBlobPairRetentionJournalError<E>;

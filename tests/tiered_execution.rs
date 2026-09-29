@@ -1656,10 +1656,79 @@ type CrazyTheoremSequenceTriple = (
     Box<gclru::CrazyTheoremSequence>,
 );
 
+type NoOperationHaltInvocation<'buffers, 'executable> =
+    en::PreparedRegisterMaskedNoOperationHaltNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type NoOperationPairInvocation<'buffers, 'executable> =
+    en::PreparedRegisterMaskedNoOperationPairNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type NoOperationRotateInvocation<'buffers, 'executable> =
+    en::PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type RotateNoOperationInvocation<'buffers, 'executable> =
+    en::PreparedRegisterMaskedRotateNoOperationNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type PairConditionalRequest<'state, Revision> =
+    telemetry_pair_store_port::NativeContinuationBlobPairConditionalRequest<
+        'state,
+        Revision,
+    >;
+type PairConditionalPublication<Revision> =
+    telemetry_pair_store_port::NativeContinuationBlobPairConditionalPublication<
+        Revision,
+    >;
+type BlobConditionalPublication =
+    telemetry_store_port::NativeContinuationBlobConditionalPublication;
+type JumpCodeResidentFailure<E> =
+    en::RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure<E>;
+type JumpDataResidentFailure<E> =
+    en::RegisterMaskedJumpDataNativeResidentCacheAcquireFailure<E>;
+type RotateResidentFailure<E> =
+    RegisterMaskedRotateNativeResidentCacheAcquireFailure<E>;
+type CrazyResidentFailure<E> =
+    RegisterMaskedCrazyNativeResidentCacheAcquireFailure<E>;
+type InputResidentFailure<E> =
+    RegisterMaskedInputNativeResidentCacheAcquireFailure<E>;
+type OutputResidentFailure<E> =
+    RegisterMaskedOutputNativeResidentCacheAcquireFailure<E>;
+type NoOperationResidentFailure<E> =
+    RegisterMaskedNoOperationNativeResidentCacheAcquireFailure<E>;
+type NoOperationSequencePlanError =
+    RegisterMaskedNoOperationNativeSequencePlanError;
+type TelemetryError = cached_cycle::NativeContinuationCachedRetryTelemetryError;
+type PairJournalRetryError<E> =
+    NativeContinuationFileBlobPairJournalTransitionRetryError<E>;
+type OrderedTelemetryPersistenceLoad =
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad;
+type TelemetryWindowError = NativeContinuationCachedRetryTelemetryWindowError;
+type TelemetryWindowCounter =
+    NativeContinuationCachedRetryTelemetryWindowCounter;
+type TelemetryAssessmentSignal =
+    NativeContinuationCachedRetryTelemetryAssessmentSignal;
+type LatencyAssessmentSignal =
+    NativeContinuationCachedRetryLatencyAssessmentSignal;
+type LatencyCoarseningError =
+    NativeContinuationCachedRetryLatencyCoarseningError;
+type CommonLatencyCoarseningError =
+    NativeContinuationCachedRetryLatencyCommonCoarseningError;
+type LatencyHistogramError = NativeContinuationCachedRetryLatencyHistogramError;
+type LatencyMergeError = NativeContinuationCachedRetryLatencyMergeError;
+type LatencySnapshotError = NativeContinuationCachedRetryLatencySnapshotError;
+type LatencyCodecError = NativeContinuationCachedRetryLatencyCodecError;
+
 type AotGraphStateResult = Result<ProfileMachineState, String>;
 type AotRegisterMaskedMultiStepFixture =
     (ProfileMachineState, RegisterMaskedRegionEffectProgram);
-type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
+type TestInstalledJit =
+    (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
 type TieredTestResult = Result<(), String>;
 type V6GraphError = en::AheadOfExecutionRegisterMaskedStateGraphError;
 type V6GraphPreparationError<'requirement> =
@@ -2183,8 +2252,7 @@ struct LeasedNativeRetryFixture {
 type CachedRetryCycleNativeFailure =
     Box<NativeContinuationCachedRetryNativeFailure<FakeNativeRunnerError>>;
 
-type CachedRetryTelemetryWindowError =
-    NativeContinuationCachedRetryTelemetryWindowError;
+type CachedRetryTelemetryWindowError = TelemetryWindowError;
 
 type CachedRetryCodecFixture = (
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
@@ -3538,11 +3606,7 @@ impl en::RegisterMaskedNoOperationHaltNativeRunner
 
     fn run(
         &mut self,
-        invocation:
-            &mut en::PreparedRegisterMaskedNoOperationHaltNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationHaltInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -3585,11 +3649,7 @@ impl en::RegisterMaskedNoOperationPairNativeRunner
 
     fn run(
         &mut self,
-        invocation:
-            &mut en::PreparedRegisterMaskedNoOperationPairNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationPairInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -3632,11 +3692,7 @@ impl en::RegisterMaskedNoOperationRotateNativeRunner
 
     fn run(
         &mut self,
-        invocation:
-            &mut en::PreparedRegisterMaskedNoOperationRotateNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationRotateInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -3894,11 +3950,7 @@ impl en::RegisterMaskedRotateNoOperationNativeRunner
 
     fn run(
         &mut self,
-        invocation:
-            &mut en::PreparedRegisterMaskedRotateNoOperationNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut RotateNoOperationInvocation<'_, '_>,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -4262,13 +4314,8 @@ impl telemetry_pair_store_port::NativeContinuationConditionalBlobPairStore
 
     fn compare_and_swap_pair(
         &mut self,
-        request: telemetry_pair_store_port::
-            NativeContinuationBlobPairConditionalRequest<'_, Self::Revision>,
-    ) -> Result<
-        telemetry_pair_store_port::
-            NativeContinuationBlobPairConditionalPublication<Self::Revision>,
-        Self::Error,
-    >{
+        request: PairConditionalRequest<'_, Self::Revision>,
+    ) -> Result<PairConditionalPublication<Self::Revision>, Self::Error> {
         if let Some((pair, revision)) = self.pair_before_compare.take() {
             self.pair = Some(pair);
             self.revision = revision;
@@ -4411,22 +4458,16 @@ impl telemetry_store_port::NativeContinuationConditionalBlobStore
         expected: Option<&[u8]>,
         replacement: &[u8],
         _maximum_bytes: NonZeroUsize,
-    ) -> Result<
-        telemetry_store_port::NativeContinuationBlobConditionalPublication,
-        Self::Error,
-    > {
+    ) -> Result<BlobConditionalPublication, Self::Error> {
         self.compare_and_swap_calls =
             self.compare_and_swap_calls.saturating_add(1);
         if let Some(blob) = self.blobs_before_compare.pop_front() {
             self.blob = Some(blob);
         }
         if self.blob.as_deref() != expected {
-            return Ok(
-                telemetry_store_port::
-                    NativeContinuationBlobConditionalPublication::Conflict {
-                        current: self.blob.clone(),
-                    },
-            );
+            return Ok(BlobConditionalPublication::Conflict {
+                current: self.blob.clone(),
+            });
         }
         telemetry_store_port::NativeContinuationBlobStore::replace(
             self,
@@ -19393,9 +19434,7 @@ fn assert_jump_code_resident_identity_occupied() -> TieredTestResult {
     else {
         return Err(String::from("v6 JumpCode resident replaced identity"));
     };
-    if error.as_ref()
-        != &en::RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &JumpCodeResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -19435,9 +19474,7 @@ fn assert_jump_data_resident_identity_occupied() -> TieredTestResult {
     else {
         return Err(String::from("v6 JumpData resident replaced identity"));
     };
-    if error.as_ref()
-        != &en::RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &JumpDataResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -19476,10 +19513,8 @@ fn assert_jump_code_resident_load_failure() -> TieredTestResult {
     let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
         return Err(String::from("v6 JumpCode resident ignored load failure"));
     };
-    if !matches!(
-        error.as_ref(),
-        en::RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::Load(_)
-    ) || cache.has_resident()
+    if !matches!(error.as_ref(), JumpCodeResidentFailure::Load(_))
+        || cache.has_resident()
         || cache.resident_lease_count() != 0
         || adapter.operations
             != [
@@ -19506,10 +19541,8 @@ fn assert_jump_data_resident_load_failure() -> TieredTestResult {
     let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
         return Err(String::from("v6 JumpData resident ignored load failure"));
     };
-    if !matches!(
-        error.as_ref(),
-        en::RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::Load(_)
-    ) || cache.has_resident()
+    if !matches!(error.as_ref(), JumpDataResidentFailure::Load(_))
+        || cache.has_resident()
         || cache.resident_lease_count() != 0
         || adapter.operations
             != [
@@ -20542,9 +20575,7 @@ fn register_masked_v6_rotate_resident_cache_rejects_different_identity()
             "v6 rotate resident replaced a different identity",
         ));
     };
-    if error.as_ref()
-        != &RegisterMaskedRotateNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &RotateResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -20619,9 +20650,7 @@ fn register_masked_v6_rotate_resident_load_failure_is_atomic()
         return Err(String::from("v6 rotate resident ignored load failure"));
     };
     match error.as_ref() {
-        RegisterMaskedRotateNativeResidentCacheAcquireFailure::Load(
-            owner_error,
-        ) => {
+        RotateResidentFailure::Load(owner_error) => {
             if !matches!(
                 owner_error.as_ref(),
                 RegisterMaskedRotateNativeOwnerLoadFailure::Load(_)
@@ -20631,8 +20660,7 @@ fn register_masked_v6_rotate_resident_load_failure_is_atomic()
                 ));
             }
         },
-        RegisterMaskedRotateNativeResidentCacheAcquireFailure::
-            IdentityOccupied => {
+        RotateResidentFailure::IdentityOccupied => {
             return Err(String::from(
                 "v6 rotate load failure became identity occupancy",
             ));
@@ -20720,9 +20748,7 @@ fn register_masked_v6_crazy_resident_cache_rejects_different_identity()
             "v6 Crazy resident replaced a different identity",
         ));
     };
-    if error.as_ref()
-        != &RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &CrazyResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -20796,9 +20822,7 @@ fn register_masked_v6_crazy_resident_load_failure_atomic() -> TieredTestResult {
         return Err(String::from("v6 Crazy resident ignored load failure"));
     };
     match error.as_ref() {
-        RegisterMaskedCrazyNativeResidentCacheAcquireFailure::Load(
-            owner_error,
-        ) => {
+        CrazyResidentFailure::Load(owner_error) => {
             if !matches!(
                 owner_error.as_ref(),
                 RegisterMaskedCrazyNativeOwnerLoadFailure::Load(_)
@@ -20808,8 +20832,7 @@ fn register_masked_v6_crazy_resident_load_failure_atomic() -> TieredTestResult {
                 ));
             }
         },
-        RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
-            IdentityOccupied => {
+        CrazyResidentFailure::IdentityOccupied => {
             return Err(String::from(
                 "v6 Crazy load failure became identity occupancy",
             ));
@@ -20902,9 +20925,7 @@ fn register_masked_v6_input_resident_cache_rejects_different_identity()
             "v6 input resident replaced a different identity",
         ));
     };
-    if error.as_ref()
-        != &RegisterMaskedInputNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &InputResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -20980,9 +21001,7 @@ fn register_masked_v6_input_resident_load_failure_atomic() -> TieredTestResult {
         return Err(String::from("v6 input resident ignored load failure"));
     };
     match error.as_ref() {
-        RegisterMaskedInputNativeResidentCacheAcquireFailure::Load(
-            owner_error,
-        ) => {
+        InputResidentFailure::Load(owner_error) => {
             if !matches!(
                 owner_error.as_ref(),
                 RegisterMaskedInputNativeOwnerLoadFailure::Load(_)
@@ -20992,8 +21011,7 @@ fn register_masked_v6_input_resident_load_failure_atomic() -> TieredTestResult {
                 ));
             }
         },
-        RegisterMaskedInputNativeResidentCacheAcquireFailure::
-            IdentityOccupied => {
+        InputResidentFailure::IdentityOccupied => {
             return Err(String::from(
                 "v6 input load failure became identity occupancy",
             ));
@@ -21082,9 +21100,7 @@ fn register_masked_v6_output_resident_cache_rejects_different_identity()
             "v6 Output resident replaced a different identity",
         ));
     };
-    if error.as_ref()
-        != &RegisterMaskedOutputNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &OutputResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -21159,9 +21175,7 @@ fn register_masked_v6_output_resident_load_failure_atomic() -> TieredTestResult
         return Err(String::from("v6 Output resident ignored load failure"));
     };
     match error.as_ref() {
-        RegisterMaskedOutputNativeResidentCacheAcquireFailure::Load(
-            owner_error,
-        ) => {
+        OutputResidentFailure::Load(owner_error) => {
             if !matches!(
                 owner_error.as_ref(),
                 RegisterMaskedOutputNativeOwnerLoadFailure::Load(_)
@@ -21171,8 +21185,7 @@ fn register_masked_v6_output_resident_load_failure_atomic() -> TieredTestResult
                 ));
             }
         },
-        RegisterMaskedOutputNativeResidentCacheAcquireFailure::
-            IdentityOccupied => {
+        OutputResidentFailure::IdentityOccupied => {
             return Err(String::from(
                 "v6 Output load failure became identity occupancy",
             ));
@@ -21264,9 +21277,7 @@ fn register_masked_v6_no_operation_resident_cache_rejects_different_identity()
             "v6 no-op resident replaced a different identity",
         ));
     };
-    if error.as_ref()
-        != &RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::
-            IdentityOccupied
+    if error.as_ref() != &NoOperationResidentFailure::IdentityOccupied
         || adapter.operations != loaded_operations
         || cache.resident_lease_count() != 1
     {
@@ -21343,9 +21354,7 @@ fn register_masked_v6_no_operation_resident_load_failure_is_atomic()
         return Err(String::from("v6 no-op resident ignored load failure"));
     };
     match error.as_ref() {
-        RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::Load(
-            owner_error,
-        ) => {
+        NoOperationResidentFailure::Load(owner_error) => {
             if !matches!(
                 owner_error.as_ref(),
                 RegisterMaskedNoOperationNativeOwnerLoadFailure::Load(_)
@@ -21355,8 +21364,7 @@ fn register_masked_v6_no_operation_resident_load_failure_is_atomic()
                 ));
             }
         },
-        RegisterMaskedNoOperationNativeResidentCacheAcquireFailure::
-            IdentityOccupied => {
+        NoOperationResidentFailure::IdentityOccupied => {
             return Err(String::from(
                 "v6 no-op load failure became identity occupancy",
             ));
@@ -32256,7 +32264,7 @@ fn register_masked_v6_no_operation_sequence_key_preserves_identity()
 fn register_masked_v6_no_operation_sequence_plan_rejects_empty_and_count()
 -> TieredTestResult {
     let empty = RegisterMaskedNoOperationNativeSequencePlan::new(&[], &[]);
-    if empty != Err(RegisterMaskedNoOperationNativeSequencePlanError::Empty) {
+    if empty != Err(NoOperationSequencePlanError::Empty) {
         return Err(String::from("v6 no-op sequence admitted empty plan"));
     }
     let program = canonical_register_masked_no_operation_program()?;
@@ -32265,12 +32273,10 @@ fn register_masked_v6_no_operation_sequence_plan_rejects_empty_and_count()
         &[],
     );
     if count
-        == Err(
-            RegisterMaskedNoOperationNativeSequencePlanError::ArtifactCount {
-                programs: 1,
-                artifacts: 0,
-            },
-        )
+        == Err(NoOperationSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
     {
         Ok(())
     } else {
@@ -32296,10 +32302,7 @@ fn register_masked_v6_no_operation_sequence_rejects_terminated_prefix()
     let result =
         RegisterMaskedNoOperationNativeSequencePlan::new(&programs, &artifacts);
     if result
-        == Err(
-            RegisterMaskedNoOperationNativeSequencePlanError::
-                TerminationBeforeEnd { index: 0 },
-        )
+        == Err(NoOperationSequencePlanError::TerminationBeforeEnd { index: 0 })
     {
         Ok(())
     } else {
@@ -32319,11 +32322,7 @@ fn register_masked_v6_no_operation_sequence_plan_rejects_identity_drift()
         from_ref(&artifact),
     );
     if result
-        == Err(
-            RegisterMaskedNoOperationNativeSequencePlanError::ArtifactIdentity {
-                index: 0,
-            },
-        )
+        == Err(NoOperationSequencePlanError::ArtifactIdentity { index: 0 })
     {
         Ok(())
     } else {
@@ -70639,16 +70638,12 @@ fn assert_retirement_pressure_assessment(
     else {
         return Err(String::from("retirement assessment category drifted"));
     };
-    let evicted = violations.contains(
-        NativeContinuationCachedRetryTelemetryAssessmentSignal::EvictedKeys,
-    );
-    let retired = violations.contains(
-        NativeContinuationCachedRetryTelemetryAssessmentSignal::RetiredKeys,
-    );
+    let evicted = violations.contains(TelemetryAssessmentSignal::EvictedKeys);
+    let retired = violations.contains(TelemetryAssessmentSignal::RetiredKeys);
     let unexpected = [
-        NativeContinuationCachedRetryTelemetryAssessmentSignal::CompletedSteps,
-        NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
-        NativeContinuationCachedRetryTelemetryAssessmentSignal::Insertions,
+        TelemetryAssessmentSignal::CompletedSteps,
+        TelemetryAssessmentSignal::Hits,
+        TelemetryAssessmentSignal::Insertions,
     ]
     .into_iter()
     .any(|signal| violations.contains(signal));
@@ -85003,10 +84998,9 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
 fn full_crazy_applied_runner(
     calls: usize,
 ) -> FakeExecutionGeometrySequenceRunner {
-    FakeExecutionGeometrySequenceRunner::new(vec![
-        FakeNativeRunnerBehavior::Applied;
-        calls
-    ])
+    FakeExecutionGeometrySequenceRunner::new(
+        vec![FakeNativeRunnerBehavior::Applied; calls],
+    )
 }
 
 fn full_crazy_failure_runner() -> FakeExecutionGeometrySequenceRunner {
@@ -94260,10 +94254,7 @@ fn cached_retry_telemetry_reports_exact_step_overflow_attempt() {
     ];
     assert_eq!(
         summarize_cached_retry_attempts(&attempts),
-        Err(
-            cached_cycle::NativeContinuationCachedRetryTelemetryError::
-                CompletedSteps { attempt: 2 },
-        ),
+        Err(TelemetryError::CompletedSteps { attempt: 2 },),
     );
 }
 
@@ -96916,11 +96907,7 @@ fn cached_retry_file_blob_pair_retention_transition_retry_stops_on_callback()
     )
     .err()
     .ok_or_else(|| String::from("transition callback rejection was ignored"))?;
-    if matches!(
-        error,
-        NativeContinuationFileBlobPairJournalTransitionRetryError::
-            Reconciliation("rejected")
-    ) {
+    if matches!(error, PairJournalRetryError::Reconciliation("rejected")) {
         Ok(())
     } else {
         Err(String::from(
@@ -98696,11 +98683,10 @@ fn cached_retry_ordered_pair_retry_stops_on_fresh_stale_order()
     };
     if error
         == OrderedPairReconciliationError::Ordered(
-            NativeContinuationCachedRetryTelemetryOrderedWindowError::
-                OrderNotAdvanced {
-                    current: OrderedTelemetryBatchOrder::from_value(25),
-                    submitted,
-                },
+            OrderedTelemetryWindowError::OrderNotAdvanced {
+                current: OrderedTelemetryBatchOrder::from_value(25),
+                submitted,
+            },
         )
     {
         Ok(())
@@ -98946,8 +98932,7 @@ fn cached_retry_ordered_pair_reconciliation_rejects_stale_order()
     if matches!(
         error,
         OrderedPairReconciliationError::Ordered(
-            NativeContinuationCachedRetryTelemetryOrderedWindowError::
-                OrderNotAdvanced { .. }
+            OrderedTelemetryWindowError::OrderNotAdvanced { .. }
         )
     ) && store.replace_calls == replace_calls
     {
@@ -100416,10 +100401,7 @@ fn cached_retry_telemetry_ordered_persistence_roundtrips_combined_state()
         nonzero_test_limit(4_096, "ordered restore bytes")?,
     )
     .map_err(|error| format!("ordered restoration failed: {error:?}"))?;
-    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
-        bytes,
-        value,
-    } = restored
+    let OrderedTelemetryPersistenceLoad::Restored { bytes, value } = restored
     else {
         return Err(String::from("ordered state disappeared"));
     };
@@ -100472,10 +100454,7 @@ fn cached_retry_telemetry_ordered_persistence_reports_missing_state()
         nonzero_test_limit(4_096, "ordered missing bytes")?,
     )
     .map_err(|error| format!("ordered missing load failed: {error:?}"))?;
-    if matches!(
-        restored,
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Missing
-    ) {
+    if matches!(restored, OrderedTelemetryPersistenceLoad::Missing) {
         Ok(())
     } else {
         Err(String::from("ordered missing state was invented"))
@@ -100522,9 +100501,7 @@ fn cached_retry_telemetry_ordered_file_cas_progresses_persisted_state()
         maximum_bytes,
     )
     .map_err(|error| format!("ordered file CAS restore: {error:?}"))?;
-    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
-        value, ..
-    } = restored
+    let OrderedTelemetryPersistenceLoad::Restored { value, .. } = restored
     else {
         return Err(String::from("ordered file CAS state missing"));
     };
@@ -100575,9 +100552,7 @@ fn cached_retry_telemetry_ordered_file_persistence_roundtrips()
             .map_err(|error| {
                 format!("ordered file restore failed: {error:?}")
             })?;
-    let NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
-        value, ..
-    } = restored
+    let OrderedTelemetryPersistenceLoad::Restored { value, .. } = restored
     else {
         return Err(String::from("ordered file state missing"));
     };
@@ -100825,11 +100800,10 @@ fn cached_retry_telemetry_ordered_window_rejects_stale_order()
         .err()
         .ok_or_else(|| String::from("stale external order was accepted"))?;
     if error
-        == (NativeContinuationCachedRetryTelemetryOrderedWindowError::
-            OrderNotAdvanced {
-                current,
-                submitted,
-            })
+        == (OrderedTelemetryWindowError::OrderNotAdvanced {
+            current,
+            submitted,
+        })
         && ordered.last_order() == Some(current)
         && ordered.window().snapshot() == before
     {
@@ -100871,9 +100845,11 @@ fn cached_retry_telemetry_ordered_window_keeps_order_on_batch_failure()
         .append_ordered_batch(next, &[summary])
         .err()
         .ok_or_else(|| String::from("failing ordered batch published"))?;
-    if error == OrderedTelemetryWindowError::Window(
-        NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted,
-    ) && failed_owner.last_order() == Some(first)
+    if error
+        == OrderedTelemetryWindowError::Window(
+            TelemetryWindowError::SequenceExhausted,
+        )
+        && failed_owner.last_order() == Some(first)
         && failed_owner.window().snapshot() == before
     {
         Ok(())
@@ -100985,8 +100961,7 @@ fn cached_retry_telemetry_window_batch_failure_keeps_destination_unchanged()
     let error = window.append_batch(&[candidate]).err().ok_or_else(|| {
         String::from("exhausted batch unexpectedly published")
     })?;
-    if error
-        == NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted
+    if error == TelemetryWindowError::SequenceExhausted
         && window.snapshot() == before
     {
         Ok(())
@@ -101133,13 +101108,10 @@ fn cached_retry_telemetry_window_rejects_overflow_transactionally()
         .append(one)
         .err()
         .ok_or_else(|| String::from("telemetry overflow was admitted"))?;
-    let expected =
-        NativeContinuationCachedRetryTelemetryWindowError::AggregateOverflow {
-            sequence: 2,
-            counter:
-                NativeContinuationCachedRetryTelemetryWindowCounter::
-                    CompletedSteps,
-        };
+    let expected = TelemetryWindowError::AggregateOverflow {
+        sequence: 2,
+        counter: TelemetryWindowCounter::CompletedSteps,
+    };
     if failure == expected
         && window.len() == 1
         && window.last_sequence() == Some(1)
@@ -101169,8 +101141,7 @@ fn cached_retry_telemetry_window_rejects_sequence_exhaustion()
         .ok_or_else(|| {
             String::from("telemetry sequence exhaustion was ignored")
         })?;
-    if failure
-        == NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted
+    if failure == TelemetryWindowError::SequenceExhausted
         && window.is_empty()
         && window.last_sequence() == Some(u64::MAX)
         && window.evictions() == 0
@@ -101203,9 +101174,7 @@ fn cached_retry_telemetry_window_rejects_eviction_count_overflow()
     let failure = window.append(second).err().ok_or_else(|| {
         String::from("telemetry eviction overflow was ignored")
     })?;
-    let expected =
-        NativeContinuationCachedRetryTelemetryWindowError::
-            EvictionCountOverflow { sequence: 2 };
+    let expected = TelemetryWindowError::EvictionCountOverflow { sequence: 2 };
     if failure == expected
         && window.len() == 1
         && window.last_sequence() == Some(1)
@@ -101350,22 +101319,11 @@ fn cached_retry_telemetry_assessment_retains_all_missed_signals()
         return Err(String::from("telemetry misses were not retained"));
     };
     if assessed == telemetry
-        && violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::
-                CompletedSteps,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::Insertions,
-        )
-        && !violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::EvictedKeys,
-        )
-        && !violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::RetiredKeys,
-        )
+        && violations.contains(TelemetryAssessmentSignal::CompletedSteps)
+        && violations.contains(TelemetryAssessmentSignal::Hits)
+        && violations.contains(TelemetryAssessmentSignal::Insertions)
+        && !violations.contains(TelemetryAssessmentSignal::EvictedKeys)
+        && !violations.contains(TelemetryAssessmentSignal::RetiredKeys)
         && !violations.is_empty()
     {
         Ok(())
@@ -101520,18 +101478,15 @@ fn cached_retry_policy_recommendation_retains_miss_evidence()
     };
     if policy == policies.misses()
         && recommended_telemetry == telemetry
-        && violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::
-                CompletedSteps,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
-        )
+        && violations.contains(TelemetryAssessmentSignal::CompletedSteps)
+        && violations.contains(TelemetryAssessmentSignal::Hits)
         && recommendation.policy() == Some(policies.misses())
     {
         Ok(())
     } else {
-        Err(String::from("missed telemetry recommendation lost evidence"))
+        Err(String::from(
+            "missed telemetry recommendation lost evidence",
+        ))
     }
 }
 
@@ -101975,18 +101930,9 @@ fn cached_retry_latency_assessment_retains_all_missed_signals()
         && evidence.total_nanoseconds() == 211
         && evidence.maximum_nanoseconds() == Some(101)
         && evidence.above_maximum() == 1
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                AverageNanoseconds,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                MaximumNanoseconds,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                OverflowSamples,
-        )
+        && violations.contains(LatencyAssessmentSignal::AverageNanoseconds)
+        && violations.contains(LatencyAssessmentSignal::MaximumNanoseconds)
+        && violations.contains(LatencyAssessmentSignal::OverflowSamples)
         && !violations.is_empty()
     {
         Ok(())
@@ -102015,18 +101961,9 @@ fn cached_retry_latency_assessment_does_not_truncate_average()
         return Err(String::from("fractional latency mean was truncated"));
     };
     if evidence.total_nanoseconds() == 21
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                AverageNanoseconds,
-        )
-        && !violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                MaximumNanoseconds,
-        )
-        && !violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                OverflowSamples,
-        )
+        && violations.contains(LatencyAssessmentSignal::AverageNanoseconds)
+        && !violations.contains(LatencyAssessmentSignal::MaximumNanoseconds)
+        && !violations.contains(LatencyAssessmentSignal::OverflowSamples)
     {
         Ok(())
     } else {
@@ -102133,18 +102070,9 @@ fn cached_retry_latency_policy_recommendation_retains_miss_evidence()
     };
     if policy == policies.misses()
         && evidence.total_nanoseconds() == 211
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                AverageNanoseconds,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                MaximumNanoseconds,
-        )
-        && violations.contains(
-            NativeContinuationCachedRetryLatencyAssessmentSignal::
-                OverflowSamples,
-        )
+        && violations.contains(LatencyAssessmentSignal::AverageNanoseconds)
+        && violations.contains(LatencyAssessmentSignal::MaximumNanoseconds)
+        && violations.contains(LatencyAssessmentSignal::OverflowSamples)
         && recommendation.policy() == Some(policies.misses())
     {
         Ok(())
@@ -102306,10 +102234,7 @@ fn cached_retry_latency_refinement_rejects_non_refining_schema()
     if matches!(
         failure,
         LatencyRefinementError::Coarsening(
-            NativeContinuationCachedRetryLatencyCoarseningError::BoundMissing {
-                bound: 10,
-                ..
-            },
+            LatencyCoarseningError::BoundMissing { bound: 10, .. },
         )
     ) {
         Ok(())
@@ -102381,11 +102306,7 @@ fn cached_retry_latency_coarsening_rejects_missing_boundary()
         .ok_or_else(|| {
             String::from("latency refinement boundary was admitted")
         })?;
-    let expected =
-        NativeContinuationCachedRetryLatencyCoarseningError::BoundMissing {
-            index: 0,
-            bound: 5,
-        };
+    let expected = LatencyCoarseningError::BoundMissing { index: 0, bound: 5 };
     if failure == expected && source == before {
         Ok(())
     } else {
@@ -102404,11 +102325,8 @@ fn cached_retry_latency_coarsening_rejects_final_bound_drift()
         .ok_or_else(|| {
             String::from("latency overflow boundary drift was admitted")
         })?;
-    let expected = NativeContinuationCachedRetryLatencyCoarseningError::
-        FinalBoundMismatch {
-            source: 100,
-            target: 10,
-        };
+    let expected =
+        LatencyCoarseningError::FinalBoundMismatch { source: 100, target: 10 };
     if failure == expected && source == before {
         Ok(())
     } else {
@@ -102613,11 +102531,10 @@ fn cached_retry_latency_common_coarsening_rejects_final_bound_mismatch()
         .ok_or_else(|| {
             String::from("incompatible overflow schemas were joined")
         })?;
-    let expected = NativeContinuationCachedRetryLatencyCommonCoarseningError::
-        FinalBoundMismatch {
-            left: 100,
-            right: 200,
-        };
+    let expected = CommonLatencyCoarseningError::FinalBoundMismatch {
+        left: 100,
+        right: 200,
+    };
     if failure == expected {
         Ok(())
     } else {
@@ -102642,21 +102559,17 @@ fn cached_retry_latency_rejects_invalid_bounds() -> Result<(), String> {
             .ok_or_else(|| {
                 String::from("descending latency bounds were admitted")
             })?;
-    let expected_duplicate =
-        NativeContinuationCachedRetryLatencyHistogramError::
-            BoundsNotIncreasing {
-                index: 1,
-                previous: 1,
-                observed: 1,
-            };
-    let expected_descending =
-        NativeContinuationCachedRetryLatencyHistogramError::
-            BoundsNotIncreasing {
-                index: 1,
-                previous: 2,
-                observed: 1,
-            };
-    if empty == NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty
+    let expected_duplicate = LatencyHistogramError::BoundsNotIncreasing {
+        index: 1,
+        previous: 1,
+        observed: 1,
+    };
+    let expected_descending = LatencyHistogramError::BoundsNotIncreasing {
+        index: 1,
+        previous: 2,
+        observed: 1,
+    };
+    if empty == LatencyHistogramError::BoundsEmpty
         && duplicate == expected_duplicate
         && descending == expected_descending
     {
@@ -102725,9 +102638,7 @@ fn cached_retry_latency_sample_overflow_is_transactional() -> Result<(), String>
         .record(NativeContinuationCachedRetryLatencySample::new(1))
         .err()
         .ok_or_else(|| String::from("latency sample overflow was admitted"))?;
-    if failure
-        == NativeContinuationCachedRetryLatencyHistogramError::
-            SampleCountOverflow
+    if failure == LatencyHistogramError::SampleCountOverflow
         && histogram == before
     {
         Ok(())
@@ -102746,9 +102657,7 @@ fn cached_retry_latency_total_overflow_is_transactional() -> Result<(), String>
         .record(NativeContinuationCachedRetryLatencySample::new(1))
         .err()
         .ok_or_else(|| String::from("latency total overflow was admitted"))?;
-    if failure
-        == NativeContinuationCachedRetryLatencyHistogramError::
-            TotalNanosecondsOverflow
+    if failure == LatencyHistogramError::TotalNanosecondsOverflow
         && histogram == before
     {
         Ok(())
@@ -102770,8 +102679,7 @@ fn cached_retry_latency_bucket_overflow_is_transactional() -> Result<(), String>
         .err()
         .ok_or_else(|| String::from("latency bucket overflow was admitted"))?;
     let expected =
-        NativeContinuationCachedRetryLatencyHistogramError::
-            BucketCountOverflow { bucket: Some(1) };
+        LatencyHistogramError::BucketCountOverflow { bucket: Some(1) };
     if failure == expected && histogram == before {
         Ok(())
     } else {
@@ -102790,9 +102698,7 @@ fn cached_retry_latency_overflow_bin_is_transactional() -> Result<(), String> {
         .ok_or_else(|| {
             String::from("latency overflow-bin overflow was admitted")
         })?;
-    let expected =
-        NativeContinuationCachedRetryLatencyHistogramError::
-            BucketCountOverflow { bucket: None };
+    let expected = LatencyHistogramError::BucketCountOverflow { bucket: None };
     if failure == expected && histogram == before {
         Ok(())
     } else {
@@ -102877,16 +102783,12 @@ fn cached_retry_latency_merge_rejects_schema_mismatch() -> Result<(), String> {
         .err()
         .ok_or_else(|| String::from("different latency schema was merged"))?;
     let expected_length =
-        NativeContinuationCachedRetryLatencyMergeError::BoundsLength {
-            target: 3,
-            source: 2,
-        };
-    let expected_bound =
-        NativeContinuationCachedRetryLatencyMergeError::BoundMismatch {
-            index: 1,
-            target: 10,
-            source: 11,
-        };
+        LatencyMergeError::BoundsLength { target: 3, source: 2 };
+    let expected_bound = LatencyMergeError::BoundMismatch {
+        index: 1,
+        target: 10,
+        source: 11,
+    };
     if length_failure == expected_length
         && bound_failure == expected_bound
         && target == before
@@ -102913,10 +102815,7 @@ fn cached_retry_latency_merge_bucket_overflow_is_transactional()
         .merge(&source)
         .err()
         .ok_or_else(|| String::from("latency bucket overflow was merged"))?;
-    let expected =
-        NativeContinuationCachedRetryLatencyMergeError::BucketCountOverflow {
-            bucket: 1,
-        };
+    let expected = LatencyMergeError::BucketCountOverflow { bucket: 1 };
     if failure == expected && target == before {
         Ok(())
     } else {
@@ -102938,10 +102837,7 @@ fn cached_retry_latency_merge_above_overflow_is_transactional()
         .merge(&source)
         .err()
         .ok_or_else(|| String::from("latency overflow bin was merged"))?;
-    if failure
-        == NativeContinuationCachedRetryLatencyMergeError::AboveMaximumOverflow
-        && target == before
-    {
+    if failure == LatencyMergeError::AboveMaximumOverflow && target == before {
         Ok(())
     } else {
         Err(String::from("latency merge overflow bin mutated state"))
@@ -102962,10 +102858,7 @@ fn cached_retry_latency_merge_sample_overflow_is_transactional()
         .merge(&source)
         .err()
         .ok_or_else(|| String::from("latency sample overflow was merged"))?;
-    if failure
-        == NativeContinuationCachedRetryLatencyMergeError::SampleCountOverflow
-        && target == before
-    {
+    if failure == LatencyMergeError::SampleCountOverflow && target == before {
         Ok(())
     } else {
         Err(String::from("latency merge sample overflow mutated state"))
@@ -102986,9 +102879,7 @@ fn cached_retry_latency_merge_total_overflow_is_transactional()
         .merge(&source)
         .err()
         .ok_or_else(|| String::from("latency total overflow was merged"))?;
-    if failure
-        == NativeContinuationCachedRetryLatencyMergeError::
-            TotalNanosecondsOverflow
+    if failure == LatencyMergeError::TotalNanosecondsOverflow
         && target == before
     {
         Ok(())
@@ -103012,7 +102903,7 @@ fn cached_retry_populated_latency_histogram()
 
 fn cached_retry_latency_snapshot_failure(
     snapshot: NativeContinuationCachedRetryLatencyHistogramSnapshot,
-) -> Result<NativeContinuationCachedRetryLatencySnapshotError, String> {
+) -> Result<LatencySnapshotError, String> {
     NativeContinuationCachedRetryLatencyHistogram::from_snapshot(snapshot)
         .err()
         .ok_or_else(|| String::from("forged latency snapshot was admitted"))
@@ -103087,10 +102978,7 @@ fn cached_retry_latency_snapshot_rejects_bucket_count() -> Result<(), String> {
         ),
     );
     let expected =
-        NativeContinuationCachedRetryLatencySnapshotError::BucketCount {
-            expected: 3,
-            observed: 2,
-        };
+        LatencySnapshotError::BucketCount { expected: 3, observed: 2 };
     if cached_retry_latency_snapshot_failure(snapshot)? == expected {
         Ok(())
     } else {
@@ -103114,10 +103002,7 @@ fn cached_retry_latency_snapshot_rejects_sample_count() -> Result<(), String> {
         ),
     );
     let expected =
-        NativeContinuationCachedRetryLatencySnapshotError::SampleCount {
-            expected: 6,
-            observed: 7,
-        };
+        LatencySnapshotError::SampleCount { expected: 6, observed: 7 };
     if cached_retry_latency_snapshot_failure(snapshot)? == expected {
         Ok(())
     } else {
@@ -103137,7 +103022,7 @@ fn cached_retry_latency_snapshot_rejects_empty_state() -> Result<(), String> {
         ),
     );
     if cached_retry_latency_snapshot_failure(snapshot)?
-        == NativeContinuationCachedRetryLatencySnapshotError::EmptyState
+        == LatencySnapshotError::EmptyState
     {
         Ok(())
     } else {
@@ -103176,19 +103061,15 @@ fn cached_retry_latency_snapshot_rejects_extrema() -> Result<(), String> {
         ),
     );
     let expected_order =
-        NativeContinuationCachedRetryLatencySnapshotError::ExtremaOrder {
-            maximum: 5,
-            minimum: 9,
-        };
-    let expected_range =
-        NativeContinuationCachedRetryLatencySnapshotError::ExtremaRange {
-            bucket: Some(1),
-            lower: 1,
-            observed: 0,
-            upper: 10,
-        };
+        LatencySnapshotError::ExtremaOrder { maximum: 5, minimum: 9 };
+    let expected_range = LatencySnapshotError::ExtremaRange {
+        bucket: Some(1),
+        lower: 1,
+        observed: 0,
+        upper: 10,
+    };
     if cached_retry_latency_snapshot_failure(missing)?
-        == NativeContinuationCachedRetryLatencySnapshotError::ExtremaMissing
+        == LatencySnapshotError::ExtremaMissing
         && cached_retry_latency_snapshot_failure(order)? == expected_order
         && cached_retry_latency_snapshot_failure(outside)? == expected_range
     {
@@ -103213,12 +103094,11 @@ fn cached_retry_latency_snapshot_rejects_total_range() -> Result<(), String> {
             11,
         ),
     );
-    let expected =
-        NativeContinuationCachedRetryLatencySnapshotError::TotalRange {
-            minimum: 1,
-            maximum: 10,
-            observed: 11,
-        };
+    let expected = LatencySnapshotError::TotalRange {
+        minimum: 1,
+        maximum: 10,
+        observed: 11,
+    };
     if cached_retry_latency_snapshot_failure(snapshot)? == expected {
         Ok(())
     } else {
@@ -103238,10 +103118,7 @@ fn cached_retry_latency_snapshot_rejects_impossible_overflow_bin()
             u128::from(u64::MAX),
         ),
     );
-    let expected =
-        NativeContinuationCachedRetryLatencySnapshotError::CalculationOverflow {
-            bucket: None,
-        };
+    let expected = LatencySnapshotError::CalculationOverflow { bucket: None };
     if cached_retry_latency_snapshot_failure(snapshot)? == expected {
         Ok(())
     } else {
@@ -103251,36 +103128,26 @@ fn cached_retry_latency_snapshot_rejects_impossible_overflow_bin()
 
 fn cached_retry_latency_codec_failure(
     bytes: &[u8],
-) -> Result<NativeContinuationCachedRetryLatencyCodecError, String> {
+) -> Result<LatencyCodecError, String> {
     decode_cached_retry_latency_snapshot(bytes)
         .err()
         .ok_or_else(|| String::from("forged latency codec bytes were admitted"))
 }
 
 fn cached_retry_latency_codec_snapshot_error(
-    error: NativeContinuationCachedRetryLatencyCodecError,
-) -> Option<Box<NativeContinuationCachedRetryLatencySnapshotError>> {
+    error: LatencyCodecError,
+) -> Option<Box<LatencySnapshotError>> {
     match error {
-        NativeContinuationCachedRetryLatencyCodecError::Snapshot(cause) => {
-            Some(cause)
-        },
-        NativeContinuationCachedRetryLatencyCodecError::AbsentExtremaValue {
-            ..
-        }
-        | NativeContinuationCachedRetryLatencyCodecError::EncodingRange {
-            ..
-        }
-        | NativeContinuationCachedRetryLatencyCodecError::Flag { .. }
-        | NativeContinuationCachedRetryLatencyCodecError::Length { .. }
-        | NativeContinuationCachedRetryLatencyCodecError::LengthOverflow
-        | NativeContinuationCachedRetryLatencyCodecError::Magic
-        | NativeContinuationCachedRetryLatencyCodecError::Representation {
-            ..
-        }
-        | NativeContinuationCachedRetryLatencyCodecError::Reserved { .. }
-        | NativeContinuationCachedRetryLatencyCodecError::Version {
-            ..
-        } => None,
+        LatencyCodecError::Snapshot(cause) => Some(cause),
+        LatencyCodecError::AbsentExtremaValue { .. }
+        | LatencyCodecError::EncodingRange { .. }
+        | LatencyCodecError::Flag { .. }
+        | LatencyCodecError::Length { .. }
+        | LatencyCodecError::LengthOverflow
+        | LatencyCodecError::Magic
+        | LatencyCodecError::Representation { .. }
+        | LatencyCodecError::Reserved { .. }
+        | LatencyCodecError::Version { .. } => None,
     }
 }
 
@@ -103335,9 +103202,7 @@ fn cached_retry_latency_codec_rejects_magic() -> Result<(), String> {
         .first_mut()
         .ok_or_else(|| String::from("latency codec fixture was empty"))?;
     *first = first.wrapping_add(1);
-    if cached_retry_latency_codec_failure(&bytes)?
-        == NativeContinuationCachedRetryLatencyCodecError::Magic
-    {
+    if cached_retry_latency_codec_failure(&bytes)? == LatencyCodecError::Magic {
         Ok(())
     } else {
         Err(String::from("latency codec magic rejection drifted"))
@@ -103354,12 +103219,8 @@ fn cached_retry_latency_codec_rejects_version_and_reserved()
     let mut reserved = bytes;
     replace_cached_retry_codec_bytes(&mut reserved, 10, 1u16.to_le_bytes())?;
     let reserved_failure = cached_retry_latency_codec_failure(&reserved)?;
-    let expected_version =
-        NativeContinuationCachedRetryLatencyCodecError::Version { observed: 2 };
-    let expected_reserved =
-        NativeContinuationCachedRetryLatencyCodecError::Reserved {
-            observed: 1,
-        };
+    let expected_version = LatencyCodecError::Version { observed: 2 };
+    let expected_reserved = LatencyCodecError::Reserved { observed: 1 };
     if version_failure == expected_version
         && reserved_failure == expected_reserved
     {
@@ -103381,15 +103242,14 @@ fn cached_retry_latency_codec_rejects_flags_and_absent_values()
         .map_err(|error| error.to_string())?;
     replace_cached_retry_codec_bytes(&mut absent, 40, 1u64.to_le_bytes())?;
     let absent_failure = cached_retry_latency_codec_failure(&absent)?;
-    let expected_flag = NativeContinuationCachedRetryLatencyCodecError::Flag {
+    let expected_flag = LatencyCodecError::Flag {
         maximum: false,
         observed: 2,
     };
-    let expected_absent =
-        NativeContinuationCachedRetryLatencyCodecError::AbsentExtremaValue {
-            maximum: false,
-            observed: 1,
-        };
+    let expected_absent = LatencyCodecError::AbsentExtremaValue {
+        maximum: false,
+        observed: 1,
+    };
     if flag_failure == expected_flag && absent_failure == expected_absent {
         Ok(())
     } else {
@@ -103408,16 +103268,14 @@ fn cached_retry_latency_codec_rejects_short_and_trailing_bytes()
     let mut trailing = bytes;
     trailing.push(0);
     let trailing_failure = cached_retry_latency_codec_failure(&trailing)?;
-    let expected_short =
-        NativeContinuationCachedRetryLatencyCodecError::Length {
-            expected: 72,
-            observed: 71,
-        };
-    let expected_trailing =
-        NativeContinuationCachedRetryLatencyCodecError::Length {
-            expected: 120,
-            observed: 121,
-        };
+    let expected_short = LatencyCodecError::Length {
+        expected: 72,
+        observed: 71,
+    };
+    let expected_trailing = LatencyCodecError::Length {
+        expected: 120,
+        observed: 121,
+    };
     if short_failure == expected_short && trailing_failure == expected_trailing
     {
         Ok(())
@@ -103431,7 +103289,7 @@ fn cached_retry_latency_codec_rejects_count_overflow() -> Result<(), String> {
     let (_snapshot, mut bytes) = cached_retry_latency_codec_fixture()?;
     replace_cached_retry_codec_bytes(&mut bytes, 12, u64::MAX.to_le_bytes())?;
     if cached_retry_latency_codec_failure(&bytes)?
-        == NativeContinuationCachedRetryLatencyCodecError::LengthOverflow
+        == LatencyCodecError::LengthOverflow
     {
         Ok(())
     } else {
@@ -103452,14 +103310,11 @@ fn cached_retry_latency_codec_rejects_semantic_drift() -> Result<(), String> {
         total_failure,
     )
     .is_some_and(|error| {
-        matches!(
-            *error,
-            NativeContinuationCachedRetryLatencySnapshotError::TotalRange {
-                minimum: 125,
-                observed: 0,
-                ..
-            }
-        )
+        matches!(*error, LatencySnapshotError::TotalRange {
+            minimum: 125,
+            observed: 0,
+            ..
+        })
     });
     let bound_matches = cached_retry_latency_codec_snapshot_error(
         bound_failure,
@@ -103467,13 +103322,12 @@ fn cached_retry_latency_codec_rejects_semantic_drift() -> Result<(), String> {
     .is_some_and(|error| {
         matches!(
             *error,
-            NativeContinuationCachedRetryLatencySnapshotError::Bounds(
-                NativeContinuationCachedRetryLatencyHistogramError::
-                    BoundsNotIncreasing {
-                        index: 1,
-                        previous: 0,
-                        observed: 0,
-                    },
+            LatencySnapshotError::Bounds(
+                LatencyHistogramError::BoundsNotIncreasing {
+                    index: 1,
+                    previous: 0,
+                    observed: 0,
+                },
             )
         )
     });
@@ -103504,13 +103358,10 @@ fn cached_retry_latency_codec_rejects_invalid_snapshot_on_encode()
         .ok_or_else(|| String::from("invalid latency snapshot was encoded"))?;
     let matches = cached_retry_latency_codec_snapshot_error(failure)
         .is_some_and(|error| {
-            matches!(
-                *error,
-                NativeContinuationCachedRetryLatencySnapshotError::SampleCount {
-                    expected: 6,
-                    observed: 7,
-                }
-            )
+            matches!(*error, LatencySnapshotError::SampleCount {
+                expected: 6,
+                observed: 7,
+            })
         });
     if matches {
         Ok(())
@@ -104094,8 +103945,7 @@ fn cached_retry_snapshot_rejects_aggregate_overflow() -> Result<(), String> {
     let failure = cached_retry_snapshot_failure(forged)?;
     let aggregate = CachedRetryTelemetryWindowError::AggregateOverflow {
         sequence: 2,
-        counter:
-            NativeContinuationCachedRetryTelemetryWindowCounter::CompletedSteps,
+        counter: TelemetryWindowCounter::CompletedSteps,
     };
     let expected =
         NativeContinuationCachedRetryTelemetrySnapshotError::Aggregate(

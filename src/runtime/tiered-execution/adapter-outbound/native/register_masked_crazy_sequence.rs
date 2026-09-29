@@ -146,10 +146,12 @@ impl Display for RegisterMaskedCrazyNativeSequencePlanError {
             Self::TargetMismatch { index } => {
                 write!(f, "Crazy v6 sequence target changed at step {index}")
             },
-            Self::TerminationBeforeEnd { index } => write!(
-                f,
-                "Crazy v6 step {index} terminated before sequence end",
-            ),
+            Self::TerminationBeforeEnd { index } => {
+                write!(
+                    f,
+                    "Crazy v6 step {index} terminated before sequence end",
+                )
+            },
         }
     }
 }

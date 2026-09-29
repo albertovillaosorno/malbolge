@@ -58,6 +58,11 @@ use crate::geometry_interpreter_handoff::{
     ExecutionGeometryInterpreterHandoff,
 };
 
+type GeometryRegionInvocation<'buffers> =
+    PreparedNativeRegionInvocation<'buffers>;
+type NoOperationPreparationError =
+    ExecutionGeometryNativeNoOperationPreparationError;
+
 type NoOperationBindingError = ExecutionGeometryNativeNoOperationBindingError;
 
 /// Failure before one verified v5 no-operation can retain checkpoint authority.
@@ -586,15 +591,13 @@ impl ExecutionGeometryNativeNoOperationAdmission {
             );
         }
         let invocation =
-            PreparedNativeRegionInvocation::new_execution_geometry_no_operation(
+            GeometryRegionInvocation::new_execution_geometry_no_operation(
                 &self.program,
                 memory,
                 input,
                 output,
             )
-            .map_err(
-                ExecutionGeometryNativeNoOperationPreparationError::Invocation,
-            )?;
+            .map_err(NoOperationPreparationError::Invocation)?;
         Ok(PreparedExecutionGeometryNativeNoOperation {
             admission: self,
             invocation,

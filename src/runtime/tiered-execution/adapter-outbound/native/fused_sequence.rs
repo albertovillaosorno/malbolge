@@ -120,10 +120,12 @@ impl Display for DirectFusedSequenceAdmissionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::Empty => f.write_str("fused direct sequence is empty"),
-            Self::FormatVersion { index } => write!(
-                f,
-                "fused direct sequence format changed at step {index}",
-            ),
+            Self::FormatVersion { index } => {
+                write!(
+                    f,
+                    "fused direct sequence format changed at step {index}",
+                )
+            },
             Self::Identity(_error) => f.write_str(
                 "fused direct sequence identity construction failed",
             ),
@@ -139,10 +141,12 @@ impl Display for DirectFusedSequenceAdmissionError {
                 f,
                 "fused direct sequence lost one-step shape at step {index}",
             ),
-            Self::TargetAssumption { index } => write!(
-                f,
-                "fused direct sequence target changed at step {index}",
-            ),
+            Self::TargetAssumption { index } => {
+                write!(
+                    f,
+                    "fused direct sequence target changed at step {index}",
+                )
+            },
         }
     }
 }

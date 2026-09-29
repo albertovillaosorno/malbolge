@@ -237,6 +237,9 @@ type NativeExecution = RegisterMaskedReducedStateGraphNativeExecution;
 type ReducedGraph = VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph;
 type ReducedNode = VerifiedAheadOfExecutionRegisterMaskedReducedStateGraphNode;
 
+type DispatchEnvironment<'aot> =
+    AheadOfExecutionRegisterMaskedReducedStateGraphDispatchEnvironment<'aot>;
+
 type DispatchRequest<'graph, 'aot> =
     AheadOfExecutionRegisterMaskedReducedStateGraphDispatchRequest<
         'graph,
@@ -295,10 +298,7 @@ impl<'graph, 'aot>
     #[must_use]
     pub const fn new(
         graph: &'graph ReducedGraph,
-        environment:
-            AheadOfExecutionRegisterMaskedReducedStateGraphDispatchEnvironment<
-                'aot,
-            >,
+        environment: DispatchEnvironment<'aot>,
         entry: ProfileMachineState,
         transition_budget: usize,
     ) -> Self {
@@ -347,18 +347,22 @@ impl<ExecutorError: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::Execution { error, index, .. } => write!(
-                f,
-                "reduced v6 graph node {index} execution failed: {error}"
-            ),
+            Self::Execution { error, index, .. } => {
+                write!(
+                    f,
+                    "reduced v6 graph node {index} execution failed: {error}"
+                )
+            },
             Self::GuardMissMutation { index } => write!(
                 f,
                 "reduced v6 graph node {index} guard miss changed runtime state"
             ),
-            Self::Selection { error, index } => write!(
-                f,
-                "reduced v6 graph node {index} selection failed: {error}"
-            ),
+            Self::Selection { error, index } => {
+                write!(
+                    f,
+                    "reduced v6 graph node {index} selection failed: {error}"
+                )
+            },
             Self::TerminalStateMismatch { index } => write!(
                 f,
                 "reduced v6 terminal node {index} returned wrong termination"

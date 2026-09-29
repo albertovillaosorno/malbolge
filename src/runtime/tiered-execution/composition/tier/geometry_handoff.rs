@@ -282,10 +282,12 @@ impl Display for ExecutionGeometryContinuationAdmissionError {
             Self::GeometryDrift { index } => {
                 write!(f, "v5 continuation geometry changed at step {index}")
             },
-            Self::ObservationChain { index } => write!(
-                f,
-                "v5 continuation observation chain broke at step {index}",
-            ),
+            Self::ObservationChain { index } => {
+                write!(
+                    f,
+                    "v5 continuation observation chain broke at step {index}",
+                )
+            },
             Self::ProfileDrift { index } => {
                 write!(f, "v5 continuation profile changed at step {index}")
             },
@@ -299,10 +301,12 @@ impl Display for ExecutionGeometryContinuationAdmissionError {
             Self::Step { error, index } => {
                 write!(f, "v5 continuation step {index} admission: {error}")
             },
-            Self::TerminationBeforeEnd { index } => write!(
-                f,
-                "v5 continuation step {index} terminates before the end",
-            ),
+            Self::TerminationBeforeEnd { index } => {
+                write!(
+                    f,
+                    "v5 continuation step {index} terminates before the end",
+                )
+            },
         }
     }
 }

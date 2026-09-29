@@ -35,14 +35,18 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+type LatencyHistogramError = NativeContinuationCachedRetryLatencyHistogramError;
+type LatencyRecord = NativeContinuationCachedRetryLatencyRecord;
+
+use super::telemetry_latency_snapshot::validate_latency_histogram_snapshot;
 use super::{
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
     NativeContinuationCachedRetryLatencyMergeError,
     NativeContinuationCachedRetryLatencyMergeRecord,
     NativeContinuationCachedRetryLatencySnapshotError,
 };
-
 /// Transactional histogram for explicit cached-retry latency samples.
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryLatencyHistogram {
     above_maximum: usize,
@@ -95,10 +99,7 @@ pub struct NativeContinuationCachedRetryLatencySample {
     nanoseconds: u64,
 }
 
-type LatencyTransitionResult = Result<
-    LatencyTransition,
-    NativeContinuationCachedRetryLatencyHistogramError,
->;
+type LatencyTransitionResult = Result<LatencyTransition, LatencyHistogramError>;
 
 struct LatencyTransition {
     above_maximum: usize,
@@ -110,7 +111,7 @@ struct LatencyTransition {
     total_nanoseconds: u128,
 }
 
-impl Display for NativeContinuationCachedRetryLatencyHistogramError {
+impl Display for LatencyHistogramError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::BoundsEmpty => {
@@ -193,8 +194,7 @@ impl NativeContinuationCachedRetryLatencyHistogram {
     pub fn from_snapshot(
         snapshot: NativeContinuationCachedRetryLatencyHistogramSnapshot,
     ) -> Result<Self, NativeContinuationCachedRetryLatencySnapshotError> {
-        let validated = super::telemetry_latency_snapshot::
-            validate_latency_histogram_snapshot(snapshot)?;
+        let validated = validate_latency_histogram_snapshot(snapshot)?;
         Ok(Self {
             above_maximum: validated.above_maximum,
             buckets: validated.buckets,
@@ -254,9 +254,7 @@ impl NativeContinuationCachedRetryLatencyHistogram {
     /// # Errors
     ///
     /// Returns exact empty or non-increasing bound evidence.
-    pub fn new(
-        upper_bounds: Vec<u64>,
-    ) -> Result<Self, NativeContinuationCachedRetryLatencyHistogramError> {
+    pub fn new(upper_bounds: Vec<u64>) -> Result<Self, LatencyHistogramError> {
         validate_latency_bounds(&upper_bounds)?;
         let buckets = vec![0; upper_bounds.len()];
         Ok(Self {
@@ -278,18 +276,14 @@ impl NativeContinuationCachedRetryLatencyHistogram {
     pub fn record(
         &mut self,
         sample: NativeContinuationCachedRetryLatencySample,
-    ) -> Result<
-        NativeContinuationCachedRetryLatencyRecord,
-        NativeContinuationCachedRetryLatencyHistogramError,
-    > {
+    ) -> Result<LatencyRecord, LatencyHistogramError> {
         let transition = prepare_latency_transition(self, sample)?;
         match transition.bucket {
             Some(index) => {
                 let bucket = self.buckets.get_mut(index).ok_or(
-                    NativeContinuationCachedRetryLatencyHistogramError::
-                        BucketCountOverflow {
-                            bucket: Some(index),
-                        },
+                    LatencyHistogramError::BucketCountOverflow {
+                        bucket: Some(index),
+                    },
                 )?;
                 *bucket = transition.bucket_count;
             },
@@ -386,38 +380,33 @@ fn prepare_latency_transition(
     sample: NativeContinuationCachedRetryLatencySample,
 ) -> LatencyTransitionResult {
     let nanoseconds = sample.nanoseconds();
-    let samples = histogram.samples.checked_add(1).ok_or(
-        NativeContinuationCachedRetryLatencyHistogramError::SampleCountOverflow,
-    )?;
+    let samples = histogram
+        .samples
+        .checked_add(1)
+        .ok_or(LatencyHistogramError::SampleCountOverflow)?;
     let total_nanoseconds = histogram
         .total_nanoseconds
         .checked_add(u128::from(nanoseconds))
-        .ok_or(
-            NativeContinuationCachedRetryLatencyHistogramError::
-                TotalNanosecondsOverflow,
-        )?;
+        .ok_or(LatencyHistogramError::TotalNanosecondsOverflow)?;
     let index = histogram
         .upper_bounds
         .partition_point(|bound| *bound < nanoseconds);
     let bucket = (index < histogram.upper_bounds.len()).then_some(index);
     let (above_maximum, bucket_count) = if let Some(bucket_index) = bucket {
         let current = histogram.buckets.get(bucket_index).copied().ok_or(
-            NativeContinuationCachedRetryLatencyHistogramError::
-                BucketCountOverflow {
-                    bucket: Some(bucket_index),
-                },
+            LatencyHistogramError::BucketCountOverflow {
+                bucket: Some(bucket_index),
+            },
         )?;
         let next = current.checked_add(1).ok_or(
-            NativeContinuationCachedRetryLatencyHistogramError::
-                BucketCountOverflow {
-                    bucket: Some(bucket_index),
-                },
+            LatencyHistogramError::BucketCountOverflow {
+                bucket: Some(bucket_index),
+            },
         )?;
         (histogram.above_maximum, next)
     } else {
         let next = histogram.above_maximum.checked_add(1).ok_or(
-            NativeContinuationCachedRetryLatencyHistogramError::
-                BucketCountOverflow { bucket: None },
+            LatencyHistogramError::BucketCountOverflow { bucket: None },
         )?;
         (next, next)
     };
@@ -438,23 +427,18 @@ fn prepare_latency_transition(
 
 pub(super) fn validate_latency_bounds(
     upper_bounds: &[u64],
-) -> Result<(), NativeContinuationCachedRetryLatencyHistogramError> {
+) -> Result<(), LatencyHistogramError> {
     let mut bounds = upper_bounds.iter().copied();
     let Some(mut previous) = bounds.next() else {
-        return Err(
-            NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty,
-        );
+        return Err(LatencyHistogramError::BoundsEmpty);
     };
     for (offset, observed) in bounds.enumerate() {
         if observed <= previous {
-            return Err(
-                NativeContinuationCachedRetryLatencyHistogramError::
-                    BoundsNotIncreasing {
-                        index: offset.saturating_add(1),
-                        previous,
-                        observed,
-                    },
-            );
+            return Err(LatencyHistogramError::BoundsNotIncreasing {
+                index: offset.saturating_add(1),
+                previous,
+                observed,
+            });
         }
         previous = observed;
     }

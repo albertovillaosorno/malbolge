@@ -42,10 +42,13 @@ use super::{
     NativeContinuationCachedRetryTelemetryWindowBatchAppend,
     NativeContinuationCachedRetryTelemetryWindowError,
 };
-
 /// Opaque caller-authoritative monotonic order for one telemetry batch.
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NativeContinuationCachedRetryTelemetryBatchOrder(u64);
+
+type OrderedWindowError =
+    NativeContinuationCachedRetryTelemetryOrderedWindowError;
 
 /// Process-local owner coupling external batch order to one count window.
 #[derive(Clone, Debug)]
@@ -134,23 +137,21 @@ impl NativeContinuationCachedRetryTelemetryOrderedWindow {
         telemetry: &[NativeContinuationCachedRetryTelemetry],
     ) -> Result<
         NativeContinuationCachedRetryTelemetryOrderedWindowAppend,
-        NativeContinuationCachedRetryTelemetryOrderedWindowError,
+        OrderedWindowError,
     > {
         if let Some(current) = self.last_order
             && order <= current
         {
-            return Err(
-                NativeContinuationCachedRetryTelemetryOrderedWindowError::
-                    OrderNotAdvanced {
-                        current,
-                        submitted: order,
-                    },
-            );
+            return Err(OrderedWindowError::OrderNotAdvanced {
+                current,
+                submitted: order,
+            });
         }
         let previous_order = self.last_order;
-        let batch = self.window.append_batch(telemetry).map_err(
-            NativeContinuationCachedRetryTelemetryOrderedWindowError::Window,
-        )?;
+        let batch = self
+            .window
+            .append_batch(telemetry)
+            .map_err(OrderedWindowError::Window)?;
         self.last_order = Some(order);
         Ok(NativeContinuationCachedRetryTelemetryOrderedWindowAppend {
             batch,

@@ -384,10 +384,12 @@ impl Display for DirectFusedNativeContinuationError {
                 f,
                 "fused resume region {observed} exceeds {regions} regions",
             ),
-            Self::ResumeStep { expected, observed } => write!(
-                f,
-                "fused resume step {observed} differs from {expected}",
-            ),
+            Self::ResumeStep { expected, observed } => {
+                write!(
+                    f,
+                    "fused resume step {observed} differs from {expected}",
+                )
+            },
         }
     }
 }

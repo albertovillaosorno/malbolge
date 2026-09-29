@@ -150,10 +150,12 @@ impl DirectFusedNativeRetryOwnedBuffers {
 impl Display for DirectFusedNativeRetryTransferError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::OutputLength { expected, observed } => write!(
-                f,
-                "fused retry output has {observed} of {expected} bytes",
-            ),
+            Self::OutputLength { expected, observed } => {
+                write!(
+                    f,
+                    "fused retry output has {observed} of {expected} bytes",
+                )
+            },
             Self::State(error) => {
                 write!(f, "fused retry checkpoint rejected: {error}")
             },

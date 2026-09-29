@@ -852,8 +852,7 @@ const fn cache_invariant_failure<E>(
     RegisterMaskedNoOperationNativeSequenceCacheLoadFailure {
         candidate_cleanup_failure: None,
         cause: LoadFailureCause::Invariant(
-            RegisterMaskedNoOperationNativeSequenceCacheInvariantError::
-                EntryMissing,
+            SequenceCacheInvariantError::EntryMissing,
         ),
         evicted_keys: Vec::new(),
         requested_key,
@@ -917,3 +916,6 @@ where
     }
     cache_release_result(attempted_entries, released_entries, failures)
 }
+
+type SequenceCacheInvariantError =
+    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;

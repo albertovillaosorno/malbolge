@@ -1201,6 +1201,17 @@ pub type RegisterMaskedNonGraphicalNativeResidentCacheReleaseResult<
     Box<RegisterMaskedNonGraphicalNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
+type CrazyAcquireFailure<E> =
+    RegisterMaskedCrazyNativeResidentCacheAcquireFailure<E>;
+type InputAcquireFailure<E> =
+    RegisterMaskedInputNativeResidentCacheAcquireFailure<E>;
+type JumpCodeAcquireFailure<E> =
+    RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure<E>;
+type JumpDataAcquireFailure<E> =
+    RegisterMaskedJumpDataNativeResidentCacheAcquireFailure<E>;
+type OutputAcquireFailure<E> =
+    RegisterMaskedOutputNativeResidentCacheAcquireFailure<E>;
+
 type NoOperationCacheAcquireFailure<MemoryError> =
     RegisterMaskedNoOperationNativeResidentCacheAcquireFailure<MemoryError>;
 type NoOperationCacheDisposition =
@@ -3086,10 +3097,7 @@ impl RegisterMaskedCrazyNativeResidentLeaseCache {
         if let Some(resident) = &self.resident {
             if resident.program() != program || resident.artifact() != artifact
             {
-                return Err(Box::new(
-                    RegisterMaskedCrazyNativeResidentCacheAcquireFailure::
-                        IdentityOccupied,
-                ));
+                return Err(Box::new(CrazyAcquireFailure::IdentityOccupied));
             }
             return Ok(RegisterMaskedCrazyNativeResidentCacheAcquisition {
                 disposition:
@@ -3264,10 +3272,7 @@ impl RegisterMaskedInputNativeResidentLeaseCache {
         if let Some(resident) = &self.resident {
             if resident.program() != program || resident.artifact() != artifact
             {
-                return Err(Box::new(
-                    RegisterMaskedInputNativeResidentCacheAcquireFailure::
-                        IdentityOccupied,
-                ));
+                return Err(Box::new(InputAcquireFailure::IdentityOccupied));
             }
             return Ok(RegisterMaskedInputNativeResidentCacheAcquisition {
                 disposition:
@@ -3442,10 +3447,7 @@ impl RegisterMaskedJumpCodeNativeResidentLeaseCache {
         if let Some(resident) = &self.resident {
             if resident.program() != program || resident.artifact() != artifact
             {
-                return Err(Box::new(
-                    RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::
-                        IdentityOccupied,
-                ));
+                return Err(Box::new(JumpCodeAcquireFailure::IdentityOccupied));
             }
             return Ok(RegisterMaskedJumpCodeNativeResidentCacheAcquisition {
                 disposition:
@@ -3620,10 +3622,7 @@ impl RegisterMaskedJumpDataNativeResidentLeaseCache {
         if let Some(resident) = &self.resident {
             if resident.program() != program || resident.artifact() != artifact
             {
-                return Err(Box::new(
-                    RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::
-                        IdentityOccupied,
-                ));
+                return Err(Box::new(JumpDataAcquireFailure::IdentityOccupied));
             }
             return Ok(RegisterMaskedJumpDataNativeResidentCacheAcquisition {
                 disposition:
@@ -3798,10 +3797,7 @@ impl RegisterMaskedOutputNativeResidentLeaseCache {
         if let Some(resident) = &self.resident {
             if resident.program() != program || resident.artifact() != artifact
             {
-                return Err(Box::new(
-                    RegisterMaskedOutputNativeResidentCacheAcquireFailure::
-                        IdentityOccupied,
-                ));
+                return Err(Box::new(OutputAcquireFailure::IdentityOccupied));
             }
             return Ok(RegisterMaskedOutputNativeResidentCacheAcquisition {
                 disposition:

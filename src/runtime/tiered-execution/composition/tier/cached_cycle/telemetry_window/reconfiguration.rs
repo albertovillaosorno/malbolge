@@ -108,17 +108,15 @@ pub(super) fn reconfigure_telemetry_window(
         )?;
     }
     let removed_u64 = u64::try_from(removed_count).map_err(|_error| {
-        NativeContinuationCachedRetryTelemetryWindowError::
-                RemovalCountOverflow {
-                    sequence: window.last_sequence,
-                }
+        WindowError::RemovalCountOverflow {
+            sequence: window.last_sequence,
+        }
     })?;
     let evictions = window.evictions.checked_add(removed_u64).ok_or(
-            NativeContinuationCachedRetryTelemetryWindowError::
-                EvictionCountOverflow {
-                    sequence: window.last_sequence,
-                },
-        )?;
+        WindowError::EvictionCountOverflow {
+            sequence: window.last_sequence,
+        },
+    )?;
     let removed = window
         .observations
         .iter()
@@ -141,3 +139,5 @@ pub(super) fn reconfigure_telemetry_window(
         },
     )
 }
+
+type WindowError = NativeContinuationCachedRetryTelemetryWindowError;

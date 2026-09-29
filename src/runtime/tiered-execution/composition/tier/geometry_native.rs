@@ -66,6 +66,11 @@ use crate::geometry_interpreter_handoff::{
     ExecutionGeometryHandoffAdmissionError, ExecutionGeometryInterpreterHandoff,
 };
 
+type GeometryRegionInvocation<'buffers> =
+    PreparedNativeRegionInvocation<'buffers>;
+type InitialHaltPreparationError =
+    ExecutionGeometryNativeInitialHaltPreparationError;
+
 type InitialHaltBindingError = ExecutionGeometryNativeInitialHaltBindingError;
 
 /// Failure before one v5 native artifact can retain checkpoint-bound authority.
@@ -579,15 +584,13 @@ impl ExecutionGeometryNativeInitialHaltAdmission {
             );
         }
         let invocation =
-            PreparedNativeRegionInvocation::new_execution_geometry_initial_halt(
+            GeometryRegionInvocation::new_execution_geometry_initial_halt(
                 &self.program,
                 memory,
                 input,
                 output,
             )
-            .map_err(
-                ExecutionGeometryNativeInitialHaltPreparationError::Invocation,
-            )?;
+            .map_err(InitialHaltPreparationError::Invocation)?;
         Ok(PreparedExecutionGeometryNativeInitialHalt {
             admission: self,
             invocation,

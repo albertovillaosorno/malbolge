@@ -263,7 +263,7 @@ where
         replacement,
         maximum_bytes,
     )? {
-        NativeContinuationBlobConditionalPersistence::Conflict { current } => {
+        BlobConditionalPersistence::Conflict { current } => {
             return Ok(
                 NativeContinuationBlobConditionalDurablePersistence::Conflict {
                     current,
@@ -322,9 +322,7 @@ where
                 },
             })
         },
-        store_port::NativeContinuationBlobConditionalPublication::Conflict {
-            current,
-        } => {
+        BlobConditionalPublication::Conflict { current } => {
             if let Some(current_bytes) = &current {
                 admit_byte_limit(current_bytes.len(), maximum_bytes)?;
             }
@@ -425,3 +423,7 @@ const fn admit_byte_limit<StoreError>(
         })
     }
 }
+
+type BlobConditionalPublication =
+    store_port::NativeContinuationBlobConditionalPublication;
+type BlobConditionalPersistence = NativeContinuationBlobConditionalPersistence;

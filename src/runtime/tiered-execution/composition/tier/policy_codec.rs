@@ -138,10 +138,12 @@ impl Display for NativeContinuationRetryPolicyCodecError {
                 "retry policy codec length {observed}, expected {expected}",
             ),
             Self::Magic => f.write_str("retry policy codec magic mismatch"),
-            Self::Representation { field, value } => write!(
-                f,
-                "retry policy {field} value {value} exceeds host range",
-            ),
+            Self::Representation { field, value } => {
+                write!(
+                    f,
+                    "retry policy {field} value {value} exceeds host range",
+                )
+            },
             Self::ReservedFallback { observed } => {
                 write!(f, "retry policy fallback reserved value {observed}")
             },
@@ -151,10 +153,12 @@ impl Display for NativeContinuationRetryPolicyCodecError {
             Self::SliceBudgetZero => {
                 f.write_str("retry policy sliced fallback budget is zero")
             },
-            Self::Version { observed } => write!(
-                f,
-                "retry policy codec revision {observed} is unsupported",
-            ),
+            Self::Version { observed } => {
+                write!(
+                    f,
+                    "retry policy codec revision {observed} is unsupported",
+                )
+            },
         }
     }
 }

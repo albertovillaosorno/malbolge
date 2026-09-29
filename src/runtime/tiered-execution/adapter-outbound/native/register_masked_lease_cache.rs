@@ -230,6 +230,11 @@ pub type RegisterMaskedNativeLeaseCacheLoadResult<E> = Result<
     Box<RegisterMaskedNativeLeaseCacheLoadFailure<E>>,
 >;
 
+type LeaseVictimOutcome<E> = RegisterMaskedNativeLeaseCacheVictimOutcome<E>;
+type LeaseLoadFailureCause<E> =
+    RegisterMaskedNativeLeaseCacheLoadFailureCause<E>;
+type LeaseLoadFailure<E> = RegisterMaskedNativeLeaseCacheLoadFailure<E>;
+
 type RegisterMaskedNativeLeaseCacheFitResult<E> = Result<
     (
         RegisterMaskedNativeLeaseCacheCandidate,
@@ -713,7 +718,7 @@ impl RegisterMaskedNativeLeaseCache {
             let failure = Box::new(
                 RegisterMaskedNativeOwnerLoadFailure::ArtifactIdentity,
             );
-            return Err(Box::new(RegisterMaskedNativeLeaseCacheLoadFailure {
+            return Err(Box::new(LeaseLoadFailure {
                 candidate_cleanup_failure: None,
                 cause: RegisterMaskedNativeLeaseCacheLoadFailureCause::Load(
                     failure,
@@ -761,25 +766,17 @@ impl RegisterMaskedNativeLeaseCache {
             };
             evicted_keys.push(victim.key.clone());
             match process_victim(adapter, victim) {
-                RegisterMaskedNativeLeaseCacheVictimOutcome::Released(
-                    weight,
-                ) => {
+                LeaseVictimOutcome::Released(weight) => {
                     self.usage.remove(weight);
                 },
-                RegisterMaskedNativeLeaseCacheVictimOutcome::ReleaseFailed {
-                    failure,
-                    weight,
-                } => {
+                LeaseVictimOutcome::ReleaseFailed { failure, weight } => {
                     self.usage.remove(weight);
                     let candidate_cleanup_failure = candidate
                         .owner
                         .release(adapter)
                         .err()
                         .map(|item| *item);
-                    let cause =
-                        RegisterMaskedNativeLeaseCacheLoadFailureCause::Release(
-                            failure,
-                        );
+                    let cause = LeaseLoadFailureCause::Release(failure);
                     return Err(Box::new(
                         RegisterMaskedNativeLeaseCacheLoadFailure {
                             candidate_cleanup_failure,

@@ -46,6 +46,9 @@ enum NativeExecutableSequenceCacheReconfigurationFailureCause<E> {
     Release(Box<NativeExecutableSequenceReleaseFailure<E>>),
 }
 
+type ReconfigurationCause<E> =
+    NativeExecutableSequenceCacheReconfigurationFailureCause<E>;
+
 /// Successful weighted-limit publication and its FIFO removals.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeExecutableSequenceCacheReconfiguration {
@@ -57,7 +60,7 @@ pub struct NativeExecutableSequenceCacheReconfiguration {
 /// Failed weighted-limit publication retaining exact cleanup ownership.
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeExecutableSequenceCacheReconfigurationFailure<E> {
-    cause: NativeExecutableSequenceCacheReconfigurationFailureCause<E>,
+    cause: ReconfigurationCause<E>,
     evicted_keys: Vec<NativeExecutableSequenceKey>,
     requested_limits: NativeExecutableSequenceCacheLimits,
     retained_limits: NativeExecutableSequenceCacheLimits,
@@ -106,12 +109,8 @@ impl<E> NativeExecutableSequenceCacheReconfigurationFailure<E> {
         self,
     ) -> Option<NativeExecutableSequenceReleaseFailure<E>> {
         match self.cause {
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
-                _,
-            ) => None,
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
-                failure,
-            ) => Some(*failure),
+            ReconfigurationCause::Invariant(_) => None,
+            ReconfigurationCause::Release(failure) => Some(*failure),
         }
     }
 
@@ -121,12 +120,8 @@ impl<E> NativeExecutableSequenceCacheReconfigurationFailure<E> {
         &self,
     ) -> Option<NativeExecutableSequenceCacheInvariantError> {
         match self.cause {
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
-                error,
-            ) => Some(error),
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
-                _,
-            ) => None,
+            ReconfigurationCause::Invariant(error) => Some(error),
+            ReconfigurationCause::Release(_) => None,
         }
     }
 
@@ -147,12 +142,8 @@ impl<E> NativeExecutableSequenceCacheReconfigurationFailure<E> {
         &self,
     ) -> Option<&NativeExecutableSequenceReleaseFailure<E>> {
         match &self.cause {
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
-                _,
-            ) => None,
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
-                failure,
-            ) => Some(failure),
+            ReconfigurationCause::Invariant(_) => None,
+            ReconfigurationCause::Release(failure) => Some(failure),
         }
     }
 }
@@ -165,12 +156,12 @@ impl<E: Display> Display
             "native executable sequence cache reconfiguration failed: ",
         )?;
         match &self.cause {
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
-                error,
-            ) => write!(f, "invariant: {error}"),
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
-                error,
-            ) => write!(f, "release: {error}"),
+            ReconfigurationCause::Invariant(error) => {
+                write!(f, "invariant: {error}")
+            },
+            ReconfigurationCause::Release(error) => {
+                write!(f, "release: {error}")
+            },
         }
     }
 }
@@ -193,10 +184,9 @@ pub(super) const fn cache_reconfiguration_invariant_failure<E>(
     retained_limits: NativeExecutableSequenceCacheLimits,
 ) -> NativeExecutableSequenceCacheReconfigurationFailure<E> {
     NativeExecutableSequenceCacheReconfigurationFailure {
-        cause:
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
-                NativeExecutableSequenceCacheInvariantError::EntryMissing,
-            ),
+        cause: ReconfigurationCause::Invariant(
+            NativeExecutableSequenceCacheInvariantError::EntryMissing,
+        ),
         evicted_keys,
         requested_limits,
         retained_limits,
@@ -210,10 +200,7 @@ pub(super) const fn cache_reconfiguration_release_failure<E>(
     retained_limits: NativeExecutableSequenceCacheLimits,
 ) -> NativeExecutableSequenceCacheReconfigurationFailure<E> {
     NativeExecutableSequenceCacheReconfigurationFailure {
-        cause:
-            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
-                release_failure,
-            ),
+        cause: ReconfigurationCause::Release(release_failure),
         evicted_keys,
         requested_limits,
         retained_limits,

@@ -145,10 +145,12 @@ impl Display for RegisterMaskedNoOperationNativeSequencePlanError {
                 "no-operation v6 sequence step {index} is not one complete \
                  effect",
             ),
-            Self::TargetMismatch { index } => write!(
-                f,
-                "no-operation v6 sequence target changed at step {index}",
-            ),
+            Self::TargetMismatch { index } => {
+                write!(
+                    f,
+                    "no-operation v6 sequence target changed at step {index}",
+                )
+            },
             Self::TerminationBeforeEnd { index } => write!(
                 f,
                 "no-operation v6 step {index} terminated before sequence end",

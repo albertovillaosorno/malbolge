@@ -318,10 +318,12 @@ impl<E: Display> Display for DirectFusedNativeLeaseCacheBatchFailure<E> {
                 f.write_str("live residency blocks transactional publication")
             },
             BatchFailureCause::Capacity(error) => Display::fmt(error, f),
-            BatchFailureCause::Cleanup(error) => write!(
-                f,
-                "publication committed but FIFO cleanup failed: {error}",
-            ),
+            BatchFailureCause::Cleanup(error) => {
+                write!(
+                    f,
+                    "publication committed but FIFO cleanup failed: {error}",
+                )
+            },
             BatchFailureCause::Identity => {
                 f.write_str("exact fused artifact identity drifted")
             },

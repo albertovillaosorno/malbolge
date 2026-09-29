@@ -34,9 +34,12 @@
 
 use std::num::NonZeroUsize;
 
-use super::NativeContinuationCachedRetryTelemetry;
+type TelemetryAssessmentSignal =
+    NativeContinuationCachedRetryTelemetryAssessmentSignal;
 
+use super::NativeContinuationCachedRetryTelemetry;
 /// Exact result of one caller-configured telemetry assessment.
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryTelemetryAssessment {
     /// The attempt gate was not reached, so no quality claim was made.
@@ -199,7 +202,7 @@ impl NativeContinuationCachedRetryTelemetryAssessmentThresholds {
     }
 }
 
-impl NativeContinuationCachedRetryTelemetryAssessmentSignal {
+impl TelemetryAssessmentSignal {
     const fn mask(self) -> u8 {
         match self {
             Self::CompletedSteps => 1,
@@ -214,10 +217,7 @@ impl NativeContinuationCachedRetryTelemetryAssessmentSignal {
 impl NativeContinuationCachedRetryTelemetryAssessmentViolations {
     /// Reports whether one exact signal missed its configured threshold.
     #[must_use]
-    pub const fn contains(
-        self,
-        signal: NativeContinuationCachedRetryTelemetryAssessmentSignal,
-    ) -> bool {
+    pub const fn contains(self, signal: TelemetryAssessmentSignal) -> bool {
         self.bits & signal.mask() != 0
     }
 
@@ -244,28 +244,19 @@ pub const fn assess_cached_retry_telemetry(
     let maximums = thresholds.maximums();
     let mut bits = 0;
     if telemetry.completed_steps() < minimums.completed_steps() {
-        bits |= NativeContinuationCachedRetryTelemetryAssessmentSignal::
-            CompletedSteps
-            .mask();
+        bits |= TelemetryAssessmentSignal::CompletedSteps.mask();
     }
     if telemetry.evicted_keys() > maximums.evicted_keys() {
-        bits |=
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::EvictedKeys
-                .mask();
+        bits |= TelemetryAssessmentSignal::EvictedKeys.mask();
     }
     if telemetry.hits() < minimums.hits() {
-        bits |=
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits.mask();
+        bits |= TelemetryAssessmentSignal::Hits.mask();
     }
     if telemetry.insertions() > maximums.insertions() {
-        bits |=
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::Insertions
-                .mask();
+        bits |= TelemetryAssessmentSignal::Insertions.mask();
     }
     if telemetry.retired_keys() > maximums.retired_keys() {
-        bits |=
-            NativeContinuationCachedRetryTelemetryAssessmentSignal::RetiredKeys
-                .mask();
+        bits |= TelemetryAssessmentSignal::RetiredKeys.mask();
     }
     let violations =
         NativeContinuationCachedRetryTelemetryAssessmentViolations { bits };

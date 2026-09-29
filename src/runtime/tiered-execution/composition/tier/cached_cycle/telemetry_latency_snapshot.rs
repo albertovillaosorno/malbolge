@@ -36,14 +36,16 @@ use super::{
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
 };
-
 /// Counts retained by one immutable latency histogram snapshot.
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryLatencySnapshotCounts {
     above_maximum: usize,
     buckets: Vec<usize>,
     samples: usize,
 }
+
+type LatencySnapshotError = NativeContinuationCachedRetryLatencySnapshotError;
 
 /// Total and extrema retained by one immutable latency histogram snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -278,24 +280,19 @@ pub(super) fn snapshot_latency_histogram(
 
 pub(super) fn validate_latency_histogram_snapshot(
     snapshot: NativeContinuationCachedRetryLatencyHistogramSnapshot,
-) -> Result<
-    ValidatedCachedRetryLatencySnapshot,
-    NativeContinuationCachedRetryLatencySnapshotError,
-> {
+) -> Result<ValidatedCachedRetryLatencySnapshot, LatencySnapshotError> {
     let NativeContinuationCachedRetryLatencyHistogramSnapshot {
         counts,
         range,
         upper_bounds,
     } = snapshot;
     super::telemetry_latency::validate_latency_bounds(&upper_bounds)
-        .map_err(NativeContinuationCachedRetryLatencySnapshotError::Bounds)?;
+        .map_err(LatencySnapshotError::Bounds)?;
     if counts.buckets.len() != upper_bounds.len() {
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::BucketCount {
-                expected: upper_bounds.len(),
-                observed: counts.buckets.len(),
-            },
-        );
+        return Err(LatencySnapshotError::BucketCount {
+            expected: upper_bounds.len(),
+            observed: counts.buckets.len(),
+        });
     }
     let calculation = calculate_latency_snapshot_ranges(
         &upper_bounds,
@@ -303,12 +300,10 @@ pub(super) fn validate_latency_histogram_snapshot(
         counts.above_maximum,
     )?;
     if calculation.samples != counts.samples {
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::SampleCount {
-                expected: calculation.samples,
-                observed: counts.samples,
-            },
-        );
+        return Err(LatencySnapshotError::SampleCount {
+            expected: calculation.samples,
+            observed: counts.samples,
+        });
     }
     validate_latency_snapshot_range(range, calculation)?;
     Ok(ValidatedCachedRetryLatencySnapshot {
@@ -326,54 +321,33 @@ fn add_latency_bin(
     calculation: &mut LatencySnapshotCalculation,
     occupied: LatencyOccupiedRange,
     count: usize,
-) -> Result<(), NativeContinuationCachedRetryLatencySnapshotError> {
+) -> Result<(), LatencySnapshotError> {
     if count == 0 {
         return Ok(());
     }
     let count_u128 = u128::try_from(count).map_err(|_error| {
-        NativeContinuationCachedRetryLatencySnapshotError::CalculationOverflow {
-            bucket: occupied.bucket,
-        }
+        LatencySnapshotError::CalculationOverflow { bucket: occupied.bucket }
     })?;
-    let minimum = count_u128
-        .checked_mul(u128::from(occupied.lower))
-        .ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::
-                CalculationOverflow {
-                    bucket: occupied.bucket,
-                },
-        )?;
-    let maximum = count_u128
-        .checked_mul(u128::from(occupied.upper))
-        .ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::
-                CalculationOverflow {
-                    bucket: occupied.bucket,
-                },
-        )?;
+    let minimum = count_u128.checked_mul(u128::from(occupied.lower)).ok_or(
+        LatencySnapshotError::CalculationOverflow { bucket: occupied.bucket },
+    )?;
+    let maximum = count_u128.checked_mul(u128::from(occupied.upper)).ok_or(
+        LatencySnapshotError::CalculationOverflow { bucket: occupied.bucket },
+    )?;
     calculation.minimum_total = calculation
         .minimum_total
         .checked_add(minimum)
-        .ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::
-                CalculationOverflow {
-                    bucket: occupied.bucket,
-                },
-        )?;
+        .ok_or(LatencySnapshotError::CalculationOverflow {
+            bucket: occupied.bucket,
+        })?;
     calculation.maximum_total = calculation
         .maximum_total
         .checked_add(maximum)
-        .ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::
-                CalculationOverflow {
-                    bucket: occupied.bucket,
-                },
-        )?;
+        .ok_or(LatencySnapshotError::CalculationOverflow {
+            bucket: occupied.bucket,
+        })?;
     calculation.samples = calculation.samples.checked_add(count).ok_or(
-        NativeContinuationCachedRetryLatencySnapshotError::
-            CalculationOverflow {
-                bucket: occupied.bucket,
-            },
+        LatencySnapshotError::CalculationOverflow { bucket: occupied.bucket },
     )?;
     if calculation.first.is_none() {
         calculation.first = Some(occupied);
@@ -386,10 +360,7 @@ fn calculate_latency_snapshot_ranges(
     upper_bounds: &[u64],
     buckets: &[usize],
     above_maximum: usize,
-) -> Result<
-    LatencySnapshotCalculation,
-    NativeContinuationCachedRetryLatencySnapshotError,
-> {
+) -> Result<LatencySnapshotCalculation, LatencySnapshotError> {
     let mut calculation = LatencySnapshotCalculation {
         first: None,
         last: None,
@@ -413,14 +384,15 @@ fn calculate_latency_snapshot_ranges(
         lower = upper.saturating_add(1);
     }
     if above_maximum > 0 {
-        let final_bound = upper_bounds.last().copied().ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::Bounds(
+        let final_bound =
+            upper_bounds
+                .last()
+                .copied()
+                .ok_or(LatencySnapshotError::Bounds(
                 NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty,
-            ),
-        )?;
+            ))?;
         let overflow_lower = final_bound.checked_add(1).ok_or(
-            NativeContinuationCachedRetryLatencySnapshotError::
-                CalculationOverflow { bucket: None },
+            LatencySnapshotError::CalculationOverflow { bucket: None },
         )?;
         add_latency_bin(
             &mut calculation,
@@ -438,25 +410,23 @@ fn calculate_latency_snapshot_ranges(
 fn validate_extremum(
     occupied: LatencyOccupiedRange,
     observed: u64,
-) -> Result<(), NativeContinuationCachedRetryLatencySnapshotError> {
+) -> Result<(), LatencySnapshotError> {
     if (occupied.lower..=occupied.upper).contains(&observed) {
         Ok(())
     } else {
-        Err(
-            NativeContinuationCachedRetryLatencySnapshotError::ExtremaRange {
-                bucket: occupied.bucket,
-                lower: occupied.lower,
-                observed,
-                upper: occupied.upper,
-            },
-        )
+        Err(LatencySnapshotError::ExtremaRange {
+            bucket: occupied.bucket,
+            lower: occupied.lower,
+            observed,
+            upper: occupied.upper,
+        })
     }
 }
 
 fn validate_latency_snapshot_range(
     range: NativeContinuationCachedRetryLatencySnapshotRange,
     calculation: LatencySnapshotCalculation,
-) -> Result<(), NativeContinuationCachedRetryLatencySnapshotError> {
+) -> Result<(), LatencySnapshotError> {
     if calculation.samples == 0 {
         if range.total == 0
             && range.minimum.is_none()
@@ -464,41 +434,30 @@ fn validate_latency_snapshot_range(
         {
             return Ok(());
         }
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::EmptyState,
-        );
+        return Err(LatencySnapshotError::EmptyState);
     }
     let (Some(minimum), Some(maximum)) = (range.minimum, range.maximum) else {
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::ExtremaMissing,
-        );
+        return Err(LatencySnapshotError::ExtremaMissing);
     };
     if minimum > maximum {
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::ExtremaOrder {
-                maximum,
-                minimum,
-            },
-        );
+        return Err(LatencySnapshotError::ExtremaOrder { maximum, minimum });
     }
-    let first = calculation.first.ok_or(
-        NativeContinuationCachedRetryLatencySnapshotError::ExtremaMissing,
-    )?;
-    let last = calculation.last.ok_or(
-        NativeContinuationCachedRetryLatencySnapshotError::ExtremaMissing,
-    )?;
+    let first = calculation
+        .first
+        .ok_or(LatencySnapshotError::ExtremaMissing)?;
+    let last = calculation
+        .last
+        .ok_or(LatencySnapshotError::ExtremaMissing)?;
     validate_extremum(first, minimum)?;
     validate_extremum(last, maximum)?;
     if !(calculation.minimum_total..=calculation.maximum_total)
         .contains(&range.total)
     {
-        return Err(
-            NativeContinuationCachedRetryLatencySnapshotError::TotalRange {
-                minimum: calculation.minimum_total,
-                maximum: calculation.maximum_total,
-                observed: range.total,
-            },
-        );
+        return Err(LatencySnapshotError::TotalRange {
+            minimum: calculation.minimum_total,
+            maximum: calculation.maximum_total,
+            observed: range.total,
+        });
     }
     Ok(())
 }

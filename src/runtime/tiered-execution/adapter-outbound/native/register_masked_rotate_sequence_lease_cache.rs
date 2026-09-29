@@ -515,19 +515,18 @@ impl RegisterMaskedRotateNativeSequenceLeaseCache {
         if let Some(entry) = self.active.iter().find(|entry| entry.key == key) {
             return Ok(Self::active_acquisition(entry, CacheDisposition::Hit));
         }
-        let sequence =
-            load_register_masked_rotate_native_sequence(plan, adapter)
-                .map_err(|failure| {
-                    Box::new(
-                RegisterMaskedRotateNativeSequenceLeaseCacheLoadFailure {
-                    candidate_cleanup_failure: None,
-                    cause: LoadFailureCause::Load(failure),
-                    evicted_keys: Vec::new(),
-                    requested_key: key.clone(),
-                    retired_keys: Vec::new(),
-                },
-            )
-                })?;
+        let sequence = load_register_masked_rotate_native_sequence(
+            plan, adapter,
+        )
+        .map_err(|failure| {
+            Box::new(RegisterMaskedRotateNativeSequenceLeaseCacheLoadFailure {
+                candidate_cleanup_failure: None,
+                cause: LoadFailureCause::Load(failure),
+                evicted_keys: Vec::new(),
+                requested_key: key.clone(),
+                retired_keys: Vec::new(),
+            })
+        })?;
         self.publish_candidate(adapter, key, sequence)
     }
 

@@ -103,10 +103,12 @@ impl Display for DirectSequenceError<'_> {
             Self::Empty => {
                 f.write_str("direct sequence requires at least one step")
             },
-            Self::ObservationChain { index } => write!(
-                f,
-                "direct sequence observation chain broke at step {index}",
-            ),
+            Self::ObservationChain { index } => {
+                write!(
+                    f,
+                    "direct sequence observation chain broke at step {index}",
+                )
+            },
             Self::ProgramShape { index } => {
                 write!(f, "direct sequence step {index} is not one effect")
             },

@@ -96,10 +96,12 @@ impl Display for NativeContinuationRetryPolicyStateCodecError {
             Self::Reserved { observed } => {
                 write!(f, "retry policy state reserved value {observed}")
             },
-            Self::Version { observed } => write!(
-                f,
-                "retry policy state revision {observed} is unsupported",
-            ),
+            Self::Version { observed } => {
+                write!(
+                    f,
+                    "retry policy state revision {observed} is unsupported",
+                )
+            },
         }
     }
 }

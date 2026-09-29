@@ -35,9 +35,12 @@
 
 use std::num::NonZeroUsize;
 
-use super::NativeContinuationCachedRetryLatencyHistogram;
+type LatencyAssessmentSignal =
+    NativeContinuationCachedRetryLatencyAssessmentSignal;
 
+use super::NativeContinuationCachedRetryLatencyHistogram;
 /// Exact ready evidence retained by one latency assessment.
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryLatencyAssessmentEvidence {
     above_maximum: usize,
@@ -122,7 +125,7 @@ impl NativeContinuationCachedRetryLatencyAssessmentEvidence {
     }
 }
 
-impl NativeContinuationCachedRetryLatencyAssessmentSignal {
+impl LatencyAssessmentSignal {
     const fn mask(self) -> u8 {
         match self {
             Self::AverageNanoseconds => 1,
@@ -177,10 +180,7 @@ impl NativeContinuationCachedRetryLatencyAssessmentThresholds {
 impl NativeContinuationCachedRetryLatencyAssessmentViolations {
     /// Reports whether one exact latency signal missed its configured maximum.
     #[must_use]
-    pub const fn contains(
-        self,
-        signal: NativeContinuationCachedRetryLatencyAssessmentSignal,
-    ) -> bool {
+    pub const fn contains(self, signal: LatencyAssessmentSignal) -> bool {
         self.bits & signal.mask() != 0
     }
 
@@ -216,22 +216,16 @@ pub fn assess_cached_retry_latency(
         evidence.samples(),
         thresholds.maximum_average_nanoseconds(),
     ) {
-        bits |= NativeContinuationCachedRetryLatencyAssessmentSignal::
-            AverageNanoseconds
-            .mask();
+        bits |= LatencyAssessmentSignal::AverageNanoseconds.mask();
     }
     if evidence
         .maximum_nanoseconds()
         .is_none_or(|maximum| maximum > thresholds.maximum_nanoseconds())
     {
-        bits |= NativeContinuationCachedRetryLatencyAssessmentSignal::
-            MaximumNanoseconds
-            .mask();
+        bits |= LatencyAssessmentSignal::MaximumNanoseconds.mask();
     }
     if evidence.above_maximum() > thresholds.maximum_overflow_samples() {
-        bits |= NativeContinuationCachedRetryLatencyAssessmentSignal::
-            OverflowSamples
-            .mask();
+        bits |= LatencyAssessmentSignal::OverflowSamples.mask();
     }
     let violations =
         NativeContinuationCachedRetryLatencyAssessmentViolations { bits };

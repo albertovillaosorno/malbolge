@@ -43,6 +43,11 @@ use store_port::{
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 
+type TelemetryDurablePersistence<DurabilityError> =
+    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>;
+type TelemetryPersistenceError<StoreError> =
+    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>;
+
 use super::{
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyHistogram,
@@ -56,8 +61,9 @@ use super::{
     encode_cached_retry_telemetry_snapshot as encode_telemetry_snapshot,
 };
 use crate::{blob_persistence, blob_store as store_port};
+/// Cached-retry publication plus explicit post-publication durability
+/// state.
 
-/// Cached-retry publication plus explicit post-publication durability state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryTelemetryDurablePersistence<
     DurabilityError,
@@ -110,8 +116,8 @@ pub type NativeContinuationCachedRetryTelemetryDurablePersistenceResult<
     StoreError,
     DurabilityError,
 > = Result<
-    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>,
-    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>,
+    TelemetryDurablePersistence<DurabilityError>,
+    TelemetryPersistenceError<StoreError>,
 >;
 
 /// Durable cached-retry publication result specialized to one store type.
@@ -125,10 +131,7 @@ pub type NativeContinuationCachedRetryTelemetryDurableStoreResult<Store> =
 pub type NativeContinuationCachedRetryTelemetryPersistenceResult<
     Value,
     StoreError,
-> = Result<
-    Value,
-    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>,
->;
+> = Result<Value, TelemetryPersistenceError<StoreError>>;
 
 /// Restored latency-owner result from one bounded persistence load.
 pub type NativeContinuationCachedRetryTelemetryPersistenceLatencyLoad =
@@ -171,9 +174,7 @@ pub struct NativeContinuationCachedRetryTelemetryPersistenceWrite {
     bytes: usize,
 }
 
-impl<DurabilityError>
-    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>
-{
+impl<DurabilityError> TelemetryDurablePersistence<DurabilityError> {
     /// Returns the exact committed canonical byte count.
     #[must_use]
     pub const fn bytes(&self) -> usize {
@@ -222,16 +223,13 @@ pub fn persist_cached_retry_latency_histogram_durably<Store>(
 where
     Store: DurableBlobStore,
 {
-    let bytes = encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
-        NativeContinuationCachedRetryTelemetryPersistenceError::LatencyCodec(
-            Box::new(error),
-        )
-    })?;
+    let bytes =
+        encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
+            TelemetryPersistenceError::LatencyCodec(Box::new(error))
+        })?;
     let outcome =
         blob_persistence::persist_blob_durably(store, &bytes, maximum_bytes)
-            .map_err(
-                NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-            )?;
+            .map_err(TelemetryPersistenceError::Blob)?;
     Ok(map_durable_persistence(outcome))
 }
 
@@ -252,15 +250,12 @@ pub fn persist_cached_retry_latency_histogram<Store>(
 where
     Store: BlobStore,
 {
-    let bytes = encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
-        NativeContinuationCachedRetryTelemetryPersistenceError::LatencyCodec(
-            Box::new(error),
-        )
-    })?;
+    let bytes =
+        encode_latency_snapshot(&histogram.snapshot()).map_err(|error| {
+            TelemetryPersistenceError::LatencyCodec(Box::new(error))
+        })?;
     let write = blob_persistence::persist_blob(store, &bytes, maximum_bytes)
-        .map_err(
-            NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-        )?;
+        .map_err(TelemetryPersistenceError::Blob)?;
     Ok(NativeContinuationCachedRetryTelemetryPersistenceWrite {
         bytes: write.bytes(),
     })
@@ -282,15 +277,11 @@ where
 {
     let bytes =
         encode_telemetry_snapshot(&window.snapshot()).map_err(|error| {
-            NativeContinuationCachedRetryTelemetryPersistenceError::CountCodec(
-                Box::new(error),
-            )
+            TelemetryPersistenceError::CountCodec(Box::new(error))
         })?;
     let outcome =
         blob_persistence::persist_blob_durably(store, &bytes, maximum_bytes)
-            .map_err(
-                NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-            )?;
+            .map_err(TelemetryPersistenceError::Blob)?;
     Ok(map_durable_persistence(outcome))
 }
 
@@ -313,14 +304,10 @@ where
 {
     let bytes =
         encode_telemetry_snapshot(&window.snapshot()).map_err(|error| {
-            NativeContinuationCachedRetryTelemetryPersistenceError::CountCodec(
-                Box::new(error),
-            )
+            TelemetryPersistenceError::CountCodec(Box::new(error))
         })?;
     let write = blob_persistence::persist_blob(store, &bytes, maximum_bytes)
-        .map_err(
-            NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-        )?;
+        .map_err(TelemetryPersistenceError::Blob)?;
     Ok(NativeContinuationCachedRetryTelemetryPersistenceWrite {
         bytes: write.bytes(),
     })
@@ -328,26 +315,19 @@ where
 
 fn map_durable_persistence<DurabilityError>(
     outcome: BlobDurablePersistence<DurabilityError>,
-) -> NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError> {
+) -> TelemetryDurablePersistence<DurabilityError> {
     match outcome {
         BlobDurablePersistence::Durable { write } => {
-                NativeContinuationCachedRetryTelemetryDurablePersistence::
-                    Durable {
-                        write: PersistenceWrite {
-                            bytes: write.bytes(),
-                        },
-                    }
-            },
-        BlobDurablePersistence::Published {
+            TelemetryDurablePersistence::Durable {
+                write: PersistenceWrite { bytes: write.bytes() },
+            }
+        },
+        BlobDurablePersistence::Published { durability_error, write } => {
+            TelemetryDurablePersistence::Published {
                 durability_error,
-                write,
-            } => NativeContinuationCachedRetryTelemetryDurablePersistence::
-                Published {
-                    durability_error,
-                    write: PersistenceWrite {
-                        bytes: write.bytes(),
-                    },
-                },
+                write: PersistenceWrite { bytes: write.bytes() },
+            }
+        },
     }
 }
 
@@ -366,23 +346,19 @@ pub fn restore_cached_retry_latency_histogram<Store>(
 where
     Store: BlobStore,
 {
-    let load = blob_persistence::restore_blob(store, maximum_bytes).map_err(
-        NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-    )?;
+    let load = blob_persistence::restore_blob(store, maximum_bytes)
+        .map_err(TelemetryPersistenceError::Blob)?;
     let BlobLoad::Present { bytes } = load else {
         return Ok(PersistenceLoad::Missing);
     };
     let length = bytes.len();
     let snapshot = decode_latency_snapshot(&bytes).map_err(|error| {
-        NativeContinuationCachedRetryTelemetryPersistenceError::LatencyCodec(
-            Box::new(error),
-        )
+        TelemetryPersistenceError::LatencyCodec(Box::new(error))
     })?;
     let histogram =
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(snapshot)
             .map_err(|error| {
-                NativeContinuationCachedRetryTelemetryPersistenceError::
-                    LatencySnapshot(Box::new(error))
+                TelemetryPersistenceError::LatencySnapshot(Box::new(error))
             })?;
     Ok(PersistenceLoad::Restored {
         bytes: length,
@@ -405,26 +381,20 @@ pub fn restore_cached_retry_telemetry_window<Store>(
 where
     Store: BlobStore,
 {
-    let load = blob_persistence::restore_blob(store, maximum_bytes).map_err(
-        NativeContinuationCachedRetryTelemetryPersistenceError::Blob,
-    )?;
+    let load = blob_persistence::restore_blob(store, maximum_bytes)
+        .map_err(TelemetryPersistenceError::Blob)?;
     let BlobLoad::Present { bytes } = load else {
         return Ok(PersistenceLoad::Missing);
     };
     let length = bytes.len();
     let snapshot = decode_telemetry_snapshot(&bytes).map_err(|error| {
-        NativeContinuationCachedRetryTelemetryPersistenceError::CountCodec(
-            Box::new(error),
-        )
+        TelemetryPersistenceError::CountCodec(Box::new(error))
     })?;
-    let window = NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
-        snapshot,
-    )
-    .map_err(|error| {
-        NativeContinuationCachedRetryTelemetryPersistenceError::CountSnapshot(
-            Box::new(error),
-        )
-    })?;
+    let window =
+        NativeContinuationCachedRetryTelemetryWindow::from_snapshot(snapshot)
+            .map_err(|error| {
+            TelemetryPersistenceError::CountSnapshot(Box::new(error))
+        })?;
     Ok(PersistenceLoad::Restored {
         bytes: length,
         value: window,

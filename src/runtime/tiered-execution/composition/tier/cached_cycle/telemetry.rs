@@ -104,10 +104,12 @@ impl Display for NativeContinuationCachedRetryTelemetryError {
                 f,
                 "cached retry telemetry eviction overflow at attempt {attempt}",
             ),
-            Self::RetiredKeys { attempt } => write!(
-                f,
-                "cached retry retirement overflow at attempt {attempt}",
-            ),
+            Self::RetiredKeys { attempt } => {
+                write!(
+                    f,
+                    "cached retry retirement overflow at attempt {attempt}",
+                )
+            },
         }
     }
 }

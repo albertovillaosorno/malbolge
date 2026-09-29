@@ -116,6 +116,8 @@ impl Display for DirectFusedNativeRetryPolicyError {
     }
 }
 
+type ScheduleDecision = DirectFusedNativeScheduleDecision;
+
 impl DirectFusedNativeRetryFallback {
     /// Selects complete normative interpretation after retry exhaustion.
     #[must_use]
@@ -134,8 +136,7 @@ impl DirectFusedNativeRetryFallback {
             DirectFusedNativeRetryFallbackKind::Slice => {
                 let Some(step_budget) = NonZeroUsize::new(self.step_budget)
                 else {
-                    return DirectFusedNativeScheduleDecision::
-                        complete_interpreter();
+                    return ScheduleDecision::complete_interpreter();
                 };
                 DirectFusedNativeScheduleDecision::interpret(step_budget)
             },

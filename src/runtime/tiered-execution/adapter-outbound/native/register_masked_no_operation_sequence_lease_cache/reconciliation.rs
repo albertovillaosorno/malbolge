@@ -205,11 +205,7 @@ impl<E>
 impl<E> RegisterMaskedNoOperationNativeSequenceLeaseCacheReleaseFailure<E> {
     /// Returns every keyed release failure retained outside cache ownership.
     #[must_use]
-    pub fn failures(
-        &self,
-    ) -> &[
-        RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure<E>
-    ]{
+    pub fn failures(&self) -> &[SequenceEntryReleaseFailure<E>] {
         &self.failures
     }
 
@@ -394,3 +390,6 @@ where
     }
     reconciliation_result(released_keys, retained_keys, failures)
 }
+
+type SequenceEntryReleaseFailure<E> =
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure<E>;

@@ -43,9 +43,13 @@ use super::{
     NativeContinuationCachedRetryTelemetryWindowError,
 };
 
-type SnapshotError = NativeContinuationCachedRetryTelemetrySnapshotError;
+type SnapshotError = TelemetrySnapshotError;
+
+type TelemetrySnapshotError =
+    NativeContinuationCachedRetryTelemetrySnapshotError;
 
 /// Sequence and eviction metadata retained by one immutable snapshot.
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryTelemetrySnapshotMetadata {
     evictions: u64,
@@ -223,10 +227,7 @@ pub(super) fn snapshot_telemetry_window(
 
 pub(super) fn validate_telemetry_snapshot(
     snapshot: NativeContinuationCachedRetryTelemetryWindowSnapshot,
-) -> Result<
-    ValidatedCachedRetryTelemetrySnapshot,
-    NativeContinuationCachedRetryTelemetrySnapshotError,
-> {
+) -> Result<ValidatedCachedRetryTelemetrySnapshot, TelemetrySnapshotError> {
     let NativeContinuationCachedRetryTelemetryWindowSnapshot {
         capacity,
         metadata,
@@ -241,11 +242,9 @@ pub(super) fn validate_telemetry_snapshot(
     let recomputed = super::telemetry_window::aggregate_telemetry_observations(
         &observations,
     )
-    .map_err(NativeContinuationCachedRetryTelemetrySnapshotError::Aggregate)?;
+    .map_err(TelemetrySnapshotError::Aggregate)?;
     if recomputed != totals {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::Totals,
-        );
+        return Err(TelemetrySnapshotError::Totals);
     }
     Ok(ValidatedCachedRetryTelemetrySnapshot {
         capacity,
@@ -260,35 +259,27 @@ fn validate_snapshot_metadata(
     capacity: NonZeroUsize,
     metadata: NativeContinuationCachedRetryTelemetrySnapshotMetadata,
     observed_retained: usize,
-) -> Result<(), NativeContinuationCachedRetryTelemetrySnapshotError> {
-    let retained = u64::try_from(observed_retained).map_err(|_error| {
-        NativeContinuationCachedRetryTelemetrySnapshotError::
-            ObservationCountOverflow
-    })?;
+) -> Result<(), TelemetrySnapshotError> {
+    let retained = u64::try_from(observed_retained)
+        .map_err(|_error| TelemetrySnapshotError::ObservationCountOverflow)?;
     if observed_retained > capacity.get() {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::RetainedCount {
-                expected: capacity.get(),
-                observed: observed_retained,
-            },
-        );
+        return Err(TelemetrySnapshotError::RetainedCount {
+            expected: capacity.get(),
+            observed: observed_retained,
+        });
     }
     let expected_evictions = metadata
         .last_sequence()
         .checked_sub(retained)
-        .ok_or_else(|| {
-            NativeContinuationCachedRetryTelemetrySnapshotError::EvictionCount {
-                expected: 0,
-                observed: metadata.evictions(),
-            }
+        .ok_or_else(|| TelemetrySnapshotError::EvictionCount {
+            expected: 0,
+            observed: metadata.evictions(),
         })?;
     if metadata.evictions() != expected_evictions {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::EvictionCount {
-                expected: expected_evictions,
-                observed: metadata.evictions(),
-            },
-        );
+        return Err(TelemetrySnapshotError::EvictionCount {
+            expected: expected_evictions,
+            observed: metadata.evictions(),
+        });
     }
     Ok(())
 }
@@ -297,24 +288,17 @@ fn validate_empty_snapshot(
     capacity: NonZeroUsize,
     metadata: NativeContinuationCachedRetryTelemetrySnapshotMetadata,
     totals: NativeContinuationCachedRetryTelemetry,
-) -> Result<
-    ValidatedCachedRetryTelemetrySnapshot,
-    NativeContinuationCachedRetryTelemetrySnapshotError,
-> {
+) -> Result<ValidatedCachedRetryTelemetrySnapshot, TelemetrySnapshotError> {
     if metadata
         != NativeContinuationCachedRetryTelemetrySnapshotMetadata::default()
     {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::EmptyMetadata {
-                evictions: metadata.evictions(),
-                last_sequence: metadata.last_sequence(),
-            },
-        );
+        return Err(TelemetrySnapshotError::EmptyMetadata {
+            evictions: metadata.evictions(),
+            last_sequence: metadata.last_sequence(),
+        });
     }
     if totals != NativeContinuationCachedRetryTelemetry::default() {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::Totals,
-        );
+        return Err(TelemetrySnapshotError::Totals);
     }
     Ok(ValidatedCachedRetryTelemetrySnapshot {
         capacity,
@@ -328,32 +312,29 @@ fn validate_empty_snapshot(
 fn validate_observation_sequences(
     observations: &[NativeContinuationCachedRetryTelemetryObservation],
     metadata: NativeContinuationCachedRetryTelemetrySnapshotMetadata,
-) -> Result<(), NativeContinuationCachedRetryTelemetrySnapshotError> {
+) -> Result<(), TelemetrySnapshotError> {
     let mut iter = observations.iter();
     let Some(first_observation) = iter.next() else {
         return Ok(());
     };
     let first = first_observation.sequence();
     let expected_first = metadata.evictions().checked_add(1).ok_or(
-        NativeContinuationCachedRetryTelemetrySnapshotError::FirstSequence {
+        TelemetrySnapshotError::FirstSequence {
             expected: 0,
             observed: first,
         },
     )?;
     if first != expected_first {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::FirstSequence {
-                expected: expected_first,
-                observed: first,
-            },
-        );
+        return Err(TelemetrySnapshotError::FirstSequence {
+            expected: expected_first,
+            observed: first,
+        });
     }
     let mut previous = first;
     for (offset, observation) in iter.enumerate() {
-        let index = offset.checked_add(1).ok_or(
-            NativeContinuationCachedRetryTelemetrySnapshotError::
-                ObservationCountOverflow,
-        )?;
+        let index = offset
+            .checked_add(1)
+            .ok_or(TelemetrySnapshotError::ObservationCountOverflow)?;
         let observed = observation.sequence();
         let expected =
             previous.checked_add(1).ok_or(SnapshotError::SequenceGap {
@@ -371,12 +352,10 @@ fn validate_observation_sequences(
         previous = observed;
     }
     if previous != metadata.last_sequence() {
-        return Err(
-            NativeContinuationCachedRetryTelemetrySnapshotError::LastSequence {
-                expected: metadata.last_sequence(),
-                observed: previous,
-            },
-        );
+        return Err(TelemetrySnapshotError::LastSequence {
+            expected: metadata.last_sequence(),
+            observed: previous,
+        });
     }
     Ok(())
 }

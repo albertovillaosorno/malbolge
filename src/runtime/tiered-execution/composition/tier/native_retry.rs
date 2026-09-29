@@ -201,10 +201,12 @@ pub struct NativeContinuationNativeRetry {
 impl Display for NativeContinuationRetryTransferError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::OutputLength { expected, observed } => write!(
-                f,
-                "native retry output has {observed} of {expected} bytes",
-            ),
+            Self::OutputLength { expected, observed } => {
+                write!(
+                    f,
+                    "native retry output has {observed} of {expected} bytes",
+                )
+            },
             Self::State(error) => {
                 write!(f, "native retry checkpoint rejected: {error}")
             },

@@ -161,10 +161,12 @@ impl Display for NativeContinuationCachedRetryTelemetryCodecError {
                 observation,
                 value,
             } => format_representation(f, *field, *observation, *value),
-            Self::Reserved { observed } => write!(
-                f,
-                "cached retry telemetry codec reserved value {observed}",
-            ),
+            Self::Reserved { observed } => {
+                write!(
+                    f,
+                    "cached retry telemetry codec reserved value {observed}",
+                )
+            },
             Self::Snapshot(_error) => {
                 f.write_str("cached retry telemetry codec snapshot rejected")
             },
@@ -292,9 +294,7 @@ pub fn encode_cached_retry_telemetry_snapshot(
     bytes.extend_from_slice(&snapshot.metadata().last_sequence().to_le_bytes());
     let count_u64 = u64::try_from(count).map_err(|_error| {
         NativeContinuationCachedRetryTelemetryCodecError::EncodingRange {
-            field:
-                NativeContinuationCachedRetryTelemetryCodecField::
-                    ObservationCount,
+            field: TelemetryCodecField::ObservationCount,
             observation: None,
         }
     })?;
@@ -542,3 +542,5 @@ fn write_usize(
     bytes.extend_from_slice(&encoded.to_le_bytes());
     Ok(())
 }
+
+type TelemetryCodecField = NativeContinuationCachedRetryTelemetryCodecField;

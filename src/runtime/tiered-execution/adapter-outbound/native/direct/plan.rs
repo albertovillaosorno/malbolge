@@ -437,54 +437,74 @@ impl PreparedDirectTarget {
             target_triple(self.key().target().host_isa()),
         );
         match self {
-            Self::Crazy(_key) => admit_direct_candidate!(
-                verify_direct_crazy(&artifact, program),
-                Crazy
-            ),
-            Self::Deopt(_key) => admit_direct_candidate!(
-                verify_direct_deopt_stub(&artifact),
-                Deopt
-            ),
-            Self::HaltFetch(_key) => admit_direct_candidate!(
-                verify_direct_halt_fetch(&artifact, program),
-                HaltFetch
-            ),
+            Self::Crazy(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_crazy(&artifact, program),
+                    Crazy
+                )
+            },
+            Self::Deopt(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_deopt_stub(&artifact),
+                    Deopt
+                )
+            },
+            Self::HaltFetch(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_halt_fetch(&artifact, program),
+                    HaltFetch
+                )
+            },
             Self::HaltRegisters(_key) => admit_direct_candidate!(
                 verify_direct_halt_registers(&artifact, program),
                 HaltRegisters
             ),
-            Self::InitialHalt(_key) => admit_direct_candidate!(
-                verify_direct_initial_halt(&artifact, program),
-                InitialHalt
-            ),
-            Self::Input(_key) => admit_direct_candidate!(
-                verify_direct_input(&artifact, program),
-                Input
-            ),
-            Self::JumpCode(_key) => admit_direct_candidate!(
-                verify_direct_jump_code(&artifact, program),
-                JumpCode
-            ),
-            Self::JumpData(_key) => admit_direct_candidate!(
-                verify_direct_jump_data(&artifact, program),
-                JumpData
-            ),
+            Self::InitialHalt(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_initial_halt(&artifact, program),
+                    InitialHalt
+                )
+            },
+            Self::Input(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_input(&artifact, program),
+                    Input
+                )
+            },
+            Self::JumpCode(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_jump_code(&artifact, program),
+                    JumpCode
+                )
+            },
+            Self::JumpData(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_jump_data(&artifact, program),
+                    JumpData
+                )
+            },
             Self::NonGraphical(_key) => admit_direct_candidate!(
                 verify_direct_non_graphical(&artifact, program),
                 NonGraphical
             ),
-            Self::NoOperation(_key) => admit_direct_candidate!(
-                verify_direct_no_operation(&artifact, program),
-                NoOperation
-            ),
-            Self::Output(_key) => admit_direct_candidate!(
-                verify_direct_output(&artifact, program),
-                Output
-            ),
-            Self::Rotate(_key) => admit_direct_candidate!(
-                verify_direct_rotate(&artifact, program),
-                Rotate
-            ),
+            Self::NoOperation(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_no_operation(&artifact, program),
+                    NoOperation
+                )
+            },
+            Self::Output(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_output(&artifact, program),
+                    Output
+                )
+            },
+            Self::Rotate(_key) => {
+                admit_direct_candidate!(
+                    verify_direct_rotate(&artifact, program),
+                    Rotate
+                )
+            },
         }
     }
 

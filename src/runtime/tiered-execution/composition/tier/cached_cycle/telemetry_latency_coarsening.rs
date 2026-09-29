@@ -43,6 +43,11 @@ use super::{
     NativeContinuationCachedRetryLatencySnapshotRange,
 };
 
+type LatencyCoarseningError =
+    NativeContinuationCachedRetryLatencyCoarseningError;
+type CommonCoarseningError =
+    NativeContinuationCachedRetryLatencyCommonCoarseningError;
+
 /// Why exact latency histogram coarsening failed without source mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyCoarseningError {
@@ -83,13 +88,13 @@ pub struct NativeContinuationCachedRetryLatencyCoarsening {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyNormalizedMergeError {
     /// Greatest exact shared schema could not be derived.
-    Common(NativeContinuationCachedRetryLatencyCommonCoarseningError),
+    Common(CommonCoarseningError),
     /// Left histogram could not be coarsened to the shared schema.
-    Left(NativeContinuationCachedRetryLatencyCoarseningError),
+    Left(LatencyCoarseningError),
     /// Coarsened histograms could not be merged transactionally.
     Merge(NativeContinuationCachedRetryLatencyMergeError),
     /// Right histogram could not be coarsened to the shared schema.
-    Right(NativeContinuationCachedRetryLatencyCoarseningError),
+    Right(LatencyCoarseningError),
 }
 
 /// Exact merged histogram plus normalization evidence for both sources.
@@ -224,30 +229,25 @@ pub fn coarsen_cached_retry_latency_histogram(
     target_upper_bounds: Vec<u64>,
 ) -> Result<
     NativeContinuationCachedRetryLatencyCoarsening,
-    NativeContinuationCachedRetryLatencyCoarseningError,
+    LatencyCoarseningError,
 > {
     super::telemetry_latency::validate_latency_bounds(&target_upper_bounds)
-        .map_err(
-            NativeContinuationCachedRetryLatencyCoarseningError::TargetBounds,
-        )?;
+        .map_err(LatencyCoarseningError::TargetBounds)?;
     let source_final = source.upper_bounds().last().copied().ok_or(
-        NativeContinuationCachedRetryLatencyCoarseningError::TargetBounds(
+        LatencyCoarseningError::TargetBounds(
             NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty,
         ),
     )?;
     let target_final = target_upper_bounds.last().copied().ok_or(
-        NativeContinuationCachedRetryLatencyCoarseningError::TargetBounds(
+        LatencyCoarseningError::TargetBounds(
             NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty,
         ),
     )?;
     if source_final != target_final {
-        return Err(
-            NativeContinuationCachedRetryLatencyCoarseningError::
-                FinalBoundMismatch {
-                    source: source_final,
-                    target: target_final,
-                },
-        );
+        return Err(LatencyCoarseningError::FinalBoundMismatch {
+            source: source_final,
+            target: target_final,
+        });
     }
     let buckets = coarsen_bucket_counts(source, &target_upper_bounds)?;
     let target_upper_bounds_len = target_upper_bounds.len();
@@ -267,9 +267,7 @@ pub fn coarsen_cached_retry_latency_histogram(
     let histogram =
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(snapshot)
             .map_err(|error| {
-                NativeContinuationCachedRetryLatencyCoarseningError::Snapshot(
-                    Box::new(error),
-                )
+                LatencyCoarseningError::Snapshot(Box::new(error))
             })?;
     Ok(NativeContinuationCachedRetryLatencyCoarsening {
         histogram,
@@ -329,24 +327,23 @@ pub fn derive_common_cached_retry_latency_coarsening(
     right: &NativeContinuationCachedRetryLatencyHistogram,
 ) -> Result<
     NativeContinuationCachedRetryLatencyCommonCoarsening,
-    NativeContinuationCachedRetryLatencyCommonCoarseningError,
+    CommonCoarseningError,
 > {
-    let left_final = left.upper_bounds().last().copied().ok_or(
-        NativeContinuationCachedRetryLatencyCommonCoarseningError::
-            LeftBoundsEmpty,
-    )?;
-    let right_final = right.upper_bounds().last().copied().ok_or(
-        NativeContinuationCachedRetryLatencyCommonCoarseningError::
-            RightBoundsEmpty,
-    )?;
+    let left_final = left
+        .upper_bounds()
+        .last()
+        .copied()
+        .ok_or(CommonCoarseningError::LeftBoundsEmpty)?;
+    let right_final = right
+        .upper_bounds()
+        .last()
+        .copied()
+        .ok_or(CommonCoarseningError::RightBoundsEmpty)?;
     if left_final != right_final {
-        return Err(
-            NativeContinuationCachedRetryLatencyCommonCoarseningError::
-                FinalBoundMismatch {
-                    left: left_final,
-                    right: right_final,
-                },
-        );
+        return Err(CommonCoarseningError::FinalBoundMismatch {
+            left: left_final,
+            right: right_final,
+        });
     }
     let upper_bounds = left
         .upper_bounds()
@@ -364,7 +361,7 @@ pub fn derive_common_cached_retry_latency_coarsening(
 fn coarsen_bucket_counts(
     source: &NativeContinuationCachedRetryLatencyHistogram,
     target_upper_bounds: &[u64],
-) -> Result<Vec<usize>, NativeContinuationCachedRetryLatencyCoarseningError> {
+) -> Result<Vec<usize>, LatencyCoarseningError> {
     let mut buckets = Vec::with_capacity(target_upper_bounds.len());
     let mut source_index = 0;
     for (target_index, &target_bound) in target_upper_bounds.iter().enumerate()
@@ -373,22 +370,16 @@ fn coarsen_bucket_counts(
         loop {
             let Some(&source_bound) = source.upper_bounds().get(source_index)
             else {
-                return Err(
-                    NativeContinuationCachedRetryLatencyCoarseningError::
-                        BoundMissing {
-                            index: target_index,
-                            bound: target_bound,
-                        },
-                );
+                return Err(LatencyCoarseningError::BoundMissing {
+                    index: target_index,
+                    bound: target_bound,
+                });
             };
             if source_bound > target_bound {
-                return Err(
-                    NativeContinuationCachedRetryLatencyCoarseningError::
-                        BoundMissing {
-                            index: target_index,
-                            bound: target_bound,
-                        },
-                );
+                return Err(LatencyCoarseningError::BoundMissing {
+                    index: target_index,
+                    bound: target_bound,
+                });
             }
             let source_count = source
                 .bucket_counts()
@@ -396,16 +387,14 @@ fn coarsen_bucket_counts(
                 .copied()
                 .unwrap_or(0);
             count = count.checked_add(source_count).ok_or(
-                NativeContinuationCachedRetryLatencyCoarseningError::
-                    BucketCountOverflow {
-                        bucket: target_index,
-                    },
+                LatencyCoarseningError::BucketCountOverflow {
+                    bucket: target_index,
+                },
             )?;
             source_index = source_index.checked_add(1).ok_or(
-                NativeContinuationCachedRetryLatencyCoarseningError::
-                    BucketCountOverflow {
-                        bucket: target_index,
-                    },
+                LatencyCoarseningError::BucketCountOverflow {
+                    bucket: target_index,
+                },
             )?;
             if source_bound == target_bound {
                 buckets.push(count);

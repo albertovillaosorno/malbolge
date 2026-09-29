@@ -152,10 +152,12 @@ impl Display for RegisterMaskedJumpCodeNativeSequencePlanError {
             Self::TargetMismatch { index } => {
                 write!(f, "JumpCode v6 sequence target changed at step {index}")
             },
-            Self::TerminationBeforeEnd { index } => write!(
-                f,
-                "JumpCode v6 step {index} terminated before sequence end",
-            ),
+            Self::TerminationBeforeEnd { index } => {
+                write!(
+                    f,
+                    "JumpCode v6 step {index} terminated before sequence end",
+                )
+            },
         }
     }
 }

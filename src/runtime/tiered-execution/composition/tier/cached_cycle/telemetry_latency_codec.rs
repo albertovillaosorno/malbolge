@@ -49,7 +49,11 @@ const CODEC_RESERVED: u16 = 0;
 const HEADER_LEN: usize = 72;
 const BUCKET_LEN: usize = 16;
 
-/// Integer field whose canonical latency representation could not be admitted.
+type LatencyCodecError = NativeContinuationCachedRetryLatencyCodecError;
+
+/// Integer field whose canonical latency representation could not be
+/// admitted.
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyCodecField {
     /// Samples above the final inclusive bound.
@@ -140,12 +144,10 @@ struct DecodedLatencyHeader {
     total: u128,
 }
 
-type DecodedLatencyHeaderResult<'bytes> = Result<
-    (CodecReader<'bytes>, DecodedLatencyHeader),
-    NativeContinuationCachedRetryLatencyCodecError,
->;
+type DecodedLatencyHeaderResult<'bytes> =
+    Result<(CodecReader<'bytes>, DecodedLatencyHeader), LatencyCodecError>;
 
-impl Display for NativeContinuationCachedRetryLatencyCodecError {
+impl Display for LatencyCodecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::AbsentExtremaValue { maximum, observed } => write!(
@@ -183,10 +185,12 @@ impl Display for NativeContinuationCachedRetryLatencyCodecError {
             Self::Representation { field, bucket, value } => {
                 format_representation(f, *field, *bucket, *value)
             },
-            Self::Reserved { observed } => write!(
-                f,
-                "cached retry latency codec reserved value {observed}",
-            ),
+            Self::Reserved { observed } => {
+                write!(
+                    f,
+                    "cached retry latency codec reserved value {observed}",
+                )
+            },
             Self::Snapshot(_error) => {
                 f.write_str("cached retry latency codec snapshot rejected")
             },
@@ -216,12 +220,13 @@ impl<'bytes> CodecReader<'bytes> {
 
     fn read_array<const N: usize>(
         &mut self,
-    ) -> Result<[u8; N], NativeContinuationCachedRetryLatencyCodecError> {
-        let end = self.offset.checked_add(N).ok_or(
-            NativeContinuationCachedRetryLatencyCodecError::LengthOverflow,
-        )?;
+    ) -> Result<[u8; N], LatencyCodecError> {
+        let end = self
+            .offset
+            .checked_add(N)
+            .ok_or(LatencyCodecError::LengthOverflow)?;
         let source = self.bytes.get(self.offset..end).ok_or(
-            NativeContinuationCachedRetryLatencyCodecError::Length {
+            LatencyCodecError::Length {
                 expected: end,
                 observed: self.bytes.len(),
             },
@@ -232,27 +237,19 @@ impl<'bytes> CodecReader<'bytes> {
         Ok(value)
     }
 
-    fn read_u128(
-        &mut self,
-    ) -> Result<u128, NativeContinuationCachedRetryLatencyCodecError> {
+    fn read_u128(&mut self) -> Result<u128, LatencyCodecError> {
         Ok(u128::from_le_bytes(self.read_array()?))
     }
 
-    fn read_u16(
-        &mut self,
-    ) -> Result<u16, NativeContinuationCachedRetryLatencyCodecError> {
+    fn read_u16(&mut self) -> Result<u16, LatencyCodecError> {
         Ok(u16::from_le_bytes(self.read_array()?))
     }
 
-    fn read_u64(
-        &mut self,
-    ) -> Result<u64, NativeContinuationCachedRetryLatencyCodecError> {
+    fn read_u64(&mut self) -> Result<u64, LatencyCodecError> {
         Ok(u64::from_le_bytes(self.read_array()?))
     }
 
-    fn read_u8(
-        &mut self,
-    ) -> Result<u8, NativeContinuationCachedRetryLatencyCodecError> {
+    fn read_u8(&mut self) -> Result<u8, LatencyCodecError> {
         Ok(self.read_array::<1>()?[0])
     }
 }
@@ -266,7 +263,7 @@ pub fn decode_cached_retry_latency_snapshot(
     bytes: &[u8],
 ) -> Result<
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
-    NativeContinuationCachedRetryLatencyCodecError,
+    LatencyCodecError,
 > {
     let (mut reader, header) = decode_latency_header(bytes)?;
     let mut upper_bounds = Vec::with_capacity(header.bound_count);
@@ -296,11 +293,7 @@ pub fn decode_cached_retry_latency_snapshot(
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
             snapshot.clone(),
         )
-        .map_err(|error| {
-            NativeContinuationCachedRetryLatencyCodecError::Snapshot(Box::new(
-                error,
-            ))
-        })?;
+        .map_err(|error| LatencyCodecError::Snapshot(Box::new(error)))?;
     Ok(snapshot)
 }
 
@@ -311,16 +304,12 @@ pub fn decode_cached_retry_latency_snapshot(
 /// Returns exact snapshot, representation, or framing arithmetic failure.
 pub fn encode_cached_retry_latency_snapshot(
     snapshot: &NativeContinuationCachedRetryLatencyHistogramSnapshot,
-) -> Result<Vec<u8>, NativeContinuationCachedRetryLatencyCodecError> {
+) -> Result<Vec<u8>, LatencyCodecError> {
     let _validated =
         NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
             snapshot.clone(),
         )
-        .map_err(|error| {
-            NativeContinuationCachedRetryLatencyCodecError::Snapshot(Box::new(
-                error,
-            ))
-        })?;
+        .map_err(|error| LatencyCodecError::Snapshot(Box::new(error)))?;
     let bound_count = snapshot.upper_bounds().len();
     let length = encoded_latency_len(bound_count)?;
     let mut bytes = Vec::with_capacity(length);
@@ -359,45 +348,36 @@ const fn decode_extremum(
     maximum: bool,
     flag: u8,
     value: u64,
-) -> Result<Option<u64>, NativeContinuationCachedRetryLatencyCodecError> {
+) -> Result<Option<u64>, LatencyCodecError> {
     match flag {
         0 if value == 0 => Ok(None),
-        0 => Err(
-            NativeContinuationCachedRetryLatencyCodecError::AbsentExtremaValue {
-                maximum,
-                observed: value,
-            },
-        ),
-        1 => Ok(Some(value)),
-        observed => Err(NativeContinuationCachedRetryLatencyCodecError::Flag {
+        0 => Err(LatencyCodecError::AbsentExtremaValue {
             maximum,
-            observed,
+            observed: value,
         }),
+        1 => Ok(Some(value)),
+        observed => Err(LatencyCodecError::Flag { maximum, observed }),
     }
 }
 
 fn decode_latency_header(bytes: &[u8]) -> DecodedLatencyHeaderResult<'_> {
     if bytes.len() < HEADER_LEN {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Length {
+        return Err(LatencyCodecError::Length {
             expected: HEADER_LEN,
             observed: bytes.len(),
         });
     }
     let mut reader = CodecReader::new(bytes);
     if reader.read_array::<8>()? != CODEC_MAGIC {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Magic);
+        return Err(LatencyCodecError::Magic);
     }
     let revision = reader.read_u16()?;
     if revision != CODEC_REVISION {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Version {
-            observed: revision,
-        });
+        return Err(LatencyCodecError::Version { observed: revision });
     }
     let reserved = reader.read_u16()?;
     if reserved != CODEC_RESERVED {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Reserved {
-            observed: reserved,
-        });
+        return Err(LatencyCodecError::Reserved { observed: reserved });
     }
     let bound_count = decode_usize(
         reader.read_u64()?,
@@ -406,7 +386,7 @@ fn decode_latency_header(bytes: &[u8]) -> DecodedLatencyHeaderResult<'_> {
     )?;
     let expected = encoded_latency_len(bound_count)?;
     if bytes.len() != expected {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Length {
+        return Err(LatencyCodecError::Length {
             expected,
             observed: bytes.len(),
         });
@@ -434,15 +414,12 @@ fn decode_latency_header(bytes: &[u8]) -> DecodedLatencyHeaderResult<'_> {
 
 fn decode_latency_range(
     reader: &mut CodecReader<'_>,
-) -> Result<DecodedLatencyRange, NativeContinuationCachedRetryLatencyCodecError>
-{
+) -> Result<DecodedLatencyRange, LatencyCodecError> {
     let minimum_flag = reader.read_u8()?;
     let maximum_flag = reader.read_u8()?;
     let reserved = reader.read_u16()?;
     if reserved != CODEC_RESERVED {
-        return Err(NativeContinuationCachedRetryLatencyCodecError::Reserved {
-            observed: reserved,
-        });
+        return Err(LatencyCodecError::Reserved { observed: reserved });
     }
     let minimum_value = reader.read_u64()?;
     let maximum_value = reader.read_u64()?;
@@ -458,20 +435,18 @@ fn decode_usize(
     value: u64,
     field: NativeContinuationCachedRetryLatencyCodecField,
     bucket: Option<usize>,
-) -> Result<usize, NativeContinuationCachedRetryLatencyCodecError> {
-    usize::try_from(value).map_err(|_error| {
-        NativeContinuationCachedRetryLatencyCodecError::Representation {
-            field,
-            bucket,
-            value,
-        }
+) -> Result<usize, LatencyCodecError> {
+    usize::try_from(value).map_err(|_error| LatencyCodecError::Representation {
+        field,
+        bucket,
+        value,
     })
 }
 
 fn encode_latency_buckets(
     bytes: &mut Vec<u8>,
     snapshot: &NativeContinuationCachedRetryLatencyHistogramSnapshot,
-) -> Result<(), NativeContinuationCachedRetryLatencyCodecError> {
+) -> Result<(), LatencyCodecError> {
     for (index, (&bound, &count)) in snapshot
         .upper_bounds()
         .iter()
@@ -503,13 +478,11 @@ fn encode_latency_range(
     bytes.extend_from_slice(&range.total_nanoseconds().to_le_bytes());
 }
 
-fn encoded_latency_len(
-    bound_count: usize,
-) -> Result<usize, NativeContinuationCachedRetryLatencyCodecError> {
+fn encoded_latency_len(bound_count: usize) -> Result<usize, LatencyCodecError> {
     bound_count
         .checked_mul(BUCKET_LEN)
         .and_then(|records| HEADER_LEN.checked_add(records))
-        .ok_or(NativeContinuationCachedRetryLatencyCodecError::LengthOverflow)
+        .ok_or(LatencyCodecError::LengthOverflow)
 }
 
 fn format_encoding_range(
@@ -560,13 +533,9 @@ fn write_usize(
     value: usize,
     field: NativeContinuationCachedRetryLatencyCodecField,
     bucket: Option<usize>,
-) -> Result<(), NativeContinuationCachedRetryLatencyCodecError> {
-    let encoded = u64::try_from(value).map_err(|_error| {
-        NativeContinuationCachedRetryLatencyCodecError::EncodingRange {
-            field,
-            bucket,
-        }
-    })?;
+) -> Result<(), LatencyCodecError> {
+    let encoded = u64::try_from(value)
+        .map_err(|_error| LatencyCodecError::EncodingRange { field, bucket })?;
     bytes.extend_from_slice(&encoded.to_le_bytes());
     Ok(())
 }

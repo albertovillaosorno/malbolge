@@ -79,6 +79,14 @@ type FullAdmissionResult = Result<
 >;
 type FullBindingError =
     ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError;
+type FullFailureCause<MemoryError, RunnerError> =
+    ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause<
+        MemoryError,
+        RunnerError,
+    >;
+type InitialJumpArtifact =
+    VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact;
+
 type FullFailureBox<MemoryError, RunnerError> = Box<
     ExecutionGeometryNativeJumpRotateCrazyHaltFailure<MemoryError, RunnerError>,
 >;
@@ -277,15 +285,9 @@ impl<MemoryError: Display, RunnerError: Display> Display
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(f, "v5 full crazy path failed at {}: ", self.index)?;
         match &self.cause {
-            ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause::InitialJump(
-                error,
-            ) => Display::fmt(error, f),
-            ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause::Rotate(
-                error,
-            ) => Display::fmt(error, f),
-            ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause::Suffix(
-                error,
-            ) => Display::fmt(error, f),
+            FullFailureCause::InitialJump(error) => Display::fmt(error, f),
+            FullFailureCause::Rotate(error) => Display::fmt(error, f),
+            FullFailureCause::Suffix(error) => Display::fmt(error, f),
         }
     }
 }
@@ -306,8 +308,7 @@ impl ExecutionGeometryNativeJumpRotateCrazyHaltPrefixEvidence {
     #[must_use]
     pub const fn new(
         initial_jump_program: ExecutionGeometryRegionEffectProgram,
-        initial_jump_artifact:
-            VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
+        initial_jump_artifact: InitialJumpArtifact,
         rotate_program: ExecutionGeometryRegionEffectProgram,
         rotate_artifact: VerifiedExecutionGeometryRotateNativeObjectArtifact,
     ) -> Self {

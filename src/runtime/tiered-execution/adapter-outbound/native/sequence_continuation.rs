@@ -395,10 +395,12 @@ impl Display for NativeInterpreterContinuationError {
             Self::AppliedObservation => {
                 f.write_str("completed native outcome observation drifted")
             },
-            Self::AppliedSteps { expected, observed } => write!(
-                f,
-                "completed outcome has {observed} of {expected} steps",
-            ),
+            Self::AppliedSteps { expected, observed } => {
+                write!(
+                    f,
+                    "completed outcome has {observed} of {expected} steps",
+                )
+            },
             Self::FailureProgress { completed, resume, step } => write!(
                 f,
                 "failure progress {completed}/{resume} at step {step}",
@@ -406,18 +408,22 @@ impl Display for NativeInterpreterContinuationError {
             Self::ProfileIdentity => {
                 f.write_str("continuation profile identity is unavailable")
             },
-            Self::ProgramShape { index } => write!(
-                f,
-                "continuation program {index} is not exactly one effect",
-            ),
+            Self::ProgramShape { index } => {
+                write!(
+                    f,
+                    "continuation program {index} is not exactly one effect",
+                )
+            },
             Self::ResumeIndex { observed, steps } => write!(
                 f,
                 "native resume index {observed} exceeds {steps} plan steps",
             ),
-            Self::ResumeObservation { index } => write!(
-                f,
-                "native resume observation differs at plan step {index}",
-            ),
+            Self::ResumeObservation { index } => {
+                write!(
+                    f,
+                    "native resume observation differs at plan step {index}",
+                )
+            },
         }
     }
 }

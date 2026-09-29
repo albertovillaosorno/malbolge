@@ -254,14 +254,18 @@ impl Display for ExecutionGeometryNativeHandoffError {
             Self::Continuation(error) => {
                 write!(f, "v5 interpreter continuation admission: {error}")
             },
-            Self::ResumeIndex { observed, steps } => write!(
-                f,
-                "v5 native resume index {observed} exceeds {steps} steps",
-            ),
-            Self::ResumeObservation { index } => write!(
-                f,
-                "v5 native resume observation drifted at step {index}",
-            ),
+            Self::ResumeIndex { observed, steps } => {
+                write!(
+                    f,
+                    "v5 native resume index {observed} exceeds {steps} steps",
+                )
+            },
+            Self::ResumeObservation { index } => {
+                write!(
+                    f,
+                    "v5 native resume observation drifted at step {index}",
+                )
+            },
         }
     }
 }

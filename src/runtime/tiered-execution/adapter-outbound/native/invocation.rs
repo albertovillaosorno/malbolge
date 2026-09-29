@@ -111,6 +111,30 @@ use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
 
+type VerifiedNoOperationObject =
+    VerifiedRegisterMaskedNoOperationNativeObjectArtifact;
+type VerifiedNoOperationHaltObject =
+    VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
+type VerifiedNoOperationPairObject =
+    VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact;
+type VerifiedNoOperationRotateObject =
+    VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact;
+type VerifiedRotateNoOperationObject =
+    VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact;
+type VerifiedNonGraphicalObject =
+    VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact;
+type VerifiedHaltFetchObject =
+    VerifiedRegisterMaskedHaltFetchNativeObjectArtifact;
+type ReadyNoOperationHaltExecutable =
+    ReadyRegisterMaskedNoOperationHaltNativeExecutable;
+type ReadyNoOperationPairExecutable =
+    ReadyRegisterMaskedNoOperationPairNativeExecutable;
+type ReadyNoOperationRotateExecutable =
+    ReadyRegisterMaskedNoOperationRotateNativeExecutable;
+type ReadyRotateNoOperationExecutable =
+    ReadyRegisterMaskedRotateNoOperationNativeExecutable;
+type ReadyNonGraphicalExecutable =
+    ReadyRegisterMaskedNonGraphicalNativeExecutable;
 type DirectFusedEffectEndpoints = (EffectOp, EffectOp);
 type DirectFusedExpectedSnapshots = (Vec<u32>, Vec<u8>);
 type NativeRegionBufferParts<'buffers> =
@@ -354,7 +378,7 @@ pub struct PreparedVerifiedExecutionGeometryInvocation<'artifact, 'buffers> {
 /// future v6 runner would be allowed to apply.
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedHaltFetchInvocation<'artifact, 'buffers> {
-    artifact: &'artifact VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    artifact: &'artifact VerifiedHaltFetchObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedLoadImage,
 }
@@ -400,7 +424,7 @@ pub struct PreparedRegisterMaskedOutputInvocation<'artifact, 'buffers> {
 /// It grants no runner authority by itself.
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNoOperationInvocation<'artifact, 'buffers> {
-    artifact: &'artifact VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+    artifact: &'artifact VerifiedNoOperationObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedNoOperationLoadImage,
 }
@@ -434,8 +458,7 @@ pub struct PreparedRegisterMaskedJumpDataInvocation<'artifact, 'buffers> {
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNoOperationHaltInvocation<'artifact, 'buffers>
 {
-    artifact:
-        &'artifact VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
+    artifact: &'artifact VerifiedNoOperationHaltObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedNoOperationHaltLoadImage,
 }
@@ -448,8 +471,7 @@ pub struct PreparedRegisterMaskedNoOperationHaltInvocation<'artifact, 'buffers>
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNoOperationPairInvocation<'artifact, 'buffers>
 {
-    artifact:
-        &'artifact VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
+    artifact: &'artifact VerifiedNoOperationPairObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedNoOperationPairLoadImage,
 }
@@ -464,8 +486,7 @@ pub struct PreparedRegisterMaskedNoOperationRotateInvocation<
     'artifact,
     'buffers,
 > {
-    artifact:
-        &'artifact VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
+    artifact: &'artifact VerifiedNoOperationRotateObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedNoOperationRotateLoadImage,
 }
@@ -480,8 +501,7 @@ pub struct PreparedRegisterMaskedRotateNoOperationInvocation<
     'artifact,
     'buffers,
 > {
-    artifact:
-        &'artifact VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+    artifact: &'artifact VerifiedRotateNoOperationObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedRotateNoOperationLoadImage,
 }
@@ -505,7 +525,7 @@ pub struct PreparedRegisterMaskedRotateInvocation<'artifact, 'buffers> {
 /// platform mapping, lifecycle, or runner authority.
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNonGraphicalInvocation<'artifact, 'buffers> {
-    artifact: &'artifact VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+    artifact: &'artifact VerifiedNonGraphicalObject,
     invocation: PreparedNativeRegionInvocation<'buffers>,
     load_image: VerifiedRegisterMaskedNonGraphicalLoadImage,
 }
@@ -602,7 +622,7 @@ pub struct PreparedRegisterMaskedNoOperationHaltNativeInvocation<
     'buffers,
     'executable,
 > {
-    executable: &'executable ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+    executable: &'executable ReadyNoOperationHaltExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -615,7 +635,7 @@ pub struct PreparedRegisterMaskedNoOperationPairNativeInvocation<
     'buffers,
     'executable,
 > {
-    executable: &'executable ReadyRegisterMaskedNoOperationPairNativeExecutable,
+    executable: &'executable ReadyNoOperationPairExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -628,8 +648,7 @@ pub struct PreparedRegisterMaskedNoOperationRotateNativeInvocation<
     'buffers,
     'executable,
 > {
-    executable:
-        &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
+    executable: &'executable ReadyNoOperationRotateExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -642,8 +661,7 @@ pub struct PreparedRegisterMaskedRotateNoOperationNativeInvocation<
     'buffers,
     'executable,
 > {
-    executable:
-        &'executable ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+    executable: &'executable ReadyRotateNoOperationExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -666,7 +684,7 @@ pub struct PreparedRegisterMaskedNonGraphicalNativeInvocation<
     'buffers,
     'executable,
 > {
-    executable: &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    executable: &'executable ReadyNonGraphicalExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -1516,9 +1534,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified v6 no-operation artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedNoOperationNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedNoOperationObject {
         self.artifact
     }
 
@@ -1592,8 +1608,7 @@ impl<'artifact, 'buffers>
     /// Returns [`VerifiedRegisterMaskedInvocationError`] for identity, live
     /// register, buffer, memory, or load-image disagreement.
     pub fn new(
-        artifact:
-            &'artifact VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
+        artifact: &'artifact VerifiedNoOperationObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -1937,9 +1952,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified collapsed v6 artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedNoOperationHaltObject {
         self.artifact
     }
 
@@ -1951,8 +1964,7 @@ impl<'artifact, 'buffers>
     /// restores the complete rebased entry snapshot.
     pub fn bind_executable<'executable>(
         self,
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+        executable: &'executable ReadyNoOperationHaltExecutable,
     ) -> Result<
         PreparedRegisterMaskedNoOperationHaltNativeInvocation<
             'buffers,
@@ -2014,9 +2026,7 @@ impl<'artifact, 'buffers>
     /// Returns a v6 invocation error for identity, live-register, buffer,
     /// memory, shape, or load-image disagreement.
     pub fn new(
-        artifact:
-            &'artifact
-                VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
+        artifact: &'artifact VerifiedNoOperationHaltObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -2030,11 +2040,10 @@ impl<'artifact, 'buffers>
             VerifiedRegisterMaskedNoOperationHaltLoadImage::new(artifact)
                 .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
         let invocation =
-            PreparedNativeRegionInvocation::
-                new_register_masked_no_operation_halt(
-                    program, entry, buffers,
-                )
-        .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+            PreparedRegionInvocation::new_register_masked_no_operation_halt(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
         Ok(Self {
             artifact,
             invocation,
@@ -2085,9 +2094,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified collapsed pair artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedNoOperationPairObject {
         self.artifact
     }
 
@@ -2099,8 +2106,7 @@ impl<'artifact, 'buffers>
     /// restores the complete rebased entry snapshot.
     pub fn bind_executable<'executable>(
         self,
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationPairNativeExecutable,
+        executable: &'executable ReadyNoOperationPairExecutable,
     ) -> Result<
         PreparedRegisterMaskedNoOperationPairNativeInvocation<
             'buffers,
@@ -2162,9 +2168,7 @@ impl<'artifact, 'buffers>
     /// Returns a v6 invocation error for identity, live-register, buffer,
     /// memory, shape, or load-image disagreement.
     pub fn new(
-        artifact:
-            &'artifact
-                VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
+        artifact: &'artifact VerifiedNoOperationPairObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -2178,11 +2182,10 @@ impl<'artifact, 'buffers>
             VerifiedRegisterMaskedNoOperationPairLoadImage::new(artifact)
                 .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
         let invocation =
-            PreparedNativeRegionInvocation::
-                new_register_masked_no_operation_pair(
-                    program, entry, buffers,
-                )
-        .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+            PreparedRegionInvocation::new_register_masked_no_operation_pair(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
         Ok(Self {
             artifact,
             invocation,
@@ -2234,9 +2237,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified collapsed no-op/rotate artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedNoOperationRotateObject {
         self.artifact
     }
 
@@ -2248,8 +2249,7 @@ impl<'artifact, 'buffers>
     /// restores the complete rebased entry snapshot.
     pub fn bind_executable<'executable>(
         self,
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
+        executable: &'executable ReadyNoOperationRotateExecutable,
     ) -> Result<
         PreparedRegisterMaskedNoOperationRotateNativeInvocation<
             'buffers,
@@ -2314,9 +2314,7 @@ impl<'artifact, 'buffers>
     /// Returns a v6 invocation error for identity, live-register, buffer,
     /// memory, shape, or load-image disagreement.
     pub fn new(
-        artifact:
-            &'artifact
-                VerifiedRegisterMaskedNoOperationRotateNativeObjectArtifact,
+        artifact: &'artifact VerifiedNoOperationRotateObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -2330,11 +2328,10 @@ impl<'artifact, 'buffers>
             VerifiedRegisterMaskedNoOperationRotateLoadImage::new(artifact)
                 .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
         let invocation =
-            PreparedNativeRegionInvocation::
-                new_register_masked_no_operation_rotate(
-                    program, entry, buffers,
-                )
-        .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+            PreparedRegionInvocation::new_register_masked_no_operation_rotate(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
         Ok(Self {
             artifact,
             invocation,
@@ -2389,9 +2386,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified collapsed rotate/no-op artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedRotateNoOperationObject {
         self.artifact
     }
 
@@ -2403,8 +2398,7 @@ impl<'artifact, 'buffers>
     /// restores the complete rebased entry snapshot.
     pub fn bind_executable<'executable>(
         self,
-        executable:
-            &'executable ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+        executable: &'executable ReadyRotateNoOperationExecutable,
     ) -> Result<
         PreparedRegisterMaskedRotateNoOperationNativeInvocation<
             'buffers,
@@ -2469,9 +2463,7 @@ impl<'artifact, 'buffers>
     /// Returns a v6 invocation error for identity, live-register, buffer,
     /// memory, shape, or load-image disagreement.
     pub fn new(
-        artifact:
-            &'artifact
-                VerifiedRegisterMaskedRotateNoOperationNativeObjectArtifact,
+        artifact: &'artifact VerifiedRotateNoOperationObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -2485,11 +2477,10 @@ impl<'artifact, 'buffers>
             VerifiedRegisterMaskedRotateNoOperationLoadImage::new(artifact)
                 .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
         let invocation =
-            PreparedNativeRegionInvocation::
-                new_register_masked_rotate_no_operation(
-                    program, entry, buffers,
-                )
-        .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+            PreparedRegionInvocation::new_register_masked_rotate_no_operation(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
         Ok(Self {
             artifact,
             invocation,
@@ -2681,9 +2672,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified v6 non-graphical artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedNonGraphicalObject {
         self.artifact
     }
 
@@ -2695,8 +2684,7 @@ impl<'artifact, 'buffers>
     /// identity differs. Failure restores the complete rebased entry snapshot.
     pub fn bind_executable<'executable>(
         self,
-        executable:
-            &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
+        executable: &'executable ReadyNonGraphicalExecutable,
     ) -> Result<
         PreparedRegisterMaskedNonGraphicalNativeInvocation<
             'buffers,
@@ -2759,8 +2747,7 @@ impl<'artifact, 'buffers>
     /// Returns [`VerifiedRegisterMaskedInvocationError`] for key drift, changed
     /// C, terminated entry, invalid buffers/live-ins, or non-loadable COFF.
     pub fn new(
-        artifact:
-            &'artifact VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+        artifact: &'artifact VerifiedNonGraphicalObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -2838,9 +2825,7 @@ impl<'artifact, 'buffers>
 
     /// Returns the exact semantically verified v6 halt artifact.
     #[must_use]
-    pub const fn artifact(
-        &self,
-    ) -> &VerifiedRegisterMaskedHaltFetchNativeObjectArtifact {
+    pub const fn artifact(&self) -> &VerifiedHaltFetchObject {
         self.artifact
     }
 
@@ -2913,8 +2898,7 @@ impl<'artifact, 'buffers>
     /// changed C live-in, terminated entry, invalid buffers/live-ins, or a
     /// non-loadable verified object.
     pub fn new(
-        artifact:
-            &'artifact VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+        artifact: &'artifact VerifiedHaltFetchObject,
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
         buffers: NativeRegionBuffers<'buffers>,
@@ -3613,9 +3597,7 @@ impl<'buffers, 'executable>
     /// Returns the exact synchronized collapsed executable retained by this
     /// view.
     #[must_use]
-    pub const fn executable(
-        &self,
-    ) -> &ReadyRegisterMaskedNoOperationHaltNativeExecutable {
+    pub const fn executable(&self) -> &ReadyNoOperationHaltExecutable {
         self.executable
     }
 
@@ -3626,8 +3608,7 @@ impl<'buffers, 'executable>
     }
 
     pub(crate) const fn new(
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationHaltNativeExecutable,
+        executable: &'executable ReadyNoOperationHaltExecutable,
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }
@@ -3705,9 +3686,7 @@ impl<'buffers, 'executable>
     /// Returns the exact synchronized collapsed pair executable retained by
     /// this view.
     #[must_use]
-    pub const fn executable(
-        &self,
-    ) -> &ReadyRegisterMaskedNoOperationPairNativeExecutable {
+    pub const fn executable(&self) -> &ReadyNoOperationPairExecutable {
         self.executable
     }
 
@@ -3718,8 +3697,7 @@ impl<'buffers, 'executable>
     }
 
     pub(crate) const fn new(
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationPairNativeExecutable,
+        executable: &'executable ReadyNoOperationPairExecutable,
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }
@@ -3800,9 +3778,7 @@ impl<'buffers, 'executable>
 
     /// Returns the exact synchronized executable retained by this view.
     #[must_use]
-    pub const fn executable(
-        &self,
-    ) -> &ReadyRegisterMaskedNoOperationRotateNativeExecutable {
+    pub const fn executable(&self) -> &ReadyNoOperationRotateExecutable {
         self.executable
     }
 
@@ -3813,8 +3789,7 @@ impl<'buffers, 'executable>
     }
 
     pub(crate) const fn new(
-        executable:
-            &'executable ReadyRegisterMaskedNoOperationRotateNativeExecutable,
+        executable: &'executable ReadyNoOperationRotateExecutable,
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }
@@ -3895,9 +3870,7 @@ impl<'buffers, 'executable>
 
     /// Returns the exact synchronized executable retained by this view.
     #[must_use]
-    pub const fn executable(
-        &self,
-    ) -> &ReadyRegisterMaskedRotateNoOperationNativeExecutable {
+    pub const fn executable(&self) -> &ReadyRotateNoOperationExecutable {
         self.executable
     }
 
@@ -3908,8 +3881,7 @@ impl<'buffers, 'executable>
     }
 
     pub(crate) const fn new(
-        executable:
-            &'executable ReadyRegisterMaskedRotateNoOperationNativeExecutable,
+        executable: &'executable ReadyRotateNoOperationExecutable,
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }
@@ -4050,9 +4022,7 @@ impl<'buffers, 'executable>
 
     /// Returns the exact synchronized executable retained by this view.
     #[must_use]
-    pub const fn executable(
-        &self,
-    ) -> &ReadyRegisterMaskedNonGraphicalNativeExecutable {
+    pub const fn executable(&self) -> &ReadyNonGraphicalExecutable {
         self.executable
     }
 
@@ -4063,8 +4033,7 @@ impl<'buffers, 'executable>
     }
 
     pub(crate) const fn new(
-        executable:
-            &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
+        executable: &'executable ReadyNonGraphicalExecutable,
         invocation: PreparedNativeRegionInvocation<'buffers>,
     ) -> Self {
         Self { executable, invocation }

@@ -102,10 +102,12 @@ pub enum NativeContinuationCachedRetryTelemetryOrderedStateCodecError {
 impl Display for NativeContinuationCachedRetryTelemetryOrderedStateCodecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::AbsentOrderValue { observed } => write!(
-                f,
-                "ordered telemetry absent order carried value {observed}",
-            ),
+            Self::AbsentOrderValue { observed } => {
+                write!(
+                    f,
+                    "ordered telemetry absent order carried value {observed}",
+                )
+            },
             Self::Length { expected, observed } => write!(
                 f,
                 "ordered telemetry length {observed}, expected {expected}",

@@ -49,13 +49,15 @@ pub use reconfiguration::{
     NativeContinuationCachedRetryTelemetryWindowReconfigurationResult,
 };
 
+type TelemetryWindowError = NativeContinuationCachedRetryTelemetryWindowError;
+
 use super::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetrySnapshotError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
 };
-
 /// One immutable retained telemetry summary with a monotonic sequence ID.
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryTelemetryObservation {
     sequence: u64,
@@ -151,7 +153,7 @@ impl Display for NativeContinuationCachedRetryTelemetryWindowCounter {
     }
 }
 
-impl Display for NativeContinuationCachedRetryTelemetryWindowError {
+impl Display for TelemetryWindowError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::RemovalCountOverflow { sequence } => write!(
@@ -279,15 +281,12 @@ impl NativeContinuationCachedRetryTelemetryWindow {
         telemetry: NativeContinuationCachedRetryTelemetry,
     ) -> Result<
         NativeContinuationCachedRetryTelemetryWindowAppend,
-        NativeContinuationCachedRetryTelemetryWindowError,
+        TelemetryWindowError,
     > {
         let sequence = self
             .last_sequence
             .checked_add(1)
-            .ok_or(
-                NativeContinuationCachedRetryTelemetryWindowError::
-                    SequenceExhausted,
-            )?;
+            .ok_or(TelemetryWindowError::SequenceExhausted)?;
         let evicted = if self.observations.len() == self.capacity.get() {
             self.observations.front().copied()
         } else {
@@ -304,8 +303,7 @@ impl NativeContinuationCachedRetryTelemetryWindow {
         let totals = add_telemetry(without_evicted, telemetry, sequence)?;
         let evictions = match evicted {
             Some(_) => self.evictions.checked_add(1).ok_or(
-                NativeContinuationCachedRetryTelemetryWindowError::
-                    EvictionCountOverflow { sequence },
+                TelemetryWindowError::EvictionCountOverflow { sequence },
             )?,
             None => self.evictions,
         };
@@ -341,7 +339,7 @@ impl NativeContinuationCachedRetryTelemetryWindow {
         telemetry: &[NativeContinuationCachedRetryTelemetry],
     ) -> Result<
         NativeContinuationCachedRetryTelemetryWindowBatchAppend,
-        NativeContinuationCachedRetryTelemetryWindowError,
+        TelemetryWindowError,
     > {
         let mut candidate = self.clone();
         for &summary in telemetry {
@@ -473,9 +471,6 @@ impl NativeContinuationCachedRetryTelemetryWindow {
 
 pub(super) fn aggregate_telemetry_observations(
     observations: &[NativeContinuationCachedRetryTelemetryObservation],
-) -> Result<
-    NativeContinuationCachedRetryTelemetry,
-    NativeContinuationCachedRetryTelemetryWindowError,
-> {
+) -> Result<NativeContinuationCachedRetryTelemetry, TelemetryWindowError> {
     aggregation::aggregate_telemetry_observations(observations)
 }

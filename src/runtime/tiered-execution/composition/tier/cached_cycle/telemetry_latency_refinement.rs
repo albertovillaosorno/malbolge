@@ -40,6 +40,9 @@ use super::{
     coarsen_cached_retry_latency_histogram,
 };
 
+type LatencyRefinementError =
+    NativeContinuationCachedRetryLatencyRefinementError;
+
 /// Why exact sample-witness latency refinement failed closed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyRefinementError {
@@ -116,35 +119,26 @@ pub fn refine_cached_retry_latency_histogram(
     witness: &[NativeContinuationCachedRetryLatencySample],
 ) -> Result<
     NativeContinuationCachedRetryLatencyRefinement,
-    NativeContinuationCachedRetryLatencyRefinementError,
+    LatencyRefinementError,
 > {
-    let mut histogram = NativeContinuationCachedRetryLatencyHistogram::new(
-        target_upper_bounds,
-    )
-    .map_err(
-        NativeContinuationCachedRetryLatencyRefinementError::TargetBounds,
-    )?;
+    let mut histogram =
+        NativeContinuationCachedRetryLatencyHistogram::new(target_upper_bounds)
+            .map_err(LatencyRefinementError::TargetBounds)?;
     for (index, &sample) in witness.iter().enumerate() {
-        let _record = histogram.record(sample).map_err(|error| {
-            NativeContinuationCachedRetryLatencyRefinementError::Sample {
-                index,
-                error,
-            }
-        })?;
+        let _record = histogram
+            .record(sample)
+            .map_err(|error| LatencyRefinementError::Sample { index, error })?;
     }
     let reconstructed = coarsen_cached_retry_latency_histogram(
         &histogram,
         source.upper_bounds().to_vec(),
     )
-    .map_err(NativeContinuationCachedRetryLatencyRefinementError::Coarsening)?
+    .map_err(LatencyRefinementError::Coarsening)?
     .into_histogram();
     if reconstructed != *source {
-        return Err(
-            NativeContinuationCachedRetryLatencyRefinementError::
-                WitnessMismatch {
-                    reconstructed: Box::new(reconstructed),
-                },
-        );
+        return Err(LatencyRefinementError::WitnessMismatch {
+            reconstructed: Box::new(reconstructed),
+        });
     }
     Ok(NativeContinuationCachedRetryLatencyRefinement {
         histogram,

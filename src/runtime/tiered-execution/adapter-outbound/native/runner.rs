@@ -120,6 +120,16 @@ use super::platform::{
     release_register_masked_rotate_native_executable,
 };
 
+type NoOperationRotateNativeInvocation<'buffers, 'executable> =
+    PreparedRegisterMaskedNoOperationRotateNativeInvocation<
+        'buffers,
+        'executable,
+    >;
+type RotateNoOperationNativeInvocation<'buffers, 'executable> =
+    PreparedRegisterMaskedRotateNoOperationNativeInvocation<
+        'buffers,
+        'executable,
+    >;
 /// Ordered phase whose native execution transaction failed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeExecutableExecutionPhase {
@@ -1265,11 +1275,7 @@ pub trait RegisterMaskedNoOperationRotateNativeRunner {
     /// Returns the runner's stable call failure.
     fn run(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedNoOperationRotateNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut NoOperationRotateNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -1316,11 +1322,7 @@ pub trait RegisterMaskedRotateNoOperationNativeRunner {
     /// Returns the runner's stable call failure.
     fn run(
         &mut self,
-        invocation:
-            &mut PreparedRegisterMaskedRotateNoOperationNativeInvocation<
-                '_,
-                '_,
-            >,
+        invocation: &mut RotateNoOperationNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 

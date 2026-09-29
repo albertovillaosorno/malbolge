@@ -209,10 +209,8 @@ where
         request.maximum_attempts,
     );
     loop {
-        let replacement = reconcile(current.as_ref()).map_err(
-            NativeContinuationFileBlobPairRetentionReconcileError::
-                Reconciliation,
-        )?;
+        let replacement = reconcile(current.as_ref())
+            .map_err(RetentionReconcileError::Reconciliation)?;
         let attempt_outcome =
             compare_and_swap_file_blob_pair_retention_journal_durably(
                 store,
@@ -249,3 +247,9 @@ where
         }
     }
 }
+
+type RetentionReconcileError<StoreError, ReconciliationError> =
+    NativeContinuationFileBlobPairRetentionReconcileError<
+        StoreError,
+        ReconciliationError,
+    >;

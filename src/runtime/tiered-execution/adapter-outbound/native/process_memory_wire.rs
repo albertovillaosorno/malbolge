@@ -155,10 +155,12 @@ impl Display for NativeProcessMemoryWireError {
                     "native process memory outcome tag {value} is invalid"
                 )
             },
-            Self::PermissionTag(value) => write!(
-                f,
-                "native process memory permission tag {value} is invalid"
-            ),
+            Self::PermissionTag(value) => {
+                write!(
+                    f,
+                    "native process memory permission tag {value} is invalid"
+                )
+            },
             Self::ReadFailure => {
                 f.write_str("native process memory payload is truncated")
             },

@@ -36,6 +36,15 @@
 
 use std::num::NonZeroUsize;
 
+type OrderedPersistenceError<StoreError> =
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceError<StoreError>;
+type OrderedDurablePersistence<DurabilityError> =
+    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
+        DurabilityError,
+    >;
+type OrderedPersistenceLoad =
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad;
+
 use super::{
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
@@ -52,8 +61,8 @@ use crate::blob_store::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
-
 /// Ordered telemetry publication plus explicit durability state.
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
     DurabilityError,
@@ -102,21 +111,15 @@ pub enum NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad {
 pub type NativeContinuationCachedRetryTelemetryOrderedDurableStoreResult<
     Store,
 > = Result<
-    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
-        <Store as DurableBlobStore>::DurabilityError,
-    >,
-    NativeContinuationCachedRetryTelemetryOrderedPersistenceError<
-        <Store as BlobStore>::Error,
-    >,
+    OrderedDurablePersistence<<Store as DurableBlobStore>::DurabilityError>,
+    OrderedPersistenceError<<Store as BlobStore>::Error>,
 >;
 
 /// Ordered telemetry restoration result specialized to one store type.
 pub type NativeContinuationCachedRetryTelemetryOrderedLoadStoreResult<Store> =
     Result<
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad,
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceError<
-            <Store as BlobStore>::Error,
-        >,
+        OrderedPersistenceLoad,
+        OrderedPersistenceError<<Store as BlobStore>::Error>,
     >;
 
 /// Persists exact ordered count telemetry and confirms store durability.
@@ -132,32 +135,19 @@ pub fn persist_cached_retry_telemetry_ordered_state_durably<Store>(
 where
     Store: DurableBlobStore,
 {
-    let bytes =
-        encode_cached_retry_telemetry_ordered_state(ordered).map_err(
-            |error| {
-                NativeContinuationCachedRetryTelemetryOrderedPersistenceError::
-                Codec(Box::new(error))
-            },
-        )?;
-    let outcome = persist_blob_durably(store, &bytes, maximum_bytes).map_err(
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceError::Blob,
-    )?;
+    let bytes = encode_cached_retry_telemetry_ordered_state(ordered)
+        .map_err(|error| OrderedPersistenceError::Codec(Box::new(error)))?;
+    let outcome = persist_blob_durably(store, &bytes, maximum_bytes)
+        .map_err(OrderedPersistenceError::Blob)?;
     Ok(match outcome {
         BlobDurablePersistence::Durable { write } => {
-            NativeContinuationCachedRetryTelemetryOrderedDurablePersistence::
-                Durable {
-                    bytes: write.bytes(),
-                }
+            OrderedDurablePersistence::Durable { bytes: write.bytes() }
         },
-        BlobDurablePersistence::Published {
-            durability_error,
-            write,
-        } => {
-            NativeContinuationCachedRetryTelemetryOrderedDurablePersistence::
-                Published {
-                    bytes: write.bytes(),
-                    durability_error,
-                }
+        BlobDurablePersistence::Published { durability_error, write } => {
+            OrderedDurablePersistence::Published {
+                bytes: write.bytes(),
+                durability_error,
+            }
         },
     })
 }
@@ -175,27 +165,13 @@ pub fn restore_cached_retry_telemetry_ordered_state<Store>(
 where
     Store: BlobStore,
 {
-    let load = restore_blob(store, maximum_bytes).map_err(
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceError::Blob,
-    )?;
+    let load = restore_blob(store, maximum_bytes)
+        .map_err(OrderedPersistenceError::Blob)?;
     let BlobLoad::Present { bytes } = load else {
-        return Ok(
-            NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::
-                Missing,
-        );
+        return Ok(OrderedPersistenceLoad::Missing);
     };
     let length = bytes.len();
-    let value =
-        decode_cached_retry_telemetry_ordered_state(&bytes).map_err(
-            |error| {
-                NativeContinuationCachedRetryTelemetryOrderedPersistenceError::
-                Codec(Box::new(error))
-            },
-        )?;
-    Ok(
-        NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad::Restored {
-            bytes: length,
-            value,
-        },
-    )
+    let value = decode_cached_retry_telemetry_ordered_state(&bytes)
+        .map_err(|error| OrderedPersistenceError::Codec(Box::new(error)))?;
+    Ok(OrderedPersistenceLoad::Restored { bytes: length, value })
 }

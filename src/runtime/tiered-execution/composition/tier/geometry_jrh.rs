@@ -72,6 +72,14 @@ use crate::geometry_native_rotate_sequence::{
     LoadedExecutionGeometryNativeRotateHaltSequence,
 };
 
+type InitialJumpArtifact =
+    VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact;
+type JumpFailure<MemoryError, RunnerError> =
+    ExecutionGeometryNativeInitialJumpDataTransactionFailure<
+        MemoryError,
+        RunnerError,
+    >;
+
 type FullAdapterResult<MemoryAdapter, Runner> =
     ExecutionGeometryNativeJumpRotateHaltAdapterResult<MemoryAdapter, Runner>;
 type FullAdmissionError = ExecutionGeometryNativeJumpRotateHaltAdmissionError;
@@ -346,11 +354,13 @@ impl<MemoryError: Display, RunnerError: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match &self.cause {
-            FullFailureCause::InitialJump(error) => write!(
-                f,
-                "v5 full path step {} jump failed: {error}",
-                self.index
-            ),
+            FullFailureCause::InitialJump(error) => {
+                write!(
+                    f,
+                    "v5 full path step {} jump failed: {error}",
+                    self.index
+                )
+            },
             FullFailureCause::Suffix(error) => {
                 write!(
                     f,
@@ -471,8 +481,7 @@ impl ExecutionGeometryNativeJumpRotateHaltEvidence {
     #[must_use]
     pub const fn new(
         initial_jump_program: ExecutionGeometryRegionEffectProgram,
-        initial_jump_artifact:
-            VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
+        initial_jump_artifact: InitialJumpArtifact,
         suffix: ExecutionGeometryNativeRotateHaltEvidence,
     ) -> Self {
         Self {
@@ -1060,19 +1069,10 @@ fn jump_failure_state<MemoryError, RunnerError>(
     >,
 ) -> ProfileMachineState {
     match failure {
-        ExecutionGeometryNativeInitialJumpDataTransactionFailure::Release {
-            completion,
-            ..
-        } => completion.state().clone(),
-        ExecutionGeometryNativeInitialJumpDataTransactionFailure::Binding {
-            ..
-        }
-        | ExecutionGeometryNativeInitialJumpDataTransactionFailure::Execution {
-            ..
-        }
-        | ExecutionGeometryNativeInitialJumpDataTransactionFailure::Load(_)
-        | ExecutionGeometryNativeInitialJumpDataTransactionFailure::Preparation(
-            _,
-        ) => admission.checkpoint().clone(),
+        JumpFailure::Release { completion, .. } => completion.state().clone(),
+        JumpFailure::Binding { .. }
+        | JumpFailure::Execution { .. }
+        | JumpFailure::Load(_)
+        | JumpFailure::Preparation(_) => admission.checkpoint().clone(),
     }
 }

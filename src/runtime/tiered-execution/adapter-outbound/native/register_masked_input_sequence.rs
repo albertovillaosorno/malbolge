@@ -146,10 +146,12 @@ impl Display for RegisterMaskedInputNativeSequencePlanError {
             Self::TargetMismatch { index } => {
                 write!(f, "Input v6 sequence target changed at step {index}")
             },
-            Self::TerminationBeforeEnd { index } => write!(
-                f,
-                "Input v6 step {index} terminated before sequence end",
-            ),
+            Self::TerminationBeforeEnd { index } => {
+                write!(
+                    f,
+                    "Input v6 step {index} terminated before sequence end",
+                )
+            },
         }
     }
 }

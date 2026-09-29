@@ -412,10 +412,12 @@ impl NativeSequenceExecutionOutcome {
 impl Display for NativeLoadedSequenceAdmissionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::ExecutableCount { expected, observed } => write!(
-                f,
-                "loaded mapping count {observed} differs from {expected}",
-            ),
+            Self::ExecutableCount { expected, observed } => {
+                write!(
+                    f,
+                    "loaded mapping count {observed} differs from {expected}",
+                )
+            },
             Self::ExecutableIdentity { index } => write!(
                 f,
                 "loaded sequence mapping identity differs at step {index}",

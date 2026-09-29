@@ -192,8 +192,7 @@ const fn invariant_failure<E>(
 ) -> RegisterMaskedNoOperationNativeSequenceCacheReconfigurationFailure<E> {
     RegisterMaskedNoOperationNativeSequenceCacheReconfigurationFailure {
         cause: ReconfigurationFailureCause::Invariant(
-            RegisterMaskedNoOperationNativeSequenceCacheInvariantError::
-                EntryMissing,
+            SequenceCacheInvariantError::EntryMissing,
         ),
         evicted_keys,
         requested_limits,
@@ -246,3 +245,6 @@ where
     }
     Ok(evicted_keys)
 }
+
+type SequenceCacheInvariantError =
+    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;

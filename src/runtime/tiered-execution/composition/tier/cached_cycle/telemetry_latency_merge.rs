@@ -34,6 +34,8 @@
 
 use super::NativeContinuationCachedRetryLatencyHistogram;
 
+type LatencyMergeError = NativeContinuationCachedRetryLatencyMergeError;
+
 /// Why one exact latency histogram merge failed without mutation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyMergeError {
@@ -128,10 +130,7 @@ impl NativeContinuationCachedRetryLatencyMergeRecord {
 pub(super) fn prepare_cached_retry_latency_merge(
     target: &NativeContinuationCachedRetryLatencyHistogram,
     source: &NativeContinuationCachedRetryLatencyHistogram,
-) -> Result<
-    CachedRetryLatencyMergeTransition,
-    NativeContinuationCachedRetryLatencyMergeError,
-> {
+) -> Result<CachedRetryLatencyMergeTransition, LatencyMergeError> {
     validate_merge_bounds(target.upper_bounds(), source.upper_bounds())?;
     let mut buckets = Vec::with_capacity(target.bucket_counts().len());
     for (index, (&target_count, &source_count)) in target
@@ -140,29 +139,23 @@ pub(super) fn prepare_cached_retry_latency_merge(
         .zip(source.bucket_counts())
         .enumerate()
     {
-        let count = target_count.checked_add(source_count).ok_or(
-            NativeContinuationCachedRetryLatencyMergeError::
-                BucketCountOverflow { bucket: index },
-        )?;
+        let count = target_count
+            .checked_add(source_count)
+            .ok_or(LatencyMergeError::BucketCountOverflow { bucket: index })?;
         buckets.push(count);
     }
     let above_maximum = target
         .above_maximum()
         .checked_add(source.above_maximum())
-        .ok_or(
-            NativeContinuationCachedRetryLatencyMergeError::
-                AboveMaximumOverflow,
-        )?;
-    let samples = target.samples().checked_add(source.samples()).ok_or(
-        NativeContinuationCachedRetryLatencyMergeError::SampleCountOverflow,
-    )?;
+        .ok_or(LatencyMergeError::AboveMaximumOverflow)?;
+    let samples = target
+        .samples()
+        .checked_add(source.samples())
+        .ok_or(LatencyMergeError::SampleCountOverflow)?;
     let total = target
         .total_nanoseconds()
         .checked_add(source.total_nanoseconds())
-        .ok_or(
-            NativeContinuationCachedRetryLatencyMergeError::
-                TotalNanosecondsOverflow,
-        )?;
+        .ok_or(LatencyMergeError::TotalNanosecondsOverflow)?;
     let minimum = merge_minimum(
         target.minimum_nanoseconds(),
         source.minimum_nanoseconds(),
@@ -213,26 +206,22 @@ fn merge_minimum(left: Option<u64>, right: Option<u64>) -> Option<u64> {
 fn validate_merge_bounds(
     target: &[u64],
     source: &[u64],
-) -> Result<(), NativeContinuationCachedRetryLatencyMergeError> {
+) -> Result<(), LatencyMergeError> {
     if target.len() != source.len() {
-        return Err(
-            NativeContinuationCachedRetryLatencyMergeError::BoundsLength {
-                target: target.len(),
-                source: source.len(),
-            },
-        );
+        return Err(LatencyMergeError::BoundsLength {
+            target: target.len(),
+            source: source.len(),
+        });
     }
     for (index, (&target_bound, &source_bound)) in
         target.iter().zip(source).enumerate()
     {
         if target_bound != source_bound {
-            return Err(
-                NativeContinuationCachedRetryLatencyMergeError::BoundMismatch {
-                    index,
-                    target: target_bound,
-                    source: source_bound,
-                },
-            );
+            return Err(LatencyMergeError::BoundMismatch {
+                index,
+                target: target_bound,
+                source: source_bound,
+            });
         }
     }
     Ok(())
