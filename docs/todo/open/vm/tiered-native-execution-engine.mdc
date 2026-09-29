@@ -962,8 +962,11 @@ behavior.
   failure restores the complete entry snapshot; identity drift fails before the
   runner is called.
 
-  Complete load/call/release transaction wrappers, reusable ownership,
-  residency, and cache integration remain open and fail closed.
+  Complete load/call/release wrappers now clean failed calls exactly and
+  preserve committed outcomes when final release fails. Cleanup retains the
+  exact ready mapping for retry, while load failure never calls the runner.
+  Reusable ownership, residency, and cache integration remain open and fail
+  closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

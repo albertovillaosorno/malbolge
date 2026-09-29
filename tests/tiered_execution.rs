@@ -8071,6 +8071,315 @@ fn register_masked_v6_jump_data_runner_failure_rolls_back() -> TieredTestResult
         .map_err(|release| format!("v6 JumpData rollback release: {release}"))
 }
 
+fn assert_register_masked_jump_code_transaction_success() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 JumpCode transaction effect missing")
+    })?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0x11u8, 0x12, 0x13, 0x14];
+    let mut output = [1u8, 2, 3, 4];
+    let expected_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode transaction prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(991)?,
+        native_executable_address(0x27_0000)?,
+    );
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_verified_register_masked_jump_code_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 JumpCode transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 JumpCode transaction success drifted"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_data_transaction_success() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 JumpData transaction effect missing")
+    })?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0x21u8, 0x22, 0x23, 0x24];
+    let mut output = [4u8, 3, 2, 1];
+    let expected_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpDataInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpData transaction prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(992)?,
+        native_executable_address(0x28_0000)?,
+    );
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_verified_register_masked_jump_data_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 JumpData transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 JumpData transaction success drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_transaction_applies() -> TieredTestResult {
+    assert_register_masked_jump_code_transaction_success()?;
+    assert_register_masked_jump_data_transaction_success()
+}
+
+#[test]
+fn register_masked_v6_jump_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 JumpCode transaction load-failure effect missing")
+    })?;
+    let entry = rebased_jump_entry(source.before);
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [0x31u8, 0x32, 0x33, 0x34];
+    let mut output = [7u8, 6, 5, 4];
+    let entry_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 JumpCode transaction load-failure prepare: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(993)?,
+        native_executable_address(0x29_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = en::execute_verified_register_masked_jump_code_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 JumpCode transaction ignored load failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || error.release_request().is_none()
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 JumpCode transaction load failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let source = program.effects.first().copied().ok_or_else(|| {
+        String::from("v6 JumpData transaction runner-failure effect missing")
+    })?;
+    let entry = rebased_jump_entry(source.before);
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [0x41u8, 0x42, 0x43, 0x44];
+    let mut output = [4u8, 5, 6, 7];
+    let entry_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpDataInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 JumpData transaction runner-failure prepare: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(994)?,
+        native_executable_address(0x2a_0000)?,
+    );
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = en::execute_verified_register_masked_jump_data_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 JumpData transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 JumpData transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+fn retry_jump_code_transaction_release(
+    failure: en::RegisterMaskedJumpCodeNativeExecutableReleaseFailure<
+        FakeNativeAdapterOperation,
+    >,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> TieredTestResult {
+    failure
+        .retry(adapter)
+        .map_err(|error| format!("v6 JumpCode transaction retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode release retry count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or("v6 JumpCode release effect missing")?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0x51u8, 0x52, 0x53, 0x54];
+    let mut output = [8u8, 7, 6, 5];
+    let expected_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode release prepare: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(995)?,
+        native_executable_address(0x2b_0000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = en::execute_verified_register_masked_jump_code_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 JumpCode transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from(
+            "v6 JumpCode transaction release failure drifted",
+        ));
+    }
+    let failure = error
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 JumpCode retryable release missing"))?;
+    retry_jump_code_transaction_release(failure, &mut adapter)
+}
+
 fn assert_register_masked_jump_code_lifecycle(
     isa: HostIsa,
     mapping_value: u64,

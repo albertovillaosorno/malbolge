@@ -2358,8 +2358,13 @@ load-image identity. Caller-owned loaded runners restore the complete entry
 snapshot on runner or completion failure, while identity drift fails before the
 runner is called.
 
-Complete load/call/release transaction wrappers, reusable ownership, residency,
-and cache integration remain open and fail closed.
+Complete load/call/release wrappers now clean failed calls exactly and retain
+the committed outcome plus exact ready mapping when final release fails. Load
+failure never calls the runner, and runner/completion failure attempts exact
+mapping cleanup before returning phase-tagged evidence.
+
+Reusable ownership, residency, and cache integration remain open and fail
+closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

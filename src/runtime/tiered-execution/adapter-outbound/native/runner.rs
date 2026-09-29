@@ -91,6 +91,8 @@ use super::platform::{
     NativeExecutableMemoryAdapter, NativeExecutableReleaseFailure,
     RegisterMaskedCrazyNativeExecutableReleaseFailure as CrazyReleaseFailure,
     RegisterMaskedInputNativeExecutableReleaseFailure as InputReleaseFailure,
+    RegisterMaskedJumpCodeNativeExecutableReleaseFailure,
+    RegisterMaskedJumpDataNativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNoOperationNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
@@ -99,6 +101,8 @@ use super::platform::{
     load_direct_fused_native_executable, load_native_executable,
     load_register_masked_crazy_native_executable,
     load_register_masked_input_native_executable,
+    load_register_masked_jump_code_native_executable,
+    load_register_masked_jump_data_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
@@ -107,6 +111,8 @@ use super::platform::{
     release_direct_fused_native_executable, release_native_executable,
     release_register_masked_crazy_native_executable,
     release_register_masked_input_native_executable,
+    release_register_masked_jump_code_native_executable,
+    release_register_masked_jump_data_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
@@ -494,6 +500,11 @@ type DirectFusedNativeAdapterExecutionResult<MemoryAdapter, Runner> =
         <Runner as DirectFusedNativeRunner>::Error,
     >;
 
+type JumpCodeReleaseFailure<Error> =
+    RegisterMaskedJumpCodeNativeExecutableReleaseFailure<Error>;
+type JumpDataReleaseFailure<Error> =
+    RegisterMaskedJumpDataNativeExecutableReleaseFailure<Error>;
+
 #[derive(Debug, Eq, PartialEq)]
 enum CrazyNativeExecutionFailureCause<MemoryError, RunnerError> {
     Binding(NativeExecutableInvocationBindingError),
@@ -558,6 +569,84 @@ type InputNativeAdapterExecutionResult<MemoryAdapter, Runner> =
     RegisterMaskedInputNativeExecutionResult<
         <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
         <Runner as RegisterMaskedInputNativeRunner>::Error,
+    >;
+
+#[derive(Debug, Eq, PartialEq)]
+enum JumpCodeNativeExecutionFailureCause<MemoryError, RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    Release(NativeRegionInvocationOutcome),
+    Runner(Box<RunnerError>),
+}
+
+/// Phase-tagged v6 `JumpCode` transaction failure with cleanup evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedJumpCodeNativeExecutionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    cause: JumpCodeNativeExecutionFailureCause<MemoryError, RunnerError>,
+    phase: NativeExecutableExecutionPhase,
+    release_failure: Option<Box<JumpCodeReleaseFailure<MemoryError>>>,
+    release_request: Option<NativeExecutableReleaseRequest>,
+}
+
+/// Result of one complete v6 `JumpCode` load/call/release transaction.
+pub type RegisterMaskedJumpCodeNativeExecutionResult<MemoryError, RunnerError> =
+    Result<
+        NativeRegionInvocationOutcome,
+        Box<
+            RegisterMaskedJumpCodeNativeExecutionFailure<
+                MemoryError,
+                RunnerError,
+            >,
+        >,
+    >;
+
+type JumpCodeNativeAdapterExecutionResult<MemoryAdapter, Runner> =
+    RegisterMaskedJumpCodeNativeExecutionResult<
+        <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as RegisterMaskedJumpCodeNativeRunner>::Error,
+    >;
+
+#[derive(Debug, Eq, PartialEq)]
+enum JumpDataNativeExecutionFailureCause<MemoryError, RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    Release(NativeRegionInvocationOutcome),
+    Runner(Box<RunnerError>),
+}
+
+/// Phase-tagged v6 `JumpData` transaction failure with cleanup evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedJumpDataNativeExecutionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    cause: JumpDataNativeExecutionFailureCause<MemoryError, RunnerError>,
+    phase: NativeExecutableExecutionPhase,
+    release_failure: Option<Box<JumpDataReleaseFailure<MemoryError>>>,
+    release_request: Option<NativeExecutableReleaseRequest>,
+}
+
+/// Result of one complete v6 `JumpData` load/call/release transaction.
+pub type RegisterMaskedJumpDataNativeExecutionResult<MemoryError, RunnerError> =
+    Result<
+        NativeRegionInvocationOutcome,
+        Box<
+            RegisterMaskedJumpDataNativeExecutionFailure<
+                MemoryError,
+                RunnerError,
+            >,
+        >,
+    >;
+
+type JumpDataNativeAdapterExecutionResult<MemoryAdapter, Runner> =
+    RegisterMaskedJumpDataNativeExecutionResult<
+        <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as RegisterMaskedJumpDataNativeRunner>::Error,
     >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -2294,6 +2383,58 @@ impl<RunnerError> RegisterMaskedInputNativeCallFailure<RunnerError> {
     }
 }
 
+impl<RunnerError> RegisterMaskedJumpCodeNativeCallFailure<RunnerError> {
+    fn into_cause<MemoryError>(
+        self,
+    ) -> JumpCodeNativeExecutionFailureCause<MemoryError, RunnerError> {
+        match self {
+            Self::Binding(error) => {
+                JumpCodeNativeExecutionFailureCause::Binding(error)
+            },
+            Self::Completion(error) => {
+                JumpCodeNativeExecutionFailureCause::Completion(error)
+            },
+            Self::Runner(error) => {
+                JumpCodeNativeExecutionFailureCause::Runner(error)
+            },
+        }
+    }
+
+    const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match self {
+            Self::Binding(_) => NativeExecutableExecutionPhase::Bind,
+            Self::Completion(_) => NativeExecutableExecutionPhase::Complete,
+            Self::Runner(_) => NativeExecutableExecutionPhase::Run,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedJumpDataNativeCallFailure<RunnerError> {
+    fn into_cause<MemoryError>(
+        self,
+    ) -> JumpDataNativeExecutionFailureCause<MemoryError, RunnerError> {
+        match self {
+            Self::Binding(error) => {
+                JumpDataNativeExecutionFailureCause::Binding(error)
+            },
+            Self::Completion(error) => {
+                JumpDataNativeExecutionFailureCause::Completion(error)
+            },
+            Self::Runner(error) => {
+                JumpDataNativeExecutionFailureCause::Runner(error)
+            },
+        }
+    }
+
+    const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match self {
+            Self::Binding(_) => NativeExecutableExecutionPhase::Bind,
+            Self::Completion(_) => NativeExecutableExecutionPhase::Complete,
+            Self::Runner(_) => NativeExecutableExecutionPhase::Run,
+        }
+    }
+}
+
 impl<RunnerError> RegisterMaskedOutputNativeCallFailure<RunnerError> {
     fn into_cause<MemoryError>(
         self,
@@ -2745,6 +2886,224 @@ impl<MemoryError, RunnerError>
             | InputNativeExecutionFailureCause::Completion(_)
             | InputNativeExecutionFailureCause::Load(_)
             | InputNativeExecutionFailureCause::Release(_) => None,
+        }
+    }
+}
+
+impl<MemoryError, RunnerError>
+    RegisterMaskedJumpCodeNativeExecutionFailure<MemoryError, RunnerError>
+{
+    /// Returns ready-image binding failure, when exact v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Binding(error) => Some(*error),
+            JumpCodeNativeExecutionFailureCause::Completion(_)
+            | JumpCodeNativeExecutionFailureCause::Load(_)
+            | JumpCodeNativeExecutionFailureCause::Release(_)
+            | JumpCodeNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the outcome committed before final release failed.
+    #[must_use]
+    pub const fn committed_outcome(
+        &self,
+    ) -> Option<NativeRegionInvocationOutcome> {
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Release(outcome) => {
+                Some(*outcome)
+            },
+            JumpCodeNativeExecutionFailureCause::Binding(_)
+            | JumpCodeNativeExecutionFailureCause::Completion(_)
+            | JumpCodeNativeExecutionFailureCause::Load(_)
+            | JumpCodeNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns result-admission failure, when native state drifted.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Completion(error) => {
+                Some(*error)
+            },
+            JumpCodeNativeExecutionFailureCause::Binding(_)
+            | JumpCodeNativeExecutionFailureCause::Load(_)
+            | JumpCodeNativeExecutionFailureCause::Release(_)
+            | JumpCodeNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Consumes this failure and returns retryable mapping cleanup.
+    #[must_use]
+    pub fn into_release_failure(
+        self,
+    ) -> Option<JumpCodeReleaseFailure<MemoryError>> {
+        self.release_failure.map(|failure| *failure)
+    }
+
+    /// Returns executable loading failure, when no ready image was produced.
+    #[must_use]
+    pub const fn load_failure(
+        &self,
+    ) -> Option<&NativeExecutableLoadFailure<MemoryError>> {
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Load(error) => Some(error),
+            JumpCodeNativeExecutionFailureCause::Binding(_)
+            | JumpCodeNativeExecutionFailureCause::Completion(_)
+            | JumpCodeNativeExecutionFailureCause::Release(_)
+            | JumpCodeNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact transaction phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        self.phase
+    }
+
+    /// Returns failed cleanup with the ready executable retained for retry.
+    #[must_use]
+    pub const fn release_failure(
+        &self,
+    ) -> Option<&JumpCodeReleaseFailure<MemoryError>> {
+        match &self.release_failure {
+            Some(error) => Some(error),
+            None => None,
+        }
+    }
+
+    /// Returns the exact mapping release request attempted after loading.
+    #[must_use]
+    pub const fn release_request(
+        &self,
+    ) -> Option<NativeExecutableReleaseRequest> {
+        self.release_request
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Runner(error) => Some(error),
+            JumpCodeNativeExecutionFailureCause::Binding(_)
+            | JumpCodeNativeExecutionFailureCause::Completion(_)
+            | JumpCodeNativeExecutionFailureCause::Load(_)
+            | JumpCodeNativeExecutionFailureCause::Release(_) => None,
+        }
+    }
+}
+
+impl<MemoryError, RunnerError>
+    RegisterMaskedJumpDataNativeExecutionFailure<MemoryError, RunnerError>
+{
+    /// Returns ready-image binding failure, when exact v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Binding(error) => Some(*error),
+            JumpDataNativeExecutionFailureCause::Completion(_)
+            | JumpDataNativeExecutionFailureCause::Load(_)
+            | JumpDataNativeExecutionFailureCause::Release(_)
+            | JumpDataNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the outcome committed before final release failed.
+    #[must_use]
+    pub const fn committed_outcome(
+        &self,
+    ) -> Option<NativeRegionInvocationOutcome> {
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Release(outcome) => {
+                Some(*outcome)
+            },
+            JumpDataNativeExecutionFailureCause::Binding(_)
+            | JumpDataNativeExecutionFailureCause::Completion(_)
+            | JumpDataNativeExecutionFailureCause::Load(_)
+            | JumpDataNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns result-admission failure, when native state drifted.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Completion(error) => {
+                Some(*error)
+            },
+            JumpDataNativeExecutionFailureCause::Binding(_)
+            | JumpDataNativeExecutionFailureCause::Load(_)
+            | JumpDataNativeExecutionFailureCause::Release(_)
+            | JumpDataNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Consumes this failure and returns retryable mapping cleanup.
+    #[must_use]
+    pub fn into_release_failure(
+        self,
+    ) -> Option<JumpDataReleaseFailure<MemoryError>> {
+        self.release_failure.map(|failure| *failure)
+    }
+
+    /// Returns executable loading failure, when no ready image was produced.
+    #[must_use]
+    pub const fn load_failure(
+        &self,
+    ) -> Option<&NativeExecutableLoadFailure<MemoryError>> {
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Load(error) => Some(error),
+            JumpDataNativeExecutionFailureCause::Binding(_)
+            | JumpDataNativeExecutionFailureCause::Completion(_)
+            | JumpDataNativeExecutionFailureCause::Release(_)
+            | JumpDataNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact transaction phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        self.phase
+    }
+
+    /// Returns failed cleanup with the ready executable retained for retry.
+    #[must_use]
+    pub const fn release_failure(
+        &self,
+    ) -> Option<&JumpDataReleaseFailure<MemoryError>> {
+        match &self.release_failure {
+            Some(error) => Some(error),
+            None => None,
+        }
+    }
+
+    /// Returns the exact mapping release request attempted after loading.
+    #[must_use]
+    pub const fn release_request(
+        &self,
+    ) -> Option<NativeExecutableReleaseRequest> {
+        self.release_request
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Runner(error) => Some(error),
+            JumpDataNativeExecutionFailureCause::Binding(_)
+            | JumpDataNativeExecutionFailureCause::Completion(_)
+            | JumpDataNativeExecutionFailureCause::Load(_)
+            | JumpDataNativeExecutionFailureCause::Release(_) => None,
         }
     }
 }
@@ -3857,6 +4216,72 @@ impl<MemoryError: Display, RunnerError: Display> Display
 }
 
 impl<MemoryError: Display, RunnerError: Display> Display
+    for RegisterMaskedJumpCodeNativeExecutionFailure<MemoryError, RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "v6 JumpCode failed during {}: ", self.phase)?;
+        match &self.cause {
+            JumpCodeNativeExecutionFailureCause::Binding(error) => {
+                write!(f, "binding: {error}")?;
+            },
+            JumpCodeNativeExecutionFailureCause::Completion(error) => {
+                write!(f, "completion: {error}")?;
+            },
+            JumpCodeNativeExecutionFailureCause::Load(error) => {
+                write!(f, "loading: {error}")?;
+            },
+            JumpCodeNativeExecutionFailureCause::Release(outcome) => {
+                let label = match outcome {
+                    NativeRegionInvocationOutcome::Applied(_) => "applied",
+                    NativeRegionInvocationOutcome::GuardMiss => "guard-miss",
+                };
+                write!(f, "committed {label} outcome could not release")?;
+            },
+            JumpCodeNativeExecutionFailureCause::Runner(error) => {
+                write!(f, "runner: {error}")?;
+            },
+        }
+        if let Some(release_failure) = &self.release_failure {
+            write!(f, "; {release_failure}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<MemoryError: Display, RunnerError: Display> Display
+    for RegisterMaskedJumpDataNativeExecutionFailure<MemoryError, RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "v6 JumpData failed during {}: ", self.phase)?;
+        match &self.cause {
+            JumpDataNativeExecutionFailureCause::Binding(error) => {
+                write!(f, "binding: {error}")?;
+            },
+            JumpDataNativeExecutionFailureCause::Completion(error) => {
+                write!(f, "completion: {error}")?;
+            },
+            JumpDataNativeExecutionFailureCause::Load(error) => {
+                write!(f, "loading: {error}")?;
+            },
+            JumpDataNativeExecutionFailureCause::Release(outcome) => {
+                let label = match outcome {
+                    NativeRegionInvocationOutcome::Applied(_) => "applied",
+                    NativeRegionInvocationOutcome::GuardMiss => "guard-miss",
+                };
+                write!(f, "committed {label} outcome could not release")?;
+            },
+            JumpDataNativeExecutionFailureCause::Runner(error) => {
+                write!(f, "runner: {error}")?;
+            },
+        }
+        if let Some(release_failure) = &self.release_failure {
+            write!(f, "; {release_failure}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<MemoryError: Display, RunnerError: Display> Display
     for RegisterMaskedOutputNativeExecutionFailure<MemoryError, RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -4443,6 +4868,30 @@ fn input_load_failure<MemoryError, RunnerError>(
     }
 }
 
+fn jump_code_load_failure<MemoryError, RunnerError>(
+    error: NativeExecutableLoadFailure<MemoryError>,
+) -> RegisterMaskedJumpCodeNativeExecutionFailure<MemoryError, RunnerError> {
+    let release_request = error.release_request();
+    RegisterMaskedJumpCodeNativeExecutionFailure {
+        cause: JumpCodeNativeExecutionFailureCause::Load(Box::new(error)),
+        phase: NativeExecutableExecutionPhase::Load,
+        release_failure: None,
+        release_request,
+    }
+}
+
+fn jump_data_load_failure<MemoryError, RunnerError>(
+    error: NativeExecutableLoadFailure<MemoryError>,
+) -> RegisterMaskedJumpDataNativeExecutionFailure<MemoryError, RunnerError> {
+    let release_request = error.release_request();
+    RegisterMaskedJumpDataNativeExecutionFailure {
+        cause: JumpDataNativeExecutionFailureCause::Load(Box::new(error)),
+        phase: NativeExecutableExecutionPhase::Load,
+        release_failure: None,
+        release_request,
+    }
+}
+
 fn output_load_failure<MemoryError, RunnerError>(
     error: NativeExecutableLoadFailure<MemoryError>,
 ) -> RegisterMaskedOutputNativeExecutionFailure<MemoryError, RunnerError> {
@@ -4696,6 +5145,154 @@ where
         Err(release_failure) => {
             Err(Box::new(RegisterMaskedInputNativeExecutionFailure {
                 cause: InputNativeExecutionFailureCause::Release(outcome),
+                phase: NativeExecutableExecutionPhase::Release,
+                release_failure: Some(Box::new(release_failure)),
+                release_request: Some(release_request),
+            }))
+        },
+    }
+}
+
+/// Loads, binds, runs, admits, and releases one v6 `JumpCode` call.
+///
+/// Load/call failures restore the prepared rebased snapshot and attempt exact
+/// mapping cleanup. A release failure after a committed result retains both the
+/// outcome and exact ready executable for retry.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedJumpCodeNativeExecutionFailure`] with phase-specific
+/// primary and cleanup evidence.
+pub fn execute_verified_register_masked_jump_code_native<
+    MemoryAdapter,
+    Runner,
+>(
+    memory_adapter: &mut MemoryAdapter,
+    runner: &mut Runner,
+    prepared: PreparedRegisterMaskedJumpCodeInvocation<'_, '_>,
+) -> JumpCodeNativeAdapterExecutionResult<MemoryAdapter, Runner>
+where
+    MemoryAdapter: NativeExecutableMemoryAdapter,
+    Runner: RegisterMaskedJumpCodeNativeRunner,
+{
+    let executable = match load_register_masked_jump_code_native_executable(
+        memory_adapter,
+        prepared.load_image(),
+    ) {
+        Ok(executable) => executable,
+        Err(error) => {
+            prepared.abort();
+            return Err(Box::new(jump_code_load_failure(error)));
+        },
+    };
+    let release_request = executable.release_request();
+    let outcome = match run_register_masked_jump_code_prepared(
+        runner,
+        &executable,
+        prepared,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let phase = error.phase();
+            let release_failure =
+                release_register_masked_jump_code_native_executable(
+                    memory_adapter,
+                    executable,
+                )
+                .err()
+                .map(Box::new);
+            return Err(Box::new(
+                RegisterMaskedJumpCodeNativeExecutionFailure {
+                    cause: error.into_cause(),
+                    phase,
+                    release_failure,
+                    release_request: Some(release_request),
+                },
+            ));
+        },
+    };
+    match release_register_masked_jump_code_native_executable(
+        memory_adapter,
+        executable,
+    ) {
+        Ok(()) => Ok(outcome),
+        Err(release_failure) => {
+            Err(Box::new(RegisterMaskedJumpCodeNativeExecutionFailure {
+                cause: JumpCodeNativeExecutionFailureCause::Release(outcome),
+                phase: NativeExecutableExecutionPhase::Release,
+                release_failure: Some(Box::new(release_failure)),
+                release_request: Some(release_request),
+            }))
+        },
+    }
+}
+
+/// Loads, binds, runs, admits, and releases one v6 `JumpData` call.
+///
+/// Load/call failures restore the prepared rebased snapshot and attempt exact
+/// mapping cleanup. A release failure after a committed result retains both the
+/// outcome and exact ready executable for retry.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedJumpDataNativeExecutionFailure`] with phase-specific
+/// primary and cleanup evidence.
+pub fn execute_verified_register_masked_jump_data_native<
+    MemoryAdapter,
+    Runner,
+>(
+    memory_adapter: &mut MemoryAdapter,
+    runner: &mut Runner,
+    prepared: PreparedRegisterMaskedJumpDataInvocation<'_, '_>,
+) -> JumpDataNativeAdapterExecutionResult<MemoryAdapter, Runner>
+where
+    MemoryAdapter: NativeExecutableMemoryAdapter,
+    Runner: RegisterMaskedJumpDataNativeRunner,
+{
+    let executable = match load_register_masked_jump_data_native_executable(
+        memory_adapter,
+        prepared.load_image(),
+    ) {
+        Ok(executable) => executable,
+        Err(error) => {
+            prepared.abort();
+            return Err(Box::new(jump_data_load_failure(error)));
+        },
+    };
+    let release_request = executable.release_request();
+    let outcome = match run_register_masked_jump_data_prepared(
+        runner,
+        &executable,
+        prepared,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let phase = error.phase();
+            let release_failure =
+                release_register_masked_jump_data_native_executable(
+                    memory_adapter,
+                    executable,
+                )
+                .err()
+                .map(Box::new);
+            return Err(Box::new(
+                RegisterMaskedJumpDataNativeExecutionFailure {
+                    cause: error.into_cause(),
+                    phase,
+                    release_failure,
+                    release_request: Some(release_request),
+                },
+            ));
+        },
+    };
+    match release_register_masked_jump_data_native_executable(
+        memory_adapter,
+        executable,
+    ) {
+        Ok(()) => Ok(outcome),
+        Err(release_failure) => {
+            Err(Box::new(RegisterMaskedJumpDataNativeExecutionFailure {
+                cause: JumpDataNativeExecutionFailureCause::Release(outcome),
                 phase: NativeExecutableExecutionPhase::Release,
                 release_failure: Some(Box::new(release_failure)),
                 release_request: Some(release_request),

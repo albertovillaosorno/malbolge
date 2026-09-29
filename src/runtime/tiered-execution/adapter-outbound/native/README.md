@@ -393,8 +393,11 @@ through transactional platform loaders. Prepared calls preserve exact C/D
 live-ins while rebasing dead A/I/O history, bind only exact synchronized image
 identity, and execute through caller-owned loaded runners with atomic rollback.
 
-Complete load/call/release transactions, reusable ownership, residency, and
-cache integration stay fail closed.
+Complete load/call/release transactions now restore failed calls, release
+loaded mappings after every call, and retain an exact ready mapping for retry
+when final release fails after a committed result.
+
+Reusable ownership, residency, and cache integration stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
