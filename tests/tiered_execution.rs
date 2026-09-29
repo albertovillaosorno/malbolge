@@ -41135,8 +41135,6 @@ fn jit_candidate_admission_preflights_profile_before_identity()
     }
 }
 
-type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
-
 fn test_promoted_jit_schedule_for(
     program: &RegionEffectProgram,
 ) -> Result<NativeTierJitRescueSchedule, String> {
@@ -41168,7 +41166,7 @@ fn test_installed_jit(
     program: &RegionEffectProgram,
     mapping_id: NativeExecutableMappingId,
     base_address: NonZeroUsize,
-) -> Result<TestInstalledJit, String> {
+) -> Result<(Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter), String> {
     let schedule = test_promoted_jit_schedule_for(program)?;
     let canonical = select_verified_direct_native(
         program,
