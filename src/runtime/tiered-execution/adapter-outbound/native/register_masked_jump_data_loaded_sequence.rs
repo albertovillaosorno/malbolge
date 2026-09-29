@@ -220,6 +220,14 @@ impl LoadedRegisterMaskedJumpDataNativeSequence {
         })
     }
 
+    /// Returns retained owners for execution by the sibling coordinator.
+    #[must_use]
+    pub(super) fn owners(
+        &self,
+    ) -> &[RegisterMaskedJumpDataNativeExecutableOwner] {
+        &self.owners
+    }
+
     /// Returns the exact admitted sequence plan retained beside the mappings.
     #[must_use]
     pub const fn plan(

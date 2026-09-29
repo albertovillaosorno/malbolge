@@ -417,7 +417,13 @@ artifact identity with exact entry/exit observations. Loaded sequence ownership
 maps every admitted step before publication, reports aggregate mapped bytes,
 releases in reverse order, and retains failed cleanup ownership for retry.
 
-Loaded sequence execution and sequence-cache integration stay fail closed.
+Loaded JumpCode and JumpData sequence execution now advances exact
+observations through retained owners without adapter work. Guard miss
+returns the
+current resume boundary; current-step failure rolls back that step while
+preserving the committed prefix and reusable mappings.
+
+Sequence-cache integration stays fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

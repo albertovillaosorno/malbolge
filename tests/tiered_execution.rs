@@ -2780,6 +2780,17 @@ impl FakeRegisterMaskedJumpDataNativeRunner {
             state_pointers_non_null: Vec::new(),
         }
     }
+
+    const fn scripted(behaviors: Vec<FakeNativeRunnerBehavior>) -> Self {
+        Self {
+            behavior: FakeNativeRunnerBehavior::GuardMiss,
+            behaviors,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
 }
 
 impl FakeRegisterMaskedOutputNativeRunner {
@@ -8879,6 +8890,216 @@ fn register_masked_v6_jump_loaded_sequence_release_failure_retries()
     } else {
         Err(String::from("v6 JumpData sequence retry count drifted"))
     }
+}
+
+fn assert_jump_code_loaded_sequence_executes() -> TieredTestResult {
+    let plan = register_masked_jump_code_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_094)?,
+        native_executable_address(0x4e_0000)?,
+    );
+    let loaded =
+        en::load_register_masked_jump_code_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpCode execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_jump_code_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    for program in plan.programs() {
+        apply_register_masked_jump_expected_memory(
+            program,
+            &mut expected_memory,
+        )?;
+    }
+    let (input, mut output) = ([], []);
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_loaded_register_masked_jump_code_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode sequence execute: {error}"))?;
+    if outcome
+        != (en::RegisterMaskedJumpCodeNativeSequenceOutcome::Applied {
+            observation: plan.exit(),
+            steps: 2,
+        })
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || memory != expected_memory
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpCode sequence execution drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode execute release: {error}"))
+}
+
+fn assert_jump_data_loaded_sequence_executes() -> TieredTestResult {
+    let plan = register_masked_jump_data_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_095)?,
+        native_executable_address(0x4f_0000)?,
+    );
+    let loaded =
+        en::load_register_masked_jump_data_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpData execute load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_jump_data_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    for program in plan.programs() {
+        apply_register_masked_jump_expected_memory(
+            program,
+            &mut expected_memory,
+        )?;
+    }
+    let (input, mut output) = ([], []);
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_loaded_register_masked_jump_data_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpData sequence execute: {error}"))?;
+    if outcome
+        != (en::RegisterMaskedJumpDataNativeSequenceOutcome::Applied {
+            observation: plan.exit(),
+            steps: 2,
+        })
+        || outcome.completed_steps() != 2
+        || outcome.resume_index() != 2
+        || outcome.observation() != plan.exit()
+        || memory != expected_memory
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpData sequence execution drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpData execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_loaded_sequences_execute() -> TieredTestResult {
+    assert_jump_code_loaded_sequence_executes()?;
+    assert_jump_data_loaded_sequence_executes()
+}
+
+#[test]
+fn register_masked_v6_jump_code_sequence_guard_miss_is_atomic()
+-> TieredTestResult {
+    let plan = register_masked_jump_code_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_096)?,
+        native_executable_address(0x50_0000)?,
+    );
+    let loaded =
+        en::load_register_masked_jump_code_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpCode guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_jump_code_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let entry_memory = memory.clone();
+    let (input, mut output) = ([], []);
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = en::execute_loaded_register_masked_jump_code_native_sequence(
+        &loaded,
+        &mut runner,
+        plan.entry(),
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode guard execute: {error}"))?;
+    if outcome
+        != (en::RegisterMaskedJumpCodeNativeSequenceOutcome::GuardMiss {
+            index: 0,
+            observation: plan.entry(),
+        })
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpCode guard-miss drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_data_sequence_late_failure_keeps_prefix()
+-> TieredTestResult {
+    let plan = register_masked_jump_data_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_097)?,
+        native_executable_address(0x51_0000)?,
+    );
+    let loaded =
+        en::load_register_masked_jump_data_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpData failure load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let state = direct_jump_data_pair_sequence_state()?;
+    let mut memory = state.memory().to_vec();
+    let mut expected_memory = memory.clone();
+    let first_program = plan
+        .programs()
+        .first()
+        .ok_or_else(|| String::from("v6 JumpData first step missing"))?;
+    apply_register_masked_jump_expected_memory(
+        first_program,
+        &mut expected_memory,
+    )?;
+    let first_observation = first_program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 JumpData first effect missing"))?
+        .after;
+    let (input, mut output) = ([], []);
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::scripted(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) =
+        en::execute_loaded_register_masked_jump_data_native_sequence(
+            &loaded,
+            &mut runner,
+            plan.entry(),
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+    else {
+        return Err(String::from(
+            "v6 JumpData sequence ignored late runner failure",
+        ));
+    };
+    if failure.step_index() != 1
+        || failure.completed_steps() != 1
+        || failure.resume_index() != 1
+        || failure.observation() != first_observation
+        || memory != expected_memory
+        || runner.calls != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 JumpData committed-prefix failure drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpData failure release: {error}"))
 }
 
 #[test]

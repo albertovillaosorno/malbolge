@@ -2390,8 +2390,13 @@ before publication, reports aggregate mapped bytes, releases in reverse semantic
 order, and cleans the complete ready prefix after late load failure. Failed
 cleanup retains exact executable ownership for retry.
 
-Loaded-sequence execution and sequence-cache integration remain open and fail
-closed.
+Loaded JumpCode and JumpData sequence execution now advances exact
+observations through retained owners without adapter work. Guard miss
+returns the
+current resume boundary, while current-step failure rolls back that step and
+preserves exact committed-prefix evidence plus reusable residency.
+
+Sequence-cache integration remains open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

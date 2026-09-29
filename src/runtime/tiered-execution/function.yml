@@ -569,6 +569,18 @@ parts:
     language: rust
     responsibility: >-
       Admit and verify reviewed collapsed register-masked native objects.
+  - id: part-0106
+    path: adapter-outbound/native/register_masked_jump_code_sequence_execution.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: >-
+      Execute loaded JumpCode sequences with indexed continuation evidence.
+  - id: part-0107
+    path: adapter-outbound/native/register_masked_jump_data_sequence_execution.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: >-
+      Execute loaded JumpData sequences with indexed continuation evidence.
 projects: []
 tests: []
 graph:
