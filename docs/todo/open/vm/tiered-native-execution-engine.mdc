@@ -980,8 +980,13 @@ behavior.
   while retaining charged weight; invalidation, release, lease return,
   reconciliation, and limit changes preserve keyed cleanup retry ownership.
 
-  JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
-  cache integration remain open and fail closed.
+  Exact JumpCode and JumpData sequence planning now admits only non-empty,
+  continuous same-profile/same-target one-step chains before mapping. Plans
+  retain ordered artifact identity plus exact entry/exit observations and reject
+  count, target, continuity, termination, or artifact-identity drift.
+
+  Loaded-sequence ownership/execution and sequence-cache integration remain open
+  and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

@@ -2380,8 +2380,13 @@ keyed retry ownership instead of restoring stale lookup authority. Explicit
 invalidation, lease return, retired reconciliation, full drain, and
 transactional limit changes all use the same release-or-retire accounting.
 
-JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
-cache integration remain open and fail closed.
+Exact JumpCode and JumpData sequence planning now admits only non-empty,
+continuous same-profile/same-target one-step chains before mapping. Plans retain
+ordered artifact identity plus exact entry/exit observations and reject count,
+target, continuity, termination, or artifact-identity drift.
+
+Loaded-sequence ownership/execution and sequence-cache integration remain open
+and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

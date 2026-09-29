@@ -4837,6 +4837,24 @@ fn canonical_register_masked_input_program(
         .map_err(|error| format!("v6 input projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_jump_code_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_jump_code_pair_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 JumpCode pair run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 JumpCode pair did not run two steps"));
+    }
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("v6 JumpCode pair projection: {error:?}"))
+}
+
 fn canonical_register_masked_jump_code_program()
 -> Result<RegisterMaskedRegionEffectProgram, String> {
     let mut machine = ProfileMachine::from_snapshot(
@@ -4925,6 +4943,24 @@ fn canonical_register_masked_jump_data_live_variant()
             format!("v6 JumpData live variant projection failed: {error:?}")
         },
     )
+}
+
+fn canonical_register_masked_jump_data_programs()
+-> Result<Vec<RegisterMaskedRegionEffectProgram>, String> {
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_jump_data_pair_sequence_state()?);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("v6 JumpData pair run failed: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(String::from("v6 JumpData pair did not run two steps"));
+    }
+    traces
+        .iter()
+        .map(RegisterMaskedRegionEffectProgram::from_profile_step_trace)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("v6 JumpData pair projection: {error:?}"))
 }
 
 fn canonical_register_masked_jump_data_program()
@@ -8670,6 +8706,302 @@ fn register_masked_v6_jump_transaction_release_failure_retries()
         .into_release_failure()
         .ok_or_else(|| String::from("v6 JumpCode retryable release missing"))?;
     retry_jump_code_transaction_release(failure, &mut adapter)
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_plans_admit_pairs() -> TieredTestResult {
+    let code_programs = canonical_register_masked_jump_code_programs()?;
+    let code_artifacts = code_programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_code(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let code_plan = en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        &code_programs,
+        &code_artifacts,
+    )
+    .map_err(|error| format!("v6 JumpCode sequence plan: {error}"))?;
+    let code_key =
+        en::RegisterMaskedJumpCodeNativeSequenceKey::from_plan(&code_plan);
+    if code_plan.len() != 2
+        || code_plan.is_empty()
+        || code_key.len() != 2
+        || code_key.is_empty()
+        || code_key.artifact_keys()
+            != code_artifacts
+                .iter()
+                .map(|artifact| artifact.key().clone())
+                .collect::<Vec<_>>()
+    {
+        return Err(String::from("v6 JumpCode sequence admission drifted"));
+    }
+
+    let data_programs = canonical_register_masked_jump_data_programs()?;
+    let data_artifacts = data_programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_data(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let data_plan = en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        &data_programs,
+        &data_artifacts,
+    )
+    .map_err(|error| format!("v6 JumpData sequence plan: {error}"))?;
+    let data_key =
+        en::RegisterMaskedJumpDataNativeSequenceKey::from_plan(&data_plan);
+    if data_plan.len() != 2
+        || data_plan.is_empty()
+        || data_key.len() != 2
+        || data_key.is_empty()
+        || data_key.artifact_keys()
+            != data_artifacts
+                .iter()
+                .map(|artifact| artifact.key().clone())
+                .collect::<Vec<_>>()
+    {
+        return Err(String::from("v6 JumpData sequence admission drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_plans_reject_empty_and_count()
+-> TieredTestResult {
+    if en::RegisterMaskedJumpCodeNativeSequencePlan::new(&[], &[])
+        != Err(en::RegisterMaskedJumpCodeNativeSequencePlanError::Empty)
+    {
+        return Err(String::from("v6 JumpCode sequence admitted empty plan"));
+    }
+    if en::RegisterMaskedJumpDataNativeSequencePlan::new(&[], &[])
+        != Err(en::RegisterMaskedJumpDataNativeSequencePlanError::Empty)
+    {
+        return Err(String::from("v6 JumpData sequence admitted empty plan"));
+    }
+    let code = canonical_register_masked_jump_code_program()?;
+    if en::RegisterMaskedJumpCodeNativeSequencePlan::new(from_ref(&code), &[])
+        != Err(
+            en::RegisterMaskedJumpCodeNativeSequencePlanError::ArtifactCount {
+                programs: 1,
+                artifacts: 0,
+            },
+        )
+    {
+        return Err(String::from("v6 JumpCode sequence ignored count drift"));
+    }
+    let data = canonical_register_masked_jump_data_program()?;
+    if en::RegisterMaskedJumpDataNativeSequencePlan::new(from_ref(&data), &[])
+        != Err(
+            en::RegisterMaskedJumpDataNativeSequencePlanError::ArtifactCount {
+                programs: 1,
+                artifacts: 0,
+            },
+        )
+    {
+        return Err(String::from("v6 JumpData sequence ignored count drift"));
+    }
+    Ok(())
+}
+
+fn assert_jump_code_sequence_rejects_chain_drift() -> TieredTestResult {
+    use en::RegisterMaskedJumpCodeNativeSequencePlanError as Error;
+    let mut programs = canonical_register_masked_jump_code_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_code(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 JumpCode sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let result = en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        &programs, &artifacts,
+    );
+    if result == Err(Error::ObservationChain { index: 1 }) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 JumpCode sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+fn assert_jump_data_sequence_rejects_chain_drift() -> TieredTestResult {
+    use en::RegisterMaskedJumpDataNativeSequencePlanError as Error;
+    let mut programs = canonical_register_masked_jump_data_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_data(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let effect = programs
+        .get_mut(1)
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| {
+            String::from("v6 JumpData sequence second effect missing")
+        })?;
+    effect.before.registers.accumulator ^= 1;
+    let result = en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        &programs, &artifacts,
+    );
+    if result == Err(Error::ObservationChain { index: 1 }) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 JumpData sequence admitted discontinuous observations",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_plans_reject_chain_drift()
+-> TieredTestResult {
+    assert_jump_code_sequence_rejects_chain_drift()?;
+    assert_jump_data_sequence_rejects_chain_drift()
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_plans_reject_target_drift()
+-> TieredTestResult {
+    let code_programs = canonical_register_masked_jump_code_programs()?;
+    let [code_first, code_second] = code_programs.as_slice() else {
+        return Err(String::from("v6 JumpCode sequence pair length drifted"));
+    };
+    let code_artifacts = [
+        verified_register_masked_jump_code(code_first, HostIsa::X86_64)?,
+        verified_register_masked_jump_code(code_second, HostIsa::AArch64)?,
+    ];
+    if en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        &code_programs,
+        &code_artifacts,
+    ) != Err(
+        en::RegisterMaskedJumpCodeNativeSequencePlanError::TargetMismatch {
+            index: 1,
+        },
+    ) {
+        return Err(String::from("v6 JumpCode sequence ignored target drift"));
+    }
+
+    let data_programs = canonical_register_masked_jump_data_programs()?;
+    let [data_first, data_second] = data_programs.as_slice() else {
+        return Err(String::from("v6 JumpData sequence pair length drifted"));
+    };
+    let data_artifacts = [
+        verified_register_masked_jump_data(data_first, HostIsa::X86_64)?,
+        verified_register_masked_jump_data(data_second, HostIsa::AArch64)?,
+    ];
+    if en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        &data_programs,
+        &data_artifacts,
+    ) != Err(
+        en::RegisterMaskedJumpDataNativeSequencePlanError::TargetMismatch {
+            index: 1,
+        },
+    ) {
+        return Err(String::from("v6 JumpData sequence ignored target drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_sequences_reject_terminated_prefix()
+-> TieredTestResult {
+    use en::{
+        RegisterMaskedJumpCodeNativeSequencePlanError as CodeError,
+        RegisterMaskedJumpDataNativeSequencePlanError as DataError,
+    };
+    let mut code_programs = canonical_register_masked_jump_code_programs()?;
+    let code_artifacts = code_programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_code(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let code_prefix = code_programs
+        .first_mut()
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| String::from("v6 JumpCode prefix effect missing"))?;
+    code_prefix.after.termination = Some(Termination::NonGraphicalCell);
+    if en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        &code_programs,
+        &code_artifacts,
+    ) != Err(CodeError::TerminationBeforeEnd { index: 0 })
+    {
+        return Err(String::from(
+            "v6 JumpCode sequence admitted terminated prefix",
+        ));
+    }
+
+    let mut data_programs = canonical_register_masked_jump_data_programs()?;
+    let data_artifacts = data_programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_data(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let data_prefix = data_programs
+        .first_mut()
+        .and_then(|program| program.effects.first_mut())
+        .ok_or_else(|| String::from("v6 JumpData prefix effect missing"))?;
+    data_prefix.after.termination = Some(Termination::NonGraphicalCell);
+    if en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        &data_programs,
+        &data_artifacts,
+    ) != Err(DataError::TerminationBeforeEnd { index: 0 })
+    {
+        return Err(String::from(
+            "v6 JumpData sequence admitted terminated prefix",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_sequences_reject_artifact_identity_drift()
+-> TieredTestResult {
+    let code_program = canonical_register_masked_jump_code_program()?;
+    let code_artifact =
+        verified_register_masked_jump_code(&code_program, HostIsa::X86_64)?;
+    let code_variant =
+        register_masked_jump_code_dead_state_variant(&code_program)?;
+    if en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        from_ref(&code_variant),
+        from_ref(&code_artifact),
+    ) != Err(
+        en::RegisterMaskedJumpCodeNativeSequencePlanError::ArtifactIdentity {
+            index: 0,
+        },
+    ) {
+        return Err(String::from(
+            "v6 JumpCode sequence ignored artifact identity drift",
+        ));
+    }
+
+    let data_program = canonical_register_masked_jump_data_program()?;
+    let data_artifact =
+        verified_register_masked_jump_data(&data_program, HostIsa::X86_64)?;
+    let data_variant =
+        register_masked_jump_data_dead_state_variant(&data_program)?;
+    if en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        from_ref(&data_variant),
+        from_ref(&data_artifact),
+    ) != Err(
+        en::RegisterMaskedJumpDataNativeSequencePlanError::ArtifactIdentity {
+            index: 0,
+        },
+    ) {
+        return Err(String::from(
+            "v6 JumpData sequence ignored artifact identity drift",
+        ));
+    }
+    Ok(())
 }
 
 fn assert_register_masked_jump_code_lifecycle(

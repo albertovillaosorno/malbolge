@@ -411,8 +411,10 @@ owners under FIFO entry/mapping/byte limits. Hits do not refresh age, live
 victims retire with charged weight, and release/reconfiguration failures retain
 keyed cleanup ownership for retry.
 
-JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
-cache integration stay fail closed.
+Exact JumpCode and JumpData sequence plans now admit continuous,
+same-profile/same-target one-step chains before mapping and preserve ordered
+artifact identity with exact entry/exit observations. Loaded-sequence
+ownership/execution and sequence-cache integration stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
