@@ -423,7 +423,10 @@ returns the
 current resume boundary; current-step failure rolls back that step while
 preserving the committed prefix and reusable mappings.
 
-Sequence-cache integration stays fail closed.
+Weighted FIFO JumpCode and JumpData sequence caches now reuse exact loaded
+chains without adapter work on hits, enforce entry/mapping/byte limits,
+evict oldest identities without hit-age refresh, and preserve retryable
+cleanup ownership across invalidation, release, and reconfiguration.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

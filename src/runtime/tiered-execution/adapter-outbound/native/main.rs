@@ -97,10 +97,12 @@ mod register_masked_input_sequence_execution;
 mod register_masked_jump_code_lease_cache;
 mod register_masked_jump_code_loaded_sequence;
 mod register_masked_jump_code_sequence;
+mod register_masked_jump_code_sequence_cache;
 mod register_masked_jump_code_sequence_execution;
 mod register_masked_jump_data_lease_cache;
 mod register_masked_jump_data_loaded_sequence;
 mod register_masked_jump_data_sequence;
+mod register_masked_jump_data_sequence_cache;
 mod register_masked_jump_data_sequence_execution;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -1046,6 +1048,24 @@ pub use register_masked_jump_code_sequence::{
     RegisterMaskedJumpCodeNativeSequencePlan,
     RegisterMaskedJumpCodeNativeSequencePlanError,
 };
+pub use register_masked_jump_code_sequence_cache::{
+    RegisterMaskedJumpCodeNativeSequenceCache,
+    RegisterMaskedJumpCodeNativeSequenceCacheCapacityError,
+    RegisterMaskedJumpCodeNativeSequenceCacheDisposition,
+    RegisterMaskedJumpCodeNativeSequenceCacheEntry,
+    RegisterMaskedJumpCodeNativeSequenceCacheInvalidationResult,
+    RegisterMaskedJumpCodeNativeSequenceCacheInvariantError,
+    RegisterMaskedJumpCodeNativeSequenceCacheLimits,
+    RegisterMaskedJumpCodeNativeSequenceCacheLoadFailure,
+    RegisterMaskedJumpCodeNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedJumpCodeNativeSequenceCacheLoadResult,
+    RegisterMaskedJumpCodeNativeSequenceCacheReconfiguration,
+    RegisterMaskedJumpCodeNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedJumpCodeNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedJumpCodeNativeSequenceCacheReleaseFailure,
+    RegisterMaskedJumpCodeNativeSequenceCacheReleaseResult,
+    RegisterMaskedJumpCodeNativeSequenceCacheUsage,
+};
 pub use register_masked_jump_code_sequence_execution::{
     RegisterMaskedJumpCodeNativeSequenceExecutionFailure,
     RegisterMaskedJumpCodeNativeSequenceExecutionResult,
@@ -1086,6 +1106,24 @@ pub use register_masked_jump_data_sequence::{
     RegisterMaskedJumpDataNativeSequenceKey,
     RegisterMaskedJumpDataNativeSequencePlan,
     RegisterMaskedJumpDataNativeSequencePlanError,
+};
+pub use register_masked_jump_data_sequence_cache::{
+    RegisterMaskedJumpDataNativeSequenceCache,
+    RegisterMaskedJumpDataNativeSequenceCacheCapacityError,
+    RegisterMaskedJumpDataNativeSequenceCacheDisposition,
+    RegisterMaskedJumpDataNativeSequenceCacheEntry,
+    RegisterMaskedJumpDataNativeSequenceCacheInvalidationResult,
+    RegisterMaskedJumpDataNativeSequenceCacheInvariantError,
+    RegisterMaskedJumpDataNativeSequenceCacheLimits,
+    RegisterMaskedJumpDataNativeSequenceCacheLoadFailure,
+    RegisterMaskedJumpDataNativeSequenceCacheLoadReleaseFailures,
+    RegisterMaskedJumpDataNativeSequenceCacheLoadResult,
+    RegisterMaskedJumpDataNativeSequenceCacheReconfiguration,
+    RegisterMaskedJumpDataNativeSequenceCacheReconfigurationFailure,
+    RegisterMaskedJumpDataNativeSequenceCacheReconfigurationResult,
+    RegisterMaskedJumpDataNativeSequenceCacheReleaseFailure,
+    RegisterMaskedJumpDataNativeSequenceCacheReleaseResult,
+    RegisterMaskedJumpDataNativeSequenceCacheUsage,
 };
 pub use register_masked_jump_data_sequence_execution::{
     RegisterMaskedJumpDataNativeSequenceExecutionFailure,

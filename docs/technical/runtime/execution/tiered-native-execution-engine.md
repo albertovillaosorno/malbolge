@@ -2396,7 +2396,10 @@ returns the
 current resume boundary, while current-step failure rolls back that step and
 preserves exact committed-prefix evidence plus reusable residency.
 
-Sequence-cache integration remains open and fail closed.
+Weighted FIFO JumpCode and JumpData sequence caches now reuse exact loaded
+chains without adapter work on hits. Entry, mapping, and mapped-byte limits
+evict oldest identities without refreshing hit age; invalidation, release,
+and reconfiguration preserve exact retryable cleanup ownership.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

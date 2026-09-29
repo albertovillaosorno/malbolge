@@ -8745,6 +8745,240 @@ fn register_masked_jump_data_loaded_sequence_fixture()
         .map_err(|error| format!("v6 JumpData loaded plan: {error}"))
 }
 
+fn register_masked_jump_code_sequence_target_variant(
+    plan: &en::RegisterMaskedJumpCodeNativeSequencePlan,
+    isa: HostIsa,
+) -> Result<en::RegisterMaskedJumpCodeNativeSequencePlan, String> {
+    let artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| verified_register_masked_jump_code(program, isa))
+        .collect::<Result<Vec<_>, _>>()?;
+    en::RegisterMaskedJumpCodeNativeSequencePlan::new(
+        plan.programs(),
+        &artifacts,
+    )
+    .map_err(|error| format!("v6 JumpCode cache target variant: {error}"))
+}
+
+fn register_masked_jump_data_sequence_target_variant(
+    plan: &en::RegisterMaskedJumpDataNativeSequencePlan,
+    isa: HostIsa,
+) -> Result<en::RegisterMaskedJumpDataNativeSequencePlan, String> {
+    let artifacts = plan
+        .programs()
+        .iter()
+        .map(|program| verified_register_masked_jump_data(program, isa))
+        .collect::<Result<Vec<_>, _>>()?;
+    en::RegisterMaskedJumpDataNativeSequencePlan::new(
+        plan.programs(),
+        &artifacts,
+    )
+    .map_err(|error| format!("v6 JumpData cache target variant: {error}"))
+}
+
+fn assert_jump_code_sequence_cache_reuses() -> TieredTestResult {
+    let plan = register_masked_jump_code_loaded_sequence_fixture()?;
+    let capacity = nonzero_test_limit(2, "v6 JumpCode sequence cache limit")?;
+    let mut cache =
+        en::RegisterMaskedJumpCodeNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_111)?,
+        native_executable_address(0x4d_0000)?,
+    );
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 JumpCode cache insert: {error}"))?;
+        if inserted.disposition().is_hit()
+            || inserted.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 JumpCode cache insert drifted"));
+        }
+    }
+    let operations = adapter.operations.clone();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 JumpCode cache hit: {error}"))?;
+        if !hit.disposition().is_hit()
+            || hit.key()
+                != &en::RegisterMaskedJumpCodeNativeSequenceKey::from_plan(
+                    &plan,
+                )
+            || hit.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 JumpCode cache hit drifted"));
+        }
+    }
+    if adapter.operations != operations
+        || cache.len() != 1
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != plan.len()
+    {
+        return Err(String::from(
+            "v6 JumpCode cache hit performed adapter work",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode cache release: {error}"))
+}
+
+fn assert_jump_data_sequence_cache_reuses() -> TieredTestResult {
+    let plan = register_masked_jump_data_loaded_sequence_fixture()?;
+    let capacity = nonzero_test_limit(2, "v6 JumpData sequence cache limit")?;
+    let mut cache =
+        en::RegisterMaskedJumpDataNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_112)?,
+        native_executable_address(0x4e_0000)?,
+    );
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 JumpData cache insert: {error}"))?;
+        if inserted.disposition().is_hit()
+            || inserted.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 JumpData cache insert drifted"));
+        }
+    }
+    let operations = adapter.operations.clone();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| format!("v6 JumpData cache hit: {error}"))?;
+        if !hit.disposition().is_hit()
+            || hit.key()
+                != &en::RegisterMaskedJumpDataNativeSequenceKey::from_plan(
+                    &plan,
+                )
+            || hit.sequence().plan() != &plan
+        {
+            return Err(String::from("v6 JumpData cache hit drifted"));
+        }
+    }
+    if adapter.operations != operations
+        || cache.len() != 1
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != plan.len()
+    {
+        return Err(String::from(
+            "v6 JumpData cache hit performed adapter work",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 JumpData cache release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_caches_reuse_without_adapter_work()
+-> TieredTestResult {
+    assert_jump_code_sequence_cache_reuses()?;
+    assert_jump_data_sequence_cache_reuses()
+}
+
+fn assert_jump_code_sequence_cache_evicts() -> TieredTestResult {
+    let first = register_masked_jump_code_loaded_sequence_fixture()?;
+    let second = register_masked_jump_code_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key =
+        en::RegisterMaskedJumpCodeNativeSequenceKey::from_plan(&first);
+    let second_key =
+        en::RegisterMaskedJumpCodeNativeSequenceKey::from_plan(&second);
+    let capacity = nonzero_test_limit(1, "v6 JumpCode sequence cache limit")?;
+    let mut cache =
+        en::RegisterMaskedJumpCodeNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_113)?,
+        native_executable_address(0x4f_0000)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 JumpCode cache first: {error}"))?;
+    let disposition = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 JumpCode cache second: {error}"))?
+        .disposition()
+        .clone();
+    if disposition.evicted_keys() != from_ref(&first_key)
+        || cache.keys().next() != Some(&second_key)
+        || cache.contains_plan(&first)
+        || !cache.contains_plan(&second)
+        || adapter.release_attempts != first.len()
+    {
+        return Err(String::from("v6 JumpCode cache FIFO drifted"));
+    }
+    let released = cache
+        .invalidate_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 JumpCode cache invalidate: {error}"))?;
+    if released
+        && cache.is_empty()
+        && adapter.release_attempts == first.len().saturating_add(second.len())
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode cache invalidation drifted"))
+    }
+}
+
+fn assert_jump_data_sequence_cache_evicts() -> TieredTestResult {
+    let first = register_masked_jump_data_loaded_sequence_fixture()?;
+    let second = register_masked_jump_data_sequence_target_variant(
+        &first,
+        HostIsa::AArch64,
+    )?;
+    let first_key =
+        en::RegisterMaskedJumpDataNativeSequenceKey::from_plan(&first);
+    let second_key =
+        en::RegisterMaskedJumpDataNativeSequenceKey::from_plan(&second);
+    let capacity = nonzero_test_limit(1, "v6 JumpData sequence cache limit")?;
+    let mut cache =
+        en::RegisterMaskedJumpDataNativeSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_114)?,
+        native_executable_address(0x50_0000)?,
+    );
+    let _first = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|error| format!("v6 JumpData cache first: {error}"))?;
+    let disposition = cache
+        .ensure_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 JumpData cache second: {error}"))?
+        .disposition()
+        .clone();
+    if disposition.evicted_keys() != from_ref(&first_key)
+        || cache.keys().next() != Some(&second_key)
+        || cache.contains_plan(&first)
+        || !cache.contains_plan(&second)
+        || adapter.release_attempts != first.len()
+    {
+        return Err(String::from("v6 JumpData cache FIFO drifted"));
+    }
+    let released = cache
+        .invalidate_plan(&mut adapter, &second)
+        .map_err(|error| format!("v6 JumpData cache invalidate: {error}"))?;
+    if released
+        && cache.is_empty()
+        && adapter.release_attempts == first.len().saturating_add(second.len())
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData cache invalidation drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_sequence_caches_evict_and_invalidate()
+-> TieredTestResult {
+    assert_jump_code_sequence_cache_evicts()?;
+    assert_jump_data_sequence_cache_evicts()
+}
+
 fn assert_jump_code_loaded_sequence_loads_and_releases() -> TieredTestResult {
     let plan = register_masked_jump_code_loaded_sequence_fixture()?;
     let mapped_lengths = [12_288usize, 16_384usize];
