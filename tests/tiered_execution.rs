@@ -41147,14 +41147,18 @@ fn test_promoted_jit_schedule_for(
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    let rescue =
-        select_aot_first_jit_rescue(selected, || NativeTierJitPromotionAssessment::Promote);
+    let rescue = select_aot_first_jit_rescue(selected, || {
+        NativeTierJitPromotionAssessment::Promote
+    });
     Ok(schedule_aot_first_jit_rescue(
         rescue,
         NativeTierJitCompilationBudget {
             maximum_nanoseconds: NonZeroU64::new(50_000)
                 .ok_or_else(|| String::from("invalid JIT latency budget"))?,
-            maximum_object_bytes: nonzero_test_limit(4096, "JIT object-byte budget")?,
+            maximum_object_bytes: nonzero_test_limit(
+                4096,
+                "JIT object-byte budget",
+            )?,
         },
     ))
 }
@@ -41185,10 +41189,16 @@ fn test_installed_jit(
         ..TestMonotonicClock::default()
     };
     let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
-    let admission = admit_scheduled_jit_candidate(&attempt, safe_rust_profiled_capability());
-    let mut adapter = FakeNativeExecutableAdapter::new(mapping_id, base_address);
+    let admission = admit_scheduled_jit_candidate(
+        &attempt,
+        safe_rust_profiled_capability(),
+    );
+    let mut adapter =
+        FakeNativeExecutableAdapter::new(mapping_id, base_address);
     let installation = install_scheduled_jit(admission, &mut adapter);
-    let NativeTierScheduledJitInstallation::InstalledJit(installed) = installation else {
+    let NativeTierScheduledJitInstallation::InstalledJit(installed) =
+        installation
+    else {
         return Err(String::from("verified JIT fixture was not installed"));
     };
     Ok((installed, adapter))
@@ -41598,11 +41608,15 @@ fn scheduled_jit_installation_retains_verified_artifact_on_load_failure()
 }
 
 #[test]
-fn scheduled_jit_dispatch_executes_installed_candidate_without_memory_work() -> Result<(), String> {
+fn scheduled_jit_dispatch_executes_installed_candidate_without_memory_work()
+-> Result<(), String> {
     let program = native_verified_output_program()?;
     let mapping_id = native_executable_mapping_id(9_005)?;
-    let (installed, adapter) =
-        test_installed_jit(&program, mapping_id, native_executable_address(0x94_000)?)?;
+    let (installed, adapter) = test_installed_jit(
+        &program,
+        mapping_id,
+        native_executable_address(0x94_000)?,
+    )?;
     let operations = adapter.operations.clone();
     let mut memory = native_verified_output_memory();
     let input = [];
@@ -41640,7 +41654,8 @@ fn scheduled_jit_dispatch_executes_installed_candidate_without_memory_work() -> 
 }
 
 #[test]
-fn scheduled_jit_dispatch_rejects_entry_drift_before_runner() -> Result<(), String> {
+fn scheduled_jit_dispatch_rejects_entry_drift_before_runner()
+-> Result<(), String> {
     let program = native_verified_output_program()?;
     let (installed, _adapter) = test_installed_jit(
         &program,
@@ -41666,11 +41681,13 @@ fn scheduled_jit_dispatch_rejects_entry_drift_before_runner() -> Result<(), Stri
     if matches!(
         result,
         Err(JitDispatchFailure::Preparation(
-            VerifiedDirectInvocationError::Invocation(NativeRegionInvocationError::EntryMemory {
-                address: 5,
-                expected: 94,
-                observed: 111,
-            },),
+            VerifiedDirectInvocationError::Invocation(
+                NativeRegionInvocationError::EntryMemory {
+                    address: 5,
+                    expected: 94,
+                    observed: 111,
+                },
+            ),
         ))
     ) && runner.calls == 0
         && memory[5] == 111
@@ -41685,11 +41702,15 @@ fn scheduled_jit_dispatch_rejects_entry_drift_before_runner() -> Result<(), Stri
 }
 
 #[test]
-fn scheduled_jit_dispatch_restores_buffers_after_runner_failure() -> Result<(), String> {
+fn scheduled_jit_dispatch_restores_buffers_after_runner_failure()
+-> Result<(), String> {
     let program = native_verified_output_program()?;
     let mapping_id = native_executable_mapping_id(9_007)?;
-    let (installed, adapter) =
-        test_installed_jit(&program, mapping_id, native_executable_address(0x96_000)?)?;
+    let (installed, adapter) = test_installed_jit(
+        &program,
+        mapping_id,
+        native_executable_address(0x96_000)?,
+    )?;
     let operations = adapter.operations.clone();
     let mut memory = native_verified_output_memory();
     let input = [];

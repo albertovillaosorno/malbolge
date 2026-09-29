@@ -41,13 +41,12 @@
 
 //! Guest dispatch through an already installed verified JIT mapping.
 
-use crate::execution_native::NativeExecutableRunner;
-use crate::execution_native::NativeLoadedExecutionFailure;
-use crate::execution_native::NativeRegionBuffers;
-use crate::execution_native::NativeRegionInvocationOutcome;
-use crate::execution_native::PreparedVerifiedDirectInvocation as PreparedJit;
-use crate::execution_native::VerifiedDirectInvocationError;
-use crate::execution_native::execute_loaded_verified_native;
+use crate::execution_native::{
+    NativeExecutableRunner, NativeLoadedExecutionFailure, NativeRegionBuffers,
+    NativeRegionInvocationOutcome,
+    PreparedVerifiedDirectInvocation as PreparedJit,
+    VerifiedDirectInvocationError, execute_loaded_verified_native,
+};
 use crate::native_tier_jit_installation::NativeTierInstalledJit;
 
 /// Failure while dispatching one already installed verified JIT.
