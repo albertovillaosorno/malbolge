@@ -2385,8 +2385,13 @@ continuous same-profile/same-target one-step chains before mapping. Plans retain
 ordered artifact identity plus exact entry/exit observations and reject count,
 target, continuity, termination, or artifact-identity drift.
 
-Loaded-sequence ownership/execution and sequence-cache integration remain open
-and fail closed.
+Loaded JumpCode and JumpData sequence ownership now maps every admitted step
+before publication, reports aggregate mapped bytes, releases in reverse semantic
+order, and cleans the complete ready prefix after late load failure. Failed
+cleanup retains exact executable ownership for retry.
+
+Loaded-sequence execution and sequence-cache integration remain open and fail
+closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

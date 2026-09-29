@@ -8708,6 +8708,179 @@ fn register_masked_v6_jump_transaction_release_failure_retries()
     retry_jump_code_transaction_release(failure, &mut adapter)
 }
 
+fn register_masked_jump_code_loaded_sequence_fixture()
+-> Result<en::RegisterMaskedJumpCodeNativeSequencePlan, String> {
+    let programs = canonical_register_masked_jump_code_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_code(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    en::RegisterMaskedJumpCodeNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 JumpCode loaded plan: {error}"))
+}
+
+fn register_masked_jump_data_loaded_sequence_fixture()
+-> Result<en::RegisterMaskedJumpDataNativeSequencePlan, String> {
+    let programs = canonical_register_masked_jump_data_programs()?;
+    let artifacts = programs
+        .iter()
+        .map(|program| {
+            verified_register_masked_jump_data(program, HostIsa::X86_64)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    en::RegisterMaskedJumpDataNativeSequencePlan::new(&programs, &artifacts)
+        .map_err(|error| format!("v6 JumpData loaded plan: {error}"))
+}
+
+fn assert_jump_code_loaded_sequence_loads_and_releases() -> TieredTestResult {
+    let plan = register_masked_jump_code_loaded_sequence_fixture()?;
+    let mapped_lengths = [12_288usize, 16_384usize];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_090)?,
+        native_executable_address(0x4a_0000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded =
+        en::load_register_masked_jump_code_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpCode sequence load: {error}"))?;
+    if loaded.len() != 2
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_lengths.iter().sum())
+        || loaded.plan() != &plan
+    {
+        return Err(String::from("v6 JumpCode loaded ownership drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode sequence release: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode sequence release count drifted"))
+    }
+}
+
+fn assert_jump_data_loaded_sequence_loads_and_releases() -> TieredTestResult {
+    let plan = register_masked_jump_data_loaded_sequence_fixture()?;
+    let mapped_lengths = [20_480usize, 24_576usize];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_091)?,
+        native_executable_address(0x4b_0000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded =
+        en::load_register_masked_jump_data_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 JumpData sequence load: {error}"))?;
+    if loaded.len() != 2
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_lengths.iter().sum())
+        || loaded.plan() != &plan
+    {
+        return Err(String::from("v6 JumpData loaded ownership drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpData sequence release: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData sequence release count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_loaded_sequences_load_and_release()
+-> TieredTestResult {
+    assert_jump_code_loaded_sequence_loads_and_releases()?;
+    assert_jump_data_loaded_sequence_loads_and_releases()
+}
+
+#[test]
+fn register_masked_v6_jump_loaded_sequence_late_failure_cleans_prefix()
+-> TieredTestResult {
+    let plan = register_masked_jump_code_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_092)?,
+        native_executable_address(0x4c_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 2);
+    let Err(error) =
+        en::load_register_masked_jump_code_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from(
+            "v6 JumpCode ignored late sequence load failure",
+        ));
+    };
+    if error.index() != 1
+        || error.loaded_count() != 1
+        || error.cleanup_failed()
+        || !matches!(
+            error.owner_failure(),
+            en::RegisterMaskedJumpCodeNativeOwnerLoadFailure::Load(_),
+        )
+        || adapter.release_attempts != 2
+        || !adapter.operations.ends_with(&[
+            FakeNativeAdapterOperation::Copy,
+            FakeNativeAdapterOperation::Release,
+            FakeNativeAdapterOperation::Release,
+        ])
+    {
+        return Err(String::from(
+            "v6 JumpCode late-load cleanup evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_loaded_sequence_release_failure_retries()
+-> TieredTestResult {
+    let plan = register_masked_jump_data_loaded_sequence_fixture()?;
+    let expected_keys = plan
+        .artifacts()
+        .iter()
+        .rev()
+        .map(|artifact| artifact.key().clone())
+        .collect::<Vec<_>>();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_093)?,
+        native_executable_address(0x4d_0000)?,
+    )
+    .with_release_failure_at(1);
+    let loaded =
+        en::load_register_masked_jump_data_native_sequence(&plan, &mut adapter)
+            .map_err(|error| {
+                format!("v6 JumpData sequence retry load: {error}")
+            })?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from(
+            "v6 JumpData ignored sequence release failure",
+        ));
+    };
+    if failure.attempted_count() != 2
+        || failure.released_count() != 1
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != expected_keys.first()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 JumpData release evidence drifted"));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 JumpData sequence release retry: {error}")
+    })?;
+    if adapter.release_attempts == 3 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData sequence retry count drifted"))
+    }
+}
+
 #[test]
 fn register_masked_v6_jump_sequence_plans_admit_pairs() -> TieredTestResult {
     let code_programs = canonical_register_masked_jump_code_programs()?;

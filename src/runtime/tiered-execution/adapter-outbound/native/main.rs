@@ -95,8 +95,10 @@ mod register_masked_input_sequence;
 mod register_masked_input_sequence_cache;
 mod register_masked_input_sequence_execution;
 mod register_masked_jump_code_lease_cache;
+mod register_masked_jump_code_loaded_sequence;
 mod register_masked_jump_code_sequence;
 mod register_masked_jump_data_lease_cache;
+mod register_masked_jump_data_loaded_sequence;
 mod register_masked_jump_data_sequence;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
@@ -1029,6 +1031,14 @@ pub use register_masked_jump_code_lease_cache::{
     RegisterMaskedJumpCodeLeaseCacheReleaseSummary,
     RegisterMaskedJumpCodeLeaseCacheUsage,
 };
+pub use register_masked_jump_code_loaded_sequence::{
+    LoadedRegisterMaskedJumpCodeNativeSequence,
+    RegisterMaskedJumpCodeNativeSequenceLoadFailure,
+    RegisterMaskedJumpCodeNativeSequenceLoadResult,
+    RegisterMaskedJumpCodeNativeSequenceReleaseFailure,
+    RegisterMaskedJumpCodeNativeSequenceReleaseResult,
+    load_register_masked_jump_code_native_sequence,
+};
 pub use register_masked_jump_code_sequence::{
     RegisterMaskedJumpCodeNativeSequenceKey,
     RegisterMaskedJumpCodeNativeSequencePlan,
@@ -1055,6 +1065,14 @@ pub use register_masked_jump_data_lease_cache::{
     RegisterMaskedJumpDataLeaseCacheReleaseResult,
     RegisterMaskedJumpDataLeaseCacheReleaseSummary,
     RegisterMaskedJumpDataLeaseCacheUsage,
+};
+pub use register_masked_jump_data_loaded_sequence::{
+    LoadedRegisterMaskedJumpDataNativeSequence,
+    RegisterMaskedJumpDataNativeSequenceLoadFailure,
+    RegisterMaskedJumpDataNativeSequenceLoadResult,
+    RegisterMaskedJumpDataNativeSequenceReleaseFailure,
+    RegisterMaskedJumpDataNativeSequenceReleaseResult,
+    load_register_masked_jump_data_native_sequence,
 };
 pub use register_masked_jump_data_sequence::{
     RegisterMaskedJumpDataNativeSequenceKey,

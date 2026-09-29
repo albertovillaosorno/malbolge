@@ -985,8 +985,13 @@ behavior.
   retain ordered artifact identity plus exact entry/exit observations and reject
   count, target, continuity, termination, or artifact-identity drift.
 
-  Loaded-sequence ownership/execution and sequence-cache integration remain open
-  and fail closed.
+  Loaded JumpCode and JumpData sequence ownership now maps every admitted step
+  before publication, reports aggregate platform mapped bytes, releases in
+  reverse semantic order, and cleans the complete ready prefix after late load
+  failure. Failed cleanup retains exact executable ownership for retry.
+
+  Loaded-sequence execution and sequence-cache integration remain open and fail
+  closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained
