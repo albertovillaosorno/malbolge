@@ -2336,8 +2336,14 @@ admission. Both require exact C/D live-ins and C/D writes with dead accumulator
 state excluded from semantic dependencies; their existing jump derivation is
 reused with v6 profile memory geometry supplied explicitly.
 
-JumpCode/JumpData v6 object emission, verification, loading, execution, and
-residency remain open and fail closed.
+Register-masked JumpCode revision 1 now emits and independently verifies
+x86-64/AArch64 COFF. Machine text guards only live C/D, the code/data/target
+memory live-ins, memory extent, and prior termination; dead accumulator and I/O
+history do not alter machine text. The verified artifact remains object-only.
+
+JumpCode v6 AOT-set preparation, loading, execution, and residency remain open.
+JumpData v6 object emission, verification, loading, execution, and residency
+also remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

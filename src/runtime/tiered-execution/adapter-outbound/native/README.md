@@ -372,8 +372,13 @@ eviction, reconfiguration, and release failures preserve retry ownership.
 
 Register-masked JumpCode and JumpData now have host-independent v6 semantic
 admission with exact C/D read/write masks. Existing jump semantics are reused
-with v6 profile memory geometry supplied explicitly; native object and residency
-authority for those two families remains fail closed.
+with v6 profile memory geometry supplied explicitly.
+
+`direct-register-masked-jump-code` revision 1 now emits and independently
+verifies x86-64/AArch64 COFF. Its reduced machine guards bind C/D, all three
+memory live-ins, memory extent, and prior termination while omitting dead
+accumulator and I/O history. This authority remains object-only; AOT-set
+preparation, executable loading, invocation, and residency stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

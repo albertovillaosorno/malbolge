@@ -71,9 +71,9 @@ use coff::{
     initial_halt_coff, input_coff, is_zero_observation, jump_code_coff,
     jump_data_coff, no_operation_coff, non_graphical_coff, output_coff,
     register_masked_crazy_coff, register_masked_halt_fetch_coff,
-    register_masked_input_coff, register_masked_no_operation_coff,
-    register_masked_non_graphical_coff, register_masked_output_coff,
-    register_masked_rotate_coff, rotate_coff,
+    register_masked_input_coff, register_masked_jump_code_coff,
+    register_masked_no_operation_coff, register_masked_non_graphical_coff,
+    register_masked_output_coff, register_masked_rotate_coff, rotate_coff,
 };
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
@@ -93,6 +93,7 @@ pub use emit::{
     emit_direct_register_masked_crazy_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_input_coff,
+    emit_direct_register_masked_jump_code_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
@@ -179,6 +180,7 @@ use shape::{
     validate_register_masked_input_program,
     validate_register_masked_input_target,
     validate_register_masked_jump_code_program,
+    validate_register_masked_jump_code_target,
     validate_register_masked_jump_data_program,
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
@@ -208,6 +210,7 @@ pub use verify::{
     verify_direct_output, verify_direct_register_masked_crazy,
     verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_input,
+    verify_direct_register_masked_jump_code,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
     verify_direct_register_masked_output, verify_direct_register_masked_rotate,
@@ -340,6 +343,11 @@ pub const DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID: &str =
     "direct-register-masked-input";
 /// Register-masked v6 input code-generation revision.
 pub const DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for register-masked v6 jump-code execution.
+pub const DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID: &str =
+    "direct-register-masked-jump-code";
+/// Register-masked v6 jump-code code-generation revision.
+pub const DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION: u32 = 1;
 /// Backend identity for register-masked v6 output execution.
 pub const DIRECT_REGISTER_MASKED_OUTPUT_BACKEND_ID: &str =
     "direct-register-masked-output";
@@ -519,6 +527,16 @@ pub(super) struct DirectRegisterMaskedInputGuard {
     pub(super) data_pointer: u32,
     pub(super) input: TraceInput,
     pub(super) input_index: u64,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedJumpCodeGuard {
+    pub(super) code_live_in: u32,
+    pub(super) code_pointer: u32,
+    pub(super) data_live_in: u32,
+    pub(super) data_pointer: u32,
+    pub(super) encryption_live_in: u32,
     pub(super) required_memory_words: u64,
 }
 

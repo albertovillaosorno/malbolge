@@ -68,6 +68,8 @@ use super::{
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID,
     DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
@@ -92,7 +94,8 @@ use super::{
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedInputError, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedInputError, DirectRegisterMaskedJumpCodeError,
+    DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateCommit, DirectRotateError,
     DirectRotateProgram, EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
@@ -1518,6 +1521,25 @@ pub(super) fn validate_register_masked_input_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedInputError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_jump_code_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedJumpCodeError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedJumpCodeError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedJumpCodeError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedJumpCodeError::TargetFeatures);
     }
     Ok(())
 }

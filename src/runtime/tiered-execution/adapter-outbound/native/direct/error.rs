@@ -918,6 +918,65 @@ impl From<NativeIdentityError> for DirectRegisterMaskedInputError {
     }
 }
 
+/// Failure while emitting or verifying register-masked v6 jump-code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedJumpCodeError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v6 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical mask-aware jump-code object.
+    ObjectBytes,
+    /// Register-masked IR is outside the reviewed jump-code subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v6 contract.
+    TargetBackend,
+    /// Register-masked jump-code has no CPU feature specializations.
+    TargetFeatures,
+    /// Register-masked jump-code currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRegisterMaskedJumpCodeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "register-masked jump-code COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "register-masked jump-code identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "register-masked jump-code object bytes differ"
+            },
+            Self::ProgramShape => {
+                "register-masked IR is outside direct jump-code subset"
+            },
+            Self::TargetBackend => {
+                "target does not select register-masked jump-code backend"
+            },
+            Self::TargetFeatures => {
+                "register-masked jump-code backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "register-masked jump-code backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedJumpCodeError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRegisterMaskedJumpCodeError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying register-masked v6 output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectRegisterMaskedOutputError {
