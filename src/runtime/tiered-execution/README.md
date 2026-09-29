@@ -29,7 +29,8 @@ It must not bypass another function or architectural kind boundary.
   pre-compilation resource/time scheduling, bounded JIT compilation fallback
   orchestration, independent outer candidate-latency measurement, direct JIT
   candidate semantic admission through reviewed native verifiers, fail-closed
-  scheduled candidate-to-verified-artifact routing, and strict-W^X scheduled JIT
-  installation before any guest dispatch authority.
+  scheduled candidate-to-verified-artifact routing, strict-W^X scheduled JIT
+  installation, and exact loaded JIT guest dispatch through a caller-owned
+  native runner.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
   monotonic clock, and budget-enforcing JIT compiler contracts.

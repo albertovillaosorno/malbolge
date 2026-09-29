@@ -2458,8 +2458,12 @@ lifecycle. Successful installation retains verified artifact, exact IR, and
 ready executable as one authority. AOT/interpreter routes bypass executable-
 memory work; load failure retains artifact, IR, and exact cleanup evidence.
 
-Concrete same-process native memory/runner integration and JIT guest dispatch
-remain open.
+Installed JIT guest dispatch now reconstructs the exact verified direct call
+from retained IR/artifact authority, binds it to the retained synchronized
+mapping, and executes only through the existing caller-owned native runner.
+Preparation, runner, and completion failures fail closed through the shared
+snapshot/rollback contract without remapping or releasing the installed JIT.
+Concrete same-process native memory/runner integration remains open.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
 asynchronous/product scheduling, durable cache serialization/storage and cross-

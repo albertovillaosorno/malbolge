@@ -581,6 +581,13 @@ parts:
     language: rust
     responsibility: >-
       Execute loaded JumpData sequences with indexed continuation evidence.
+  - id: part-0108
+    path: composition/tier/jit_dispatch.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Dispatch installed verified JIT mappings through exact loaded-call
+      admission.
 projects: []
 tests: []
 graph:

@@ -1043,8 +1043,12 @@ behavior.
   now install through the existing strict W^X loader only after semantic
   admission. Success retains verified artifact, exact IR, and ready executable;
   AOT/interpreter routes bypass installation and failures retain exact cleanup
-  evidence. Concrete same-process memory/runner wiring and JIT guest dispatch
-  remain open.
+  evidence.
+
+  Concrete same-process memory/runner wiring remains open. Installed JIT guest
+  dispatch now rebinds retained verified IR/artifact authority to caller buffers
+  and exact ready-image identity, then enters the existing loaded-call rollback
+  boundary before delegating to a caller-owned native runner.
 
   Durable cache serialization/storage/eviction, broader platform execution
   evidence, and broader end-to-end tier performance policy also remain open.

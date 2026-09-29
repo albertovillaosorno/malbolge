@@ -135,6 +135,8 @@ pub mod native_retry;
 pub mod native_tier_jit_admission;
 #[path = "tier/jit_attempt.rs"]
 pub mod native_tier_jit_attempt;
+#[path = "tier/jit_dispatch.rs"]
+pub mod native_tier_jit_dispatch;
 #[path = "tier/jit_installation.rs"]
 pub mod native_tier_jit_installation;
 #[path = "tier/jit_rescue.rs"]

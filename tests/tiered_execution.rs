@@ -135,6 +135,8 @@ pub mod native_retry;
 pub mod native_tier_jit_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_attempt.rs"]
 pub mod native_tier_jit_attempt;
+#[path = "../src/runtime/tiered-execution/composition/tier/jit_dispatch.rs"]
+pub mod native_tier_jit_dispatch;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_installation.rs"]
 pub mod native_tier_jit_installation;
 #[path = "../src/runtime/tiered-execution/composition/tier/jit_rescue.rs"]
@@ -1053,8 +1055,9 @@ use native_tier_jit_attempt::{
     NativeTierScheduledJitFallback, NativeTierScheduledJitRoute,
     attempt_scheduled_jit,
 };
+use native_tier_jit_dispatch::{JitDispatchFailure, dispatch_installed_jit};
 use native_tier_jit_installation::{
-    NativeTierScheduledJitInstallation,
+    NativeTierInstalledJit, NativeTierScheduledJitInstallation,
     NativeTierScheduledJitInstallationRejection, install_scheduled_jit,
 };
 use native_tier_jit_rescue::{
@@ -41132,29 +41135,64 @@ fn jit_candidate_admission_preflights_profile_before_identity()
     }
 }
 
-fn test_promoted_jit_schedule() -> Result<NativeTierJitRescueSchedule, String> {
+fn test_promoted_jit_schedule_for(
+    program: &RegionEffectProgram,
+) -> Result<NativeTierJitRescueSchedule, String> {
     let aot = VerifiedDirectNativeCache::default().seal();
     let selected = select_ahead_of_execution_preflighted_tier(
-        &direct_initial_halt_program(),
+        program,
         safe_rust_profiled_capability(),
         DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
         &aot,
     )
     .map_err(|error| error.to_string())?;
-    let rescue = select_aot_first_jit_rescue(selected, || {
-        NativeTierJitPromotionAssessment::Promote
-    });
+    let rescue =
+        select_aot_first_jit_rescue(selected, || NativeTierJitPromotionAssessment::Promote);
     Ok(schedule_aot_first_jit_rescue(
         rescue,
         NativeTierJitCompilationBudget {
             maximum_nanoseconds: NonZeroU64::new(50_000)
                 .ok_or_else(|| String::from("invalid JIT latency budget"))?,
-            maximum_object_bytes: nonzero_test_limit(
-                4096,
-                "JIT object-byte budget",
-            )?,
+            maximum_object_bytes: nonzero_test_limit(4096, "JIT object-byte budget")?,
         },
     ))
+}
+
+fn test_promoted_jit_schedule() -> Result<NativeTierJitRescueSchedule, String> {
+    test_promoted_jit_schedule_for(&direct_initial_halt_program())
+}
+
+type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
+
+fn test_installed_jit(
+    program: &RegionEffectProgram,
+    mapping_id: NativeExecutableMappingId,
+    base_address: NonZeroUsize,
+) -> Result<TestInstalledJit, String> {
+    let schedule = test_promoted_jit_schedule_for(program)?;
+    let canonical = select_verified_direct_native(
+        program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut compiler = TestCanonicalJitCompiler {
+        calls: 0,
+        object: canonical.object().to_vec(),
+    };
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 1,
+        ..TestMonotonicClock::default()
+    };
+    let attempt = attempt_scheduled_jit(schedule, &mut compiler, &mut clock);
+    let admission = admit_scheduled_jit_candidate(&attempt, safe_rust_profiled_capability());
+    let mut adapter = FakeNativeExecutableAdapter::new(mapping_id, base_address);
+    let installation = install_scheduled_jit(admission, &mut adapter);
+    let NativeTierScheduledJitInstallation::InstalledJit(installed) = installation else {
+        return Err(String::from("verified JIT fixture was not installed"));
+    };
+    Ok((installed, adapter))
 }
 
 #[test]
@@ -41557,6 +41595,134 @@ fn scheduled_jit_installation_retains_verified_artifact_on_load_failure()
         Ok(())
     } else {
         Err(String::from("JIT load failure evidence drifted"))
+    }
+}
+
+#[test]
+fn scheduled_jit_dispatch_executes_installed_candidate_without_memory_work() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let mapping_id = native_executable_mapping_id(9_005)?;
+    let (installed, adapter) =
+        test_installed_jit(&program, mapping_id, native_executable_address(0x94_000)?)?;
+    let operations = adapter.operations.clone();
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut runner = FakeNativeExecutableRunner {
+        behavior: FakeNativeRunnerBehavior::Applied,
+        calls: 0,
+        entry_addresses: Vec::new(),
+        mapping_ids: Vec::new(),
+        state_pointers_non_null: Vec::new(),
+    };
+    let outcome = dispatch_installed_jit(
+        &installed,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|_| String::from("installed JIT dispatch failed"))?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("JIT dispatch fixture has no effect"))?
+        .after;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 57
+        && output == [0x10, 0xa8, 0]
+        && runner.calls == 1
+        && runner.mapping_ids == [mapping_id]
+        && runner.state_pointers_non_null == [true]
+        && adapter.operations == operations
+    {
+        Ok(())
+    } else {
+        Err(String::from("installed JIT dispatch drifted"))
+    }
+}
+
+#[test]
+fn scheduled_jit_dispatch_rejects_entry_drift_before_runner() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let (installed, _adapter) = test_installed_jit(
+        &program,
+        native_executable_mapping_id(9_006)?,
+        native_executable_address(0x95_000)?,
+    )?;
+    let mut memory = native_verified_output_memory();
+    memory[5] = 111;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut runner = FakeNativeExecutableRunner {
+        behavior: FakeNativeRunnerBehavior::Applied,
+        calls: 0,
+        entry_addresses: Vec::new(),
+        mapping_ids: Vec::new(),
+        state_pointers_non_null: Vec::new(),
+    };
+    let result = dispatch_installed_jit(
+        &installed,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    if matches!(
+        result,
+        Err(JitDispatchFailure::Preparation(
+            VerifiedDirectInvocationError::Invocation(NativeRegionInvocationError::EntryMemory {
+                address: 5,
+                expected: 94,
+                observed: 111,
+            },),
+        ))
+    ) && runner.calls == 0
+        && memory[5] == 111
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "installed JIT dispatch admitted invalid entry state",
+        ))
+    }
+}
+
+#[test]
+fn scheduled_jit_dispatch_restores_buffers_after_runner_failure() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let mapping_id = native_executable_mapping_id(9_007)?;
+    let (installed, adapter) =
+        test_installed_jit(&program, mapping_id, native_executable_address(0x96_000)?)?;
+    let operations = adapter.operations.clone();
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut runner = FakeNativeExecutableRunner {
+        behavior: FakeNativeRunnerBehavior::FailureAfterMutation,
+        calls: 0,
+        entry_addresses: Vec::new(),
+        mapping_ids: Vec::new(),
+        state_pointers_non_null: Vec::new(),
+    };
+    let result = dispatch_installed_jit(
+        &installed,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    let Err(JitDispatchFailure::Execution(error)) = result else {
+        return Err(String::from("runner failure gained JIT authority"));
+    };
+    if error.phase() == NativeExecutableExecutionPhase::Run
+        && error.runner_error() == Some(&FakeNativeRunnerError::Call)
+        && runner.calls == 1
+        && runner.mapping_ids == [mapping_id]
+        && memory == native_verified_output_memory()
+        && output == [0x10, 0, 0]
+        && adapter.operations == operations
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "runner failure did not roll JIT dispatch back",
+        ))
     }
 }
 
