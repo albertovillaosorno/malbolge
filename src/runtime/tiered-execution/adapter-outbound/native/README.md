@@ -380,6 +380,12 @@ memory live-ins, memory extent, and prior termination while omitting dead
 accumulator and I/O history. This authority remains object-only; AOT-set
 preparation, executable loading, invocation, and residency stay fail closed.
 
+`direct-register-masked-jump-data` revision 1 now emits and independently
+verifies x86-64/AArch64 COFF. Its reduced machine guards bind C/D, the exact
+code/data live-ins, memory extent, and prior termination while omitting dead
+accumulator and I/O history. This authority also remains object-only; AOT-set
+preparation, executable loading, invocation, and residency stay fail closed.
+
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
 live-in, exact memory extent, prior termination, and output capacity. Input

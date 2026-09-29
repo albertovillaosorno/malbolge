@@ -45,7 +45,7 @@ use super::{
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
     DirectRegisterMaskedInputError, DirectRegisterMaskedJumpCodeError,
-    DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedJumpDataError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateError,
     ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
@@ -72,6 +72,7 @@ use super::{
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInputNativeObjectArtifact,
     VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputNativeObjectArtifact,
@@ -86,9 +87,10 @@ use super::{
     no_operation_coff, non_graphical_coff, output_coff,
     register_masked_crazy_coff, register_masked_halt_fetch_coff,
     register_masked_input_coff, register_masked_jump_code_coff,
-    register_masked_no_operation_coff, register_masked_non_graphical_coff,
-    register_masked_output_coff, register_masked_rotate_coff, rotate_coff,
-    structurally_admit_coff, validate_crazy_program, validate_crazy_target,
+    register_masked_jump_data_coff, register_masked_no_operation_coff,
+    register_masked_non_graphical_coff, register_masked_output_coff,
+    register_masked_rotate_coff, rotate_coff, structurally_admit_coff,
+    validate_crazy_program, validate_crazy_target,
     validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
@@ -123,6 +125,8 @@ use super::{
     validate_register_masked_input_target,
     validate_register_masked_jump_code_program,
     validate_register_masked_jump_code_target,
+    validate_register_masked_jump_data_program,
+    validate_register_masked_jump_data_target,
     validate_register_masked_no_operation_program,
     validate_register_masked_no_operation_target,
     validate_register_masked_non_graphical_program,
@@ -669,6 +673,41 @@ pub fn verify_direct_register_masked_jump_code(
         return Err(DirectRegisterMaskedJumpCodeError::ObjectBytes);
     }
     Ok(VerifiedRegisterMaskedJumpCodeNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
+/// Promotes only the canonical mask-aware v6 jump-data object.
+///
+/// This verifier deliberately stops before load-image or invocation authority.
+///
+/// # Errors
+///
+/// Returns the register-masked jump-data error for shape, target, identity,
+/// COFF, or canonical-byte mismatch.
+pub fn verify_direct_register_masked_jump_data(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+    DirectRegisterMaskedJumpDataError,
+> {
+    let selected = validate_register_masked_jump_data_program(program)
+        .map_err(|_error| DirectRegisterMaskedJumpDataError::ProgramShape)?;
+    validate_register_masked_jump_data_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRegisterMaskedJumpDataError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = register_masked_jump_data_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedJumpDataError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedJumpDataNativeObjectArtifact {
         artifact: admitted,
     })
 }

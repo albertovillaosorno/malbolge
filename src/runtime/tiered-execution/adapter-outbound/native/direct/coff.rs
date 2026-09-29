@@ -52,7 +52,8 @@ use super::{
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedCrazyGuard,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedInputError,
     DirectRegisterMaskedInputGuard, DirectRegisterMaskedJumpCodeError,
-    DirectRegisterMaskedJumpCodeGuard, DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedJumpCodeGuard, DirectRegisterMaskedJumpDataError,
+    DirectRegisterMaskedJumpDataGuard, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNoOperationGuard,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedOutputGuard, DirectRegisterMaskedRotateError,
@@ -553,6 +554,30 @@ pub(super) fn register_masked_jump_code_coff(
     .ok_or(DirectRegisterMaskedJumpCodeError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedJumpCodeError::ObjectBytes)
+}
+
+pub(super) fn register_masked_jump_data_coff(
+    key: &NativeArtifactKey,
+    selected: DirectJumpDataProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedJumpDataError> {
+    let guard = DirectRegisterMaskedJumpDataGuard {
+        code_live_in: selected.code_live_in.value,
+        code_pointer: selected.observation.registers.code_pointer,
+        data_live_in: selected.data_live_in.value,
+        data_pointer: selected.observation.registers.data_pointer,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::register_masked_jump_data_code(guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::register_masked_jump_data_code(guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRegisterMaskedJumpDataError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedJumpDataError::ObjectBytes)
 }
 
 pub(super) fn register_masked_output_coff(

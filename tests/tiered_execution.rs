@@ -4734,6 +4734,41 @@ fn canonical_register_masked_jump_code_live_variant()
     )
 }
 
+fn canonical_register_masked_jump_data_live_variant()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let base = direct_jump_data_jump_code_sequence_state()?;
+    let mut memory = base.memory().to_vec();
+    let cell = memory
+        .get_mut(8)
+        .ok_or_else(|| String::from("v6 JumpData live variant cell missing"))?;
+    *cell = cell.saturating_add(1);
+    let state = ProfileMachineState::new(
+        base.profile(),
+        memory,
+        base.registers(),
+        base.io().clone(),
+    )
+    .map_err(|error| format!("v6 JumpData live variant state: {error}"))?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| {
+            format!("v6 JumpData live variant step failed: {error}")
+        })?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v6 JumpData live variant did not continue"));
+    }
+    let trace = recorded.ok_or_else(|| {
+        String::from("v6 JumpData live variant trace missing")
+    })?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace).map_err(
+        |error| {
+            format!("v6 JumpData live variant projection failed: {error:?}")
+        },
+    )
+}
+
 fn canonical_register_masked_jump_data_program()
 -> Result<RegisterMaskedRegionEffectProgram, String> {
     let mut machine = ProfileMachine::from_snapshot(
@@ -4999,6 +5034,19 @@ fn register_masked_jump_code_target(isa: HostIsa) -> NativeTargetIdentity {
             en::DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID,
         ),
         backend_revision: en::DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn register_masked_jump_data_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            en::DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID,
+        ),
+        backend_revision: en::DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -7381,6 +7429,148 @@ fn register_masked_v6_jump_code_verifier_rejects_drift() -> TieredTestResult {
         {
             return Err(String::from(
                 "v6 JumpCode verifier lost backend identity",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn register_masked_jump_data_dead_state_variant(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut variant = program.clone();
+    let effect = variant
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 JumpData inner effect missing"))?;
+    let accumulator = effect.before.registers.accumulator.wrapping_add(1);
+    effect.before.registers.accumulator = accumulator;
+    effect.after.registers.accumulator = accumulator;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    effect.before.output_len = effect.before.output_len.saturating_add(1);
+    effect.after.output_len = effect.after.output_len.saturating_add(1);
+    Ok(variant)
+}
+
+fn assert_register_masked_jump_data_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    dead_variant: &RegisterMaskedRegionEffectProgram,
+    live_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_jump_data_target(isa);
+    let artifact =
+        en::emit_direct_register_masked_jump_data_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpData emit failed: {error}")
+            })?;
+    let dead = en::emit_direct_register_masked_jump_data_coff(
+        dead_variant,
+        target.clone(),
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} JumpData dead-state emit failed: {error}")
+    })?;
+    let live =
+        en::emit_direct_register_masked_jump_data_coff(live_variant, target)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpData live-state emit failed: {error}")
+            })?;
+    let object_text = direct_object_text(artifact.object())?;
+    if artifact.key() == dead.key()
+        || object_text != direct_object_text(dead.object())?
+        || artifact.key() == live.key()
+        || object_text == direct_object_text(live.object())?
+    {
+        return Err(format!("v6 {isa:?} JumpData guard surface drifted"));
+    }
+    let marker = [b'M', b'B', b'P', b'F', 6, 0];
+    if !artifact
+        .object()
+        .windows(marker.len())
+        .any(|window| window == marker)
+    {
+        return Err(format!("v6 {isa:?} JumpData lost MBPF v6 marker"));
+    }
+    let verified =
+        en::verify_direct_register_masked_jump_data(&artifact, program)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpData verify failed: {error}")
+            })?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!("v6 {isa:?} JumpData verified identity drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_data_objects_reduce_guards() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let dead_variant = register_masked_jump_data_dead_state_variant(&program)?;
+    let live_variant = canonical_register_masked_jump_data_live_variant()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_jump_data_object(
+            &program,
+            &dead_variant,
+            &live_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_data_verifier_rejects_drift() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact = en::emit_direct_register_masked_jump_data_coff(
+        &program,
+        register_masked_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 JumpData baseline emit failed: {error}"))?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if en::verify_direct_register_masked_jump_data(&tampered, &program)
+        != Err(en::DirectRegisterMaskedJumpDataError::ObjectBytes)
+    {
+        return Err(String::from("v6 JumpData verifier admitted byte drift"));
+    }
+    if en::emit_direct_register_masked_jump_data_coff(
+        &program,
+        register_masked_jump_code_target(HostIsa::X86_64),
+    ) != Err(en::DirectRegisterMaskedJumpDataError::TargetBackend)
+    {
+        return Err(String::from(
+            "v6 JumpData crossed JumpCode backend identity",
+        ));
+    }
+    let input = canonical_register_masked_input_program(vec![0x41])?;
+    if en::emit_direct_register_masked_jump_data_coff(
+        &input,
+        register_masked_jump_data_target(HostIsa::X86_64),
+    ) != Err(en::DirectRegisterMaskedJumpDataError::ProgramShape)
+    {
+        return Err(String::from("v6 JumpData backend admitted input"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let candidate = en::emit_direct_register_masked_jump_data_coff(
+            &program,
+            register_masked_jump_data_target(isa),
+        )
+        .map_err(|error| format!("v6 {isa:?} JumpData verify emit: {error}"))?;
+        let verified = en::verify_direct_register_masked_jump_data(
+            &candidate, &program,
+        )
+        .map_err(|error| format!("v6 {isa:?} JumpData verify: {error}"))?;
+        if verified.key().target().backend_id()
+            != en::DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID
+        {
+            return Err(String::from(
+                "v6 JumpData verifier lost backend identity",
             ));
         }
     }

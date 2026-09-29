@@ -70,6 +70,8 @@ use super::{
     DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID,
     DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
@@ -95,7 +97,7 @@ use super::{
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRegisterMaskedCrazyError, DirectRegisterMaskedHaltFetchError,
     DirectRegisterMaskedInputError, DirectRegisterMaskedJumpCodeError,
-    DirectRegisterMaskedNoOperationError,
+    DirectRegisterMaskedJumpDataError, DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, DirectRotateCommit, DirectRotateError,
     DirectRotateProgram, EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
@@ -1540,6 +1542,25 @@ pub(super) fn validate_register_masked_jump_code_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedJumpCodeError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_jump_data_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedJumpDataError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedJumpDataError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedJumpDataError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedJumpDataError::TargetFeatures);
     }
     Ok(())
 }
