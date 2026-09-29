@@ -165,6 +165,11 @@ Failed rollback releases retain exact ready-executable ownership for caller
 retry. Explicit whole-graph release follows the same reverse-order rule and
 reports checked aggregate mapping/byte weight without executing guest code.
 
+Residency covers every reviewed one-step v6 family: Crazy, HaltFetch, Input,
+JumpCode, JumpData, NoOperation, NonGraphical, Output, and Rotate. Input and
+both jump families retain the same exact load/release and retry semantics as
+their standalone resident owners.
+
 The first reviewed collapsed multi-step semantic shape is now admitted for v6
 no-operation followed by halt. Admission rechecks the exact two-effect outcome,
 register masks, both code-cell live-ins, no-operation encryption, pointer

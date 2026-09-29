@@ -49,6 +49,9 @@ use super::direct::{
     VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
     VerifiedAheadOfExecutionRegisterMaskedSet,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedInputNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     select_ahead_of_execution_register_masked_tier,
@@ -56,6 +59,9 @@ use super::direct::{
 use super::platform::{
     NativeExecutableMemoryAdapter,
     RegisterMaskedCrazyNativeExecutableReleaseFailure,
+    RegisterMaskedInputNativeExecutableReleaseFailure,
+    RegisterMaskedJumpCodeNativeExecutableReleaseFailure,
+    RegisterMaskedJumpDataNativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNoOperationNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
@@ -65,6 +71,12 @@ use super::platform::{
 use super::register_masked_resident::{
     RegisterMaskedCrazyNativeExecutableOwner,
     RegisterMaskedCrazyNativeOwnerLoadFailure,
+    RegisterMaskedInputNativeExecutableOwner,
+    RegisterMaskedInputNativeOwnerLoadFailure,
+    RegisterMaskedJumpCodeNativeExecutableOwner,
+    RegisterMaskedJumpCodeNativeOwnerLoadFailure,
+    RegisterMaskedJumpDataNativeExecutableOwner,
+    RegisterMaskedJumpDataNativeOwnerLoadFailure,
     RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeOwnerLoadFailure,
     RegisterMaskedNativeResidentWeight,
     RegisterMaskedNoOperationNativeExecutableOwner,
@@ -85,6 +97,12 @@ pub enum RegisterMaskedReducedGraphResidentOwner {
     Crazy(Box<RegisterMaskedCrazyNativeExecutableOwner>),
     /// One reusable graphical halt-fetch mapping.
     HaltFetch(Box<RegisterMaskedNativeExecutableOwner>),
+    /// One reusable v6 input mapping.
+    Input(Box<RegisterMaskedInputNativeExecutableOwner>),
+    /// One reusable v6 jump-code mapping.
+    JumpCode(Box<RegisterMaskedJumpCodeNativeExecutableOwner>),
+    /// One reusable v6 jump-data mapping.
+    JumpData(Box<RegisterMaskedJumpDataNativeExecutableOwner>),
     /// One reusable v6 no-operation mapping.
     NoOperation(Box<RegisterMaskedNoOperationNativeExecutableOwner>),
     /// One reusable v6 non-graphical termination mapping.
@@ -102,12 +120,12 @@ pub enum RegisterMaskedReducedGraphResidentOwnerLoadFailure<MemoryError> {
     Crazy(Box<RegisterMaskedCrazyNativeOwnerLoadFailure<MemoryError>>),
     /// Halt-fetch owner load failed.
     HaltFetch(Box<RegisterMaskedNativeOwnerLoadFailure<MemoryError>>),
-    /// Input has verified object authority but no executable lifecycle yet.
-    Input,
-    /// Jump-code has verified object authority but no executable lifecycle yet.
-    JumpCode,
-    /// Jump-data has verified object authority but no executable lifecycle yet.
-    JumpData,
+    /// Input owner load failed.
+    Input(Box<RegisterMaskedInputNativeOwnerLoadFailure<MemoryError>>),
+    /// Jump-code owner load failed.
+    JumpCode(Box<RegisterMaskedJumpCodeNativeOwnerLoadFailure<MemoryError>>),
+    /// Jump-data owner load failed.
+    JumpData(Box<RegisterMaskedJumpDataNativeOwnerLoadFailure<MemoryError>>),
     /// No-operation owner load failed.
     NoOperation(
         Box<RegisterMaskedNoOperationNativeOwnerLoadFailure<MemoryError>>,
@@ -129,6 +147,16 @@ pub enum RegisterMaskedReducedGraphResidentReleaseFailure<MemoryError> {
     Crazy(Box<RegisterMaskedCrazyNativeExecutableReleaseFailure<MemoryError>>),
     /// Halt-fetch mapping release failed.
     HaltFetch(Box<RegisterMaskedNativeExecutableReleaseFailure<MemoryError>>),
+    /// Input mapping release failed.
+    Input(Box<RegisterMaskedInputNativeExecutableReleaseFailure<MemoryError>>),
+    /// Jump-code mapping release failed.
+    JumpCode(
+        Box<RegisterMaskedJumpCodeNativeExecutableReleaseFailure<MemoryError>>,
+    ),
+    /// Jump-data mapping release failed.
+    JumpData(
+        Box<RegisterMaskedJumpDataNativeExecutableReleaseFailure<MemoryError>>,
+    ),
     /// No-operation mapping release failed.
     NoOperation(
         Box<
@@ -258,6 +286,9 @@ impl RegisterMaskedReducedGraphResidentOwner {
         match self {
             Self::Crazy(owner) => owner.key(),
             Self::HaltFetch(owner) => owner.key(),
+            Self::Input(owner) => owner.key(),
+            Self::JumpCode(owner) => owner.key(),
+            Self::JumpData(owner) => owner.key(),
             Self::NoOperation(owner) => owner.key(),
             Self::NonGraphical(owner) => owner.key(),
             Self::Output(owner) => owner.key(),
@@ -278,6 +309,15 @@ impl RegisterMaskedReducedGraphResidentOwner {
             ),
             Self::HaltFetch(owner) => owner.release(adapter).map_err(
                 RegisterMaskedReducedGraphResidentReleaseFailure::HaltFetch,
+            ),
+            Self::Input(owner) => owner.release(adapter).map_err(
+                RegisterMaskedReducedGraphResidentReleaseFailure::Input,
+            ),
+            Self::JumpCode(owner) => owner.release(adapter).map_err(
+                RegisterMaskedReducedGraphResidentReleaseFailure::JumpCode,
+            ),
+            Self::JumpData(owner) => owner.release(adapter).map_err(
+                RegisterMaskedReducedGraphResidentReleaseFailure::JumpData,
             ),
             Self::NoOperation(owner) => owner.release(adapter).map_err(
                 RegisterMaskedReducedGraphResidentReleaseFailure::NoOperation,
@@ -300,6 +340,9 @@ impl RegisterMaskedReducedGraphResidentOwner {
         match self {
             Self::Crazy(owner) => owner.resident_weight(),
             Self::HaltFetch(owner) => owner.resident_weight(),
+            Self::Input(owner) => owner.resident_weight(),
+            Self::JumpCode(owner) => owner.resident_weight(),
+            Self::JumpData(owner) => owner.resident_weight(),
             Self::NoOperation(owner) => owner.resident_weight(),
             Self::NonGraphical(owner) => owner.resident_weight(),
             Self::Output(owner) => owner.resident_weight(),
@@ -395,6 +438,15 @@ impl<MemoryError>
             Self::HaltFetch(current) => current
                 .retry(adapter)
                 .map_err(|next| Self::HaltFetch(Box::new(next))),
+            Self::Input(current) => current
+                .retry(adapter)
+                .map_err(|next| Self::Input(Box::new(next))),
+            Self::JumpCode(current) => current
+                .retry(adapter)
+                .map_err(|next| Self::JumpCode(Box::new(next))),
+            Self::JumpData(current) => current
+                .retry(adapter)
+                .map_err(|next| Self::JumpData(Box::new(next))),
             Self::NoOperation(current) => current
                 .retry(adapter)
                 .map_err(|next| Self::NoOperation(Box::new(next))),
@@ -638,14 +690,14 @@ where
         VerifiedAheadOfExecutionRegisterMaskedArtifact::HaltFetch(concrete) => {
             load_halt_fetch(adapter, program, concrete)
         },
-        VerifiedAheadOfExecutionRegisterMaskedArtifact::Input(_concrete) => {
-            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::Input)
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::Input(concrete) => {
+            load_input(adapter, program, concrete)
         },
-        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpCode(_concrete) => {
-            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpCode)
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpCode(concrete) => {
+            load_jump_code(adapter, program, concrete)
         },
-        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpData(_concrete) => {
-            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpData)
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpData(concrete) => {
+            load_jump_data(adapter, program, concrete)
         },
         VerifiedAheadOfExecutionRegisterMaskedArtifact::NoOperation(
             concrete,
@@ -690,6 +742,55 @@ where
             RegisterMaskedReducedGraphResidentOwner::HaltFetch(Box::new(owner))
         })
         .map_err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::HaltFetch)
+}
+
+fn load_input<Adapter>(
+    adapter: &mut Adapter,
+    program: &RegisterMaskedRegionEffectProgram,
+    artifact: &VerifiedRegisterMaskedInputNativeObjectArtifact,
+) -> OwnerLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    RegisterMaskedInputNativeExecutableOwner::load(adapter, program, artifact)
+        .map(|owner| {
+            RegisterMaskedReducedGraphResidentOwner::Input(Box::new(owner))
+        })
+        .map_err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::Input)
+}
+
+fn load_jump_code<Adapter>(
+    adapter: &mut Adapter,
+    program: &RegisterMaskedRegionEffectProgram,
+    artifact: &VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+) -> OwnerLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    RegisterMaskedJumpCodeNativeExecutableOwner::load(
+        adapter, program, artifact,
+    )
+    .map(|owner| {
+        RegisterMaskedReducedGraphResidentOwner::JumpCode(Box::new(owner))
+    })
+    .map_err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpCode)
+}
+
+fn load_jump_data<Adapter>(
+    adapter: &mut Adapter,
+    program: &RegisterMaskedRegionEffectProgram,
+    artifact: &VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+) -> OwnerLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    RegisterMaskedJumpDataNativeExecutableOwner::load(
+        adapter, program, artifact,
+    )
+    .map(|owner| {
+        RegisterMaskedReducedGraphResidentOwner::JumpData(Box::new(owner))
+    })
+    .map_err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpData)
 }
 
 fn load_no_operation<Adapter>(

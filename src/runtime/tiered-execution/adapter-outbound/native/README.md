@@ -1256,7 +1256,9 @@ Incomplete, reordered, or malformed bundles cannot expose partial AOT authority.
 
 Verified reduced v6 graphs can additionally own complete executable residency.
 Every graph node selects an exact sealed artifact before the resident is
-published, and equal native keys share one mapping. Late load failure releases
+published, and equal native keys share one mapping. All reviewed one-step v6
+families are resident-capable: Crazy, HaltFetch, Input, JumpCode, JumpData,
+NoOperation, NonGraphical, Output, and Rotate. Late load failure releases
 already loaded unique mappings in reverse order; failed cleanup remains exact,
 retryable ready-executable ownership.
 

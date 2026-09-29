@@ -116,6 +116,9 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
   node resolves against the sealed exact AOT set before publication; duplicate
   native keys share one mapping, late load failure rolls prior unique mappings
   back in reverse order, and failed cleanup retains retryable exact ownership.
+  All reviewed one-step v6 families now participate: Crazy, HaltFetch, Input,
+  JumpCode, JumpData, NoOperation, NonGraphical, Output, and Rotate. Input and
+  both jump families have graph-level load/release plus retained retry evidence.
 - The first collapsed multi-step semantic shape now admits exactly a verified
   v6 no-operation followed by halt. It rechecks masks, both code-cell live-ins,
   encryption, pointer successors, effect continuity, terminal completion, and

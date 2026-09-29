@@ -541,10 +541,13 @@ behavior.
   overflow-bin evidence. Identical-schema histograms merge transactionally with
   exact rollback. Canonical revision-one latency bytes preserve extrema flags,
   `u128` totals, bound/count pairs, and repeat snapshot validation after decode.
+
   Exact schema coarsening and witness-backed refinement now change bucket
   schemas without inferring hidden samples. Shared-schema normalization
   enables exact merges across compatible histograms. Caller-delimited
-  monotonic timing yields explicit samples. Canonical blob persistence,
+  monotonic timing yields explicit samples.
+
+  Canonical blob persistence,
   durable CAS merge with bounded conflict retry, and count/latency policy
   recommendation plus durable publication retain typed evidence and
   file-backed regressions. Automatic asynchronous interval ownership and
@@ -1044,12 +1047,17 @@ behavior.
   byte verification; deoptimization-only candidates are rejected. Scheduled
   admission now preserves AOT/interpreter bypass and exposes native authority
   only as `VerifiedDirectNativeArtifact`.
-- Durable AOT preparation/loading, reduced state-graph artifact admission, and
-  native graph-transition dispatch remain unimplemented. Scheduled JIT artifacts
-  now install through the existing strict W^X loader only after semantic
-  admission. Success retains verified artifact, exact IR, and ready executable;
-  AOT/interpreter routes bypass installation and failures retain exact cleanup
-  evidence.
+- Durable register-masked AOT object/bundle persistence now rebuilds current
+  exact-key authority from caller-owned IR/runtime/host assumptions. Reduced
+  graph provenance restore replays and reverifies every node, while whole-graph
+  residency loads exact mappings transactionally. Input, JumpCode, and JumpData
+  now join Crazy, HaltFetch, NoOperation, NonGraphical, Output, and Rotate in
+  complete resident loading/release with retryable cleanup.
+
+  Dependency-reduced
+  graph dispatch rechecks entry/successor guards through caller-owned execution
+  authority. Scheduled JIT artifacts install through the existing strict W^X
+  loader only after semantic admission; AOT/interpreter routes bypass install.
 
   Concrete same-process memory/runner wiring remains open. Installed JIT guest
   dispatch now rebinds retained verified IR/artifact authority to caller buffers

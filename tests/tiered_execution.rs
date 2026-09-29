@@ -37562,6 +37562,105 @@ fn aot_register_masked_state_graph_replays_and_prepares_closed_claim()
     Ok(())
 }
 
+fn aot_register_masked_terminal_graph_from_state(
+    entry: ProfileMachineState,
+) -> Result<en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph, String>
+{
+    let mut machine = ProfileMachine::from_snapshot(entry);
+    let mut claims = Vec::new();
+    for index in 0usize..2usize {
+        let witness = machine.snapshot_state();
+        let mut recorded = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                recorded = Some(*trace);
+            })
+            .map_err(|error| format!("resident graph step {index}: {error}"))?;
+        let trace = recorded
+            .ok_or_else(|| format!("resident graph trace {index} missing"))?;
+        let program =
+            RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+                .map_err(|error| {
+                    format!("resident graph projection {index}: {error:?}")
+                })?;
+        let successor = match (index, outcome) {
+            (0, StepOutcome::Continued) => Some(1),
+            (1, StepOutcome::Terminated(Termination::HaltInstruction)) => None,
+            _ => {
+                return Err(format!(
+                    "resident graph outcome {index} drifted: {outcome:?}"
+                ));
+            },
+        };
+        let identity =
+            ReducedIdentityClaim::from_witness_and_program(&witness, &program);
+        claims.push(
+            en::AheadOfExecutionRegisterMaskedReducedStateGraphNodeClaim {
+                identity,
+                program,
+                successor,
+                witness,
+            },
+        );
+    }
+    en::UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph::new(0, claims)
+        .verify()
+        .map_err(|error| error.to_string())
+}
+
+fn aot_register_masked_state_with_halt_at(
+    state: &ProfileMachineState,
+    code_pointer: u32,
+) -> Result<ProfileMachineState, String> {
+    let mut memory = state.memory().to_vec();
+    let halt = (33u32..=126u32)
+        .find(|cell| {
+            decode_profile_instruction(*cell, code_pointer) == Some(b'v')
+        })
+        .ok_or_else(|| {
+            format!("resident graph halt cell missing at {code_pointer}")
+        })?;
+    let index = usize::try_from(code_pointer)
+        .map_err(|error| format!("resident graph halt index: {error}"))?;
+    *memory.get_mut(index).ok_or_else(|| {
+        format!("resident graph code {code_pointer} missing")
+    })? = halt;
+    ProfileMachineState::new(
+        state.profile(),
+        memory,
+        state.registers(),
+        state.io().clone(),
+    )
+    .map_err(|error| format!("resident graph halt state: {error}"))
+}
+
+fn aot_register_masked_input_halt_graph()
+-> Result<en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph, String> {
+    let state = direct_input_data_state(
+        (DirectNativeKind::Input, DirectNativeKind::Input),
+        vec![0x41],
+    )?;
+    aot_register_masked_terminal_graph_from_state(
+        aot_register_masked_state_with_halt_at(&state, 6)?,
+    )
+}
+
+fn aot_register_masked_jump_code_halt_graph()
+-> Result<en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph, String> {
+    let state = direct_jump_code_jump_data_sequence_state()?;
+    aot_register_masked_terminal_graph_from_state(
+        aot_register_masked_state_with_halt_at(&state, 11)?,
+    )
+}
+
+fn aot_register_masked_jump_data_halt_graph()
+-> Result<en::VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph, String> {
+    let state = direct_jump_data_jump_code_sequence_state()?;
+    aot_register_masked_terminal_graph_from_state(
+        aot_register_masked_state_with_halt_at(&state, 6)?,
+    )
+}
+
 #[test]
 fn aot_reduced_graph_resident_loads_and_releases_complete_graph()
 -> Result<(), String> {
@@ -37608,6 +37707,147 @@ fn aot_reduced_graph_resident_loads_and_releases_complete_graph()
     } else {
         Err(String::from("reduced graph resident lifecycle drifted"))
     }
+}
+
+fn aot_reduced_graph_adapter(
+    label: &str,
+    index: usize,
+    mapping_base: u64,
+    address_base: usize,
+) -> Result<FakeNativeExecutableAdapter, String> {
+    let offset = u64::try_from(index)
+        .map_err(|error| format!("{label} mapping offset: {error}"))?;
+    let mapping_id = mapping_base
+        .checked_add(offset.saturating_mul(0x10))
+        .ok_or_else(|| format!("{label} mapping id overflow"))?;
+    let address_offset = usize::try_from(offset)
+        .map_err(|error| format!("{label} address offset: {error}"))?;
+    let address = address_base
+        .checked_add(address_offset.saturating_mul(0x10_0000))
+        .ok_or_else(|| format!("{label} mapping address overflow"))?;
+    Ok(FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id)?,
+        native_executable_address(address)?,
+    ))
+}
+
+#[test]
+fn aot_reduced_graph_resident_loads_input_and_jump_families()
+-> Result<(), String> {
+    let graphs = [
+        ("input", aot_register_masked_input_halt_graph()?),
+        ("jump-code", aot_register_masked_jump_code_halt_graph()?),
+        ("jump-data", aot_register_masked_jump_data_halt_graph()?),
+    ];
+    for (index, (label, graph)) in graphs.iter().enumerate() {
+        let aot = prepare_reduced_graph_aot(graph)?;
+        let environment =
+            en::RegisterMaskedReducedGraphResidentEnvironment::new(
+                &aot,
+                safe_rust_profiled_capability(),
+                DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+            );
+        let mut adapter =
+            aot_reduced_graph_adapter(label, index, 0x79_00, 0x7900_0000)?;
+        let resident =
+            en::load_ahead_of_execution_register_masked_reduced_state_graph(
+                &mut adapter,
+                graph,
+                environment,
+            )
+            .map_err(|error| {
+                format!("{label} reduced graph resident load: {error:?}")
+            })?;
+        let weight = resident.resident_weight().ok_or_else(|| {
+            format!("{label} reduced graph resident weight overflow")
+        })?;
+        if resident.node_count() != 2
+            || resident.owner_count() != 2
+            || weight.mappings() != 2
+            || weight.unique_artifacts() != 2
+            || adapter.allocation_requests.len() != 2
+        {
+            return Err(format!("{label} resident coverage drifted"));
+        }
+        resident.release(&mut adapter).map_err(|error| {
+            format!("{label} reduced graph release: {error:?}")
+        })?;
+        if adapter.release_requests.len() != 2 {
+            return Err(format!("{label} resident release drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn aot_reduced_graph_release_variant_matches(
+    label: &str,
+    failure: &en::RegisterMaskedReducedGraphResidentReleaseFailure<
+        FakeNativeAdapterOperation,
+    >,
+) -> bool {
+    use en::RegisterMaskedReducedGraphResidentReleaseFailure as ReleaseFailure;
+
+    matches!(
+        (label, failure),
+        ("input", ReleaseFailure::Input(_))
+            | ("jump-code", ReleaseFailure::JumpCode(_))
+            | ("jump-data", ReleaseFailure::JumpData(_))
+    )
+}
+
+#[test]
+fn aot_reduced_graph_resident_retries_input_and_jump_release_failures()
+-> Result<(), String> {
+    let graphs = [
+        ("input", aot_register_masked_input_halt_graph()?),
+        ("jump-code", aot_register_masked_jump_code_halt_graph()?),
+        ("jump-data", aot_register_masked_jump_data_halt_graph()?),
+    ];
+    for (index, (label, graph)) in graphs.iter().enumerate() {
+        let aot = prepare_reduced_graph_aot(graph)?;
+        let environment =
+            en::RegisterMaskedReducedGraphResidentEnvironment::new(
+                &aot,
+                safe_rust_profiled_capability(),
+                DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+            );
+        let mut adapter =
+            aot_reduced_graph_adapter(label, index, 0x79_40, 0x7940_0000)?
+                .with_release_failure_at(2);
+        let resident =
+            en::load_ahead_of_execution_register_masked_reduced_state_graph(
+                &mut adapter,
+                graph,
+                environment,
+            )
+            .map_err(|error| {
+                format!("{label} retry resident load failed: {error:?}")
+            })?;
+        let failure =
+            resident.release(&mut adapter).err().ok_or_else(|| {
+                format!("{label} graph release unexpectedly succeeded")
+            })?;
+        let retained_failure = failure
+            .failures()
+            .first()
+            .ok_or_else(|| format!("{label} release failure owner missing"))?;
+        if !aot_reduced_graph_release_variant_matches(label, retained_failure)
+            || failure.failures().len() != 1
+        {
+            return Err(format!("{label} release failure variant drifted"));
+        }
+        let mut pending = failure.into_failures();
+        let retained = pending
+            .pop()
+            .ok_or_else(|| format!("{label} retained release missing"))?;
+        retained.retry(&mut adapter).map_err(|error| {
+            format!("{label} retained release retry failed: {error:?}")
+        })?;
+        if !pending.is_empty() || adapter.release_requests.len() != 3 {
+            return Err(format!("{label} release retry evidence drifted"));
+        }
+    }
+    Ok(())
 }
 
 #[test]

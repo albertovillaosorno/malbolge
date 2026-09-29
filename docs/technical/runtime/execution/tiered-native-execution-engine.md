@@ -1776,6 +1776,7 @@ inclusive buckets and publishes checked totals and extrema transactionally.
 validating bucket/sample counts, occupied-bin extrema, and exact possible total
 ranges. `telemetry_latency_merge.rs` combines identical bucket schemas only
 after every merged count, total, and extremum is checked.
+
 `telemetry_latency_codec.rs` defines canonical revision-one little-endian
 histogram bytes with exact extrema flags, `u128` totals, bound/count pairs, and
 repeated snapshot validation. Exact schema coarsening derives shared schemas
@@ -1783,6 +1784,7 @@ for normalized merge, while witness-backed refinement refuses to infer
 hidden within-bucket distributions. Caller-delimited monotonic timing
 produces explicit latency samples. Canonical blob persistence and durable
 CAS merge with bounded conflict retry retain exact histogram evidence.
+
 Count/latency policy recommendation and durable publication likewise retain
 typed evidence across file-backed regressions. Automatic asynchronous
 interval ownership and broader distributed aggregation remain outside this
@@ -2470,12 +2472,18 @@ Preparation, runner, and completion failures fail closed through the shared
 snapshot/rollback contract without remapping or releasing the installed JIT.
 Concrete same-process native memory/runner integration remains open.
 
+Register-masked AOT objects and complete ordered bundles now persist through
+bounded blob storage and rebuild current exact-key authority only after fresh
+program/runtime/host verification. Dependency-reduced graph provenance likewise
+restores through normative replay, and whole-graph executable residency loads
+all reviewed one-step families transactionally with reverse rollback and
+retryable cleanup. Guarded graph dispatch retains caller-owned execution
+authority and rechecks successor identity after each native turn.
+
 Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, durable cache serialization/storage and cross-
-process leasing, durable AOT preparation/loading, reduced state-graph artifact
-admission, native graph-transition dispatch, and latency-bounded JIT rescue
-beyond verified direct process-local lookup remain open, alongside broader end-
-to-end performance policy.
+asynchronous/product scheduling, durable cache eviction and cross-process
+leasing, concrete same-process native memory/runner integration, and broader
+end-to-end performance policy remain open.
 
 Host-real AArch64 and Windows worker execution are explicitly non-blocking
 compatibility follow-ups. Cross-compiled x86-64/AArch64 objects, independent
