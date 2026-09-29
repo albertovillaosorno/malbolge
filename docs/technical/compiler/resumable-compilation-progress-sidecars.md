@@ -301,6 +301,16 @@ The output bytes are exact and binary-safe. Extraction emits nothing when the
 sidecar, referenced generation, outer digest, resume position, state codec,
 canonical encoding, or inner payload digest is invalid.
 
+
+Compiler composition now provides an explicit Fresh-versus-Progress selector
+for both implemented resumable stages. Typed IR chooses normalized frontend
+evidence or verified typed-IR progress extraction; ternary lowering chooses an
+admitted typed-IR projection or verified ternary progress extraction. The
+selectors preserve route-specific failure identity and do not parse sidecar
+JSON, portable checkpoint envelopes, or payload bytes outside each stage's
+existing admission boundary. The future top-level compiler/CLI must compose
+these selectors once a product C-to-Malbolge pipeline exists.
+
 ## Invariants
 
 - Checkpoint and partial generations are immutable and sequence-addressed.

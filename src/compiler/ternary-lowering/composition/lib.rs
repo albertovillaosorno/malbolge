@@ -114,7 +114,9 @@ pub use program_codec::{
     canonical_ternary_program, validate_ternary_program,
 };
 pub use progress_resume::{
-    TernaryProgressCheckpointError, resume_ternary_from_progress,
+    TernaryCompilerStageError, TernaryCompilerStageInput,
+    TernaryProgressCheckpointError, enter_ternary_compiler_stage,
+    resume_ternary_from_progress,
 };
 pub use realize_byte_stream_control_flow::{
     ByteStreamControlFlowError, realize_byte_stream_control_flow,

@@ -86,7 +86,9 @@ pub use instruction::*;
 pub use lower_frontend::{FrontendLoweringError, lower_frontend_artifact};
 pub use module::*;
 pub use progress_resume::{
-    ProgressCheckpointError, resume_typed_ir_from_progress,
+    ProgressCheckpointError, TypedIrCompilerStageError,
+    TypedIrCompilerStageInput, enter_typed_ir_compiler_stage,
+    resume_typed_ir_from_progress,
 };
 pub use source::*;
 pub use stage::{TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage};

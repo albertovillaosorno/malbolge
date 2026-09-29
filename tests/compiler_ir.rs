@@ -55,10 +55,11 @@ use typed_ir::{
     GlobalSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
     ModuleSpec, Parameter, Phi, PhiIncoming, ProgressCheckpointError,
     ProofObligation, SourcePosition, SourceSpan, TYPED_IR_CODEC_ID, Terminator,
-    TypeDef, TypeEntry, TypeId, TypedIrStageError, TypedIrStageInput,
+    TypeDef, TypeEntry, TypeId, TypedIrCompilerStageError,
+    TypedIrCompilerStageInput, TypedIrStageError, TypedIrStageInput,
     ValidationError, ValueId, canonical_bytes, canonical_debug_text,
-    canonical_module, enter_typed_ir_stage, lower_frontend_artifact,
-    resume_typed_ir_from_progress, validate_module,
+    canonical_module, enter_typed_ir_compiler_stage, enter_typed_ir_stage,
+    lower_frontend_artifact, resume_typed_ir_from_progress, validate_module,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -1438,6 +1439,63 @@ fn progress_crash_resume_restores_committed_ir() -> Result<(), String> {
         run_compiler_crash_boundary(boundary, &first, &second)?;
     }
     Ok(())
+}
+
+#[test]
+fn compiler_stage_selector_converges_fresh_and_progress() -> Result<(), String>
+{
+    let artifact = frontend_return_projection();
+    let fresh = enter_typed_ir_compiler_stage(
+        TypedIrCompilerStageInput::Fresh(&artifact),
+    )
+    .map_err(|error| format!("select fresh typed IR: {error:?}"))?;
+
+    let inspector = temporary_inspector("selector", INSPECTOR_SUCCESS_SCRIPT)?;
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(LOWERING_GOLDEN_PATH);
+    let resumed_result =
+        enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Progress {
+            inspector: &inspector,
+            interpreter: &repository_python(),
+            progress: &golden,
+        });
+    remove_file(&inspector)
+        .map_err(|error| format!("remove selector inspector: {error}"))?;
+    let resumed = resumed_result
+        .map_err(|error| format!("select resumed typed IR: {error:?}"))?;
+
+    if fresh != resumed {
+        return Err(String::from(
+            "typed-IR compiler selector paths did not converge",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn compiler_stage_selector_preserves_selected_failure_route() {
+    let artifact = frontend_artifact("other-frontend", Vec::new());
+    assert_eq!(
+        enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Fresh(
+            &artifact
+        ),),
+        Err(TypedIrCompilerStageError::Fresh(
+            TypedIrStageError::Frontend(FrontendLoweringError::Identity),
+        )),
+    );
+
+    let missing = temp_dir()
+        .join(format!("malbolge-missing-selector-inspector-{}", id()));
+    assert_eq!(
+        enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Progress {
+            inspector: &missing,
+            interpreter: &missing,
+            progress: &missing,
+        },),
+        Err(TypedIrCompilerStageError::Progress(
+            ProgressCheckpointError::InspectorLaunch,
+        )),
+    );
 }
 
 #[test]

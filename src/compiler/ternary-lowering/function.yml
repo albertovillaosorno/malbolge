@@ -177,7 +177,8 @@ parts:
     path: composition/progress_resume.rs
     kind: composition
     language: rust
-    responsibility: Resume verified ternary state through progress extraction.
+    responsibility: >-
+      Select fresh ternary lowering or verified progress-sidecar resume.
 projects: []
 tests: []
 graph:

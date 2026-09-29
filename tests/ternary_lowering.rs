@@ -68,11 +68,12 @@ use ternary_lowering::{
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TERNARY_PROGRAM_CODEC_ID,
-    TargetProfileIo, TernaryLoweringError, TernaryOperation,
-    TernaryProgramCodecError, TernaryProgramValidationError,
-    TernaryProgressCheckpointError, TernaryStageError, TernaryStageInput,
-    TypedIrInput, canonical_ternary_bytes, canonical_ternary_program,
-    encode_machine_io, enter_ternary_stage, lower_frame_helper,
+    TargetProfileIo, TernaryCompilerStageError, TernaryCompilerStageInput,
+    TernaryLoweringError, TernaryOperation, TernaryProgramCodecError,
+    TernaryProgramValidationError, TernaryProgressCheckpointError,
+    TernaryStageError, TernaryStageInput, TypedIrInput,
+    canonical_ternary_bytes, canonical_ternary_program, encode_machine_io,
+    enter_ternary_compiler_stage, enter_ternary_stage, lower_frame_helper,
     lower_heap_helper, lower_runtime_helper, lower_runtime_intrinsic,
     lower_typed_ir, plan_byte_stream_wrapper, plan_startup,
     realize_byte_stream_control_flow, realize_byte_stream_wrapper,
@@ -446,10 +447,11 @@ fn progress_inspector() -> PathBuf {
 }
 
 fn publish_ternary_progress_fixture(
+    label: &str,
     bytes: &[u8],
 ) -> Result<TernaryProgressFixture, String> {
     let directory =
-        temp_dir().join(format!("malbolge-ternary-progress-{}", id()));
+        temp_dir().join(format!("malbolge-ternary-progress-{}-{label}", id()));
     if directory.exists() {
         remove_dir_all(&directory).map_err(|error| {
             format!("remove stale ternary fixture: {error}")
@@ -1592,6 +1594,54 @@ fn every_truncated_ternary_prefix_fails_closed() -> Result<(), String> {
 }
 
 #[test]
+fn ternary_compiler_selector_converges() -> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let projection = project_typed_ir(&module)?;
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &projection,
+    ))
+    .map_err(|error| format!("select fresh ternary stage: {error:?}"))?;
+
+    let bytes = canonical_ternary_bytes(&fresh)
+        .map_err(|error| format!("encode selector ternary state: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("selector", &bytes)?;
+    let resumed_result =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory).map_err(|error| {
+        format!("remove selector progress fixture: {error}")
+    })?;
+    let resumed = resumed_result
+        .map_err(|error| format!("select resumed ternary: {error:?}"))?;
+    if fresh != resumed {
+        return Err(String::from(
+            "ternary compiler selector paths did not converge",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_compiler_selector_preserves_progress_failure_route() {
+    let missing =
+        temp_dir().join(format!("malbolge-missing-ternary-selector-{}", id()));
+    assert_eq!(
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &missing,
+            interpreter: &missing,
+            progress: &missing,
+        }),
+        Err(TernaryCompilerStageError::Progress(
+            TernaryProgressCheckpointError::InspectorLaunch,
+        )),
+    );
+}
+
+#[test]
 fn ternary_stage_fresh_and_checkpoint_inputs_converge() -> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
     let projection = project_typed_ir(&module)?;
@@ -1644,7 +1694,8 @@ fn progress_adapter_restores_verified_ternary_state() -> Result<(), String> {
     let bytes = canonical_ternary_bytes(&program).map_err(|error| {
         format!("encode ternary progress fixture: {error:?}")
     })?;
-    let (progress, directory) = publish_ternary_progress_fixture(&bytes)?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("adapter", &bytes)?;
     let observed = resume_ternary_from_progress(
         &repository_python(),
         &progress_inspector(),

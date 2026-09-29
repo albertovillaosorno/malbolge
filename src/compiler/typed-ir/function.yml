@@ -147,7 +147,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Compose verified progress-sidecar state into typed-IR resume.
+      Select fresh typed-IR lowering or verified progress-sidecar resume.
 projects: []
 tests: []
 graph:

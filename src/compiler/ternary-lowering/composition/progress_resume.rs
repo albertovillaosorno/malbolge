@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Composition from verified progress extraction into the ternary stage.
+//   - Product selection between fresh ternary lowering and progress resume.
 // - Must-Not:
 //   - Parse sidecar JSON, duplicate checkpoint validation, or choose tool
 //     paths.
@@ -22,7 +22,7 @@
 // - Merge-When:
 //   - Ternary composition directly owns the progress-sidecar wire contract.
 // - Summary:
-//   - Consumes verified ternary checkpoint state from one progress sidecar.
+//   - Selects fresh projection lowering or verified ternary progress state.
 // - Description:
 //   - Delegates durable-state validation and re-admits extracted ternary bytes.
 // - Usage:
@@ -41,6 +41,31 @@ use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 
 const EXTRACT_CHECKPOINT_ARGUMENT: &str = "--extract-checkpoint";
+
+/// Product compiler selection for entering the ternary-lowering stage.
+#[derive(Clone, Copy, Debug)]
+pub enum TernaryCompilerStageInput<'input> {
+    /// Lower fresh admitted typed-IR projection.
+    Fresh(&'input super::input::TypedIrInput),
+    /// Restore verified ternary state from one durable progress sidecar.
+    Progress {
+        /// Explicit interpreter used to run the trusted inspector.
+        interpreter: &'input Path,
+        /// Explicit trusted progress-sidecar inspector.
+        inspector: &'input Path,
+        /// Durable progress sidecar selecting the committed checkpoint.
+        progress: &'input Path,
+    },
+}
+
+/// Stable product compiler failure while selecting ternary stage state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TernaryCompilerStageError {
+    /// Fresh typed-IR projection lowering failed.
+    Fresh(TernaryStageError),
+    /// Durable progress extraction or ternary checkpoint admission failed.
+    Progress(TernaryProgressCheckpointError),
+}
 
 /// Stable failures for progress-sidecar ternary-stage resume.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,4 +109,26 @@ pub fn resume_ternary_from_progress(
     }
     enter_ternary_stage(TernaryStageInput::Checkpoint(&output.stdout))
         .map_err(Into::into)
+}
+
+/// Enters ternary lowering from fresh projection or durable progress.
+///
+/// # Errors
+///
+/// Preserves whether fresh lowering or durable progress resume failed.
+pub fn enter_ternary_compiler_stage(
+    input: TernaryCompilerStageInput<'_>,
+) -> Result<TernaryProgram, TernaryCompilerStageError> {
+    match input {
+        TernaryCompilerStageInput::Fresh(projection) => {
+            enter_ternary_stage(TernaryStageInput::Projection(projection))
+                .map_err(TernaryCompilerStageError::Fresh)
+        },
+        TernaryCompilerStageInput::Progress {
+            inspector,
+            interpreter,
+            progress,
+        } => resume_ternary_from_progress(interpreter, inspector, progress)
+            .map_err(TernaryCompilerStageError::Progress),
+    }
 }

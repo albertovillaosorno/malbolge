@@ -213,10 +213,20 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   the trusted inspector for `--checkpoint-info` plus
   `--extract-checkpoint STATE_CODEC`. Rust duplicates no sidecar parsing, and an
   end-to-end CLI regression proves exact binary payload preservation through NUL
-  and `0xFF`. Product compiler resume selection/wiring, compiler-stage codecs
-  beyond ternary lowering, crash injection beyond the ternary stage and
-  final-artifact publication, and later compiler-execution CPU/CUDA resume
-  equivalence remain open; this TODO is therefore active.
+  and `0xFF`.
+
+  Typed-IR and ternary-lowering composition now each expose one explicit
+  Fresh-versus-Progress selector. Fresh input enters the existing stage
+  admission directly; Progress input delegates durable extraction to the trusted
+  inspector and preserves a distinct selected-route failure category before
+  re-admission. Integration regressions prove fresh and progress paths converge
+  on the same admitted stage state.
+
+  A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
+  cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
+  lowering, crash injection beyond the ternary stage and final-artifact
+  publication, and later compiler-execution CPU/CUDA resume equivalence remain
+  open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.

@@ -39,6 +39,11 @@ operation tags, exact source spans, and 21 one-byte trits per `i32` scalar.
 Restoration rejects malformed, truncated, unknown-tag, noncanonical, or
 semantic-invalid state before returning a program.
 
+Composition now exposes one explicit product compiler selector between fresh
+typed-IR projection lowering and durable progress-sidecar restore. The progress
+route delegates portable-envelope validation to the trusted inspector and then
+re-admits canonical ternary bytes; failure identity records which route failed.
+
 The ternary stage now has one fresh-or-resumed entrypoint. Fresh typed-IR
 projections and canonical `malbolge-ternary-ir-v1` checkpoint bytes converge
 on the same admitted `TernaryProgram`. Compiler composition also exposes an
