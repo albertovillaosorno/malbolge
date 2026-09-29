@@ -385,7 +385,12 @@ code/data live-ins, memory extent, and prior termination while omitting dead
 accumulator and I/O history. Both jump objects participate in sealed AOT
 preparation, exact-key lookup, and verified durable restore. Dedicated
 relocation-free load images retain exact key/triple identity and the strict
-W^X policy; executable mapping, invocation, and residency stay fail closed.
+W^X policy.
+
+JumpCode and JumpData staged/sealed/ready typestates now admit exact copy,
+same-mapping RX transition, full-code synchronization, and retryable release
+through transactional platform loaders. Binding, invocation, and residency
+stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

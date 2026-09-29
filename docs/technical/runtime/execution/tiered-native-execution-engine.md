@@ -2347,8 +2347,12 @@ independently verifies their exact object identities, performs read-only
 exact-key selection, and re-verifies durable object bytes on restore. Dedicated
 JumpCode and JumpData load-image types now extract only relocation-free,
 ISA-aligned code while retaining strict W^X policy and complete artifact
-identity. No lifecycle API accepts either image yet, so executable mapping,
-execution, and residency remain open and fail closed.
+identity. Dedicated staged/sealed/ready typestates admit exact copy,
+same-mapping RW-to-RX transition, full-code instruction synchronization, and
+retryable exact release.
+
+Their platform loaders clean every post-allocation failure transactionally.
+Binding, invocation, and residency remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

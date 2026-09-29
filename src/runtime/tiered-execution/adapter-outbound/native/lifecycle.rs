@@ -40,7 +40,8 @@ use super::loader::{
     NativeExecutablePermission, VerifiedDirectFusedLoadImage,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
     VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedInputLoadImage,
-    VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedJumpCodeLoadImage,
+    VerifiedRegisterMaskedJumpDataLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationHaltLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationPairLoadImage,
@@ -236,6 +237,50 @@ pub struct SealedRegisterMaskedInputNativeExecutable {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StagedRegisterMaskedInputNativeExecutable {
     image: VerifiedRegisterMaskedInputLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Exact RX mapping for one register-masked v6 jump-code image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyRegisterMaskedJumpCodeNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// V6 jump-code mapping admitted after its RW-to-RX transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedRegisterMaskedJumpCodeNativeExecutable {
+    image: VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified v6 jump-code bytes admitted in writable staging memory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedRegisterMaskedJumpCodeNativeExecutable {
+    image: VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Exact RX mapping for one register-masked v6 jump-data image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyRegisterMaskedJumpDataNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedRegisterMaskedJumpDataLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// V6 jump-data mapping admitted after its RW-to-RX transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedRegisterMaskedJumpDataNativeExecutable {
+    image: VerifiedRegisterMaskedJumpDataLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified v6 jump-data bytes admitted in writable staging memory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedRegisterMaskedJumpDataNativeExecutable {
+    image: VerifiedRegisterMaskedJumpDataLoadImage,
     mapping: NativeExecutableMappingReport,
 }
 
@@ -1286,6 +1331,302 @@ impl StagedRegisterMaskedInputNativeExecutable {
         copied_code: &[u8],
     ) -> Result<Self, NativeExecutableLifecycleError> {
         validate_register_masked_input_writable_mapping(image, mapping)?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
+        })
+    }
+}
+
+impl ReadyRegisterMaskedJumpCodeNativeExecutable {
+    /// Returns the non-zero jump-code v6 native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified v6 jump-code load image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpCodeLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns exact cleanup evidence for this mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns exact target assumptions retained by this lifecycle state.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedRegisterMaskedJumpCodeNativeExecutable {
+    /// Admits synchronization of the complete v6 jump-code range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> Result<
+        ReadyRegisterMaskedJumpCodeNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address =
+            register_masked_jump_code_entry_address(&self.image, self.mapping)?;
+        Ok(ReadyRegisterMaskedJumpCodeNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 jump-code image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpCodeLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedRegisterMaskedJumpCodeNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or
+    /// final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<
+        SealedRegisterMaskedJumpCodeNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedRegisterMaskedJumpCodeNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 jump-code image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpCodeLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits copied v6 jump-code bytes in one writable mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedRegisterMaskedJumpCodeLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_register_masked_jump_code_writable_mapping(image, mapping)?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
+        })
+    }
+}
+
+impl ReadyRegisterMaskedJumpDataNativeExecutable {
+    /// Returns the non-zero jump-data v6 native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified v6 jump-data load image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpDataLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns exact cleanup evidence for this mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns exact target assumptions retained by this lifecycle state.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedRegisterMaskedJumpDataNativeExecutable {
+    /// Admits synchronization of the complete v6 jump-data range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> Result<
+        ReadyRegisterMaskedJumpDataNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address =
+            register_masked_jump_data_entry_address(&self.image, self.mapping)?;
+        Ok(ReadyRegisterMaskedJumpDataNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 jump-data image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpDataLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedRegisterMaskedJumpDataNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or
+    /// final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<
+        SealedRegisterMaskedJumpDataNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedRegisterMaskedJumpDataNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified v6 jump-data image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedJumpDataLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits copied v6 jump-data bytes in one writable mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedRegisterMaskedJumpDataLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_register_masked_jump_data_writable_mapping(image, mapping)?;
         if copied_code != image.code() {
             return Err(NativeExecutableLifecycleError::CodeImage);
         }
@@ -2711,6 +3052,46 @@ fn register_masked_input_entry_address(
     NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
 }
 
+fn register_masked_jump_code_entry_address(
+    image: &VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
+fn register_masked_jump_data_entry_address(
+    image: &VerifiedRegisterMaskedJumpDataLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
 fn register_masked_output_entry_address(
     image: &VerifiedRegisterMaskedOutputLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -3043,6 +3424,44 @@ pub(super) fn validate_register_masked_input_writable_mapping(
     validate_register_masked_input_mapping_ranges(image, mapping)
 }
 
+pub(super) fn validate_register_masked_jump_code_writable_mapping(
+    image: &VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_register_masked_jump_code_mapping_ranges(image, mapping)
+}
+
+pub(super) fn validate_register_masked_jump_data_writable_mapping(
+    image: &VerifiedRegisterMaskedJumpDataLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_register_masked_jump_data_mapping_ranges(image, mapping)
+}
+
 pub(super) fn validate_register_masked_output_writable_mapping(
     image: &VerifiedRegisterMaskedOutputLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -3314,6 +3733,48 @@ fn validate_register_masked_input_mapping_ranges(
         return Err(NativeExecutableLifecycleError::MappingCapacity);
     }
     let _entry = register_masked_input_entry_address(image, mapping)?;
+    Ok(())
+}
+
+fn validate_register_masked_jump_code_mapping_ranges(
+    image: &VerifiedRegisterMaskedJumpCodeLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = register_masked_jump_code_entry_address(image, mapping)?;
+    Ok(())
+}
+
+fn validate_register_masked_jump_data_mapping_ranges(
+    image: &VerifiedRegisterMaskedJumpDataLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = register_masked_jump_data_entry_address(image, mapping)?;
     Ok(())
 }
 

@@ -7525,6 +7525,328 @@ fn assert_register_masked_jump_data_load_image(
     Ok(())
 }
 
+fn assert_register_masked_jump_code_lifecycle(
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let candidate = en::emit_direct_register_masked_jump_code_coff(
+        &program,
+        register_masked_jump_code_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpCode lifecycle emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_code(&candidate, &program)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpCode lifecycle verify: {error}")
+            })?;
+    let image = en::VerifiedRegisterMaskedJumpCodeLoadImage::new(&artifact)
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpCode lifecycle image: {error}")
+        })?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = en::StagedRegisterMaskedJumpCodeNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpCode lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpCode lifecycle seal: {error}")
+        })?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpCode lifecycle sync: {error}")
+        })?;
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.entry_address() != base
+        || ready.mapping().mapping_id() != mapping_id
+    {
+        return Err(format!("v6 {isa:?} JumpCode lifecycle identity drifted"));
+    }
+    assert_register_masked_jump_code_platform(
+        &image,
+        artifact.key(),
+        mapping_id,
+        base,
+    )
+}
+
+fn assert_register_masked_jump_code_platform(
+    image: &en::VerifiedRegisterMaskedJumpCodeLoadImage,
+    key: &NativeArtifactKey,
+    mapping_id: NativeExecutableMappingId,
+    base: NonZeroUsize,
+) -> TieredTestResult {
+    let mut adapter = FakeNativeExecutableAdapter::new(mapping_id, base);
+    let ready = en::load_register_masked_jump_code_native_executable(
+        &mut adapter,
+        image,
+    )
+    .map_err(|error| format!("v6 JumpCode platform load: {error}"))?;
+    if ready.key() != key
+        || ready.image() != image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v6 JumpCode platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_jump_code_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| format!("v6 JumpCode platform release: {error}"))?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 JumpCode platform release evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_data_lifecycle(
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let candidate = en::emit_direct_register_masked_jump_data_coff(
+        &program,
+        register_masked_jump_data_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpData lifecycle emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_data(&candidate, &program)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpData lifecycle verify: {error}")
+            })?;
+    let image = en::VerifiedRegisterMaskedJumpDataLoadImage::new(&artifact)
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpData lifecycle image: {error}")
+        })?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base = native_executable_address(base_value)?;
+    let staged = en::StagedRegisterMaskedJumpDataNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpData lifecycle stage: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpData lifecycle seal: {error}")
+        })?;
+    let ready = sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| {
+            format!("v6 {isa:?} JumpData lifecycle sync: {error}")
+        })?;
+    if ready.image() != &image
+        || ready.key() != artifact.key()
+        || ready.entry_address() != base
+        || ready.mapping().mapping_id() != mapping_id
+    {
+        return Err(format!("v6 {isa:?} JumpData lifecycle identity drifted"));
+    }
+    assert_register_masked_jump_data_platform(
+        &image,
+        artifact.key(),
+        mapping_id,
+        base,
+    )
+}
+
+fn assert_register_masked_jump_data_platform(
+    image: &en::VerifiedRegisterMaskedJumpDataLoadImage,
+    key: &NativeArtifactKey,
+    mapping_id: NativeExecutableMappingId,
+    base: NonZeroUsize,
+) -> TieredTestResult {
+    let mut adapter = FakeNativeExecutableAdapter::new(mapping_id, base);
+    let ready = en::load_register_masked_jump_data_native_executable(
+        &mut adapter,
+        image,
+    )
+    .map_err(|error| format!("v6 JumpData platform load: {error}"))?;
+    if ready.key() != key
+        || ready.image() != image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v6 JumpData platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    en::release_register_masked_jump_data_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| format!("v6 JumpData platform release: {error}"))?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 JumpData platform release evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_lifecycle_loads_and_releases() -> TieredTestResult {
+    for (isa, code_mapping, data_mapping, base) in [
+        (HostIsa::X86_64, 981u64, 982u64, 0x1f_0000usize),
+        (HostIsa::AArch64, 983u64, 984u64, 0x20_0000usize),
+    ] {
+        assert_register_masked_jump_code_lifecycle(isa, code_mapping, base)?;
+        assert_register_masked_jump_data_lifecycle(
+            isa,
+            data_mapping,
+            base + 0x1000,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_code_platform_cleans_copy_failure()
+-> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let candidate = en::emit_direct_register_masked_jump_code_coff(
+        &program,
+        register_masked_jump_code_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 JumpCode cleanup emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_code(&candidate, &program)
+            .map_err(|error| format!("v6 JumpCode cleanup verify: {error}"))?;
+    let image = en::VerifiedRegisterMaskedJumpCodeLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 JumpCode cleanup image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(985)?,
+        native_executable_address(0x21_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) = en::load_register_masked_jump_code_native_executable(
+        &mut adapter,
+        &image,
+    ) else {
+        return Err(String::from("v6 JumpCode copy failure was ignored"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error().is_some()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 JumpCode copy cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_data_release_failure_retries_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let candidate = en::emit_direct_register_masked_jump_data_coff(
+        &program,
+        register_masked_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 JumpData retry emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_data(&candidate, &program)
+            .map_err(|error| format!("v6 JumpData retry verify: {error}"))?;
+    let image = en::VerifiedRegisterMaskedJumpDataLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 JumpData retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(986)?,
+        native_executable_address(0x22_0000)?,
+    )
+    .with_release_failures(1);
+    let ready = en::load_register_masked_jump_data_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 JumpData retry load: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) = en::release_register_masked_jump_data_native_executable(
+        &mut adapter,
+        ready,
+    ) else {
+        return Err(String::from("v6 JumpData release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from(
+            "v6 JumpData release failure lost ready identity",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 JumpData release retry: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 JumpData release retry count drifted"));
+    }
+    Ok(())
+}
+
 fn register_masked_jump_data_dead_state_variant(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<RegisterMaskedRegionEffectProgram, String> {

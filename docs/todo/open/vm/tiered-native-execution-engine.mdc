@@ -952,8 +952,11 @@ behavior.
   exact-key selection, and re-verifies durable object bytes on restore.
   Dedicated JumpCode and JumpData load-image types now extract relocation-free,
   ISA-aligned code under the strict W^X policy while retaining exact artifact
-  identity. No lifecycle API accepts either image yet, so executable mapping,
-  execution, and residency remain open and fail closed.
+  identity. Staged/sealed/ready typestates admit exact copy, same-mapping
+  RW-to-RX transition, full-code synchronization, and retryable exact release.
+
+  Their platform loaders clean post-allocation failures transactionally.
+  Binding, invocation, and residency remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained
