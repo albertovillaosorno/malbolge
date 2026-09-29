@@ -383,8 +383,9 @@ accumulator and I/O history.
 verifies x86-64/AArch64 COFF. Its reduced machine guards bind C/D, the exact
 code/data live-ins, memory extent, and prior termination while omitting dead
 accumulator and I/O history. Both jump objects participate in sealed AOT
-preparation, exact-key lookup, and verified durable restore. Executable
-loading, invocation, and residency stay fail closed.
+preparation, exact-key lookup, and verified durable restore. Dedicated
+relocation-free load images retain exact key/triple identity and the strict
+W^X policy; executable mapping, invocation, and residency stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

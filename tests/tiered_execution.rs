@@ -7435,6 +7435,96 @@ fn register_masked_v6_jump_code_verifier_rejects_drift() -> TieredTestResult {
     Ok(())
 }
 
+#[test]
+fn register_masked_v6_jump_load_images_are_relocation_free() -> TieredTestResult
+{
+    let jump_code = canonical_register_masked_jump_code_program()?;
+    let jump_data = canonical_register_masked_jump_data_program()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_jump_code_load_image(isa, &jump_code)?;
+        assert_register_masked_jump_data_load_image(isa, &jump_data)?;
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_code_load_image(
+    isa: HostIsa,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let candidate = en::emit_direct_register_masked_jump_code_coff(
+        program,
+        register_masked_jump_code_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpCode load emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_code(&candidate, program)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpCode load verify: {error}")
+            })?;
+    let image = en::VerifiedRegisterMaskedJumpCodeLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 {isa:?} JumpCode load image: {error}"))?;
+    let policy = image.policy();
+    let expected_alignment = match isa {
+        HostIsa::AArch64 => 4,
+        HostIsa::X86_64 => 1,
+    };
+    if image.code() != direct_object_text(artifact.object())?
+        || image.entry_code() != image.code()
+        || image.entry_offset() != 0
+        || image.allocation_len() != image.code().len()
+        || image.host_isa() != isa
+        || image.key() != artifact.key()
+        || image.minimum_instruction_alignment() != expected_alignment
+        || image.target() != artifact.key().target()
+        || image.target_triple() != artifact.target_triple()
+        || policy.initial_permissions() != NativeExecutablePermission::ReadWrite
+        || policy.final_permissions() != NativeExecutablePermission::ReadExecute
+        || !policy.requires_instruction_sync()
+    {
+        return Err(format!("v6 {isa:?} JumpCode load-image contract drifted"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_data_load_image(
+    isa: HostIsa,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let candidate = en::emit_direct_register_masked_jump_data_coff(
+        program,
+        register_masked_jump_data_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpData load emit: {error}"))?;
+    let artifact =
+        en::verify_direct_register_masked_jump_data(&candidate, program)
+            .map_err(|error| {
+                format!("v6 {isa:?} JumpData load verify: {error}")
+            })?;
+    let image = en::VerifiedRegisterMaskedJumpDataLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 {isa:?} JumpData load image: {error}"))?;
+    let policy = image.policy();
+    let expected_alignment = match isa {
+        HostIsa::AArch64 => 4,
+        HostIsa::X86_64 => 1,
+    };
+    if image.code() != direct_object_text(artifact.object())?
+        || image.entry_code() != image.code()
+        || image.entry_offset() != 0
+        || image.allocation_len() != image.code().len()
+        || image.host_isa() != isa
+        || image.key() != artifact.key()
+        || image.minimum_instruction_alignment() != expected_alignment
+        || image.target() != artifact.key().target()
+        || image.target_triple() != artifact.target_triple()
+        || policy.initial_permissions() != NativeExecutablePermission::ReadWrite
+        || policy.final_permissions() != NativeExecutablePermission::ReadExecute
+        || !policy.requires_instruction_sync()
+    {
+        return Err(format!("v6 {isa:?} JumpData load-image contract drifted"));
+    }
+    Ok(())
+}
+
 fn register_masked_jump_data_dead_state_variant(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<RegisterMaskedRegionEffectProgram, String> {

@@ -2342,11 +2342,13 @@ code/data/target memory live-ins; JumpData guards live C/D plus its code/data
 memory live-ins. Both bind memory extent and prior termination while omitting
 dead accumulator and I/O history. Their verified artifacts remain object-only.
 
-The sealed register-masked AOT set now accepts both v6 jump families, emits and
+The sealed register-masked AOT set accepts both v6 jump families, emits and
 independently verifies their exact object identities, performs read-only
-exact-key
-selection, and re-verifies durable object bytes on restore. Executable loading,
-execution, and residency for both jump families remain open and fail closed.
+exact-key selection, and re-verifies durable object bytes on restore. Dedicated
+JumpCode and JumpData load-image types now extract only relocation-free,
+ISA-aligned code while retaining strict W^X policy and complete artifact
+identity. No lifecycle API accepts either image yet, so executable mapping,
+execution, and residency remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
