@@ -53,10 +53,10 @@ use crate::native_tier_jit_installation::NativeTierInstalledJit;
 /// Failure while dispatching one already installed verified JIT.
 #[derive(Debug, Eq, PartialEq)]
 pub enum JitDispatchFailure<RunnerError> {
-    /// Caller buffers could not be bound to the retained verified program.
-    Preparation(VerifiedDirectInvocationError),
     /// Binding, runner, or completion failed after preparation.
     Execution(Box<NativeLoadedExecutionFailure<RunnerError>>),
+    /// Caller buffers could not be bound to the retained verified program.
+    Preparation(VerifiedDirectInvocationError),
 }
 
 /// Result of dispatching one installed verified JIT mapping.

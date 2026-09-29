@@ -41135,6 +41135,8 @@ fn jit_candidate_admission_preflights_profile_before_identity()
     }
 }
 
+type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
+
 fn test_promoted_jit_schedule_for(
     program: &RegionEffectProgram,
 ) -> Result<NativeTierJitRescueSchedule, String> {
@@ -41161,8 +41163,6 @@ fn test_promoted_jit_schedule_for(
 fn test_promoted_jit_schedule() -> Result<NativeTierJitRescueSchedule, String> {
     test_promoted_jit_schedule_for(&direct_initial_halt_program())
 }
-
-type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
 
 fn test_installed_jit(
     program: &RegionEffectProgram,
@@ -41620,7 +41620,7 @@ fn scheduled_jit_dispatch_executes_installed_candidate_without_memory_work() -> 
         &mut runner,
         NativeRegionBuffers::new(&mut memory, &input, &mut output),
     )
-    .map_err(|_| String::from("installed JIT dispatch failed"))?;
+    .map_err(|_error| String::from("installed JIT dispatch failed"))?;
     let expected = program
         .effects
         .first()
