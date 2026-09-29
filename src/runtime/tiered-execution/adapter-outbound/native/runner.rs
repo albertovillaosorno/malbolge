@@ -44,6 +44,10 @@ use super::invocation::{
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedInputInvocation,
     PreparedRegisterMaskedInputNativeInvocation,
+    PreparedRegisterMaskedJumpCodeInvocation,
+    PreparedRegisterMaskedJumpCodeNativeInvocation,
+    PreparedRegisterMaskedJumpDataInvocation,
+    PreparedRegisterMaskedJumpDataNativeInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNoOperationHaltInvocation,
     PreparedRegisterMaskedNoOperationHaltNativeInvocation,
@@ -70,6 +74,8 @@ use super::lifecycle::{
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedInputNativeExecutable,
+    ReadyRegisterMaskedJumpCodeNativeExecutable,
+    ReadyRegisterMaskedJumpDataNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
@@ -261,6 +267,44 @@ pub struct RegisterMaskedInputLoadedExecutionFailure<RunnerError> {
 pub type RegisterMaskedInputLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedInputLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedJumpCodeNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 `JumpCode` call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedJumpCodeLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedJumpCodeNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 `JumpCode` call.
+pub type RegisterMaskedJumpCodeLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedJumpCodeLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedJumpDataNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded v6 `JumpData` call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedJumpDataLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedJumpDataNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified v6 `JumpData` call.
+pub type RegisterMaskedJumpDataLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedJumpDataLoadedExecutionFailure<RunnerError>>,
 >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -698,6 +742,20 @@ type RegisterMaskedInputNativeCallResult<Runner> = Result<
     >,
 >;
 
+type RegisterMaskedJumpCodeNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedJumpCodeNativeCallFailure<
+        <Runner as RegisterMaskedJumpCodeNativeRunner>::Error,
+    >,
+>;
+
+type RegisterMaskedJumpDataNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    RegisterMaskedJumpDataNativeCallFailure<
+        <Runner as RegisterMaskedJumpDataNativeRunner>::Error,
+    >,
+>;
+
 type RegisterMaskedOutputNativeCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     RegisterMaskedOutputNativeCallFailure<
@@ -947,6 +1005,52 @@ pub trait RegisterMaskedInputNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedInputNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 `JumpCode` call.
+///
+/// This port receives only a view constructed after exact `JumpCode` v6
+/// image/executable identity binding.
+pub trait RegisterMaskedJumpCodeNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 `JumpCode` executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedJumpCodeNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact v6 `JumpData` call.
+///
+/// This port receives only a view constructed after exact `JumpData` v6
+/// image/executable identity binding.
+pub trait RegisterMaskedJumpDataNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v6 `JumpData` executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedJumpDataNativeInvocation<'_, '_>,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -1441,6 +1545,122 @@ impl<RunnerError> RegisterMaskedInputLoadedExecutionFailure<RunnerError> {
             RegisterMaskedInputNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedInputNativeCallFailure::Binding(_)
             | RegisterMaskedInputNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedJumpCodeLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedJumpCodeNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Completion(_)
+            | RegisterMaskedJumpCodeNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 `JumpCode` result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedJumpCodeNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Binding(_)
+            | RegisterMaskedJumpCodeNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedJumpCodeNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedJumpCodeNativeCallFailure::Runner(error) => {
+                Some(error)
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Binding(_)
+            | RegisterMaskedJumpCodeNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError> RegisterMaskedJumpDataLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedJumpDataNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Completion(_)
+            | RegisterMaskedJumpDataNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v6 `JumpData` result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedJumpDataNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Binding(_)
+            | RegisterMaskedJumpDataNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedJumpDataNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedJumpDataNativeCallFailure::Runner(error) => {
+                Some(error)
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Binding(_)
+            | RegisterMaskedJumpDataNativeCallFailure::Completion(_) => None,
         }
     }
 }
@@ -3337,6 +3557,44 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedJumpCodeLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 JumpCode failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedJumpCodeNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedJumpCodeNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for RegisterMaskedJumpDataLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 JumpData failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedJumpDataNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedJumpDataNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for RegisterMaskedOutputLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -3877,6 +4135,54 @@ where
     run_register_masked_input_prepared(runner, executable, prepared).map_err(
         |cause| Box::new(RegisterMaskedInputLoadedExecutionFailure { cause }),
     )
+}
+
+/// Binds, runs, and admits one v6 `JumpCode` call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedJumpCodeLoadedExecutionFailure`] for binding,
+/// runner, or completion failure.
+pub fn execute_loaded_verified_register_masked_jump_code_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedJumpCodeNativeExecutable,
+    prepared: PreparedRegisterMaskedJumpCodeInvocation<'_, '_>,
+) -> RegisterMaskedJumpCodeLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedJumpCodeNativeRunner,
+{
+    run_register_masked_jump_code_prepared(runner, executable, prepared)
+        .map_err(|cause| {
+            Box::new(RegisterMaskedJumpCodeLoadedExecutionFailure { cause })
+        })
+}
+
+/// Binds, runs, and admits one v6 `JumpData` call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedJumpDataLoadedExecutionFailure`] for binding,
+/// runner, or completion failure.
+pub fn execute_loaded_verified_register_masked_jump_data_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedJumpDataNativeExecutable,
+    prepared: PreparedRegisterMaskedJumpDataInvocation<'_, '_>,
+) -> RegisterMaskedJumpDataLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedJumpDataNativeRunner,
+{
+    run_register_masked_jump_data_prepared(runner, executable, prepared)
+        .map_err(|cause| {
+            Box::new(RegisterMaskedJumpDataLoadedExecutionFailure { cause })
+        })
 }
 
 /// Binds, runs, and admits one v6 Output call against a loaded mapping.
@@ -4831,6 +5137,56 @@ where
     bound
         .complete(raw_status)
         .map_err(RegisterMaskedInputNativeCallFailure::Completion)
+}
+
+fn run_register_masked_jump_code_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedJumpCodeNativeExecutable,
+    prepared: PreparedRegisterMaskedJumpCodeInvocation<'_, '_>,
+) -> RegisterMaskedJumpCodeNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedJumpCodeNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedJumpCodeNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedJumpCodeNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedJumpCodeNativeCallFailure::Completion)
+}
+
+fn run_register_masked_jump_data_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedJumpDataNativeExecutable,
+    prepared: PreparedRegisterMaskedJumpDataInvocation<'_, '_>,
+) -> RegisterMaskedJumpDataNativeCallResult<Runner>
+where
+    Runner: RegisterMaskedJumpDataNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(RegisterMaskedJumpDataNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(RegisterMaskedJumpDataNativeCallFailure::Runner(
+                Box::new(error),
+            ));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(RegisterMaskedJumpDataNativeCallFailure::Completion)
 }
 
 fn run_register_masked_output_prepared<Runner>(

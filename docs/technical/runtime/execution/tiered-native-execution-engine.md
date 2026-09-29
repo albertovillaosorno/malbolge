@@ -2352,7 +2352,14 @@ same-mapping RW-to-RX transition, full-code instruction synchronization, and
 retryable exact release.
 
 Their platform loaders clean every post-allocation failure transactionally.
-Binding, invocation, and residency remain open and fail closed.
+Prepared JumpCode and JumpData calls preserve exact C/D live-ins while allowing
+dead accumulator and I/O history to rebase, then bind only exact synchronized
+load-image identity. Caller-owned loaded runners restore the complete entry
+snapshot on runner or completion failure, while identity drift fails before the
+runner is called.
+
+Complete load/call/release transaction wrappers, reusable ownership, residency,
+and cache integration remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

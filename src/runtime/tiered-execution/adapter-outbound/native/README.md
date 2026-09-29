@@ -389,8 +389,12 @@ W^X policy.
 
 JumpCode and JumpData staged/sealed/ready typestates now admit exact copy,
 same-mapping RX transition, full-code synchronization, and retryable release
-through transactional platform loaders. Binding, invocation, and residency
-stay fail closed.
+through transactional platform loaders. Prepared calls preserve exact C/D
+live-ins while rebasing dead A/I/O history, bind only exact synchronized image
+identity, and execute through caller-owned loaded runners with atomic rollback.
+
+Complete load/call/release transactions, reusable ownership, residency, and
+cache integration stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

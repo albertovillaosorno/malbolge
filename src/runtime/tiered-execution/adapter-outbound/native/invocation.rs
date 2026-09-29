@@ -57,6 +57,8 @@ use super::direct::{
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInputNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationPairNativeObjectArtifact,
@@ -74,6 +76,8 @@ use super::lifecycle::{
     ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
     ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedInputNativeExecutable,
+    ReadyRegisterMaskedJumpCodeNativeExecutable,
+    ReadyRegisterMaskedJumpDataNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationHaltNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
@@ -88,7 +92,8 @@ use super::loader::{
     VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
     VerifiedRegisterMaskedCrazyLoadImage, VerifiedRegisterMaskedInputLoadImage,
-    VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedJumpCodeLoadImage,
+    VerifiedRegisterMaskedJumpDataLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationHaltLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNoOperationPairLoadImage,
@@ -400,6 +405,28 @@ pub struct PreparedRegisterMaskedNoOperationInvocation<'artifact, 'buffers> {
     load_image: VerifiedRegisterMaskedNoOperationLoadImage,
 }
 
+/// One verified v6 jump-code artifact bound to a rebased ABI transition.
+///
+/// This value proves exact masked-state preparation and completion semantics.
+/// It grants no runner authority by itself.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedJumpCodeInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedJumpCodeLoadImage,
+}
+
+/// One verified v6 jump-data artifact bound to a rebased ABI transition.
+///
+/// This value proves exact masked-state preparation and completion semantics.
+/// It grants no runner authority by itself.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedJumpDataInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedRegisterMaskedJumpDataLoadImage,
+}
+
 /// One verified collapsed v6 no-op/halt artifact bound to an ABI transition.
 ///
 /// C/D and both code live-ins remain exact while dead A/I/O history may rebase.
@@ -550,6 +577,22 @@ pub struct PreparedRegisterMaskedNoOperationNativeInvocation<
     'executable,
 > {
     executable: &'executable ReadyRegisterMaskedNoOperationNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact v6 jump-code call and synchronized mapping.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedJumpCodeNativeInvocation<'buffers, 'executable>
+{
+    executable: &'executable ReadyRegisterMaskedJumpCodeNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact v6 jump-data call and synchronized mapping.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedJumpDataNativeInvocation<'buffers, 'executable>
+{
+    executable: &'executable ReadyRegisterMaskedJumpDataNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -1565,6 +1608,282 @@ impl<'artifact, 'buffers>
                 .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
         let invocation =
             PreparedNativeRegionInvocation::new_register_masked_no_operation(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the bound v6 artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared v6 call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedRegisterMaskedJumpCodeInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete rebased entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed jump-code transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified v6 jump-code artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedJumpCodeNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Binds this call to one synchronized v6 jump-code executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when executable image
+    /// identity differs. Failure restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedJumpCodeNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedJumpCodeNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedJumpCodeNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
+    /// Admits one raw status through the rebased jump-code contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError::Invocation`] when the
+    /// result violates exact application or atomic guard-miss requirements.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful observation derived from the rebased entry.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free v6 jump-code image.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedRegisterMaskedJumpCodeLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified jump-code over a mask-preserving entry.
+    ///
+    /// C and D must match their source live-ins. A and I/O cursors may rebase
+    /// because this v6 shape does not read or write them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError`] for identity, live
+    /// register, buffer, memory, or load-image disagreement.
+    pub fn new(
+        artifact: &'artifact VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_jump_code_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image = VerifiedRegisterMaskedJumpCodeLoadImage::new(artifact)
+            .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::new_register_masked_jump_code(
+                program, entry, buffers,
+            )
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the bound v6 artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared v6 call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedRegisterMaskedJumpDataInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete rebased entry snapshot without admitting a call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed jump-data transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified v6 jump-data artifact.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedJumpDataNativeObjectArtifact {
+        self.artifact
+    }
+
+    /// Binds this call to one synchronized v6 jump-data executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when executable image
+    /// identity differs. Failure restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedJumpDataNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedJumpDataNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedJumpDataNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
+    /// Admits one raw status through the rebased jump-data contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError::Invocation`] when the
+    /// result violates exact application or atomic guard-miss requirements.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful observation derived from the rebased entry.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns the exact relocation-free v6 jump-data image.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedRegisterMaskedJumpDataLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified jump-data over a mask-preserving entry.
+    ///
+    /// C and D must match their source live-ins. A and I/O cursors may rebase
+    /// because this v6 shape does not read or write them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedRegisterMaskedInvocationError`] for identity, live
+    /// register, buffer, memory, or load-image disagreement.
+    pub fn new(
+        artifact: &'artifact VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedRegisterMaskedInvocationError> {
+        validate_register_masked_jump_data_rebased_entry(
+            artifact.key(),
+            program,
+            entry,
+        )?;
+        let load_image = VerifiedRegisterMaskedJumpDataLoadImage::new(artifact)
+            .map_err(VerifiedRegisterMaskedInvocationError::Load)?;
+        let invocation =
+            PreparedNativeRegionInvocation::new_register_masked_jump_data(
                 program, entry, buffers,
             )
             .map_err(VerifiedRegisterMaskedInvocationError::Invocation)?;
@@ -3103,6 +3422,152 @@ impl<'buffers, 'executable>
 }
 
 impl<'buffers, 'executable>
+    PreparedRegisterMaskedJumpCodeNativeInvocation<'buffers, 'executable>
+{
+    /// Restores the complete rebased entry snapshot after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact jump-code transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the bound v6 jump-code contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the synchronized non-zero jump-code v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedJumpCodeNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyRegisterMaskedJumpCodeNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for a future dedicated runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedJumpDataNativeInvocation<'buffers, 'executable>
+{
+    /// Restores the complete rebased entry snapshot after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact jump-data transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the bound v6 jump-data contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the synchronized non-zero jump-data v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedJumpDataNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyRegisterMaskedJumpDataNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for a future dedicated runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
     PreparedRegisterMaskedNoOperationHaltNativeInvocation<'buffers, 'executable>
 {
     /// Restores the complete rebased entry snapshot after runner failure.
@@ -4606,6 +5071,68 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    fn new_register_masked_jump_code(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [source] = program.effects.as_slice() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if program.step_budget != 1
+            || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+            || source.before.termination.is_some()
+            || source.after.termination.is_some()
+            || source.input.is_some()
+            || source.output.is_some()
+            || program.memory_live_ins.len() != 3
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let mut effect = *source;
+        effect.before = entry;
+        effect.after.registers.accumulator = entry.registers.accumulator;
+        effect.after.input_consumed = entry.input_consumed;
+        effect.after.output_len = entry.output_len;
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            buffers,
+        )
+    }
+
+    fn new_register_masked_jump_data(
+        program: &RegisterMaskedRegionEffectProgram,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [source] = program.effects.as_slice() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if program.step_budget != 1
+            || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+            || source.before.termination.is_some()
+            || source.after.termination.is_some()
+            || source.input.is_some()
+            || source.output.is_some()
+            || program.memory_live_ins.len() != 2
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let mut effect = *source;
+        effect.before = entry;
+        effect.after.registers.accumulator = entry.registers.accumulator;
+        effect.after.input_consumed = entry.input_consumed;
+        effect.after.output_len = entry.output_len;
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            buffers,
+        )
+    }
+
     fn new_register_masked_no_operation(
         program: &RegisterMaskedRegionEffectProgram,
         entry: ProfileMachineObservation,
@@ -5080,6 +5607,52 @@ fn validate_register_masked_output_rebased_entry(
     let observed = entry.output_len;
     if observed != expected {
         return Err(VerifiedRegisterMaskedInvocationError::EntryOutputLength {
+            expected,
+            observed,
+        });
+    }
+    Ok(())
+}
+
+fn validate_register_masked_jump_code_rebased_entry(
+    artifact_key: &NativeArtifactKey,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), VerifiedRegisterMaskedInvocationError> {
+    validate_register_masked_rebased_entry(artifact_key, program, entry)?;
+    let source_entry =
+        program.effects.first().map(|effect| effect.before).ok_or(
+            VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::ProgramShape,
+            ),
+        )?;
+    let expected = source_entry.registers.data_pointer;
+    let observed = entry.registers.data_pointer;
+    if observed != expected {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
+            expected,
+            observed,
+        });
+    }
+    Ok(())
+}
+
+fn validate_register_masked_jump_data_rebased_entry(
+    artifact_key: &NativeArtifactKey,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), VerifiedRegisterMaskedInvocationError> {
+    validate_register_masked_rebased_entry(artifact_key, program, entry)?;
+    let source_entry =
+        program.effects.first().map(|effect| effect.before).ok_or(
+            VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::ProgramShape,
+            ),
+        )?;
+    let expected = source_entry.registers.data_pointer;
+    let observed = entry.registers.data_pointer;
+    if observed != expected {
+        return Err(VerifiedRegisterMaskedInvocationError::EntryDataPointer {
             expected,
             observed,
         });

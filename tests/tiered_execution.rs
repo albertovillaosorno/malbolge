@@ -1859,6 +1859,26 @@ struct FakeRegisterMaskedInputNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedJumpCodeNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
+struct FakeRegisterMaskedJumpDataNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeRegisterMaskedOutputNativeRunner {
     behavior: FakeNativeRunnerBehavior,
     behaviors: Vec<FakeNativeRunnerBehavior>,
@@ -2708,6 +2728,32 @@ impl FakeRegisterMaskedInputNativeRunner {
         Self {
             behavior: FakeNativeRunnerBehavior::GuardMiss,
             behaviors,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
+impl FakeRegisterMaskedJumpCodeNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            behaviors: Vec::new(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
+impl FakeRegisterMaskedJumpDataNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            behaviors: Vec::new(),
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
@@ -3597,6 +3643,98 @@ impl RegisterMaskedInputNativeRunner for FakeRegisterMaskedInputNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedInputNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl en::RegisterMaskedJumpCodeNativeRunner
+    for FakeRegisterMaskedJumpCodeNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut en::PreparedRegisterMaskedJumpCodeNativeInvocation<
+            '_,
+            '_,
+        >,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        let behavior = self
+            .behaviors
+            .get(self.calls.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.behavior);
+        match behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl en::RegisterMaskedJumpDataNativeRunner
+    for FakeRegisterMaskedJumpDataNativeRunner
+{
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut en::PreparedRegisterMaskedJumpDataNativeInvocation<
+            '_,
+            '_,
+        >,
     ) -> Result<i32, Self::Error> {
         self.calls = self.calls.saturating_add(1);
         self.entry_addresses.push(invocation.entry_address());
@@ -7523,6 +7661,414 @@ fn assert_register_masked_jump_data_load_image(
         return Err(format!("v6 {isa:?} JumpData load-image contract drifted"));
     }
     Ok(())
+}
+
+fn verified_register_masked_jump_code(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<en::VerifiedRegisterMaskedJumpCodeNativeObjectArtifact, String> {
+    let candidate = en::emit_direct_register_masked_jump_code_coff(
+        program,
+        register_masked_jump_code_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpCode helper emit: {error}"))?;
+    en::verify_direct_register_masked_jump_code(&candidate, program)
+        .map_err(|error| format!("v6 {isa:?} JumpCode helper verify: {error}"))
+}
+
+fn verified_register_masked_jump_data(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<en::VerifiedRegisterMaskedJumpDataNativeObjectArtifact, String> {
+    let candidate = en::emit_direct_register_masked_jump_data_coff(
+        program,
+        register_masked_jump_data_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} JumpData helper emit: {error}"))?;
+    en::verify_direct_register_masked_jump_data(&candidate, program)
+        .map_err(|error| format!("v6 {isa:?} JumpData helper verify: {error}"))
+}
+
+const fn rebased_jump_entry(
+    source: ProfileMachineObservation,
+) -> ProfileMachineObservation {
+    let mut entry = source;
+    entry.registers.accumulator ^= 0x55aa_33cc;
+    entry.input_consumed = 1;
+    entry.output_len = 2;
+    entry
+}
+
+const fn rebased_jump_expected(
+    source: ProfileMachineObservation,
+    entry: ProfileMachineObservation,
+) -> ProfileMachineObservation {
+    ProfileMachineObservation {
+        input_consumed: entry.input_consumed,
+        output_len: entry.output_len,
+        registers: ProfileRegisters {
+            accumulator: entry.registers.accumulator,
+            ..source.registers
+        },
+        termination: source.termination,
+    }
+}
+
+fn apply_register_masked_jump_expected_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+    memory: &mut [u32],
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 jump expected effect missing"))?;
+    for write in [effect.memory_delta.data, effect.memory_delta.encryption]
+        .into_iter()
+        .flatten()
+    {
+        let address = usize::try_from(write.address)
+            .map_err(|error| format!("v6 jump expected address: {error}"))?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 jump expected write exceeds memory")
+        })?;
+        *cell = write.after;
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_code_invocation() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 JumpCode invocation effect missing")
+        })?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0xa1u8, 0xa2, 0xa3, 0xa4];
+    let mut output = [9u8, 8, 7, 6];
+    let expected_output = output;
+    let mut prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected
+        || prepared.load_image().key() != artifact.key()
+    {
+        return Err(String::from("v6 JumpCode rebased preparation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 JumpCode completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from("v6 JumpCode rebased application drifted"));
+    }
+    Ok(())
+}
+
+fn assert_register_masked_jump_data_invocation() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 JumpData invocation effect missing")
+        })?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0xb1u8, 0xb2, 0xb3, 0xb4];
+    let mut output = [6u8, 7, 8, 9];
+    let expected_output = output;
+    let mut prepared = en::PreparedRegisterMaskedJumpDataInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpData invocation prepare: {error}"))?;
+    if prepared.expected_observation() != expected
+        || prepared.load_image().key() != artifact.key()
+    {
+        return Err(String::from("v6 JumpData rebased preparation drifted"));
+    }
+    prepared.apply_expected_for_test();
+    let outcome = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v6 JumpData completion: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from("v6 JumpData rebased application drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_invocations_rebase_dead_state() -> TieredTestResult {
+    assert_register_masked_jump_code_invocation()?;
+    assert_register_masked_jump_data_invocation()
+}
+
+fn assert_register_masked_jump_code_loaded_execution() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let image = en::VerifiedRegisterMaskedJumpCodeLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 JumpCode loaded image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(987)?,
+        native_executable_address(0x23_0000)?,
+    );
+    let ready = en::load_register_masked_jump_code_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 JumpCode loaded executable: {error}"))?;
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 JumpCode loaded effect missing"))?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0xc1u8, 0xc2, 0xc3, 0xc4];
+    let mut output = [3u8, 4, 5, 6];
+    let expected_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode loaded prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_loaded_verified_register_masked_jump_code_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 JumpCode loaded execution: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 JumpCode loaded execution drifted"));
+    }
+    en::release_register_masked_jump_code_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 JumpCode loaded release: {error}"))
+}
+
+fn assert_register_masked_jump_data_loaded_execution() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let image = en::VerifiedRegisterMaskedJumpDataLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 JumpData loaded image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(988)?,
+        native_executable_address(0x24_0000)?,
+    );
+    let ready = en::load_register_masked_jump_data_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 JumpData loaded executable: {error}"))?;
+    let source = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 JumpData loaded effect missing"))?;
+    let entry = rebased_jump_entry(source.before);
+    let expected = rebased_jump_expected(source.after, entry);
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(&program, &mut expected_memory)?;
+    let input = [0xd1u8, 0xd2, 0xd3, 0xd4];
+    let mut output = [6u8, 5, 4, 3];
+    let expected_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpDataInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpData loaded prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = en::execute_loaded_verified_register_masked_jump_data_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 JumpData loaded execution: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != expected_memory
+        || output != expected_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 JumpData loaded execution drifted"));
+    }
+    en::release_register_masked_jump_data_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 JumpData loaded release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_loaded_runners_apply_rebased_state()
+-> TieredTestResult {
+    assert_register_masked_jump_code_loaded_execution()?;
+    assert_register_masked_jump_data_loaded_execution()
+}
+
+#[test]
+fn register_masked_v6_jump_code_loaded_runner_rejects_ready_drift()
+-> TieredTestResult {
+    let ready_program = canonical_register_masked_jump_code_program()?;
+    let ready_artifact =
+        verified_register_masked_jump_code(&ready_program, HostIsa::X86_64)?;
+    let image =
+        en::VerifiedRegisterMaskedJumpCodeLoadImage::new(&ready_artifact)
+            .map_err(|error| format!("v6 JumpCode drift image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(989)?,
+        native_executable_address(0x25_0000)?,
+    );
+    let ready = en::load_register_masked_jump_code_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 JumpCode drift load: {error}"))?;
+
+    let call_program = canonical_register_masked_jump_code_live_variant()?;
+    let call_artifact =
+        verified_register_masked_jump_code(&call_program, HostIsa::X86_64)?;
+    let source = call_program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 JumpCode drift effect missing"))?;
+    let entry = rebased_jump_entry(source.before);
+    let mut memory = register_masked_program_memory(&call_program)?;
+    let entry_memory = memory.clone();
+    let input = [0xe1u8, 0xe2, 0xe3, 0xe4];
+    let mut output = [1u8, 2, 3, 4];
+    let prepared = en::PreparedRegisterMaskedJumpCodeInvocation::new(
+        &call_artifact,
+        &call_program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpCode drift prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) =
+        en::execute_loaded_verified_register_masked_jump_code_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("v6 JumpCode ready drift was admitted"));
+    };
+    if error.binding_error()
+        != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || error.phase() != NativeExecutableExecutionPhase::Bind
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != [1u8, 2, 3, 4]
+    {
+        return Err(String::from(
+            "v6 JumpCode ready drift failed outside binding boundary",
+        ));
+    }
+    en::release_register_masked_jump_code_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 JumpCode drift release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_jump_data_runner_failure_rolls_back() -> TieredTestResult
+{
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let image = en::VerifiedRegisterMaskedJumpDataLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 JumpData rollback image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(990)?,
+        native_executable_address(0x26_0000)?,
+    );
+    let ready = en::load_register_masked_jump_data_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 JumpData rollback load: {error}"))?;
+    let source =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 JumpData rollback effect missing")
+        })?;
+    let entry = rebased_jump_entry(source.before);
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [0xf1u8, 0xf2, 0xf3, 0xf4];
+    let mut output = [4u8, 3, 2, 1];
+    let entry_output = output;
+    let prepared = en::PreparedRegisterMaskedJumpDataInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 JumpData rollback prepare: {error}"))?;
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) =
+        en::execute_loaded_verified_register_masked_jump_data_native(
+            &mut runner,
+            &ready,
+            prepared,
+        )
+    else {
+        return Err(String::from("v6 JumpData runner failure was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 JumpData runner rollback drifted"));
+    }
+    en::release_register_masked_jump_data_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 JumpData rollback release: {release}"))
 }
 
 fn assert_register_masked_jump_code_lifecycle(
