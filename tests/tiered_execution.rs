@@ -17962,6 +17962,410 @@ fn register_masked_v6_jump_owner_release_failures_retry_exact_mapping()
     assert_jump_data_owner_release_retry()
 }
 
+fn execute_jump_code_resident_lease_applied(
+    lease: &en::RegisterMaskedJumpCodeNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let effect =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 JumpCode resident effect missing")
+        })?;
+    let entry = rebased_jump_entry(effect.before);
+    let expected = rebased_jump_expected(effect.after, entry);
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(program, &mut expected_memory)?;
+    let input = [0xa5u8, 0xa6, 0xa7];
+    let mut output = [1u8, 3, 5];
+    let expected_output = output;
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 JumpCode resident execute: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == expected_output
+        && runner.calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode resident execution drifted"))
+    }
+}
+
+fn execute_jump_data_resident_lease_applied(
+    lease: &en::RegisterMaskedJumpDataNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> TieredTestResult {
+    let effect =
+        program.effects.first().copied().ok_or_else(|| {
+            String::from("v6 JumpData resident effect missing")
+        })?;
+    let entry = rebased_jump_entry(effect.before);
+    let expected = rebased_jump_expected(effect.after, entry);
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(program, &mut expected_memory)?;
+    let input = [0xb5u8, 0xb6, 0xb7];
+    let mut output = [5u8, 3, 1];
+    let expected_output = output;
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 JumpData resident execute: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == expected_output
+        && runner.calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData resident execution drifted"))
+    }
+}
+
+fn assert_jump_code_resident_hit() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_006)?,
+        native_executable_address(0x36_0000)?,
+    );
+    let mut cache = en::RegisterMaskedJumpCodeNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpCode resident insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpCode resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    execute_jump_code_resident_lease_applied(&first_lease, &program)?;
+    if first_disposition
+        != en::RegisterMaskedJumpCodeNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != en::RegisterMaskedJumpCodeNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpCode resident hit drifted"));
+    }
+    drop((first_lease, second_lease));
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode resident release: {error}"))?
+        != en::RegisterMaskedJumpCodeNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 JumpCode resident did not release"));
+    }
+    Ok(())
+}
+
+fn assert_jump_data_resident_hit() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_007)?,
+        native_executable_address(0x37_0000)?,
+    );
+    let mut cache = en::RegisterMaskedJumpDataNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpData resident insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpData resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    execute_jump_data_resident_lease_applied(&first_lease, &program)?;
+    if first_disposition
+        != en::RegisterMaskedJumpDataNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != en::RegisterMaskedJumpDataNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpData resident hit drifted"));
+    }
+    drop((first_lease, second_lease));
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v6 JumpData resident release: {error}"))?
+        != en::RegisterMaskedJumpDataNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 JumpData resident did not release"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_resident_cache_hits_without_adapter_work()
+-> TieredTestResult {
+    assert_jump_code_resident_hit()?;
+    assert_jump_data_resident_hit()
+}
+
+fn assert_jump_code_resident_identity_occupied() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let variant = canonical_register_masked_jump_code_live_variant()?;
+    let variant_artifact =
+        verified_register_masked_jump_code(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_008)?,
+        native_executable_address(0x38_0000)?,
+    );
+    let mut cache = en::RegisterMaskedJumpCodeNativeResidentLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpCode resident seed: {error}"))?
+        .into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from("v6 JumpCode resident replaced identity"));
+    };
+    if error.as_ref()
+        != &en::RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::
+            IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from("v6 JumpCode resident occupancy drifted"));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release_error| {
+            format!("v6 JumpCode occupancy release: {release_error}")
+        })?
+        != en::RegisterMaskedJumpCodeNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 JumpCode occupancy did not release"));
+    }
+    Ok(())
+}
+
+fn assert_jump_data_resident_identity_occupied() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let variant = canonical_register_masked_jump_data_live_variant()?;
+    let variant_artifact =
+        verified_register_masked_jump_data(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_009)?,
+        native_executable_address(0x39_0000)?,
+    );
+    let mut cache = en::RegisterMaskedJumpDataNativeResidentLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpData resident seed: {error}"))?
+        .into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from("v6 JumpData resident replaced identity"));
+    };
+    if error.as_ref()
+        != &en::RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::
+            IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from("v6 JumpData resident occupancy drifted"));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release_error| {
+            format!("v6 JumpData occupancy release: {release_error}")
+        })?
+        != en::RegisterMaskedJumpDataNativeResidentCacheRelease::Released
+    {
+        return Err(String::from("v6 JumpData occupancy did not release"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_resident_cache_rejects_identity_drift()
+-> TieredTestResult {
+    assert_jump_code_resident_identity_occupied()?;
+    assert_jump_data_resident_identity_occupied()
+}
+
+fn assert_jump_code_resident_load_failure() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_010)?,
+        native_executable_address(0x3a_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = en::RegisterMaskedJumpCodeNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 JumpCode resident ignored load failure"));
+    };
+    if !matches!(
+        error.as_ref(),
+        en::RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::Load(_)
+    ) || cache.has_resident()
+        || cache.resident_lease_count() != 0
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 JumpCode resident load failure drifted"));
+    }
+    Ok(())
+}
+
+fn assert_jump_data_resident_load_failure() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_011)?,
+        native_executable_address(0x3b_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = en::RegisterMaskedJumpDataNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 JumpData resident ignored load failure"));
+    };
+    if !matches!(
+        error.as_ref(),
+        en::RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::Load(_)
+    ) || cache.has_resident()
+        || cache.resident_lease_count() != 0
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 JumpData resident load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_jump_resident_cache_load_failure_atomic()
+-> TieredTestResult {
+    assert_jump_code_resident_load_failure()?;
+    assert_jump_data_resident_load_failure()
+}
+
+fn assert_jump_code_resident_release_retry() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_012)?,
+        native_executable_address(0x3c_0000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = en::RegisterMaskedJumpCodeNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpCode resident retry seed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v6 JumpCode resident ignored release failure",
+        ));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 JumpCode resident retry ownership drifted",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode resident retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode resident retry count drifted"))
+    }
+}
+
+fn assert_jump_data_resident_release_retry() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_013)?,
+        native_executable_address(0x3d_0000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = en::RegisterMaskedJumpDataNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 JumpData resident retry seed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v6 JumpData resident ignored release failure",
+        ));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 JumpData resident retry ownership drifted",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 JumpData resident retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData resident retry count drifted"))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_resident_cache_release_failure_retries()
+-> TieredTestResult {
+    assert_jump_code_resident_release_retry()?;
+    assert_jump_data_resident_release_retry()
+}
+
 #[test]
 fn register_masked_v6_input_owner_reuses_mapping_across_rebased_calls()
 -> TieredTestResult {

@@ -402,7 +402,11 @@ across valid rebased calls, expose platform mapping weight, recover from runner
 failure without remapping, and release with retryable ownership. Artifact/key
 drift fails before executable-memory adapter work.
 
-Residency, leases, and cache integration stay fail closed.
+Exact single-resident JumpCode and JumpData lease caches now reuse matching
+owners without adapter work, reject different resident identity, block release
+while leases are live, and preserve retryable cleanup ownership on failure.
+
+Weighted multi-resident residency and cache integration stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

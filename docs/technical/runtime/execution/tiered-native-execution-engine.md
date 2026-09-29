@@ -2368,7 +2368,13 @@ mapping across valid rebased calls. They reconstruct exact artifact/program
 identity before loading, report platform mapping weight, recover after runner
 failure without remapping, and release explicitly with retryable ownership.
 
-Residency, leases, and cache integration remain open and fail closed.
+Exact single-resident JumpCode and JumpData lease caches now reuse the matching
+owner without adapter work, reject different identity while occupied, block
+release under live leases, and transfer exact retryable cleanup ownership on
+release failure.
+
+Weighted multi-resident residency and cache integration remain open and fail
+closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

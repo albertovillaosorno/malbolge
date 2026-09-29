@@ -788,6 +788,144 @@ pub type RegisterMaskedInputNativeResidentReleaseResult<MemoryError> = Result<
     Box<RegisterMaskedInputNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
+/// Whether one `JumpCode` lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpCodeNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact `JumpCode` resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure<MemoryError> {
+    /// A different exact `JumpCode` identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedJumpCodeNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the `JumpCode` resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpCodeNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact `JumpCode` resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedJumpCodeNativeResidentLease {
+    resident: Arc<RegisterMaskedJumpCodeNativeExecutableOwner>,
+}
+
+/// Lease plus whether the `JumpCode` resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedJumpCodeNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedJumpCodeNativeResidentCacheDisposition,
+    lease: RegisterMaskedJumpCodeNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable `JumpCode` v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedJumpCodeNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedJumpCodeNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact `JumpCode` resident lease.
+pub type RegisterMaskedJumpCodeNativeResidentAcquireResult<MemoryError> =
+    Result<
+        RegisterMaskedJumpCodeNativeResidentCacheAcquisition,
+        Box<
+            RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure<
+                MemoryError,
+            >,
+        >,
+    >;
+
+/// Result of releasing the `JumpCode` resident after leases are gone.
+pub type RegisterMaskedJumpCodeNativeResidentReleaseResult<MemoryError> =
+    Result<
+        RegisterMaskedJumpCodeNativeResidentCacheRelease,
+        Box<RegisterMaskedJumpCodeNativeExecutableReleaseFailure<MemoryError>>,
+    >;
+
+/// Whether one `JumpData` lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpDataNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact `JumpData` resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpDataNativeResidentCacheAcquireFailure<MemoryError> {
+    /// A different exact `JumpData` identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedJumpDataNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the `JumpData` resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpDataNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact `JumpData` resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedJumpDataNativeResidentLease {
+    resident: Arc<RegisterMaskedJumpDataNativeExecutableOwner>,
+}
+
+/// Lease plus whether the `JumpData` resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedJumpDataNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedJumpDataNativeResidentCacheDisposition,
+    lease: RegisterMaskedJumpDataNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable `JumpData` v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedJumpDataNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedJumpDataNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact `JumpData` resident lease.
+pub type RegisterMaskedJumpDataNativeResidentAcquireResult<MemoryError> =
+    Result<
+        RegisterMaskedJumpDataNativeResidentCacheAcquisition,
+        Box<
+            RegisterMaskedJumpDataNativeResidentCacheAcquireFailure<
+                MemoryError,
+            >,
+        >,
+    >;
+
+/// Result of releasing the `JumpData` resident after leases are gone.
+pub type RegisterMaskedJumpDataNativeResidentReleaseResult<MemoryError> =
+    Result<
+        RegisterMaskedJumpDataNativeResidentCacheRelease,
+        Box<RegisterMaskedJumpDataNativeExecutableReleaseFailure<MemoryError>>,
+    >;
+
 /// Whether one Output lease acquisition loaded or reused the resident.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RegisterMaskedOutputNativeResidentCacheDisposition {
@@ -1408,6 +1546,32 @@ impl<MemoryError: Display> Display
         match self {
             Self::IdentityOccupied => {
                 f.write_str("different Input v6 identity already resident")
+            },
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => {
+                f.write_str("different JumpCode v6 identity already resident")
+            },
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedJumpDataNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => {
+                f.write_str("different JumpData v6 identity already resident")
             },
             Self::Load(error) => Display::fmt(error, f),
         }
@@ -3163,6 +3327,362 @@ impl RegisterMaskedInputNativeResidentLeaseCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         use RegisterMaskedInputNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+
+impl RegisterMaskedJumpCodeNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedJumpCodeNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedJumpCodeNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(&self) -> &RegisterMaskedJumpCodeNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedJumpCodeNativeResidentLease {
+    /// Executes through the resident `JumpCode` mapping without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedJumpCodeNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedJumpCodeNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident `JumpCode` v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedJumpCodeNativeResidentLeaseCache {
+    /// Loads or reuses one exact `JumpCode` v6 resident as an immutable lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    ) -> RegisterMaskedJumpCodeNativeResidentAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::
+                        IdentityOccupied,
+                ));
+            }
+            return Ok(RegisterMaskedJumpCodeNativeResidentCacheAcquisition {
+                disposition:
+                    RegisterMaskedJumpCodeNativeResidentCacheDisposition::Hit,
+                lease: RegisterMaskedJumpCodeNativeResidentLease {
+                    resident: Arc::clone(resident),
+                },
+            });
+        }
+        let loaded = RegisterMaskedJumpCodeNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| {
+            Box::new(
+                RegisterMaskedJumpCodeNativeResidentCacheAcquireFailure::Load(
+                    error,
+                ),
+            )
+        })?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedJumpCodeNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedJumpCodeNativeResidentCacheAcquisition {
+            disposition:
+                RegisterMaskedJumpCodeNativeResidentCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact `JumpCode` mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident `JumpCode` lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact `JumpCode` cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedJumpCodeNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedJumpCodeNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+
+impl RegisterMaskedJumpDataNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedJumpDataNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedJumpDataNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(&self) -> &RegisterMaskedJumpDataNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedJumpDataNativeResidentLease {
+    /// Executes through the resident `JumpData` mapping without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedJumpDataNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedJumpDataNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident `JumpData` v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedJumpDataNativeResidentLeaseCache {
+    /// Loads or reuses one exact `JumpData` v6 resident as an immutable lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+    ) -> RegisterMaskedJumpDataNativeResidentAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::
+                        IdentityOccupied,
+                ));
+            }
+            return Ok(RegisterMaskedJumpDataNativeResidentCacheAcquisition {
+                disposition:
+                    RegisterMaskedJumpDataNativeResidentCacheDisposition::Hit,
+                lease: RegisterMaskedJumpDataNativeResidentLease {
+                    resident: Arc::clone(resident),
+                },
+            });
+        }
+        let loaded = RegisterMaskedJumpDataNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| {
+            Box::new(
+                RegisterMaskedJumpDataNativeResidentCacheAcquireFailure::Load(
+                    error,
+                ),
+            )
+        })?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedJumpDataNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedJumpDataNativeResidentCacheAcquisition {
+            disposition:
+                RegisterMaskedJumpDataNativeResidentCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact `JumpData` mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident `JumpData` lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact `JumpData` cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedJumpDataNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedJumpDataNativeResidentCacheRelease as Release;
 
         let Some(resident) = self.resident.take() else {
             return Ok(Release::Missing);
