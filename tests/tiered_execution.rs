@@ -2040,6 +2040,15 @@ type JumpDataOwnerFixture = (
     RegisterMaskedRegionEffectProgram,
 );
 
+type RegisterMaskedJumpCodeWeightedVariant = (
+    RegisterMaskedRegionEffectProgram,
+    en::VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+);
+type RegisterMaskedJumpDataWeightedVariant = (
+    RegisterMaskedRegionEffectProgram,
+    en::VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+);
+
 type NonGraphicalSequencePlanError =
     RegisterMaskedNonGraphicalNativeSequencePlanError;
 
@@ -7745,6 +7754,278 @@ fn apply_register_masked_jump_expected_memory(
         *cell = write.after;
     }
     Ok(())
+}
+
+fn register_masked_jump_code_weighted_variants()
+-> Result<[RegisterMaskedJumpCodeWeightedVariant; 3], String> {
+    let base = canonical_register_masked_jump_code_program()?;
+    let dead = register_masked_jump_code_dead_state_variant(&base)?;
+    let live = canonical_register_masked_jump_code_live_variant()?;
+    let base_artifact =
+        verified_register_masked_jump_code(&base, HostIsa::X86_64)?;
+    let dead_artifact =
+        verified_register_masked_jump_code(&dead, HostIsa::X86_64)?;
+    let live_artifact =
+        verified_register_masked_jump_code(&live, HostIsa::X86_64)?;
+    Ok([
+        (base, base_artifact),
+        (dead, dead_artifact),
+        (live, live_artifact),
+    ])
+}
+
+fn register_masked_jump_data_weighted_variants()
+-> Result<[RegisterMaskedJumpDataWeightedVariant; 3], String> {
+    let base = canonical_register_masked_jump_data_program()?;
+    let dead = register_masked_jump_data_dead_state_variant(&base)?;
+    let live = canonical_register_masked_jump_data_live_variant()?;
+    let base_artifact =
+        verified_register_masked_jump_data(&base, HostIsa::X86_64)?;
+    let dead_artifact =
+        verified_register_masked_jump_data(&dead, HostIsa::X86_64)?;
+    let live_artifact =
+        verified_register_masked_jump_data(&live, HostIsa::X86_64)?;
+    Ok([
+        (base, base_artifact),
+        (dead, dead_artifact),
+        (live, live_artifact),
+    ])
+}
+
+fn finish_register_masked_jump_code_weighted_fifo(
+    cache: &mut en::RegisterMaskedJumpCodeLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    lease: en::RegisterMaskedJumpCodeLease,
+    keys: [&NativeArtifactKey; 2],
+) -> TieredTestResult {
+    let reconciled = cache
+        .return_lease(adapter, lease)
+        .map_err(|error| format!("v6 JumpCode weighted return: {error}"))?;
+    if reconciled.released_keys() != [keys[0].clone()]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 JumpCode weighted return drifted"));
+    }
+    let drained = cache
+        .release_all(adapter)
+        .map_err(|error| format!("v6 JumpCode weighted drain: {error}"))?;
+    if drained.released_keys() == [keys[1].clone()]
+        && drained.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_attempts == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode weighted drain drifted"))
+    }
+}
+
+fn assert_register_masked_jump_code_weighted_fifo() -> TieredTestResult {
+    let [first_variant, second_variant, third_variant] =
+        register_masked_jump_code_weighted_variants()?;
+    let first_key = first_variant.1.key().clone();
+    let second_key = second_variant.1.key().clone();
+    let third_key = third_variant.1.key().clone();
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero JumpCode weighted capacity"))?;
+    let mut cache = en::RegisterMaskedJumpCodeLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(996)?,
+        native_executable_address(0x2c_0000)?,
+    );
+    let first = cache
+        .ensure(&mut adapter, &first_variant.0, &first_variant.1)
+        .map_err(|error| format!("v6 JumpCode weighted first: {error}"))?;
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let hit = cache
+        .ensure(&mut adapter, &first_variant.0, &first_variant.1)
+        .map_err(|error| format!("v6 JumpCode weighted hit: {error}"))?;
+    if !hit.disposition().is_hit()
+        || !first_lease.shares_resident_with(hit.lease())
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpCode weighted hit remapped"));
+    }
+    drop(hit);
+    drop(
+        cache
+            .ensure(&mut adapter, &second_variant.0, &second_variant.1)
+            .map_err(|error| format!("v6 JumpCode weighted second: {error}"))?,
+    );
+    let third = cache
+        .ensure(&mut adapter, &third_variant.0, &third_variant.1)
+        .map_err(|error| format!("v6 JumpCode weighted third: {error}"))?;
+    if third.disposition().evicted_keys() != [first_key.clone(), second_key]
+        || third.disposition().retired_keys() != [first_key.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key.clone()]
+        || cache.retired_keys().cloned().collect::<Vec<_>>()
+            != [first_key.clone()]
+        || cache.usage().entries() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 JumpCode weighted FIFO drifted"));
+    }
+    drop(third);
+    finish_register_masked_jump_code_weighted_fifo(
+        &mut cache,
+        &mut adapter,
+        first_lease,
+        [&first_key, &third_key],
+    )
+}
+
+fn finish_register_masked_jump_data_weighted_retry(
+    cache: &mut en::RegisterMaskedJumpDataLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    variant: &RegisterMaskedJumpDataWeightedVariant,
+    key: &NativeArtifactKey,
+) -> TieredTestResult {
+    drop(
+        cache
+            .ensure(adapter, &variant.0, &variant.1)
+            .map_err(|error| format!("v6 JumpData weighted second: {error}"))?,
+    );
+    let Err(failure) = cache.release_all(adapter) else {
+        return Err(String::from("v6 JumpData release failure was ignored"));
+    };
+    let failed_key = failure
+        .failures()
+        .first()
+        .map(en::RegisterMaskedJumpDataLeaseCacheEntryReleaseFailure::key);
+    if failure.failures().len() != 1
+        || failed_key != Some(key)
+        || !cache.is_empty()
+        || adapter.release_attempts != 3
+    {
+        return Err(String::from("v6 JumpData release ownership drifted"));
+    }
+    let retried = failure
+        .retry(adapter)
+        .map_err(|error| format!("v6 JumpData weighted retry: {error}"))?;
+    if retried.released_keys() == [key.clone()]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData weighted retry drifted"))
+    }
+}
+
+fn assert_register_masked_jump_data_weighted_block_retry() -> TieredTestResult {
+    let [first_variant, second_variant, _unused_variant] =
+        register_masked_jump_data_weighted_variants()?;
+    let first_key = first_variant.1.key().clone();
+    let second_key = second_variant.1.key().clone();
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("zero JumpData weighted capacity"))?;
+    let mut cache = en::RegisterMaskedJumpDataLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(997)?,
+        native_executable_address(0x2d_0000)?,
+    )
+    .with_release_failure_at(3);
+    let lease = cache
+        .ensure(&mut adapter, &first_variant.0, &first_variant.1)
+        .map_err(|error| format!("v6 JumpData weighted first: {error}"))?
+        .into_lease();
+    let Err(blocked) =
+        cache.ensure(&mut adapter, &second_variant.0, &second_variant.1)
+    else {
+        return Err(String::from("v6 JumpData live lease did not block"));
+    };
+    let block = blocked
+        .block()
+        .ok_or_else(|| String::from("v6 JumpData block evidence missing"))?;
+    if block.retired_keys() != [first_key.clone()]
+        || blocked.evicted_keys() != [first_key.clone()]
+        || blocked.retired_keys() != [first_key.clone()]
+        || blocked.candidate_cleanup_failure().is_some()
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 JumpData blockage drifted"));
+    }
+    let returned = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("v6 JumpData weighted return: {error}"))?;
+    if returned.released_keys() != [first_key]
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 JumpData blocked return drifted"));
+    }
+    finish_register_masked_jump_data_weighted_retry(
+        &mut cache,
+        &mut adapter,
+        &second_variant,
+        &second_key,
+    )
+}
+
+fn assert_register_masked_jump_code_weighted_reconfigure() -> TieredTestResult {
+    let [first_variant, second_variant, _unused_variant] =
+        register_masked_jump_code_weighted_variants()?;
+    let first_key = first_variant.1.key().clone();
+    let second_key = second_variant.1.key().clone();
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero JumpCode weighted capacity"))?;
+    let limits = NativeExecutableSequenceCacheLimits::new(capacity);
+    let mut cache = en::RegisterMaskedJumpCodeLeaseCache::with_limits(limits);
+    let base_adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(998)?,
+        native_executable_address(0x2e_0000)?,
+    );
+    let mut adapter = base_adapter.with_mapped_len_overrides(vec![4096, 4096]);
+    drop(
+        cache
+            .ensure(&mut adapter, &first_variant.0, &first_variant.1)
+            .map_err(|error| format!("v6 JumpCode shrink first: {error}"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &second_variant.0, &second_variant.1)
+            .map_err(|error| format!("v6 JumpCode shrink second: {error}"))?,
+    );
+    let requested = NativeExecutableSequenceCacheLimits::new(capacity)
+        .with_mapped_byte_limit(
+            NonZeroUsize::new(4096)
+                .ok_or_else(|| String::from("zero JumpCode byte limit"))?,
+        );
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 JumpCode weighted shrink: {error}"))?;
+    if result.limit_transition() != (limits, requested)
+        || result.evicted_keys() != [first_key]
+        || !result.retired_keys().is_empty()
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.usage().mapped_bytes() != 4096
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 JumpCode weighted shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 JumpCode shrink cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_weighted_cache_fifo() -> TieredTestResult {
+    assert_register_masked_jump_code_weighted_fifo()
+}
+
+#[test]
+fn register_masked_v6_jump_weighted_cache_block_retry() -> TieredTestResult {
+    assert_register_masked_jump_data_weighted_block_retry()
+}
+
+#[test]
+fn register_masked_v6_jump_weighted_cache_reconfigure() -> TieredTestResult {
+    assert_register_masked_jump_code_weighted_reconfigure()
 }
 
 fn assert_register_masked_jump_code_invocation() -> TieredTestResult {

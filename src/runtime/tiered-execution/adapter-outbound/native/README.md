@@ -406,7 +406,13 @@ Exact single-resident JumpCode and JumpData lease caches now reuse matching
 owners without adapter work, reject different resident identity, block release
 while leases are live, and preserve retryable cleanup ownership on failure.
 
-Weighted multi-resident residency and cache integration stay fail closed.
+Weighted multi-resident JumpCode and JumpData lease caches now retain exact
+owners under FIFO entry/mapping/byte limits. Hits do not refresh age, live
+victims retire with charged weight, and release/reconfiguration failures retain
+keyed cleanup ownership for retry.
+
+JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
+cache integration stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code

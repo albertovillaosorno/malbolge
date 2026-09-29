@@ -94,6 +94,8 @@ mod register_masked_input_loaded_sequence;
 mod register_masked_input_sequence;
 mod register_masked_input_sequence_cache;
 mod register_masked_input_sequence_execution;
+mod register_masked_jump_code_lease_cache;
+mod register_masked_jump_data_lease_cache;
 mod register_masked_lease_cache;
 mod register_masked_no_operation_loaded_sequence;
 mod register_masked_no_operation_sequence;
@@ -1002,6 +1004,50 @@ pub use register_masked_input_sequence_execution::{
     RegisterMaskedInputNativeSequenceExecutionResult,
     RegisterMaskedInputNativeSequenceOutcome,
     execute_loaded_register_masked_input_native_sequence,
+};
+pub use register_masked_jump_code_lease_cache::{
+    RegisterMaskedJumpCodeLease, RegisterMaskedJumpCodeLeaseCache,
+    RegisterMaskedJumpCodeLeaseCacheAcquisition,
+    RegisterMaskedJumpCodeLeaseCacheBlock,
+    RegisterMaskedJumpCodeLeaseCacheCapacityError,
+    RegisterMaskedJumpCodeLeaseCacheDisposition,
+    RegisterMaskedJumpCodeLeaseCacheEntryReleaseFailure,
+    RegisterMaskedJumpCodeLeaseCacheInvalidation,
+    RegisterMaskedJumpCodeLeaseCacheInvalidationResult,
+    RegisterMaskedJumpCodeLeaseCacheLimits,
+    RegisterMaskedJumpCodeLeaseCacheLoadFailure,
+    RegisterMaskedJumpCodeLeaseCacheLoadReleaseFailures,
+    RegisterMaskedJumpCodeLeaseCacheLoadResult,
+    RegisterMaskedJumpCodeLeaseCacheReconciliationResult,
+    RegisterMaskedJumpCodeLeaseCacheReconfiguration,
+    RegisterMaskedJumpCodeLeaseCacheReconfigurationFailure,
+    RegisterMaskedJumpCodeLeaseCacheReconfigurationResult,
+    RegisterMaskedJumpCodeLeaseCacheReleaseFailure,
+    RegisterMaskedJumpCodeLeaseCacheReleaseResult,
+    RegisterMaskedJumpCodeLeaseCacheReleaseSummary,
+    RegisterMaskedJumpCodeLeaseCacheUsage,
+};
+pub use register_masked_jump_data_lease_cache::{
+    RegisterMaskedJumpDataLease, RegisterMaskedJumpDataLeaseCache,
+    RegisterMaskedJumpDataLeaseCacheAcquisition,
+    RegisterMaskedJumpDataLeaseCacheBlock,
+    RegisterMaskedJumpDataLeaseCacheCapacityError,
+    RegisterMaskedJumpDataLeaseCacheDisposition,
+    RegisterMaskedJumpDataLeaseCacheEntryReleaseFailure,
+    RegisterMaskedJumpDataLeaseCacheInvalidation,
+    RegisterMaskedJumpDataLeaseCacheInvalidationResult,
+    RegisterMaskedJumpDataLeaseCacheLimits,
+    RegisterMaskedJumpDataLeaseCacheLoadFailure,
+    RegisterMaskedJumpDataLeaseCacheLoadReleaseFailures,
+    RegisterMaskedJumpDataLeaseCacheLoadResult,
+    RegisterMaskedJumpDataLeaseCacheReconciliationResult,
+    RegisterMaskedJumpDataLeaseCacheReconfiguration,
+    RegisterMaskedJumpDataLeaseCacheReconfigurationFailure,
+    RegisterMaskedJumpDataLeaseCacheReconfigurationResult,
+    RegisterMaskedJumpDataLeaseCacheReleaseFailure,
+    RegisterMaskedJumpDataLeaseCacheReleaseResult,
+    RegisterMaskedJumpDataLeaseCacheReleaseSummary,
+    RegisterMaskedJumpDataLeaseCacheUsage,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,

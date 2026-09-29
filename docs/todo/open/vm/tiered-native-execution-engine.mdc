@@ -975,8 +975,13 @@ behavior.
   occupied, block release under live leases, and transfer retryable cleanup
   ownership on release failure.
 
-  Weighted multi-resident residency and cache integration remain open and fail
-  closed.
+  Weighted multi-resident JumpCode and JumpData lease caches now reuse exact
+  owners under FIFO limits without refreshing hit age. Live victims retire
+  while retaining charged weight; invalidation, release, lease return,
+  reconciliation, and limit changes preserve keyed cleanup retry ownership.
+
+  JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
+  cache integration remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

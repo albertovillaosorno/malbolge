@@ -2373,8 +2373,15 @@ owner without adapter work, reject different identity while occupied, block
 release under live leases, and transfer exact retryable cleanup ownership on
 release failure.
 
-Weighted multi-resident residency and cache integration remain open and fail
-closed.
+Weighted multi-resident JumpCode and JumpData lease caches now reuse exact
+owners under FIFO entry/mapping/byte limits without refreshing hit age. Live
+victims retire while retaining charged weight, and failed release transfers
+keyed retry ownership instead of restoring stale lookup authority. Explicit
+invalidation, lease return, retired reconciliation, full drain, and
+transactional limit changes all use the same release-or-retire accounting.
+
+JumpCode/JumpData sequence planning, loaded-sequence execution, and sequence
+cache integration remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.
