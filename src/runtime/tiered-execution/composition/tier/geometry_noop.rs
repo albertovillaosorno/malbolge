@@ -592,11 +592,9 @@ impl ExecutionGeometryNativeNoOperationAdmission {
                 input,
                 output,
             )
-            .map_err(|error| {
-                ExecutionGeometryNativeNoOperationPreparationError::Invocation(
-                    error,
-                )
-            })?;
+            .map_err(
+                ExecutionGeometryNativeNoOperationPreparationError::Invocation,
+            )?;
         Ok(PreparedExecutionGeometryNativeNoOperation {
             admission: self,
             invocation,

@@ -422,6 +422,10 @@ impl PreparedExecutionGeometryDirectTarget {
 }
 
 impl PreparedDirectTarget {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive verifier mapping stays explicit for review"
+    )]
     fn admit_verified_candidate(
         self,
         program: &RegionEffectProgram,

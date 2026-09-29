@@ -1659,6 +1659,7 @@ type CrazyTheoremSequenceTriple = (
 type AotGraphStateResult = Result<ProfileMachineState, String>;
 type AotRegisterMaskedMultiStepFixture =
     (ProfileMachineState, RegisterMaskedRegionEffectProgram);
+type TestInstalledJit = (Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter);
 type TieredTestResult = Result<(), String>;
 type V6GraphError = en::AheadOfExecutionRegisterMaskedStateGraphError;
 type V6GraphPreparationError<'requirement> =
@@ -41166,7 +41167,7 @@ fn test_installed_jit(
     program: &RegionEffectProgram,
     mapping_id: NativeExecutableMappingId,
     base_address: NonZeroUsize,
-) -> Result<(Box<NativeTierInstalledJit>, FakeNativeExecutableAdapter), String> {
+) -> Result<TestInstalledJit, String> {
     let schedule = test_promoted_jit_schedule_for(program)?;
     let canonical = select_verified_direct_native(
         program,
