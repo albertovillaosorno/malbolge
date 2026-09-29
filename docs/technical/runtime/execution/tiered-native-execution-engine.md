@@ -2363,8 +2363,12 @@ the committed outcome plus exact ready mapping when final release fails. Load
 failure never calls the runner, and runner/completion failure attempts exact
 mapping cleanup before returning phase-tagged evidence.
 
-Reusable ownership, residency, and cache integration remain open and fail
-closed.
+Reusable JumpCode and JumpData owners now retain one exact synchronized
+mapping across valid rebased calls. They reconstruct exact artifact/program
+identity before loading, report platform mapping weight, recover after runner
+failure without remapping, and release explicitly with retryable ownership.
+
+Residency, leases, and cache integration remain open and fail closed.
 
 The ordinary direct path now exposes process-local transactional AOT
 preparation plus read-only lookup over a sealed verified artifact set.

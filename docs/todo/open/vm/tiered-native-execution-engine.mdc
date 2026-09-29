@@ -965,8 +965,12 @@ behavior.
   Complete load/call/release wrappers now clean failed calls exactly and
   preserve committed outcomes when final release fails. Cleanup retains the
   exact ready mapping for retry, while load failure never calls the runner.
-  Reusable ownership, residency, and cache integration remain open and fail
-  closed.
+  Reusable JumpCode and JumpData owners now retain one exact synchronized
+  mapping across valid rebased calls, report platform mapping weight, recover
+  after runner failure without remapping, and release explicitly with retryable
+  ownership. Artifact/program identity drift fails before adapter work.
+
+  Residency, leases, and cache integration remain open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained

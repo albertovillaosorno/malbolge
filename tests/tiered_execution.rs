@@ -2029,6 +2029,17 @@ struct RegisterMaskedSequencePlanFixture {
     program: RegisterMaskedRegionEffectProgram,
 }
 
+type JumpCodeOwnerFixture = (
+    FakeNativeExecutableAdapter,
+    en::RegisterMaskedJumpCodeNativeExecutableOwner,
+    RegisterMaskedRegionEffectProgram,
+);
+type JumpDataOwnerFixture = (
+    FakeNativeExecutableAdapter,
+    en::RegisterMaskedJumpDataNativeExecutableOwner,
+    RegisterMaskedRegionEffectProgram,
+);
+
 type NonGraphicalSequencePlanError =
     RegisterMaskedNonGraphicalNativeSequencePlanError;
 
@@ -17429,6 +17440,526 @@ fn register_masked_v6_crazy_owner_recovers_after_runner_failure()
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 Crazy owner release: {release}"))
+}
+
+fn load_jump_code_owner(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<JumpCodeOwnerFixture, String> {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = en::RegisterMaskedJumpCodeNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpCode owner load: {error}"))?;
+    Ok((adapter, owner, program))
+}
+
+fn load_jump_data_owner(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<JumpDataOwnerFixture, String> {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = en::RegisterMaskedJumpDataNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpData owner load: {error}"))?;
+    Ok((adapter, owner, program))
+}
+
+fn execute_jump_code_owner_applied(
+    owner: &en::RegisterMaskedJumpCodeNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedJumpCodeNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 JumpCode owner effect missing"))?;
+    let expected = rebased_jump_expected(effect.after, entry);
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(program, &mut expected_memory)?;
+    let input = [0x61u8, 0x62, 0x63];
+    let mut output = [7u8, 8, 9];
+    let entry_output = output;
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 JumpCode owner execute: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode owner application drifted"))
+    }
+}
+
+fn execute_jump_data_owner_applied(
+    owner: &en::RegisterMaskedJumpDataNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedJumpDataNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> TieredTestResult {
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 JumpData owner effect missing"))?;
+    let expected = rebased_jump_expected(effect.after, entry);
+    let mut memory = register_masked_program_memory(program)?;
+    let mut expected_memory = memory.clone();
+    apply_register_masked_jump_expected_memory(program, &mut expected_memory)?;
+    let input = [0x71u8, 0x72, 0x73];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 JumpData owner execute: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == expected_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData owner application drifted"))
+    }
+}
+
+fn assert_jump_code_owner_reuse() -> TieredTestResult {
+    let (mut adapter, owner, program) = load_jump_code_owner(996, 0x2c_0000)?;
+    let loaded_operations = adapter.operations.clone();
+    let source = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 JumpCode owner reuse effect missing"))?
+        .before;
+    let mapping_id = owner.executable().mapping().mapping_id();
+    let mut runner = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (accumulator, input_consumed, output_len) in
+        [(0x1111, 0, 1), (0x2222, 2, 2)]
+    {
+        let mut entry = source;
+        entry.registers.accumulator = accumulator;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_jump_code_owner_applied(&owner, &mut runner, &program, entry)?;
+    }
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 JumpCode owner reuse drifted"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode owner release: {error}"))
+}
+
+fn assert_jump_data_owner_reuse() -> TieredTestResult {
+    let (mut adapter, owner, program) = load_jump_data_owner(997, 0x2d_0000)?;
+    let loaded_operations = adapter.operations.clone();
+    let source = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 JumpData owner reuse effect missing"))?
+        .before;
+    let mapping_id = owner.executable().mapping().mapping_id();
+    let mut runner = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (accumulator, input_consumed, output_len) in
+        [(0x3333, 1, 0), (0x4444, 2, 2)]
+    {
+        let mut entry = source;
+        entry.registers.accumulator = accumulator;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_jump_data_owner_applied(&owner, &mut runner, &program, entry)?;
+    }
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 JumpData owner reuse drifted"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpData owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_owners_reuse_mapping() -> TieredTestResult {
+    assert_jump_code_owner_reuse()?;
+    assert_jump_data_owner_reuse()
+}
+
+fn assert_jump_code_owner_weight() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(998)?,
+        native_executable_address(0x2e_0000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = en::RegisterMaskedJumpCodeNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpCode weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from("v6 JumpCode owner weight drifted"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpCode weighted owner release: {error}"))
+}
+
+fn assert_jump_data_owner_weight() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mapped_len = 20_480;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(999)?,
+        native_executable_address(0x2f_0000)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = en::RegisterMaskedJumpDataNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpData weighted owner load: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from("v6 JumpData owner weight drifted"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 JumpData weighted owner release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_jump_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    assert_jump_code_owner_weight()?;
+    assert_jump_data_owner_weight()
+}
+
+fn assert_jump_code_owner_run_failure(
+    error: &en::RegisterMaskedJumpCodeNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> TieredTestResult {
+    match error {
+        en::RegisterMaskedJumpCodeNativeOwnerExecutionFailure::Execution(
+            failure,
+        ) if failure.phase() == NativeExecutableExecutionPhase::Run => Ok(()),
+        en::RegisterMaskedJumpCodeNativeOwnerExecutionFailure::Execution(_) => {
+            Err(String::from("v6 JumpCode owner failure lost run phase"))
+        },
+        en::RegisterMaskedJumpCodeNativeOwnerExecutionFailure::Preparation(
+            _,
+        ) => Err(String::from("v6 JumpCode owner failure became preparation")),
+    }
+}
+
+fn assert_jump_data_owner_run_failure(
+    error: &en::RegisterMaskedJumpDataNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> TieredTestResult {
+    match error {
+        en::RegisterMaskedJumpDataNativeOwnerExecutionFailure::Execution(
+            failure,
+        ) if failure.phase() == NativeExecutableExecutionPhase::Run => Ok(()),
+        en::RegisterMaskedJumpDataNativeOwnerExecutionFailure::Execution(_) => {
+            Err(String::from("v6 JumpData owner failure lost run phase"))
+        },
+        en::RegisterMaskedJumpDataNativeOwnerExecutionFailure::Preparation(
+            _,
+        ) => Err(String::from("v6 JumpData owner failure became preparation")),
+    }
+}
+
+fn assert_jump_code_owner_recovery() -> TieredTestResult {
+    let (mut adapter, owner, program) = load_jump_code_owner(1_000, 0x30_0000)?;
+    let loaded_operations = adapter.operations.clone();
+    let source = program
+        .effects
+        .first()
+        .ok_or_else(|| {
+            String::from("v6 JumpCode owner recovery effect missing")
+        })?
+        .before;
+    let mut entry = source;
+    entry.registers.accumulator ^= 0x5555;
+    entry.input_consumed = 2;
+    entry.output_len = 2;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [0x81u8, 0x82, 0x83];
+    let mut output = [1u8, 3, 5, 7];
+    let entry_output = output;
+    let mut failing = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 JumpCode owner ignored runner failure"));
+    };
+    assert_jump_code_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpCode owner failure changed state"));
+    }
+    let mut succeeding = FakeRegisterMaskedJumpCodeNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_jump_code_owner_applied(&owner, &mut succeeding, &program, entry)?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from("v6 JumpCode owner remapped after failure"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 JumpCode recovery release: {release}"))
+}
+
+fn assert_jump_data_owner_recovery() -> TieredTestResult {
+    let (mut adapter, owner, program) = load_jump_data_owner(1_001, 0x31_0000)?;
+    let loaded_operations = adapter.operations.clone();
+    let source = program
+        .effects
+        .first()
+        .ok_or_else(|| {
+            String::from("v6 JumpData owner recovery effect missing")
+        })?
+        .before;
+    let mut entry = source;
+    entry.registers.accumulator ^= 0x6666;
+    entry.input_consumed = 1;
+    entry.output_len = 2;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [0x91u8, 0x92, 0x93];
+    let mut output = [2u8, 4, 6, 8];
+    let entry_output = output;
+    let mut failing = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 JumpData owner ignored runner failure"));
+    };
+    assert_jump_data_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory
+        || output != entry_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 JumpData owner failure changed state"));
+    }
+    let mut succeeding = FakeRegisterMaskedJumpDataNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_jump_data_owner_applied(&owner, &mut succeeding, &program, entry)?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from("v6 JumpData owner remapped after failure"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 JumpData recovery release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_jump_owners_recover_after_runner_failure()
+-> TieredTestResult {
+    assert_jump_code_owner_recovery()?;
+    assert_jump_data_owner_recovery()
+}
+
+fn assert_jump_code_owner_identity_drift() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let variant = canonical_register_masked_jump_code_live_variant()?;
+    let artifact =
+        verified_register_masked_jump_code(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_002)?,
+        native_executable_address(0x32_0000)?,
+    );
+    let Err(error) = en::RegisterMaskedJumpCodeNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    ) else {
+        return Err(String::from("v6 JumpCode owner admitted identity drift"));
+    };
+    if matches!(
+        error.as_ref(),
+        en::RegisterMaskedJumpCodeNativeOwnerLoadFailure::ArtifactIdentity
+    ) && adapter.operations.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpCode owner identity drifted late"))
+    }
+}
+
+fn assert_jump_data_owner_identity_drift() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let variant = canonical_register_masked_jump_data_live_variant()?;
+    let artifact =
+        verified_register_masked_jump_data(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_003)?,
+        native_executable_address(0x33_0000)?,
+    );
+    let Err(error) = en::RegisterMaskedJumpDataNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    ) else {
+        return Err(String::from("v6 JumpData owner admitted identity drift"));
+    };
+    if matches!(
+        error.as_ref(),
+        en::RegisterMaskedJumpDataNativeOwnerLoadFailure::ArtifactIdentity
+    ) && adapter.operations.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 JumpData owner identity drifted late"))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_owners_reject_artifact_identity_drift()
+-> TieredTestResult {
+    assert_jump_code_owner_identity_drift()?;
+    assert_jump_data_owner_identity_drift()
+}
+
+fn assert_jump_code_owner_release_retry() -> TieredTestResult {
+    let program = canonical_register_masked_jump_code_program()?;
+    let artifact =
+        verified_register_masked_jump_code(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_004)?,
+        native_executable_address(0x34_0000)?,
+    )
+    .with_release_failures(1);
+    let owner = en::RegisterMaskedJumpCodeNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpCode retry owner load: {error}"))?;
+    let key = owner.key().clone();
+    let Err(failure) = owner.release(&mut adapter) else {
+        return Err(String::from("v6 JumpCode owner release failure ignored"));
+    };
+    if failure.executable().key() != &key || adapter.release_attempts != 1 {
+        return Err(String::from("v6 JumpCode release ownership drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| format!("v6 JumpCode owner release retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 JumpCode owner release retry count drifted",
+        ))
+    }
+}
+
+fn assert_jump_data_owner_release_retry() -> TieredTestResult {
+    let program = canonical_register_masked_jump_data_program()?;
+    let artifact =
+        verified_register_masked_jump_data(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(1_005)?,
+        native_executable_address(0x35_0000)?,
+    )
+    .with_release_failures(1);
+    let owner = en::RegisterMaskedJumpDataNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 JumpData retry owner load: {error}"))?;
+    let key = owner.key().clone();
+    let Err(failure) = owner.release(&mut adapter) else {
+        return Err(String::from("v6 JumpData owner release failure ignored"));
+    };
+    if failure.executable().key() != &key || adapter.release_attempts != 1 {
+        return Err(String::from("v6 JumpData release ownership drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| format!("v6 JumpData owner release retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 JumpData owner release retry count drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_jump_owner_release_failures_retry_exact_mapping()
+-> TieredTestResult {
+    assert_jump_code_owner_release_retry()?;
+    assert_jump_data_owner_release_retry()
 }
 
 #[test]

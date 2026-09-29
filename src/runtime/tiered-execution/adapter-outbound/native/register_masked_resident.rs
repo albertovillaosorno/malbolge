@@ -47,6 +47,8 @@ use super::direct::{
     VerifiedRegisterMaskedCrazyNativeObjectArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInputNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputNativeObjectArtifact,
@@ -57,6 +59,8 @@ use super::invocation::{
     PreparedRegisterMaskedCrazyInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedInputInvocation,
+    PreparedRegisterMaskedJumpCodeInvocation,
+    PreparedRegisterMaskedJumpDataInvocation,
     PreparedRegisterMaskedNoOperationInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
     PreparedRegisterMaskedOutputInvocation,
@@ -66,6 +70,8 @@ use super::invocation::{
 use super::lifecycle::{
     ReadyRegisterMaskedCrazyNativeExecutable,
     ReadyRegisterMaskedInputNativeExecutable,
+    ReadyRegisterMaskedJumpCodeNativeExecutable,
+    ReadyRegisterMaskedJumpDataNativeExecutable,
     ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNoOperationNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
@@ -74,7 +80,9 @@ use super::lifecycle::{
 };
 use super::loader::{
     VerifiedDirectLoadError, VerifiedRegisterMaskedCrazyLoadImage,
-    VerifiedRegisterMaskedInputLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedInputLoadImage,
+    VerifiedRegisterMaskedJumpCodeLoadImage,
+    VerifiedRegisterMaskedJumpDataLoadImage, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNoOperationLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
     VerifiedRegisterMaskedOutputLoadImage,
@@ -84,6 +92,8 @@ use super::platform::{
     NativeExecutableLoadFailure, NativeExecutableMemoryAdapter,
     RegisterMaskedCrazyNativeExecutableReleaseFailure,
     RegisterMaskedInputNativeExecutableReleaseFailure,
+    RegisterMaskedJumpCodeNativeExecutableReleaseFailure,
+    RegisterMaskedJumpDataNativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNoOperationNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
@@ -91,6 +101,8 @@ use super::platform::{
     RegisterMaskedRotateNativeExecutableReleaseFailure,
     load_register_masked_crazy_native_executable,
     load_register_masked_input_native_executable,
+    load_register_masked_jump_code_native_executable,
+    load_register_masked_jump_data_native_executable,
     load_register_masked_native_executable,
     load_register_masked_no_operation_native_executable,
     load_register_masked_non_graphical_native_executable,
@@ -98,6 +110,8 @@ use super::platform::{
     load_register_masked_rotate_native_executable,
     release_register_masked_crazy_native_executable,
     release_register_masked_input_native_executable,
+    release_register_masked_jump_code_native_executable,
+    release_register_masked_jump_data_native_executable,
     release_register_masked_native_executable,
     release_register_masked_no_operation_native_executable,
     release_register_masked_non_graphical_native_executable,
@@ -107,7 +121,11 @@ use super::platform::{
 use super::runner::{
     RegisterMaskedCrazyLoadedExecutionFailure, RegisterMaskedCrazyNativeRunner,
     RegisterMaskedInputLoadedExecutionFailure, RegisterMaskedInputNativeRunner,
-    RegisterMaskedLoadedExecutionFailure, RegisterMaskedNativeRunner,
+    RegisterMaskedJumpCodeLoadedExecutionFailure,
+    RegisterMaskedJumpCodeNativeRunner,
+    RegisterMaskedJumpDataLoadedExecutionFailure,
+    RegisterMaskedJumpDataNativeRunner, RegisterMaskedLoadedExecutionFailure,
+    RegisterMaskedNativeRunner,
     RegisterMaskedNoOperationLoadedExecutionFailure,
     RegisterMaskedNoOperationNativeRunner,
     RegisterMaskedNonGraphicalLoadedExecutionFailure,
@@ -118,6 +136,8 @@ use super::runner::{
     RegisterMaskedRotateNativeRunner,
     execute_loaded_verified_register_masked_crazy_native,
     execute_loaded_verified_register_masked_input_native,
+    execute_loaded_verified_register_masked_jump_code_native,
+    execute_loaded_verified_register_masked_jump_data_native,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_no_operation_native,
     execute_loaded_verified_register_masked_non_graphical_native,
@@ -188,6 +208,50 @@ pub enum RegisterMaskedInputNativeOwnerLoadFailure<MemoryError> {
 pub enum RegisterMaskedInputNativeOwnerExecutionFailure<RunnerError> {
     /// Bound runner or completion admission failed.
     Execution(Box<RegisterMaskedInputLoadedExecutionFailure<RunnerError>>),
+    /// Rebased caller state failed exact v6 invocation preparation.
+    Preparation(VerifiedRegisterMaskedInvocationError),
+}
+
+/// Failure while loading one reusable v6 `JumpCode` mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpCodeNativeOwnerLoadFailure<MemoryError> {
+    /// Verified artifact identity differs from the requested v6 program.
+    ArtifactIdentity,
+    /// Exact v6 native identity could not be reconstructed.
+    Identity(Box<NativeIdentityError>),
+    /// Verified object could not become one relocation-free load image.
+    Image(Box<VerifiedDirectLoadError>),
+    /// Platform mapping/lifecycle admission failed.
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+}
+
+/// Failure while executing through one retained v6 `JumpCode` mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpCodeNativeOwnerExecutionFailure<RunnerError> {
+    /// Bound runner or completion admission failed.
+    Execution(Box<RegisterMaskedJumpCodeLoadedExecutionFailure<RunnerError>>),
+    /// Rebased caller state failed exact v6 invocation preparation.
+    Preparation(VerifiedRegisterMaskedInvocationError),
+}
+
+/// Failure while loading one reusable v6 `JumpData` mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpDataNativeOwnerLoadFailure<MemoryError> {
+    /// Verified artifact identity differs from the requested v6 program.
+    ArtifactIdentity,
+    /// Exact v6 native identity could not be reconstructed.
+    Identity(Box<NativeIdentityError>),
+    /// Verified object could not become one relocation-free load image.
+    Image(Box<VerifiedDirectLoadError>),
+    /// Platform mapping/lifecycle admission failed.
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+}
+
+/// Failure while executing through one retained v6 `JumpData` mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedJumpDataNativeOwnerExecutionFailure<RunnerError> {
+    /// Bound runner or completion admission failed.
+    Execution(Box<RegisterMaskedJumpDataLoadedExecutionFailure<RunnerError>>),
     /// Rebased caller state failed exact v6 invocation preparation.
     Preparation(VerifiedRegisterMaskedInvocationError),
 }
@@ -315,6 +379,22 @@ pub struct RegisterMaskedInputNativeExecutableOwner {
     program: RegisterMaskedRegionEffectProgram,
 }
 
+/// One reusable verified v6 `JumpCode` artifact beside its ready mapping.
+#[derive(Debug)]
+pub struct RegisterMaskedJumpCodeNativeExecutableOwner {
+    artifact: VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    executable: ReadyRegisterMaskedJumpCodeNativeExecutable,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+/// One reusable verified v6 `JumpData` artifact beside its ready mapping.
+#[derive(Debug)]
+pub struct RegisterMaskedJumpDataNativeExecutableOwner {
+    artifact: VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+    executable: ReadyRegisterMaskedJumpDataNativeExecutable,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
 /// One reusable verified v6 Output artifact beside its ready mapping.
 #[derive(Debug)]
 pub struct RegisterMaskedOutputNativeExecutableOwner {
@@ -397,6 +477,42 @@ pub type RegisterMaskedInputNativeOwnerExecutionResult<RunnerError> = Result<
 pub type RegisterMaskedInputNativeOwnerReleaseResult<MemoryError> = Result<
     (),
     Box<RegisterMaskedInputNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
+/// Result of loading one reusable v6 `JumpCode` mapping.
+pub type RegisterMaskedJumpCodeNativeOwnerLoadResult<MemoryError> = Result<
+    RegisterMaskedJumpCodeNativeExecutableOwner,
+    Box<RegisterMaskedJumpCodeNativeOwnerLoadFailure<MemoryError>>,
+>;
+
+/// Result of one call through a reusable v6 `JumpCode` mapping.
+pub type RegisterMaskedJumpCodeNativeOwnerExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedJumpCodeNativeOwnerExecutionFailure<RunnerError>>,
+>;
+
+/// Result of releasing one reusable v6 `JumpCode` mapping.
+pub type RegisterMaskedJumpCodeNativeOwnerReleaseResult<MemoryError> = Result<
+    (),
+    Box<RegisterMaskedJumpCodeNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
+/// Result of loading one reusable v6 `JumpData` mapping.
+pub type RegisterMaskedJumpDataNativeOwnerLoadResult<MemoryError> = Result<
+    RegisterMaskedJumpDataNativeExecutableOwner,
+    Box<RegisterMaskedJumpDataNativeOwnerLoadFailure<MemoryError>>,
+>;
+
+/// Result of one call through a reusable v6 `JumpData` mapping.
+pub type RegisterMaskedJumpDataNativeOwnerExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedJumpDataNativeOwnerExecutionFailure<RunnerError>>,
+>;
+
+/// Result of releasing one reusable v6 `JumpData` mapping.
+pub type RegisterMaskedJumpDataNativeOwnerReleaseResult<MemoryError> = Result<
+    (),
+    Box<RegisterMaskedJumpDataNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
 /// Result of loading one reusable v6 Output mapping.
@@ -1060,6 +1176,70 @@ impl<RunnerError: Display> Display
 }
 
 impl<MemoryError: Display> Display
+    for RegisterMaskedJumpCodeNativeOwnerLoadFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::ArtifactIdentity => {
+                f.write_str("v6 JumpCode resident artifact identity differs")
+            },
+            Self::Identity(_error) => f.write_str(
+                "v6 JumpCode resident identity reconstruction failed",
+            ),
+            Self::Image(error) => Display::fmt(error, f),
+            Self::Load(error) => {
+                write!(f, "v6 JumpCode resident load failed: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for RegisterMaskedJumpCodeNativeOwnerExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Preparation(error) => {
+                write!(f, "v6 JumpCode resident preparation failed: {error}")
+            },
+            Self::Execution(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedJumpDataNativeOwnerLoadFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::ArtifactIdentity => {
+                f.write_str("v6 JumpData resident artifact identity differs")
+            },
+            Self::Identity(_error) => f.write_str(
+                "v6 JumpData resident identity reconstruction failed",
+            ),
+            Self::Image(error) => Display::fmt(error, f),
+            Self::Load(error) => {
+                write!(f, "v6 JumpData resident load failed: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for RegisterMaskedJumpDataNativeOwnerExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Preparation(error) => {
+                write!(f, "v6 JumpData resident preparation failed: {error}")
+            },
+            Self::Execution(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
     for RegisterMaskedOutputNativeOwnerLoadFailure<MemoryError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -1685,6 +1865,264 @@ impl RegisterMaskedInputNativeExecutableOwner {
         Adapter: NativeExecutableMemoryAdapter,
     {
         release_register_masked_input_native_executable(
+            adapter,
+            self.executable,
+        )
+        .map_err(Box::new)
+    }
+
+    /// Returns exact synchronized mapping weight reported by the adapter.
+    #[must_use]
+    pub const fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        RegisterMaskedNativeResidentWeight {
+            mapped_bytes: self.executable.mapping().mapped_len(),
+            mappings: 1,
+        }
+    }
+}
+
+impl RegisterMaskedJumpCodeNativeExecutableOwner {
+    /// Returns the exact verified v6 `JumpCode` artifact retained beside the
+    /// mapping.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedJumpCodeNativeObjectArtifact {
+        &self.artifact
+    }
+
+    /// Returns the retained synchronized v6 `JumpCode` executable mapping.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedJumpCodeNativeExecutable {
+        &self.executable
+    }
+
+    /// Executes one newly rebased caller observation without remapping code.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, binding, runner, or completion failure while
+    /// retaining this reusable mapping.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedJumpCodeNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedJumpCodeNativeRunner,
+    {
+        use RegisterMaskedJumpCodeNativeOwnerExecutionFailure as Failure;
+
+        let prepared = PreparedRegisterMaskedJumpCodeInvocation::new(
+            &self.artifact,
+            &self.program,
+            entry,
+            buffers,
+        )
+        .map_err(|error| Box::new(Failure::Preparation(error)))?;
+        execute_loaded_verified_register_masked_jump_code_native(
+            runner,
+            &self.executable,
+            prepared,
+        )
+        .map_err(|error| Box::new(Failure::Execution(error)))
+    }
+
+    /// Returns the exact complete v6 native key retained by this owner.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.executable.key()
+    }
+
+    /// Loads one reusable synchronized mapping after exact program/key
+    /// admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity, image, or platform load failure without publishing a
+    /// partial owner.
+    pub fn load<Adapter>(
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    ) -> RegisterMaskedJumpCodeNativeOwnerLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedJumpCodeNativeOwnerLoadFailure as Failure;
+
+        let expected_key = NativeArtifactKey::new_register_masked(
+            program,
+            artifact.key().target().clone(),
+        )
+        .map_err(|error| Box::new(Failure::Identity(Box::new(error))))?;
+        if artifact.key() != &expected_key {
+            return Err(Box::new(Failure::ArtifactIdentity));
+        }
+        let image = VerifiedRegisterMaskedJumpCodeLoadImage::new(artifact)
+            .map_err(|error| Box::new(Failure::Image(Box::new(error))))?;
+        let executable =
+            load_register_masked_jump_code_native_executable(adapter, &image)
+                .map_err(|error| Box::new(Failure::Load(Box::new(error))))?;
+        Ok(Self {
+            artifact: artifact.clone(),
+            executable,
+            program: program.clone(),
+        })
+    }
+
+    /// Returns the exact register-masked program retained by this owner.
+    #[must_use]
+    pub const fn program(&self) -> &RegisterMaskedRegionEffectProgram {
+        &self.program
+    }
+
+    /// Releases the exact retained ready mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns retryable ready-executable ownership when platform release
+    /// fails.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedJumpCodeNativeOwnerReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        release_register_masked_jump_code_native_executable(
+            adapter,
+            self.executable,
+        )
+        .map_err(Box::new)
+    }
+
+    /// Returns exact synchronized mapping weight reported by the adapter.
+    #[must_use]
+    pub const fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        RegisterMaskedNativeResidentWeight {
+            mapped_bytes: self.executable.mapping().mapped_len(),
+            mappings: 1,
+        }
+    }
+}
+
+impl RegisterMaskedJumpDataNativeExecutableOwner {
+    /// Returns the exact verified v6 `JumpData` artifact retained beside the
+    /// mapping.
+    #[must_use]
+    pub const fn artifact(
+        &self,
+    ) -> &VerifiedRegisterMaskedJumpDataNativeObjectArtifact {
+        &self.artifact
+    }
+
+    /// Returns the retained synchronized v6 `JumpData` executable mapping.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedJumpDataNativeExecutable {
+        &self.executable
+    }
+
+    /// Executes one newly rebased caller observation without remapping code.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, binding, runner, or completion failure while
+    /// retaining this reusable mapping.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedJumpDataNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedJumpDataNativeRunner,
+    {
+        use RegisterMaskedJumpDataNativeOwnerExecutionFailure as Failure;
+
+        let prepared = PreparedRegisterMaskedJumpDataInvocation::new(
+            &self.artifact,
+            &self.program,
+            entry,
+            buffers,
+        )
+        .map_err(|error| Box::new(Failure::Preparation(error)))?;
+        execute_loaded_verified_register_masked_jump_data_native(
+            runner,
+            &self.executable,
+            prepared,
+        )
+        .map_err(|error| Box::new(Failure::Execution(error)))
+    }
+
+    /// Returns the exact complete v6 native key retained by this owner.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.executable.key()
+    }
+
+    /// Loads one reusable synchronized mapping after exact program/key
+    /// admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity, image, or platform load failure without publishing a
+    /// partial owner.
+    pub fn load<Adapter>(
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
+    ) -> RegisterMaskedJumpDataNativeOwnerLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedJumpDataNativeOwnerLoadFailure as Failure;
+
+        let expected_key = NativeArtifactKey::new_register_masked(
+            program,
+            artifact.key().target().clone(),
+        )
+        .map_err(|error| Box::new(Failure::Identity(Box::new(error))))?;
+        if artifact.key() != &expected_key {
+            return Err(Box::new(Failure::ArtifactIdentity));
+        }
+        let image = VerifiedRegisterMaskedJumpDataLoadImage::new(artifact)
+            .map_err(|error| Box::new(Failure::Image(Box::new(error))))?;
+        let executable =
+            load_register_masked_jump_data_native_executable(adapter, &image)
+                .map_err(|error| Box::new(Failure::Load(Box::new(error))))?;
+        Ok(Self {
+            artifact: artifact.clone(),
+            executable,
+            program: program.clone(),
+        })
+    }
+
+    /// Returns the exact register-masked program retained by this owner.
+    #[must_use]
+    pub const fn program(&self) -> &RegisterMaskedRegionEffectProgram {
+        &self.program
+    }
+
+    /// Releases the exact retained ready mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns retryable ready-executable ownership when platform release
+    /// fails.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedJumpDataNativeOwnerReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        release_register_masked_jump_data_native_executable(
             adapter,
             self.executable,
         )
