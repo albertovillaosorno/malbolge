@@ -37262,6 +37262,64 @@ fn aot_register_masked_prepares_all_reviewed_shapes() -> Result<(), String> {
 }
 
 #[test]
+fn aot_register_masked_jump_objects_round_trip() -> Result<(), String> {
+    let programs = [
+        canonical_register_masked_jump_code_program()?,
+        canonical_register_masked_jump_data_program()?,
+    ];
+    let runtime = safe_rust_profiled_capability();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let host = DirectHost::new(HostOperatingSystem::Windows, isa);
+        let aot = en::prepare_ahead_of_execution_register_masked_set(
+            &programs, runtime, host,
+        )
+        .map_err(|error| format!("v6 {isa:?} jump AOT prepare: {error}"))?;
+        if aot.len() != programs.len() {
+            return Err(format!(
+                "v6 {isa:?} jump AOT retained {} artifacts",
+                aot.len()
+            ));
+        }
+        for program in &programs {
+            let admission =
+                admit_register_masked_direct_native(program, runtime)
+                    .map_err(|error| error.to_string())?;
+            let selected = en::select_ahead_of_execution_register_masked_tier(
+                program, runtime, host, &aot,
+            )
+            .map_err(|error| error.to_string())?;
+            let en::AheadOfExecutionRegisterMaskedTier::Direct(artifact) =
+                selected
+            else {
+                return Err(format!(
+                    "v6 {isa:?} prepared jump object was not reused"
+                ));
+            };
+            if artifact.kind() != admission.kind() {
+                return Err(format!(
+                    "v6 {isa:?} jump AOT artifact changed kind"
+                ));
+            }
+            let restored =
+                en::restore_ahead_of_execution_register_masked_object(
+                    program,
+                    runtime,
+                    host,
+                    artifact.object().to_vec(),
+                )
+                .map_err(|error| error.to_string())?;
+            if restored.kind() != admission.kind()
+                || restored.key() != artifact.key()
+                || restored.object() != artifact.object()
+            {
+                return Err(format!("v6 {isa:?} jump durable restore drifted"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn aot_register_masked_deduplicates_and_keeps_miss_read_only()
 -> Result<(), String> {
     let programs = canonical_register_masked_crazy_programs()?;

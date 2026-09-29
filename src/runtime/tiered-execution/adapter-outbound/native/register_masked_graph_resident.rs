@@ -104,6 +104,10 @@ pub enum RegisterMaskedReducedGraphResidentOwnerLoadFailure<MemoryError> {
     HaltFetch(Box<RegisterMaskedNativeOwnerLoadFailure<MemoryError>>),
     /// Input has verified object authority but no executable lifecycle yet.
     Input,
+    /// Jump-code has verified object authority but no executable lifecycle yet.
+    JumpCode,
+    /// Jump-data has verified object authority but no executable lifecycle yet.
+    JumpData,
     /// No-operation owner load failed.
     NoOperation(
         Box<RegisterMaskedNoOperationNativeOwnerLoadFailure<MemoryError>>,
@@ -636,6 +640,12 @@ where
         },
         VerifiedAheadOfExecutionRegisterMaskedArtifact::Input(_concrete) => {
             Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::Input)
+        },
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpCode(_concrete) => {
+            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpCode)
+        },
+        VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpData(_concrete) => {
+            Err(RegisterMaskedReducedGraphResidentOwnerLoadFailure::JumpData)
         },
         VerifiedAheadOfExecutionRegisterMaskedArtifact::NoOperation(
             concrete,

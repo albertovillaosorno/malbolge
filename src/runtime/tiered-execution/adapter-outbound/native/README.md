@@ -377,14 +377,14 @@ with v6 profile memory geometry supplied explicitly.
 `direct-register-masked-jump-code` revision 1 now emits and independently
 verifies x86-64/AArch64 COFF. Its reduced machine guards bind C/D, all three
 memory live-ins, memory extent, and prior termination while omitting dead
-accumulator and I/O history. This authority remains object-only; AOT-set
-preparation, executable loading, invocation, and residency stay fail closed.
+accumulator and I/O history.
 
 `direct-register-masked-jump-data` revision 1 now emits and independently
 verifies x86-64/AArch64 COFF. Its reduced machine guards bind C/D, the exact
 code/data live-ins, memory extent, and prior termination while omitting dead
-accumulator and I/O history. This authority also remains object-only; AOT-set
-preparation, executable loading, invocation, and residency stay fail closed.
+accumulator and I/O history. Both jump objects participate in sealed AOT
+preparation, exact-key lookup, and verified durable restore. Executable
+loading, invocation, and residency stay fail closed.
 
 `direct-register-masked-output` revision 1 now emits and independently verifies
 x86-64/AArch64 COFF. Its machine text guards live A/C/D, output length, code
@@ -1189,8 +1189,8 @@ paths semantic authority.
 
 Register-masked v6 programs can also be prepared into a sealed object-only AOT
 set through `prepare_ahead_of_execution_register_masked_set()`. Preparation
-re-runs product-owned semantic admission, selects only the six reviewed v6
-shapes, emits and independently verifies canonical objects, and deduplicates
+re-runs product-owned semantic admission, selects only reviewed v6 shapes,
+emits and independently verifies canonical objects, and deduplicates complete
 complete mask-aware keys. Read-only lookup never emits on a miss, and these AOT
 objects still carry no executable-memory or invocation authority.
 

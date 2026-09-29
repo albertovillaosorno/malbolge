@@ -43,6 +43,10 @@ use super::{
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID,
     DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
     DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
@@ -53,6 +57,7 @@ use super::{
     DIRECT_REGISTER_MASKED_ROTATE_BACKEND_REVISION, DirectHost,
     DirectNativeKind, DirectRegisterMaskedCrazyError,
     DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedInputError,
+    DirectRegisterMaskedJumpCodeError, DirectRegisterMaskedJumpDataError,
     DirectRegisterMaskedNoOperationError,
     DirectRegisterMaskedNonGraphicalError, DirectRegisterMaskedOutputError,
     DirectRegisterMaskedRotateError, Display, FormatResult, Formatter,
@@ -65,6 +70,8 @@ use super::{
     VerifiedRegisterMaskedDirectAdmission,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInputNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpCodeNativeObjectArtifact,
+    VerifiedRegisterMaskedJumpDataNativeObjectArtifact,
     VerifiedRegisterMaskedNoOperationNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     VerifiedRegisterMaskedOutputNativeObjectArtifact,
@@ -73,6 +80,8 @@ use super::{
     emit_direct_register_masked_crazy_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_input_coff,
+    emit_direct_register_masked_jump_code_coff,
+    emit_direct_register_masked_jump_data_coff,
     emit_direct_register_masked_no_operation_coff,
     emit_direct_register_masked_non_graphical_coff,
     emit_direct_register_masked_output_coff,
@@ -80,6 +89,8 @@ use super::{
     verify_direct_register_masked_crazy,
     verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_input,
+    verify_direct_register_masked_jump_code,
+    verify_direct_register_masked_jump_data,
     verify_direct_register_masked_no_operation,
     verify_direct_register_masked_non_graphical,
     verify_direct_register_masked_output, verify_direct_register_masked_rotate,
@@ -90,6 +101,8 @@ enum RegisterMaskedAotKind {
     Crazy,
     HaltFetch,
     Input,
+    JumpCode,
+    JumpData,
     NoOperation,
     NonGraphical,
     Output,
@@ -104,15 +117,15 @@ impl RegisterMaskedAotKind {
             DirectNativeKind::Crazy => Ok(Self::Crazy),
             DirectNativeKind::HaltFetch => Ok(Self::HaltFetch),
             DirectNativeKind::Input => Ok(Self::Input),
+            DirectNativeKind::JumpCode => Ok(Self::JumpCode),
+            DirectNativeKind::JumpData => Ok(Self::JumpData),
             DirectNativeKind::NoOperation => Ok(Self::NoOperation),
             DirectNativeKind::NonGraphical => Ok(Self::NonGraphical),
             DirectNativeKind::Output => Ok(Self::Output),
             DirectNativeKind::Rotate => Ok(Self::Rotate),
             DirectNativeKind::Deopt
             | DirectNativeKind::HaltRegisters
-            | DirectNativeKind::InitialHalt
-            | DirectNativeKind::JumpCode
-            | DirectNativeKind::JumpData => {
+            | DirectNativeKind::InitialHalt => {
                 Err(RegisterMaskedDirectAdmissionError::unsupported_program())
             },
         }
@@ -131,6 +144,10 @@ pub enum VerifiedAheadOfExecutionRegisterMaskedArtifact {
     HaltFetch(VerifiedRegisterMaskedHaltFetchNativeObjectArtifact),
     /// One-step input object.
     Input(VerifiedRegisterMaskedInputNativeObjectArtifact),
+    /// One-step jump-code object.
+    JumpCode(VerifiedRegisterMaskedJumpCodeNativeObjectArtifact),
+    /// One-step jump-data object.
+    JumpData(VerifiedRegisterMaskedJumpDataNativeObjectArtifact),
     /// One-step no-operation object.
     NoOperation(VerifiedRegisterMaskedNoOperationNativeObjectArtifact),
     /// Non-graphical termination object.
@@ -149,6 +166,8 @@ impl VerifiedAheadOfExecutionRegisterMaskedArtifact {
             Self::Crazy(artifact) => artifact.key(),
             Self::HaltFetch(artifact) => artifact.key(),
             Self::Input(artifact) => artifact.key(),
+            Self::JumpCode(artifact) => artifact.key(),
+            Self::JumpData(artifact) => artifact.key(),
             Self::NoOperation(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
             Self::Output(artifact) => artifact.key(),
@@ -163,6 +182,8 @@ impl VerifiedAheadOfExecutionRegisterMaskedArtifact {
             Self::Crazy(_artifact) => DirectNativeKind::Crazy,
             Self::HaltFetch(_artifact) => DirectNativeKind::HaltFetch,
             Self::Input(_artifact) => DirectNativeKind::Input,
+            Self::JumpCode(_artifact) => DirectNativeKind::JumpCode,
+            Self::JumpData(_artifact) => DirectNativeKind::JumpData,
             Self::NoOperation(_artifact) => DirectNativeKind::NoOperation,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
             Self::Output(_artifact) => DirectNativeKind::Output,
@@ -177,6 +198,8 @@ impl VerifiedAheadOfExecutionRegisterMaskedArtifact {
             Self::Crazy(artifact) => artifact.object(),
             Self::HaltFetch(artifact) => artifact.object(),
             Self::Input(artifact) => artifact.object(),
+            Self::JumpCode(artifact) => artifact.object(),
+            Self::JumpData(artifact) => artifact.object(),
             Self::NoOperation(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
             Self::Output(artifact) => artifact.object(),
@@ -244,6 +267,10 @@ pub enum RegisterMaskedAheadOfExecutionObjectError {
     HaltFetch(DirectRegisterMaskedHaltFetchError),
     /// Input object emission or verification failed.
     Input(DirectRegisterMaskedInputError),
+    /// Jump-code object emission or verification failed.
+    JumpCode(DirectRegisterMaskedJumpCodeError),
+    /// Jump-data object emission or verification failed.
+    JumpData(DirectRegisterMaskedJumpDataError),
     /// No-operation object emission or verification failed.
     NoOperation(DirectRegisterMaskedNoOperationError),
     /// Non-graphical object emission or verification failed.
@@ -260,6 +287,8 @@ impl Display for RegisterMaskedAheadOfExecutionObjectError {
             Self::Crazy(error) => Display::fmt(error, f),
             Self::HaltFetch(error) => Display::fmt(error, f),
             Self::Input(error) => Display::fmt(error, f),
+            Self::JumpCode(error) => Display::fmt(error, f),
+            Self::JumpData(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),
             Self::Output(error) => Display::fmt(error, f),
@@ -576,6 +605,14 @@ fn register_masked_target(
             DIRECT_REGISTER_MASKED_INPUT_BACKEND_ID,
             DIRECT_REGISTER_MASKED_INPUT_BACKEND_REVISION,
         ),
+        RegisterMaskedAotKind::JumpCode => (
+            DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_ID,
+            DIRECT_REGISTER_MASKED_JUMP_CODE_BACKEND_REVISION,
+        ),
+        RegisterMaskedAotKind::JumpData => (
+            DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_ID,
+            DIRECT_REGISTER_MASKED_JUMP_DATA_BACKEND_REVISION,
+        ),
         RegisterMaskedAotKind::NoOperation => (
             DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_ID,
             DIRECT_REGISTER_MASKED_NO_OPERATION_BACKEND_REVISION,
@@ -624,6 +661,16 @@ fn verify_register_masked_candidate(
                 .map(VerifiedAotArtifact::Input)
                 .map_err(AotObjectError::Input)
         },
+        RegisterMaskedAotKind::JumpCode => {
+            verify_direct_register_masked_jump_code(candidate, program)
+                .map(VerifiedAotArtifact::JumpCode)
+                .map_err(AotObjectError::JumpCode)
+        },
+        RegisterMaskedAotKind::JumpData => {
+            verify_direct_register_masked_jump_data(candidate, program)
+                .map(VerifiedAotArtifact::JumpData)
+                .map_err(AotObjectError::JumpData)
+        },
         RegisterMaskedAotKind::NoOperation => {
             verify_direct_register_masked_no_operation(candidate, program)
                 .map(VerifiedAotArtifact::NoOperation)
@@ -661,6 +708,12 @@ fn emit_verified_register_masked(
             emit_verified_halt_fetch(program, target)
         },
         RegisterMaskedAotKind::Input => emit_verified_input(program, target),
+        RegisterMaskedAotKind::JumpCode => {
+            emit_verified_jump_code(program, target)
+        },
+        RegisterMaskedAotKind::JumpData => {
+            emit_verified_jump_data(program, target)
+        },
         RegisterMaskedAotKind::NoOperation => {
             emit_verified_no_operation(program, target)
         },
@@ -713,6 +766,34 @@ fn emit_verified_input(
     verify_direct_register_masked_input(&candidate, program)
         .map(VerifiedAheadOfExecutionRegisterMaskedArtifact::Input)
         .map_err(RegisterMaskedAheadOfExecutionObjectError::Input)
+}
+
+fn emit_verified_jump_code(
+    program: &RegisterMaskedRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<
+    VerifiedAheadOfExecutionRegisterMaskedArtifact,
+    RegisterMaskedAheadOfExecutionObjectError,
+> {
+    let candidate = emit_direct_register_masked_jump_code_coff(program, target)
+        .map_err(RegisterMaskedAheadOfExecutionObjectError::JumpCode)?;
+    verify_direct_register_masked_jump_code(&candidate, program)
+        .map(VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpCode)
+        .map_err(RegisterMaskedAheadOfExecutionObjectError::JumpCode)
+}
+
+fn emit_verified_jump_data(
+    program: &RegisterMaskedRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<
+    VerifiedAheadOfExecutionRegisterMaskedArtifact,
+    RegisterMaskedAheadOfExecutionObjectError,
+> {
+    let candidate = emit_direct_register_masked_jump_data_coff(program, target)
+        .map_err(RegisterMaskedAheadOfExecutionObjectError::JumpData)?;
+    verify_direct_register_masked_jump_data(&candidate, program)
+        .map(VerifiedAheadOfExecutionRegisterMaskedArtifact::JumpData)
+        .map_err(RegisterMaskedAheadOfExecutionObjectError::JumpData)
 }
 
 fn emit_verified_no_operation(

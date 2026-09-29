@@ -947,8 +947,11 @@ behavior.
   live-ins. Both bind memory extent and prior termination while omitting dead
   accumulator and I/O history. Their verified artifacts remain object-only.
 
-  AOT-set preparation, loading, execution, and residency for both v6 jump
-  families remain open and fail closed.
+  The sealed register-masked AOT set now accepts both v6 jump families, emits
+  and independently verifies their exact object identities, performs read-only
+  exact-key selection, and re-verifies durable object bytes on restore.
+  Executable loading, execution, and residency for both jump families remain
+  open and fail closed.
 - The process-backed native host now has a tracked POSIX C23 worker. On Linux
   x86-64 it owns real RW allocation, exact copy, RX transition, instruction
   synchronization, Windows-x64 ABI invocation, and release inside the retained
