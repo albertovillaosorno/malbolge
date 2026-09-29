@@ -54,6 +54,10 @@ use crate::file_blob_pair_store::{
     encode_file_blob_pair_retention,
 };
 
+type ConditionalDurablePersistence<E> =
+    NativeContinuationBlobConditionalDurablePersistence<E>;
+type JournalError<E> = NativeContinuationFileBlobPairRetentionJournalError<E>;
+
 /// Typed outcome of one conditional durable retention-journal publication.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError> {
@@ -262,7 +266,3 @@ fn decode_retention_owner(
     }
     Ok(retention)
 }
-
-type ConditionalDurablePersistence<E> =
-    NativeContinuationBlobConditionalDurablePersistence<E>;
-type JournalError<E> = NativeContinuationFileBlobPairRetentionJournalError<E>;

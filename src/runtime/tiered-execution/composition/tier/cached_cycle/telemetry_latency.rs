@@ -35,9 +35,6 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-type LatencyHistogramError = NativeContinuationCachedRetryLatencyHistogramError;
-type LatencyRecord = NativeContinuationCachedRetryLatencyRecord;
-
 use super::telemetry_latency_snapshot::validate_latency_histogram_snapshot;
 use super::{
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
@@ -45,6 +42,9 @@ use super::{
     NativeContinuationCachedRetryLatencyMergeRecord,
     NativeContinuationCachedRetryLatencySnapshotError,
 };
+
+type LatencyHistogramError = NativeContinuationCachedRetryLatencyHistogramError;
+type LatencyRecord = NativeContinuationCachedRetryLatencyRecord;
 /// Transactional histogram for explicit cached-retry latency samples.
 
 #[derive(Clone, Debug, Eq, PartialEq)]

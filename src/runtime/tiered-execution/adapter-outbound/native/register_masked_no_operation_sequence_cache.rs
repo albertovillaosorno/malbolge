@@ -178,6 +178,9 @@ type CachePrepareResult<E> = Result<
 type SequenceReleaseFailure<E> =
     RegisterMaskedNoOperationNativeSequenceReleaseFailure<E>;
 
+type SequenceCacheInvariantError =
+    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;
+
 /// Published weighted capacity limits for this no-operation sequence cache.
 pub type RegisterMaskedNoOperationNativeSequenceCacheLimits =
     NativeExecutableSequenceCacheLimits;
@@ -916,6 +919,3 @@ where
     }
     cache_release_result(attempted_entries, released_entries, failures)
 }
-
-type SequenceCacheInvariantError =
-    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;

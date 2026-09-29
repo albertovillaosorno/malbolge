@@ -34,10 +34,10 @@
 
 use std::num::NonZeroUsize;
 
+use super::NativeContinuationCachedRetryTelemetry;
+
 type TelemetryAssessmentSignal =
     NativeContinuationCachedRetryTelemetryAssessmentSignal;
-
-use super::NativeContinuationCachedRetryTelemetry;
 /// Exact result of one caller-configured telemetry assessment.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

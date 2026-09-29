@@ -36,15 +36,6 @@
 
 use std::num::NonZeroUsize;
 
-type OrderedPersistenceError<StoreError> =
-    NativeContinuationCachedRetryTelemetryOrderedPersistenceError<StoreError>;
-type OrderedDurablePersistence<DurabilityError> =
-    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
-        DurabilityError,
-    >;
-type OrderedPersistenceLoad =
-    NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad;
-
 use super::{
     NativeContinuationCachedRetryTelemetryOrderedStateCodecError,
     NativeContinuationCachedRetryTelemetryOrderedWindow,
@@ -61,6 +52,15 @@ use crate::blob_store::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
+type OrderedPersistenceError<StoreError> =
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceError<StoreError>;
+type OrderedDurablePersistence<DurabilityError> =
+    NativeContinuationCachedRetryTelemetryOrderedDurablePersistence<
+        DurabilityError,
+    >;
+type OrderedPersistenceLoad =
+    NativeContinuationCachedRetryTelemetryOrderedPersistenceLoad;
+
 /// Ordered telemetry publication plus explicit durability state.
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -81,6 +81,9 @@ type ReconfigurationEvictionResult<E> = Result<
     Box<RegisterMaskedNoOperationNativeSequenceCacheReconfigurationFailure<E>>,
 >;
 
+type SequenceCacheInvariantError =
+    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;
+
 impl RegisterMaskedNoOperationNativeSequenceCacheReconfiguration {
     /// Returns exact FIFO keys removed before the new limits were published.
     #[must_use]
@@ -245,6 +248,3 @@ where
     }
     Ok(evicted_keys)
 }
-
-type SequenceCacheInvariantError =
-    RegisterMaskedNoOperationNativeSequenceCacheInvariantError;

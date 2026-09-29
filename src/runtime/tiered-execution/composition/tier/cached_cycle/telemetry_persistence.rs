@@ -43,11 +43,6 @@ use store_port::{
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 
-type TelemetryDurablePersistence<DurabilityError> =
-    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>;
-type TelemetryPersistenceError<StoreError> =
-    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>;
-
 use super::{
     NativeContinuationCachedRetryLatencyCodecError,
     NativeContinuationCachedRetryLatencyHistogram,
@@ -61,6 +56,11 @@ use super::{
     encode_cached_retry_telemetry_snapshot as encode_telemetry_snapshot,
 };
 use crate::{blob_persistence, blob_store as store_port};
+type TelemetryDurablePersistence<DurabilityError> =
+    NativeContinuationCachedRetryTelemetryDurablePersistence<DurabilityError>;
+type TelemetryPersistenceError<StoreError> =
+    NativeContinuationCachedRetryTelemetryPersistenceError<StoreError>;
+
 /// Cached-retry publication plus explicit post-publication durability
 /// state.
 

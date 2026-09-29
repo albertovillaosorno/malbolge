@@ -52,6 +52,8 @@ const COUNTER_COUNT: usize = 6;
 const HEADER_LEN: usize = 92;
 const OBSERVATION_LEN: usize = 56;
 
+type TelemetryCodecField = NativeContinuationCachedRetryTelemetryCodecField;
+
 /// Integer field whose canonical representation could not be admitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryTelemetryCodecField {
@@ -542,5 +544,3 @@ fn write_usize(
     bytes.extend_from_slice(&encoded.to_le_bytes());
     Ok(())
 }
-
-type TelemetryCodecField = NativeContinuationCachedRetryTelemetryCodecField;

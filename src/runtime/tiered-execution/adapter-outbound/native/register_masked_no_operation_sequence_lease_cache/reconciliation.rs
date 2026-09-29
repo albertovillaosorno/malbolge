@@ -104,6 +104,9 @@ pub type RegisterMaskedNoOperationNativeSequenceLeaseReconciliationResult<E> =
 type EntryReleaseFailure<E> =
     RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure<E>;
 
+type SequenceEntryReleaseFailure<E> =
+    RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure<E>;
+
 impl RegisterMaskedNoOperationNativeSequenceLeaseCacheReconciliation {
     /// Returns retired keys released during this reclamation pass.
     #[must_use]
@@ -390,6 +393,3 @@ where
     }
     reconciliation_result(released_keys, retained_keys, failures)
 }
-
-type SequenceEntryReleaseFailure<E> =
-    RegisterMaskedNoOperationNativeSequenceLeaseCacheEntryReleaseFailure<E>;

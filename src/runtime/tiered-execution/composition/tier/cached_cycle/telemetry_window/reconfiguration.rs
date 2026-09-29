@@ -58,6 +58,8 @@ pub type NativeContinuationCachedRetryTelemetryWindowReconfigurationResult =
         NativeContinuationCachedRetryTelemetryWindowError,
     >;
 
+type WindowError = NativeContinuationCachedRetryTelemetryWindowError;
+
 impl NativeContinuationCachedRetryTelemetryWindowReconfiguration {
     /// Returns the published positive capacity.
     #[must_use]
@@ -139,5 +141,3 @@ pub(super) fn reconfigure_telemetry_window(
         },
     )
 }
-
-type WindowError = NativeContinuationCachedRetryTelemetryWindowError;

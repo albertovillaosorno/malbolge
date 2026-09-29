@@ -49,13 +49,13 @@ pub use reconfiguration::{
     NativeContinuationCachedRetryTelemetryWindowReconfigurationResult,
 };
 
-type TelemetryWindowError = NativeContinuationCachedRetryTelemetryWindowError;
-
 use super::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetrySnapshotError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
 };
+type TelemetryWindowError = NativeContinuationCachedRetryTelemetryWindowError;
+
 /// One immutable retained telemetry summary with a monotonic sequence ID.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

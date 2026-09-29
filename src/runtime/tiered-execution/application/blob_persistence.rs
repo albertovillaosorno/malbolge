@@ -43,6 +43,10 @@ use store_port::{
 
 use crate::blob_store as store_port;
 
+type BlobConditionalPublication =
+    store_port::NativeContinuationBlobConditionalPublication;
+type BlobConditionalPersistence = NativeContinuationBlobConditionalPersistence;
+
 /// Outcome of conditional publication plus explicit durability confirmation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationBlobConditionalDurablePersistence<DurabilityError> {
@@ -423,7 +427,3 @@ const fn admit_byte_limit<StoreError>(
         })
     }
 }
-
-type BlobConditionalPublication =
-    store_port::NativeContinuationBlobConditionalPublication;
-type BlobConditionalPersistence = NativeContinuationBlobConditionalPersistence;

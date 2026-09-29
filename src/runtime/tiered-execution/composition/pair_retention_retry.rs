@@ -117,6 +117,12 @@ type Retention =
 type JournalCas<DurabilityError> =
     NativeContinuationFileBlobPairRetentionJournalCas<DurabilityError>;
 
+type RetentionReconcileError<StoreError, ReconciliationError> =
+    NativeContinuationFileBlobPairRetentionReconcileError<
+        StoreError,
+        ReconciliationError,
+    >;
+
 /// Reconciles exact retention against current typed state and retries
 /// conflicts.
 ///
@@ -247,9 +253,3 @@ where
         }
     }
 }
-
-type RetentionReconcileError<StoreError, ReconciliationError> =
-    NativeContinuationFileBlobPairRetentionReconcileError<
-        StoreError,
-        ReconciliationError,
-    >;

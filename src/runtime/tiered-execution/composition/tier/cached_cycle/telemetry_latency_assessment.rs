@@ -35,10 +35,10 @@
 
 use std::num::NonZeroUsize;
 
+use super::NativeContinuationCachedRetryLatencyHistogram;
+
 type LatencyAssessmentSignal =
     NativeContinuationCachedRetryLatencyAssessmentSignal;
-
-use super::NativeContinuationCachedRetryLatencyHistogram;
 /// Exact ready evidence retained by one latency assessment.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
