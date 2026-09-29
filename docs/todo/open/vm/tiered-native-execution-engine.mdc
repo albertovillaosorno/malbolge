@@ -550,8 +550,16 @@ behavior.
   Canonical blob persistence,
   durable CAS merge with bounded conflict retry, and count/latency policy
   recommendation plus durable publication retain typed evidence and
-  file-backed regressions. Automatic asynchronous interval ownership and
-  broader distributed aggregation remain open.
+  file-backed regressions.
+
+  Durable policy binding now consumes that CAS evidence immediately before a
+  future cached cycle. Deferred evidence and CAS conflict preserve the request
+  policy, while durable publication or post-commit sync failure binds the
+  committed active revision. A filesystem regression proves committed state
+  round-trips with the rebound request.
+
+  Automatic asynchronous interval ownership and broader distributed aggregation
+  remain open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

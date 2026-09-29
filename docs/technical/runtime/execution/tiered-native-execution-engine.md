@@ -1786,9 +1786,17 @@ produces explicit latency samples. Canonical blob persistence and durable
 CAS merge with bounded conflict retry retain exact histogram evidence.
 
 Count/latency policy recommendation and durable publication likewise retain
-typed evidence across file-backed regressions. Automatic asynchronous
-interval ownership and broader distributed aggregation remain outside this
-boundary.
+typed evidence across file-backed regressions.
+
+Durable policy binding now consumes that exact publication before a future
+cached cycle. Deferred evidence and durable CAS conflict preserve the original
+request policy, while durable commit or post-commit durability failure binds the
+committed active revision and retains the complete publication evidence. A
+filesystem regression confirms that the rebound request and restored state
+agree.
+
+Automatic asynchronous interval ownership and broader distributed aggregation
+remain outside this boundary.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

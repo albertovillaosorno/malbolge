@@ -229,6 +229,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryCycleFailure,
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
+    NativeContinuationCachedRetryDurablePolicyBindingRequest,
     NativeContinuationCachedRetryDurablePolicyPublication,
     NativeContinuationCachedRetryInterpreterOutcome,
     NativeContinuationCachedRetryLatencyAssessment,
@@ -320,6 +321,8 @@ use cached_cycle::{
     persist_cached_retry_telemetry_pair_durably,
     persist_cached_retry_telemetry_window,
     persist_cached_retry_telemetry_window_durably,
+    publish_and_bind_cached_retry_latency_policy_recommendation_durably,
+    publish_and_bind_cached_retry_policy_recommendation_durably,
     publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
     publish_cached_retry_latency_policy_recommendation_durably,
@@ -101726,6 +101729,284 @@ fn cached_retry_policy_recommendation_retains_miss_evidence()
     } else {
         Err(String::from(
             "missed telemetry recommendation lost evidence",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_defers_without_mutation()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+            observed_attempts: 1,
+            required_attempts: nonzero_test_limit(
+                2,
+                "durable binding attempts",
+            )?,
+        };
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "durable binding bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("deferred durable binding failed: {error:?}"))?;
+    if binding.is_bound()
+        || binding.active_state().is_some()
+        || binding.request().policy() != original_policy
+        || !binding.publication().is_deferred()
+        || store.compare_and_swap_calls != 0
+    {
+        return Err(String::from("deferred durable binding mutated state"));
+    }
+    if binding.into_request().policy() == original_policy {
+        Ok(())
+    } else {
+        Err(String::from("deferred durable binding lost request"))
+    }
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_binds_committed_state()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(2);
+    let candidate = complete_retry_policy(4);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy: candidate,
+            telemetry,
+        };
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "durable binding init bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("durable policy binding failed: {error:?}"))?;
+    let state = binding
+        .active_state()
+        .ok_or_else(|| String::from("committed policy was not bound"))?;
+    if !binding.is_bound()
+        || state.policy() != candidate
+        || state.revision() != NativeContinuationRetryPolicyRevision::initial()
+        || binding.request().policy() != candidate
+        || store.compare_and_swap_calls != 1
+        || !matches!(
+            binding.publication().publication(),
+            Some(PolicyStateCas::Durable { current, previous, .. })
+                if *current == state && previous.is_none()
+        )
+    {
+        return Err(String::from("committed durable policy binding drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn cached_retry_file_durable_policy_binding_roundtrips_committed_state()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("durable-policy-binding")?;
+    let candidate = complete_retry_policy(4);
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy: candidate,
+            telemetry,
+        };
+    let maximum_bytes = nonzero_test_limit(52, "file durable binding bytes")?;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            maximum_bytes,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("file durable binding failed: {error:?}"))?;
+    let state = binding
+        .active_state()
+        .ok_or_else(|| String::from("file durable policy was not bound"))?;
+    let restored = restore_native_continuation_retry_policy_state(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file durable binding restore: {error:?}"))?;
+    let NativeContinuationRetryPolicyStatePersistenceLoad::Restored {
+        state: restored_state,
+        ..
+    } = restored
+    else {
+        return Err(String::from("file durable binding state disappeared"));
+    };
+    let result = if binding.request().policy() == candidate
+        && restored_state == state
+        && state.policy() == candidate
+    {
+        Ok(())
+    } else {
+        Err(String::from("file durable binding state drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_preserves_request_on_conflict()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(1);
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(2),
+    );
+    let actual = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(5),
+        NativeContinuationRetryPolicyRevision::from_value(3),
+    );
+    let candidate = complete_retry_policy(9);
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Meets {
+            policy: candidate,
+            telemetry,
+        };
+    let actual_bytes = encode_native_continuation_retry_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            Some(expected),
+            nonzero_test_limit(52, "durable binding conflict bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("durable binding conflict failed: {error:?}"))?;
+    if binding.is_bound()
+        || binding.active_state().is_some()
+        || binding.request().policy() != original_policy
+        || store.blob.as_deref() != Some(actual_bytes.as_slice())
+        || !matches!(
+            binding.publication().publication(),
+            Some(PolicyStateCas::Conflict {
+                candidate: observed_candidate,
+                current: Some(current),
+                expected: Some(observed_expected),
+            }) if *observed_candidate == candidate
+                && *current == actual
+                && *observed_expected == expected
+        )
+    {
+        return Err(String::from("durable conflict rebound request"));
+    }
+    Ok(())
+}
+
+fn cached_retry_meeting_latency_policy_recommendation()
+-> Result<NativeContinuationCachedRetryLatencyPolicyRecommendation, String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "durable binding latency samples")?,
+            15,
+            20,
+            0,
+        );
+    Ok(recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        cached_retry_policy_recommendation_set(),
+    ))
+}
+
+#[test]
+fn cached_retry_durable_latency_binding_keeps_committed_sync_failure()
+-> Result<(), String> {
+    let original_policy = complete_retry_policy(1);
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(6),
+    );
+    let expected_bytes =
+        encode_native_continuation_retry_policy_state(expected)
+            .map_err(|error| error.to_string())?;
+    let request = cached_retry_policy_publication_request(original_policy)?;
+    let policies = cached_retry_policy_recommendation_set();
+    let recommendation = cached_retry_meeting_latency_policy_recommendation()?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let binding =
+        publish_and_bind_cached_retry_latency_policy_recommendation_durably(
+            &mut store,
+            NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+                request,
+                Some(expected),
+                nonzero_test_limit(52, "durable latency binding bytes")?,
+            ),
+            recommendation,
+        )
+        .map_err(|error| {
+            format!("durable latency binding failed: {error:?}")
+        })?;
+    let state = binding
+        .active_state()
+        .ok_or_else(|| String::from("committed sync failure was not bound"))?;
+    let published = matches!(
+        binding.publication().publication(),
+        Some(PolicyStateCas::Published {
+            current,
+            durability_error:
+                TestCachedRetryTelemetryBlobDurabilityError::Confirm,
+            previous: Some(previous),
+            ..
+        }) if *current == state && *previous == expected
+    );
+    if binding.is_bound()
+        && state.policy() == policies.meets()
+        && state.revision().value() == 7
+        && binding.request().policy() == policies.meets()
+        && published
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "committed durability failure binding evidence drifted",
         ))
     }
 }
