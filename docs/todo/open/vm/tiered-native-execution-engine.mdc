@@ -541,8 +541,14 @@ behavior.
   overflow-bin evidence. Identical-schema histograms merge transactionally with
   exact rollback. Canonical revision-one latency bytes preserve extrema flags,
   `u128` totals, bound/count pairs, and repeat snapshot validation after decode.
-  Rebinning, distributed/durable merge, automatic recommendation/publication,
-  runtime clock acquisition, async ownership, and durable storage remain open.
+  Exact schema coarsening and witness-backed refinement now change bucket
+  schemas without inferring hidden samples. Shared-schema normalization
+  enables exact merges across compatible histograms. Caller-delimited
+  monotonic timing yields explicit samples. Canonical blob persistence,
+  durable CAS merge with bounded conflict retry, and count/latency policy
+  recommendation plus durable publication retain typed evidence and
+  file-backed regressions. Automatic asynchronous interval ownership and
+  broader distributed aggregation remain open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

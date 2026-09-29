@@ -1778,10 +1778,15 @@ ranges. `telemetry_latency_merge.rs` combines identical bucket schemas only
 after every merged count, total, and extremum is checked.
 `telemetry_latency_codec.rs` defines canonical revision-one little-endian
 histogram bytes with exact extrema flags, `u128` totals, bound/count pairs, and
-repeated snapshot validation. Rebinning, distributed/durable merge, automatic
-policy recommendation or publication, runtime clock acquisition, asynchronous
-
-ownership, and durable storage remain outside this boundary.
+repeated snapshot validation. Exact schema coarsening derives shared schemas
+for normalized merge, while witness-backed refinement refuses to infer
+hidden within-bucket distributions. Caller-delimited monotonic timing
+produces explicit latency samples. Canonical blob persistence and durable
+CAS merge with bounded conflict retry retain exact histogram evidence.
+Count/latency policy recommendation and durable publication likewise retain
+typed evidence across file-backed regressions. Automatic asynchronous
+interval ownership and broader distributed aggregation remain outside this
+boundary.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
