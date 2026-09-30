@@ -134,9 +134,9 @@ progress.write_checkpoint_generation(sidecar, checkpoint)
 
 fn repository_python(root: &Path) -> PathBuf {
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.6/python.exe")
+        root.join(".dependencies/python/3.14.7/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.6/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     }
 }
 

@@ -146,7 +146,7 @@ verification result, and threats to validity.
 ### Tooling And Publication Verification
 
 The repository records authoritative references for C, Rust, Python, the Rust
-1.97.1 toolchain, Node.js 24.16.0, uv, LLVM/Clang, clang-tidy, pytest, Ruff,
+1.97.1 toolchain, Node.js 24.19.0, uv, LLVM/Clang, clang-tidy, pytest, Ruff,
 BasedPyright, CUDA, ROCm, PyTorch, x86-64, AArch64, CommonMark, TOML,
 LaTeX, Git,
 GitHub repository citation metadata, and Citation File Format. Source records
@@ -155,7 +155,7 @@ architecture automatically.
 
 ### Baseline Coverage
 
-The executable bibliography audit currently validates 52 source/provenance
+The executable bibliography audit currently validates 54 source/provenance
 records, 44 required baseline records, nine exact Python validation packages,
 and 20 distinct durable external references. Durable coverage scans source,
 manifests, technical and research documentation, completed lifecycle evidence,
@@ -183,7 +183,7 @@ tests, and the repository's own canonical URL are excluded deliberately.
   - **State:** covered
 
 - **Required source class:** Validation host runtime
-  - **Canonical records:** `platforms-and-runtimes/nodejs-24-16-0.md`,
+  - **Canonical records:** `platforms-and-runtimes/nodejs-24-19-0.md`,
                            `tooling/uv.md`
   - **State:** covered
 
@@ -244,7 +244,7 @@ are listed explicitly so provenance reachability is deterministic and auditable.
 - `docs/bibliography/platforms-and-runtimes/accelerators/pytorch.md`
 - `docs/bibliography/platforms-and-runtimes/compiler/clang-libtooling.md`
 - `docs/bibliography/platforms-and-runtimes/compiler/llvm-ir.md`
-- `docs/bibliography/platforms-and-runtimes/nodejs-24-16-0.md`
+- `docs/bibliography/platforms-and-runtimes/nodejs-24-19-0.md`
 - `docs/bibliography/platforms-and-runtimes/rocm.md`
 - `docs/bibliography/platforms-and-runtimes/rust-toolchain-1-97-1.md`
 - `docs/bibliography/platforms-and-runtimes/x86-64.md`

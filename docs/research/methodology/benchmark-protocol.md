@@ -97,7 +97,7 @@ scan failure is a validation failure, not evidence that an example is absent.
   accelerator, and raw-output identity must agree with exact source/workload/
   toolchain run provenance plus canonical target-profile identity where
 applicable.
-- `.dependencies/python/3.14.6/Scripts/python-jig.cmd -m
+- `.dependencies/python/3.14.7/Scripts/python-jig.cmd -m
   scripts.validate.benchmark_protocol` validates the checked-in protocol corpus.
 
 ## Results

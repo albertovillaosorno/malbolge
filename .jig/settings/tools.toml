@@ -2,7 +2,7 @@ domain = "tools"
 schema_version = 1
 
 [entry.basedpyright]
-path = ".dependencies/python/3.14.6/jig-bin/basedpyright.bin"
+path = ".dependencies/python/3.14.7/jig-bin/basedpyright.bin"
 
 [entry.chktex.linux]
 path = ".dependencies/bin/chktex"
@@ -14,10 +14,10 @@ path = ".dependencies/git/2.55.0/bin/git.bin"
 path = ".dependencies/bin/latexmk"
 
 [entry.pytest]
-path = ".dependencies/python/3.14.6/jig-bin/pytest.bin"
+path = ".dependencies/python/3.14.7/jig-bin/pytest.bin"
 
 [entry.ruff]
-path = ".dependencies/python/3.14.6/jig-bin/ruff.bin"
+path = ".dependencies/python/3.14.7/jig-bin/ruff.bin"
 
 [entry.rust_nightly_cargo_clippy]
 path = ".dependencies/rust/nightly-2026-07-14/bin/cargo-clippy.bin"

@@ -1,4 +1,4 @@
-# Ruff 0.16.0
+# Ruff 0.16.9
 
 ## Status
 
@@ -6,30 +6,30 @@ Verified; evidence verified.
 
 ## Subject
 
-- Canonical name: Ruff 0.16.0
+- Canonical name: Ruff 0.16.9
 - Subject class: Python linter and formatter
-- Stable identifier: PyPI ruff 0.16.0
+- Stable identifier: PyPI ruff 0.16.9
 - Publisher or authority: Astral Software and Ruff contributors
 
 ## Repository Use
 
-Ruff 0.16.0 is the pinned Python linter and formatter for repository-authored
+Ruff 0.16.9 is the pinned Python linter and formatter for repository-authored
 Python. The repository supplies its own strict configuration and rule policy;
 Ruff remains external validation tooling and does not relicense checked source.
 
 ## Provenance
 
-PyPI records Ruff 0.16.0 source and platform artifacts uploaded on 2026-07-23
+PyPI records Ruff 0.16.9 source and platform artifacts uploaded on 2026-09-24
 through trusted publishing. Official project metadata identifies Ruff as a
 Python linter and formatter written in Rust, with Python 3.14 compatibility and
-an MIT license expression. The repository requirements pin the exact 0.16.0
+an MIT license expression. The repository requirements pin the exact 0.16.9
 version.
 
 ## Identity And Version
 
-- Canonical name: Ruff 0.16.0
+- Canonical name: Ruff 0.16.9
 - Subject class: Python linter and formatter
-- Stable identifier: PyPI ruff 0.16.0
+- Stable identifier: PyPI ruff 0.16.9
 - Publisher or authority: Astral Software and Ruff contributors
 
 ## License Or Terms
@@ -42,11 +42,11 @@ retain applicable upstream and third-party notices.
 
 ### Verified
 
-- PyPI records Ruff 0.16.0 artifacts uploaded on 2026-07-23.
+- PyPI records Ruff 0.16.9 artifacts uploaded on 2026-09-24.
 - PyPI metadata identifies the MIT license expression.
 - Official documentation describes linting, formatting, configuration, and
   Python 3.14 compatibility.
-- The repository pins `ruff==0.16.0` for validation.
+- The repository pins `ruff==0.16.9` for validation.
 
 ### Unresolved
 
@@ -56,6 +56,6 @@ captured by validation evidence rather than inferred from this source record.
 
 ## Sources
 
-- <https://pypi.org/project/ruff/0.16.0/> - accessed 2026-08-05.
-- <https://docs.astral.sh/ruff/> - accessed 2026-08-05.
-- <https://docs.astral.sh/ruff/versioning/> - accessed 2026-08-05.
+- <https://pypi.org/project/ruff/0.16.9/> - accessed 2026-09-30.
+- <https://docs.astral.sh/ruff/> - accessed 2026-09-30.
+- <https://docs.astral.sh/ruff/versioning/> - accessed 2026-09-30.

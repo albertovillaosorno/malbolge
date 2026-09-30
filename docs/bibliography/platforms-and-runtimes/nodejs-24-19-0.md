@@ -1,4 +1,4 @@
-# Node.js 24.16.0 LTS
+# Node.js 24.19.0 LTS
 
 ## Status
 
@@ -6,29 +6,29 @@ Verified; evidence verified.
 
 ## Subject
 
-- Canonical name: Node.js 24.16.0 LTS
+- Canonical name: Node.js 24.19.0 LTS
 - Subject class: JavaScript runtime release
-- Stable identifier: Node.js v24.16.0 Krypton LTS
+- Stable identifier: Node.js v24.19.0 Krypton LTS
 - Publisher or authority: OpenJS Foundation and Node.js contributors
 
 ## Repository Use
 
-Node.js 24.16.0 is the runtime payload selected by the pinned unofficial Python
+Node.js 24.19.0 is the runtime payload selected by the pinned unofficial Python
 wheel used to execute BasedPyright. Node.js is validation infrastructure; it is
 not a guest runtime or a required dependency of generated `.malbolge` programs.
 
 ## Provenance
 
-The Node.js project published version 24.16.0, codename Krypton, as an LTS
-release on 2026-05-21. The official download index publishes platform artifacts
+The Node.js project published version 24.19.0, codename Krypton, as an LTS
+release on 2026-08-03. The official download index publishes platform artifacts
 and signed SHA-256 manifests. The repository obtains the runtime through the
 separately cataloged `nodejs-wheel-binaries` package.
 
 ## Identity And Version
 
-- Canonical name: Node.js 24.16.0 LTS
+- Canonical name: Node.js 24.19.0 LTS
 - Subject class: JavaScript runtime release
-- Stable identifier: Node.js v24.16.0 Krypton LTS
+- Stable identifier: Node.js v24.19.0 Krypton LTS
 - Publisher or authority: OpenJS Foundation and Node.js contributors
 
 ## License Or Terms
@@ -41,10 +41,10 @@ provenance and notice review.
 
 ### Verified
 
-- Node.js 24.16.0 LTS was published on 2026-05-21.
+- Node.js 24.19.0 LTS was published on 2026-08-03.
 - The release codename is Krypton.
 - Official platform downloads and signed SHA-256 manifests are published.
-- The validation environment pins a package carrying version 24.16.0.
+- The validation environment pins a package carrying version 24.19.0.
 
 ### Unresolved
 
@@ -53,7 +53,7 @@ and complete bundled-license inventory require installed-wheel evidence.
 
 ## Sources
 
-- <https://nodejs.org/en/blog/release/v24.16.0> - accessed 2026-08-05.
-- <https://nodejs.org/download/release/v24.16.0/> - accessed 2026-08-05.
-- <https://github.com/nodejs/node/blob/v24.16.0/LICENSE> - accessed
-  2026-08-05.
+- <https://nodejs.org/en/blog/release/v24.19.0> - accessed 2026-09-30.
+- <https://nodejs.org/download/release/v24.19.0/> - accessed 2026-09-30.
+- <https://github.com/nodejs/node/blob/v24.19.0/LICENSE> - accessed
+  2026-09-30.

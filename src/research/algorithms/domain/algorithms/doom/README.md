@@ -71,7 +71,7 @@ Run from the repository root with the repository Python:
 
 ```powershell
 $env:PYTHONPATH = (Get-Location).Path
-$python = ".dependencies/python/3.14.6/Scripts/python.exe"
+$python = ".dependencies/python/3.14.7/Scripts/python.exe"
 
 & $python -m algorithms.doom.generator.quality
 & $python -m algorithms.doom.generator.amalgamation_oracle

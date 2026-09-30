@@ -96,7 +96,7 @@ format](../../bibliography/specifications-and-standards/toml.md).
   mismatch diagnostics, explicit noncanonical scopes, retained negative
   outcomes, fail-closed outcome vocabulary, positive stopping bounds,
   mandatory verification, and strict plan-versus-run separation.
-- `.dependencies/python/3.14.6/Scripts/python-jig.cmd
+- `.dependencies/python/3.14.7/Scripts/python-jig.cmd
   src/automation/repository/composition/scripts/validate/experiment_manifest.py`
   validates the checked-in corpus and
   reports the exact manifest count.

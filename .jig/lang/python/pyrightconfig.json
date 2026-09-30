@@ -56,7 +56,7 @@
   "reportMissingSuperCall": "error",
   "reportUninitializedInstanceVariable": "error",
   "venvPath": "../../../.dependencies/python",
-  "venv": "3.14.6",
+  "venv": "3.14.7",
   "extraPaths": [
     "../../../src/automation/repository/composition",
     "../../../src/optimization/accelerator/adapter-outbound",

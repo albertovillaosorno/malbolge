@@ -1,4 +1,4 @@
-# Pygments 2.20.0
+# Pygments 2.21.0
 
 ## Status
 
@@ -6,14 +6,14 @@ Verified; evidence verified.
 
 ## Subject
 
-- Canonical name: Pygments 2.20.0
+- Canonical name: Pygments 2.21.0
 - Subject class: Python syntax-highlighting library
-- Stable identifier: PyPI Pygments 2.20.0
+- Stable identifier: PyPI Pygments 2.21.0
 - Publisher or authority: Pygments team
 
 ## Repository Use
 
-Pygments 2.20.0 is pinned in the validation environment for syntax-highlighted
+Pygments 2.21.0 is pinned in the validation environment for syntax-highlighted
 terminal and report output used by Python tooling. Highlighting is presentation,
 not validation semantics.
 
@@ -21,13 +21,13 @@ not validation semantics.
 
 PyPI describes Pygments as a generic Python syntax highlighter usable as both a
 command-line tool and library, with support for Python 3.14. The repository pins
-version 2.20.0.
+version 2.21.0.
 
 ## Identity And Version
 
-- Canonical name: Pygments 2.20.0
+- Canonical name: Pygments 2.21.0
 - Subject class: Python syntax-highlighting library
-- Stable identifier: PyPI Pygments 2.20.0
+- Stable identifier: PyPI Pygments 2.21.0
 - Publisher or authority: Pygments team
 
 ## License Or Terms
@@ -39,9 +39,9 @@ dependencies remain separately licensed.
 
 ### Verified
 
-- PyPI identifies Pygments 2.20.0 and Python 3.9 or newer.
+- PyPI identifies Pygments 2.21.0 and Python 3.9 or newer.
 - PyPI metadata records BSD-2-Clause and Python 3.14 support.
-- The repository pins `Pygments==2.20.0` for validation.
+- The repository pins `pygments==2.21.0` for validation.
 
 ### Unresolved
 
@@ -50,5 +50,5 @@ remain configuration-specific.
 
 ## Sources
 
-- <https://pypi.org/project/Pygments/2.20.0/> - accessed 2026-08-05.
-- <https://pygments.org/> - accessed 2026-08-05.
+- <https://pypi.org/project/Pygments/2.21.0/> - accessed 2026-09-30.
+- <https://pygments.org/> - accessed 2026-09-30.

@@ -1,9 +1,9 @@
-basedpyright==1.39.9
-colorama==0.4.6
+basedpyright==1.40.1
+colorama==0.4.6 ; sys_platform == 'win32'
 iniconfig==2.3.0
-nodejs-wheel-binaries==24.16.0
-packaging==26.2
+nodejs-wheel-binaries==24.19.0
+packaging==26.3
 pluggy==1.6.0
-Pygments==2.20.0
+pygments==2.21.0
 pytest==9.1.1
-ruff==0.16.0
+ruff==0.16.9

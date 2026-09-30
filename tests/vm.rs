@@ -118,9 +118,9 @@ fn cuda_test_guard() -> TestResult<MutexGuard<'static, ()>> {
 
 fn validation_python(root: &Path) -> PathBuf {
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
+        root.join(".dependencies/python/3.14.7/Scripts/python-jig.cmd")
     } else {
-        root.join(".dependencies/python/3.14.6/bin/python-jig")
+        root.join(".dependencies/python/3.14.7/bin/python-jig")
     }
 }
 

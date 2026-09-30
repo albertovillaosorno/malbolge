@@ -2,8 +2,8 @@ domain = "versions"
 schema_version = 1
 
 [authority.basedpyright]
-current = "1.39.9"
-stable = "1.39.9"
+current = "1.40.1"
+stable = "1.40.1"
 
 [authority.basedpyright.projection.tool]
 kind = "tool"
@@ -56,8 +56,8 @@ target = "pytest"
 template = "{version}"
 
 [authority.ruff]
-current = "0.16.0"
-stable = "0.16.0"
+current = "0.16.9"
+stable = "0.16.9"
 
 [authority.ruff.projection.tool]
 kind = "tool"

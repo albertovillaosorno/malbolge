@@ -14,7 +14,7 @@ tracked in [TODO.md](TODO.md), with full typed records under `docs/todo/open/`.
 
 ## Quick start
 
-Bootstrap from the repository root with an exact Python 3.14.6 host interpreter.
+Bootstrap from the repository root with an exact Python 3.14.7 host interpreter.
 The bootstrap creates ignored local state and provisions the repository-owned
 validation environment.
 

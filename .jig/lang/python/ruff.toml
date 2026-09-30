@@ -1,6 +1,6 @@
 # Ruff policy for Jig Python surfaces.
-# Authority: local reference/ruff checkout, package version 0.16.0.
-required-version = "==0.16.0"
+# Authority: local reference/ruff checkout, package version 0.16.9.
+required-version = "==0.16.9"
 target-version = "py314"
 line-length = 80
 indent-width = 4

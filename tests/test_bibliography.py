@@ -50,7 +50,7 @@ from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 52
+EXPECTED_RECORDS = 54
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
 EXPECTED_DURABLE_REFERENCES = 20
@@ -192,7 +192,7 @@ def test_validation_requirements_have_exact_bibliography_coverage() -> None:
 def test_validation_requirement_version_drift_fails_closed() -> None:
     """A dependency update requires the bibliography to move in one change."""
     text = VALIDATION_REQUIREMENTS.read_text(encoding="utf-8")
-    text = text.replace("ruff==0.16.0", "ruff==0.16.1", 1)
+    text = text.replace("ruff==0.16.9", "ruff==0.17.0", 1)
     _expect_requirements_failure(
         text,
         "Python validation requirements mismatch canonical bibliography",

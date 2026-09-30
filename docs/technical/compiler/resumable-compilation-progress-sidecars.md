@@ -203,7 +203,7 @@ complete typed-IR checkpoint admission. The product `malbolge` CLI now exposes
 `--checkpoint-info PROGRESS.json`,
 `--extract-checkpoint STATE_CODEC PROGRESS.json`, and
 `--follow-progress PROGRESS.json`. Command-line composition selects the
-repository-pinned Python 3.14.6 interpreter plus this trusted inspector and
+repository-pinned Python 3.14.7 interpreter plus this trusted inspector and
 delegates metadata validation, binary-safe extraction, or continuous
 validated summary streaming without parsing sidecar JSON in Rust.
 
@@ -288,7 +288,7 @@ The reference inspector prints one exact key/value summary without rounding
 scientific timing:
 
 ```powershell
-.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+.dependencies/python/3.14.7/Scripts/python-jig.cmd `
   src/automation/repository/composition/scripts/progress_sidecar.py `
   output.malbolge.progress.json
 ```
@@ -304,7 +304,7 @@ A verified inner checkpoint payload can be extracted without trusting the
 mutable pointer or outer envelope directly:
 
 ```powershell
-.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+.dependencies/python/3.14.7/Scripts/python-jig.cmd `
   src/automation/repository/composition/scripts/progress_sidecar.py `
   --extract-checkpoint evaluated-search-prefix-evidence-v1 `
   output.malbolge.progress.json > search.resume.json

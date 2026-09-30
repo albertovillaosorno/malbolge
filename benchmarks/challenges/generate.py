@@ -128,9 +128,8 @@ _COMPOSITION_ROOT: Final = (
 if str(_COMPOSITION_ROOT) not in sys.path:
     sys.path.insert(0, str(_COMPOSITION_ROOT))
 
-from scripts.validate import (  # ruff: ignore[module-import-not-at-top-of-file]
-    target_profile,
-)
+# jig-ignore-next-line: import follows repository-local sys.path setup.
+from scripts.validate import target_profile  # ruff: ignore[module-import-not-at-top-of-file]
 
 _PROFILE_MANIFEST: Final = target_profile.FINGERPRINT_MANIFEST
 _EXPECTED_ARTIFACTS: Final = frozenset({

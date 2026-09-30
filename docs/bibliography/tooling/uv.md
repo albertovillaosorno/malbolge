@@ -1,4 +1,4 @@
-# uv 0.11.16
+# uv 0.12.20
 
 ## Status
 
@@ -6,30 +6,30 @@ Verified; evidence verified.
 
 ## Subject
 
-- Canonical name: uv 0.11.16
+- Canonical name: uv 0.12.20
 - Subject class: Python package and project manager
-- Stable identifier: Astral uv 0.11.16
+- Stable identifier: Astral uv 0.12.20
 - Publisher or authority: Astral Software and uv contributors
 
 ## Repository Use
 
-uv 0.11.16 is the pinned standalone package manager used to create and
+uv 0.12.20 is the pinned standalone package manager used to create and
 synchronize the repository-local Python validation environment. The bootstrap
 creates the virtual environment without pip and invokes `uv pip sync` against
 the exact requirements file.
 
 ## Provenance
 
-Astral published uv 0.11.16 on 2026-05-21 with signed release metadata,
+Astral published uv 0.12.20 on 2026-09-28 with signed release metadata,
 platform-specific archives, checksums, and attestations. The repository tracks
 five supported host artifacts in `uv-toolchain.json` and verifies SHA-256 before
 extracting only the expected executable member.
 
 ## Identity And Version
 
-- Canonical name: uv 0.11.16
+- Canonical name: uv 0.12.20
 - Subject class: Python package and project manager
-- Stable identifier: Astral uv 0.11.16
+- Stable identifier: Astral uv 0.12.20
 - Publisher or authority: Astral Software and uv contributors
 
 ## License Or Terms
@@ -42,7 +42,7 @@ third-party notices remain external material.
 
 ### Verified
 
-- uv 0.11.16 was released on 2026-05-21.
+- uv 0.12.20 was released on 2026-09-28.
 - Official standalone archives exist for the tracked Windows, Linux, and macOS
   host classes.
 - uv's pip interface does not rely on or invoke pip.
@@ -57,15 +57,15 @@ install.
 
 ## Sources
 
-- <https://github.com/astral-sh/uv/releases/tag/0.11.16> - accessed
-  2026-08-05.
+- <https://github.com/astral-sh/uv/releases/tag/0.12.20> - accessed
+  2026-09-30.
 - <https://github.com/astral-sh/uv/releases/download/> - accessed
-  2026-08-05.
-- <https://github.com/astral-sh/uv/releases/download/0.11.16/> - accessed
-  2026-08-05.
+  2026-09-30.
+- <https://github.com/astral-sh/uv/releases/download/0.12.20/> - accessed
+  2026-09-30.
 - <https://docs.astral.sh/uv/getting-started/installation/> - accessed
-  2026-08-05.
-- <https://docs.astral.sh/uv/pip/> - accessed 2026-08-05.
+  2026-09-30.
+- <https://docs.astral.sh/uv/pip/> - accessed 2026-09-30.
 - <https://docs.astral.sh/uv/reference/cli/#uv-pip-sync> - accessed
-  2026-08-05.
-- <https://github.com/astral-sh/uv#license> - accessed 2026-08-05.
+  2026-09-30.
+- <https://github.com/astral-sh/uv#license> - accessed 2026-09-30.

@@ -604,13 +604,13 @@ fn run_progress_inspector(
     arguments: &[&OsStr],
 ) -> Result<ExitCode, String> {
     let interpreter = if cfg!(windows) {
-        root.join(".dependencies/python/3.14.6/python.exe")
+        root.join(".dependencies/python/3.14.7/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.6/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     };
     if !interpreter.is_file() {
         return Err(format!(
-            "repository Python 3.14.6 is missing: {}",
+            "repository Python 3.14.7 is missing: {}",
             interpreter.display(),
         ));
     }

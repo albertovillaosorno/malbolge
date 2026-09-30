@@ -21,7 +21,7 @@ without a source path also fails with a diagnostic on stderr and points to
 
 `malbolge --checkpoint-info program.malbolge.progress.json` and
 `malbolge --extract-checkpoint STATE_CODEC program.malbolge.progress.json`
-select the repository-pinned Python 3.14.6 interpreter and the trusted
+select the repository-pinned Python 3.14.7 interpreter and the trusted
 `progress_sidecar.py` inspector from the same repository root used by the
 product CLI. The Rust command does not parse sidecar JSON or checkpoint
 payloads. It delegates the selected inspector operation unchanged, inherits
@@ -274,20 +274,20 @@ directory.
 Validate and build without launching:
 
 ```powershell
-.dependencies\python\3.14.6\Scripts\python.exe `
+.dependencies\python\3.14.7\Scripts\python.exe `
   scripts\debug\doom.py --build-only
 ```
 
 Play normally while recording a sanitizer report:
 
 ```powershell
-.dependencies\python\3.14.6\Scripts\python.exe scripts\debug\doom.py
+.dependencies\python\3.14.7\Scripts\python.exe scripts\debug\doom.py
 ```
 
 Launch under LLDB and forward ordinary DOOM arguments after `--`:
 
 ```powershell
-.dependencies\python\3.14.6\Scripts\python.exe `
+.dependencies\python\3.14.7\Scripts\python.exe `
   scripts\debug\doom.py --lldb -- -warp 1 1
 ```
 

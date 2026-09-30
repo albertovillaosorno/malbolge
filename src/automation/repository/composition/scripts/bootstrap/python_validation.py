@@ -60,7 +60,7 @@ import zipfile
 from scripts.repository_root import repository_root
 
 ROOT: Final = repository_root(Path(__file__))
-PYTHON_VERSION: Final = (3, 14, 6)
+PYTHON_VERSION: Final = (3, 14, 7)
 BOOTSTRAP_ROOT: Final = (
     ROOT / "src/automation/repository/composition/scripts/bootstrap"
 )
@@ -400,17 +400,17 @@ def validation_layout(
         Exact environment, interpreter, launcher, and tool paths.
 
     """
-    environment = root / ".dependencies" / "python" / "3.14.6"
+    environment = root / ".dependencies" / "python" / "3.14.7"
     scripts = environment / ("Scripts" if windows else "bin")
     executable_suffix = ".exe" if windows else ""
     launcher_suffix = ".cmd" if windows else ""
     return ValidationEnvironmentLayout(
         environment=environment,
         expected_tools=(
-            (f"basedpyright{executable_suffix}", "basedpyright 1.39.9"),
+            (f"basedpyright{executable_suffix}", "basedpyright 1.40.1"),
             (f"pytest{executable_suffix}", "pytest 9.1.1"),
-            (f"python-jig{launcher_suffix}", "Python 3.14.6"),
-            (f"ruff{executable_suffix}", "ruff 0.16.0"),
+            (f"python-jig{launcher_suffix}", "Python 3.14.7"),
+            (f"ruff{executable_suffix}", "ruff 0.16.9"),
         ),
         pytest=scripts / f"pytest{executable_suffix}",
         pytest_launcher=scripts / f"pytest-jig{launcher_suffix}",

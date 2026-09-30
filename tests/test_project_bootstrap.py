@@ -90,7 +90,7 @@ POSIX_JIG_BASEDPYRIGHT_EXEC = '../bin/basedpyright" "$@"'
 POSIX_JIG_PYTEST_EXEC = '../bin/python" -m pytest "$@"'
 POSIX_JIG_PYTEST_PROBE_ARGV = "-m pytest --probe"
 LINUX_AARCH64 = "linux-aarch64"
-UV_VERSION = "0.11.16"
+UV_VERSION = "0.12.20"
 PIP_REQUIREMENT_PREFIX = "pip=="
 VALIDATION_REQUIREMENT_COUNT = 9
 BOOTSTRAP_COMPOSITION = "src/automation/repository/composition"
@@ -214,7 +214,7 @@ def test_uv_manifest_pins_exact_windows_artifact(tmp_path: Path) -> None:
     assert artifact.base_url.startswith("https://github.com/astral-sh/uv/")
     assert len(artifact.sha256) == python_validation.SHA256_HEX_LENGTH
     assert executable == (
-        tmp_path / ".dependencies/uv/0.11.16/bin/uv.exe"
+        tmp_path / ".dependencies/uv/0.12.20/bin/uv.exe"
     )
 
 
@@ -291,10 +291,10 @@ def test_uv_manifest_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     manifest = tmp_path / "uv.json"
     _ = manifest.write_text(
         concat := (
-            '{"version":"0.11.16",'
+            '{"version":"0.12.20",'
             '"version":"0.11.17",'
             '"base_url":"https://github.com/astral-sh/uv/'
-            'releases/download/0.11.16/",'
+            'releases/download/0.12.20/",'
             '"artifacts":{}}'
         ),
         encoding="utf-8",
@@ -384,10 +384,10 @@ def test_validation_layout_uses_windows_native_names(tmp_path: Path) -> None:
     assert layout.pytest.name == WINDOWS_PYTEST
     assert layout.pytest_launcher.name == WINDOWS_PYTEST_LAUNCHER
     assert layout.expected_tools == (
-        ("basedpyright.exe", "basedpyright 1.39.9"),
+        ("basedpyright.exe", "basedpyright 1.40.1"),
         ("pytest.exe", "pytest 9.1.1"),
-        ("python-jig.cmd", "Python 3.14.6"),
-        ("ruff.exe", "ruff 0.16.0"),
+        ("python-jig.cmd", "Python 3.14.7"),
+        ("ruff.exe", "ruff 0.16.9"),
     )
 
 
@@ -401,10 +401,10 @@ def test_validation_layout_uses_posix_native_names(tmp_path: Path) -> None:
     assert layout.pytest.name == POSIX_PYTEST
     assert layout.pytest_launcher.name == POSIX_PYTEST_LAUNCHER
     assert layout.expected_tools == (
-        ("basedpyright", "basedpyright 1.39.9"),
+        ("basedpyright", "basedpyright 1.40.1"),
         ("pytest", "pytest 9.1.1"),
-        ("python-jig", "Python 3.14.6"),
-        ("ruff", "ruff 0.16.0"),
+        ("python-jig", "Python 3.14.7"),
+        ("ruff", "ruff 0.16.9"),
     )
 
 
@@ -450,7 +450,7 @@ def test_posix_jig_tool_aliases_bind_fast_exact_versions(
 
     assert aliases["ruff"].read_bytes() == RUFF_BYTES
     cases = (
-        ("basedpyright", "basedpyright 1.39.9"),
+        ("basedpyright", "basedpyright 1.40.1"),
         ("pytest", "pytest 9.1.1"),
     )
     for tool_id, expected in cases:

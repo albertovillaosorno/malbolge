@@ -41,7 +41,7 @@ from scripts.validate import target_profile
 
 ARGUMENT_COUNT_MAX = 2
 ARGUMENT_COUNT_MIN = 1
-PYTHON_JIG = r".\.dependencies\python\3.14.6\Scripts\python-jig.cmd"
+PYTHON_JIG = r".\.dependencies\python\3.14.7\Scripts\python-jig.cmd"
 MODULE_COMMAND = f"{PYTHON_JIG} -m scripts.validate.profile_identity"
 
 

@@ -110,7 +110,7 @@ selecting an implicit repository policy.
   `tests/test_target_profile.py`.
 - Executable schema checks: `python
   src/automation/repository/composition/scripts/validate/target_profile.py` and
-  `.dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c
+  `.dependencies/python/3.14.7/Scripts/pytest-jig.cmd -c
   .jig/lang/python/pytest.ini
   tests/test_target_profile.py tests/compatibility/test_scalable_memory.py`.
 - Required evidence: reviewed authority text plus deterministic

@@ -422,9 +422,9 @@ impl ProfileInstructionDecoder for MissingInstructionDecoder {
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.6/python.exe")
+        root.join(".dependencies/python/3.14.7/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.6/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     }
 }
 

@@ -92,7 +92,7 @@ BASELINE_RECORDS = (
     "libraries/pluggy.md",
     "libraries/pygments.md",
     "platforms-and-runtimes/aarch64.md",
-    "platforms-and-runtimes/nodejs-24-16-0.md",
+    "platforms-and-runtimes/nodejs-24-19-0.md",
     "platforms-and-runtimes/rust-toolchain-1-97-1.md",
     "platforms-and-runtimes/accelerators/nvidia-cuda.md",
     "platforms-and-runtimes/accelerators/pytorch.md",
@@ -128,18 +128,18 @@ BASELINE_RECORDS = (
     "tooling/textmate-language-grammar.md",
 )
 VALIDATION_REQUIREMENT_RECORDS = (
-    ("basedpyright==1.39.9", "tooling/basedpyright.md"),
-    ("colorama==0.4.6", "libraries/colorama.md"),
+    ("basedpyright==1.40.1", "tooling/basedpyright.md"),
+    ("colorama==0.4.6 ; sys_platform == 'win32'", "libraries/colorama.md"),
     ("iniconfig==2.3.0", "libraries/iniconfig.md"),
     (
-        "nodejs-wheel-binaries==24.16.0",
+        "nodejs-wheel-binaries==24.19.0",
         "libraries/nodejs-wheel-binaries.md",
     ),
-    ("packaging==26.2", "libraries/packaging.md"),
+    ("packaging==26.3", "libraries/packaging.md"),
     ("pluggy==1.6.0", "libraries/pluggy.md"),
-    ("Pygments==2.20.0", "libraries/pygments.md"),
+    ("pygments==2.21.0", "libraries/pygments.md"),
     ("pytest==9.1.1", "tooling/pytest.md"),
-    ("ruff==0.16.0", "tooling/ruff.md"),
+    ("ruff==0.16.9", "tooling/ruff.md"),
 )
 URL_PATTERN = re.compile(r"https?://[^\s<>\"'`]+")
 DURABLE_REFERENCE_SUFFIXES = frozenset((
@@ -433,6 +433,10 @@ def validate_validation_requirements_text(text: str) -> None:
         )
 
 
+def _validation_requirement_pin(requirement: str) -> str:
+    return requirement.partition(" ; ")[0]
+
+
 def _validate_validation_requirements() -> None:
     requirements_text = VALIDATION_REQUIREMENTS_FILE.read_text(encoding="utf-8")
     validate_validation_requirements_text(requirements_text)
@@ -446,7 +450,8 @@ def _validate_validation_requirements() -> None:
                 ))
             )
         record = path.read_text(encoding="utf-8")
-        if f"`{requirement}`" not in record:
+        pin = _validation_requirement_pin(requirement)
+        if f"`{pin}`" not in record:
             _fail(
                 "".join((
                     "validation dependency record lacks exact pin: ",

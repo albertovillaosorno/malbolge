@@ -123,7 +123,7 @@ new 14-trit custom identity using the current defining semantic core.
 Run:
 
 ```text
-.\.dependencies\python\3.14.6\Scripts\python-jig.cmd `
+.\.dependencies\python\3.14.7\Scripts\python-jig.cmd `
   -m scripts.validate.profile_identity PROFILE.json
 ```
 
@@ -132,7 +132,7 @@ to validate the external profile and print its canonical fingerprint.
 Run:
 
 ```text
-.\.dependencies\python\3.14.6\Scripts\python-jig.cmd `
+.\.dependencies\python\3.14.7\Scripts\python-jig.cmd `
   -m scripts.validate.profile_identity `
   PROFILE.json EXPECTED-FINGERPRINT
 ```

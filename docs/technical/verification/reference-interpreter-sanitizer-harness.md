@@ -76,7 +76,7 @@ selecting an implicit repository policy.
 ### Reproduction
 
 ```powershell
-.dependencies\\python\\3.14.6\\Scripts\\python-jig.cmd -m `
+.dependencies\\python\\3.14.7\\Scripts\\python-jig.cmd -m `
   scripts.validate.historical_interpreter_sanitizer
 ```
 

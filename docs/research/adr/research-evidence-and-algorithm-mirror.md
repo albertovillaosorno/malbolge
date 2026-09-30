@@ -86,7 +86,7 @@ Git unless deliberately promoted into a versioned documentation artifact.
 
 Executable evidence:
 
-- `.dependencies/python/3.14.6/Scripts/python-jig.cmd
+- `.dependencies/python/3.14.7/Scripts/python-jig.cmd
   src/automation/repository/composition/scripts/validate/research_mirror.py`
   currently validates eight mirrored IDs, including the repository template;
 - `tests/test_research_mirror.py` covers the current repository plus

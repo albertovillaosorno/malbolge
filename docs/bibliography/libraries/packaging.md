@@ -1,4 +1,4 @@
-# packaging 26.2
+# packaging 26.3
 
 ## Status
 
@@ -6,28 +6,28 @@ Verified; evidence verified.
 
 ## Subject
 
-- Canonical name: packaging 26.2
+- Canonical name: packaging 26.3
 - Subject class: Python packaging metadata and version library
-- Stable identifier: PyPI packaging 26.2
+- Stable identifier: PyPI packaging 26.3
 - Publisher or authority: Python Packaging Authority contributors
 
 ## Repository Use
 
-packaging 26.2 is pinned in the validation environment for standards-backed
+packaging 26.3 is pinned in the validation environment for standards-backed
 version, requirement, marker, tag, license, and metadata handling used by Python
 tooling.
 
 ## Provenance
 
-PyPI records release 26.2 on 2026-04-24 and notes that a newer release exists.
+PyPI records release 26.3 on 2026-08-04 as the current stable release.
 Official documentation covers versions, specifiers, markers, requirements,
 metadata, tags, and lockfiles.
 
 ## Identity And Version
 
-- Canonical name: packaging 26.2
+- Canonical name: packaging 26.3
 - Subject class: Python packaging metadata and version library
-- Stable identifier: PyPI packaging 26.2
+- Stable identifier: PyPI packaging 26.3
 - Publisher or authority: Python Packaging Authority contributors
 
 ## License Or Terms
@@ -39,9 +39,9 @@ must preserve the terms selected for the exact artifact and its notices.
 
 ### Verified
 
-- PyPI identifies version 26.2 and Python 3.8 or newer.
+- PyPI identifies version 26.3 and Python 3.9 or newer.
 - PyPI records Apache-2.0 OR BSD-2-Clause.
-- The repository pins `packaging==26.2` for validation.
+- The repository pins `packaging==26.3` for validation.
 
 ### Unresolved
 
@@ -50,5 +50,5 @@ tool-version-specific.
 
 ## Sources
 
-- <https://pypi.org/project/packaging/26.2/> - accessed 2026-08-05.
-- <https://packaging.pypa.io/> - accessed 2026-08-05.
+- <https://pypi.org/project/packaging/26.3/> - accessed 2026-09-30.
+- <https://packaging.pypa.io/> - accessed 2026-09-30.
