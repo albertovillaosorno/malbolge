@@ -220,8 +220,9 @@ Use [`CITATION.cff`](CITATION.cff) for the repository's machine-readable
 software citation. Citation-format provenance is documented in the
 bibliography rather than duplicated here.
 
-Repository-authored material is available under the MIT License in
-[`LICENSE-MIT`](LICENSE-MIT). Historical material and third-party boundaries
+Repository-authored material is available under the Apache License 2.0 in
+[`LICENSE-APACHE-2.0`](LICENSE-APACHE-2.0). Historical material and
+third-party boundaries
 keep their own licensing records under [docs/legal/](docs/legal/).
 
 This is an experimental research repository, not a compatibility warranty or

@@ -30,7 +30,8 @@ external source summary.
 
 ## License Or Terms
 
-This disclaimer is repository-authored MIT material. External sources retain
+This disclaimer is repository-authored Apache-2.0 material. External sources
+retain
 their own rights and terms. Recording or citing a source never relicenses it.
 
 ## Evidence

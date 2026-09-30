@@ -11,7 +11,8 @@ Accepted.
 ## Context
 
 The repository includes an original public-domain interpreter, project-authored
-MIT material, optional user-supplied third-party source such as DOOM, and future
+Apache-2.0 material, optional user-supplied third-party source such as DOOM,
+and future
 generated artifacts. Engineering intent alone cannot determine ownership,
 license effect, distribution rights, or jurisdiction-specific legal outcomes.
 
@@ -45,7 +46,7 @@ from legal records rather than duplicated.
 
 ## Consequences
 
-- The public-domain oracle, MIT project code, user-supplied inputs, and
+- The public-domain oracle, Apache-2.0 project code, user-supplied inputs, and
   generated outputs can have explicit independent boundaries.
 - Unresolved legal facts remain visible instead of becoming favorable
   assumptions.

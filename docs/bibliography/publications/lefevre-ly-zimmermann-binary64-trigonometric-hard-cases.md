@@ -58,7 +58,7 @@ certified error cannot cross a rounding boundary.
 
 The publication, training material, and CORE-MATH artifacts remain external
 material under their respective terms. Citation and digest verification do not
-relicense them into this repository's MIT license.
+relicense them into this repository's Apache-2.0 license.
 
 ## Evidence
 

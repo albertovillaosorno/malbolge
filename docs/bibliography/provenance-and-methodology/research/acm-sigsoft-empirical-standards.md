@@ -58,7 +58,7 @@ Relevant verified guidance includes:
 The standards site states that the Empirical Standards are licensed CC0 1.0.
 This bibliography record summarizes verified methodological guidance and does
 not
-change the repository's MIT licensing or copy external text wholesale.
+change the repository's Apache-2.0 licensing or copy external text wholesale.
 
 ## Evidence
 

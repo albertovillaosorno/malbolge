@@ -1,6 +1,7 @@
 # Apollo AGC runner bootstrap
 
-`apollo_agc_runner.c` is project-authored MIT-licensed guest C for the future
+`apollo_agc_runner.c` is project-authored Apache-2.0-licensed guest C for the
+future
 Apollo 11 demonstration. It does not copy an existing AGC emulator. The current
 bootstrap models 15-bit one's-complement words, Block II erasable/fixed memory
 banking, the architectural A/L/Q/EB/FB/Z/BB register locations, and a useful
@@ -21,7 +22,8 @@ Luminary source or rope image is copied into this directory by the bootstrap;
 the historical identity and exact assembled image must be pinned and verified
 before the TODO can close.
 
-The runner itself remains repository-authored MIT material regardless of which
+The runner itself remains repository-authored Apache-2.0 material regardless
+of which
 historical image is selected as input.
 
 ## Native debug run

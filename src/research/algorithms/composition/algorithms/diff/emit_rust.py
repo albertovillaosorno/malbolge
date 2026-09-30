@@ -1,11 +1,11 @@
 # Copyright:
 #   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
-#   - MIT
+#   - Apache-2.0
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE-MIT
+#   - LICENSE-APACHE-2.0
 #
 # Boundary-Contract:
 # - Owns:
@@ -136,11 +136,11 @@ _GENERATED_HEADER = (
     "// Copyright:\n"
     "//   - Copyright © 2026 Alberto Villa Osorno.\n"
     "// SPDX-License-Identifier:\n"
-    "//   - MIT\n"
+    "//   - Apache-2.0\n"
     "// Confidential:\n"
     "//   - false\n"
     "// License-File:\n"
-    "//   - LICENSE-MIT\n"
+    "//   - LICENSE-APACHE-2.0\n"
     "//\n"
     "// Boundary-Contract:\n"
     "// - Owns:\n"

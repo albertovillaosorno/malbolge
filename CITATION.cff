@@ -10,7 +10,7 @@ authors:
 date-released: "2026-07-26"
 url: "https://github.com/albertovillaosorno/malbolge"
 repository-code: "https://github.com/albertovillaosorno/malbolge"
-license: MIT
+license: Apache-2.0
 # The citation date is intentionally frozen. It is the stable publication epoch
 # for the living Git repository, not a moving last-modified timestamp. Future
 # commits do not rewrite citations already used by readers.

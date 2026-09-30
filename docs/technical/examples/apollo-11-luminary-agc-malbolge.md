@@ -49,7 +49,7 @@ identifies the source as public domain. Repository admission still requires an
 explicit pinned source identity, exact assembled rope-image identity, retained
 attribution/provenance, and review under the repository legal boundary.
 
-The AGC interpreter is new project-authored MIT code. No third-party AGC
+The AGC interpreter is new project-authored Apache-2.0 code. No third-party AGC
 emulator implementation is copied into the runner.
 
 ## Invariants

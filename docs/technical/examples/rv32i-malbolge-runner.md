@@ -42,7 +42,8 @@ checks; native and Malbolge outputs then become direct byte-parity evidence.
 
 ### Standards and licensing boundary
 
-The runner is new project-authored MIT code. It is implemented from the public
+The runner is new project-authored Apache-2.0 code. It is implemented from the
+public
 RISC-V ISA contract rather than copied from another emulator. The RISC-V
 Instruction Set Manual is published under CC-BY-4.0; repository documentation
 must retain standards attribution while implementation code remains independent.

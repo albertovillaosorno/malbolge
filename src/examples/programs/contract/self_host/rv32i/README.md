@@ -1,6 +1,7 @@
 # RV32I runner bootstrap
 
-`rv32i_runner.c` is a project-authored MIT-licensed bootstrap interpreter for
+`rv32i_runner.c` is a project-authored Apache-2.0-licensed bootstrap
+interpreter for
 the 32-bit RISC-V integer ISA. It is written from the public ISA contract
 rather
 than copied from another emulator. The current bootstrap implements integer
@@ -18,7 +19,8 @@ fixture validates the architectural state and emits exactly `OK\n`.
 The RISC-V Instruction Set Manual is published by RISC-V International under
 CC-BY-4.0. This directory incorporates no source code from an existing RISC-V
 emulator; only the standardized instruction semantics are implemented in new
-repository-authored code. The runner therefore remains MIT-licensed project
+repository-authored code. The runner therefore remains Apache-2.0-licensed
+project
 code.
 
 The open TODO is intentionally broader than this bootstrap. Completion requires

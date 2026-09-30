@@ -4,7 +4,7 @@
 
 `examples/museum/` records historically important Malbolge programs without
 turning third-party source code into repository test data, compiler fixtures, or
-MIT-licensed project material.
+Apache-2.0-licensed project material.
 
 This is a museum, not a conformance corpus.
 

@@ -38,7 +38,8 @@ the change.
 
 ## License Or Terms
 
-This ledger is repository-authored MIT material. External evidence retains its
+This ledger is repository-authored Apache-2.0 material. External evidence
+retains its
 own copyright, license, publication, and access terms; citation here does not
 relicense any external source.
 

@@ -15,4 +15,4 @@ Technical architecture, research results, or inferred permission.
 ## Contents
 
 - `ben-olmstead-malbolge-public-domain.md`
-- `repository-mit-license-boundary.md`
+- `repository-apache-2-0-license-boundary.md`

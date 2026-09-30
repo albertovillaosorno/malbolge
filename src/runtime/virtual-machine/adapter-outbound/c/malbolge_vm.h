@@ -6,11 +6,11 @@
 // Copyright:
 //   - Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
-//   - MIT
+//   - Apache-2.0
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE-MIT
+//   - LICENSE-APACHE-2.0
 // Path-Rule:
 //   - All paths in this header are repository-root relative.
 //

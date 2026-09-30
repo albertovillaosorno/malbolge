@@ -58,7 +58,7 @@ is supplied there.
 ## License Or Terms
 
 The journal page marks the article open access under CC BY-NC-ND 4.0. Citation
-does not relicense the source or import its terms into the repository MIT
+does not relicense the source or import its terms into the repository Apache-2.0
 license.
 
 ## Evidence

@@ -1,11 +1,11 @@
 # Copyright:
 #   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
-#   - MIT
+#   - Apache-2.0
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE-MIT
+#   - LICENSE-APACHE-2.0
 #
 # Boundary-Contract:
 # - Owns:
@@ -65,7 +65,7 @@ from scripts.repository_root import repository_root
 ROOT: Final = repository_root(Path(__file__))
 REQUIRED_ROOT_FILES: Final = (
     "Cargo.toml",
-    "LICENSE-MIT",
+    "LICENSE-APACHE-2.0",
     ".jig/jig.toml",
     "malbolge.json",
     ".jig/version/rust-toolchain.toml",

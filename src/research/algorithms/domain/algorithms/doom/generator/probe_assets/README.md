@@ -1,6 +1,7 @@
 # DOOM Behavior Probe Assets
 
-These files are repository-owned MIT harnesses and minimal freestanding header
+These files are repository-owned Apache-2.0 harnesses and minimal freestanding
+header
 shims used to observe behavior of a **user-supplied** DOOM source mirror. They
 do
 not contain copied DOOM implementation source and must never be replaced with

@@ -23,7 +23,7 @@ validation:
 Keep Ben Olmstead's original interpreter under
 `src/interoperability/historical-malbolge/`, retain its original notice,
 document its public-domain status, and state that the
-repository MIT license does not relicense that specific file.
+repository Apache-2.0 license does not relicense that specific file.
 
 ## Acceptance
 

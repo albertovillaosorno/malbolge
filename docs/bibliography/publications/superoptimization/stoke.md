@@ -33,7 +33,7 @@ describes the STOKE prototype.
 ## License Or Terms
 
 This is external material. Citation does not relicense the source or import its
-terms into the repository MIT license.
+terms into the repository Apache-2.0 license.
 
 ## Evidence
 

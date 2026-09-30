@@ -1,5 +1,5 @@
 // Copyright © 2026 Alberto Villa Osorno.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 //
 // Candidate source for the future GitHub Linguist Malbolge sample.
 // The final sample is the compiler-produced Malbolge artifact, not this C file.
