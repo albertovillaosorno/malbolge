@@ -1,13 +1,13 @@
 [package]
 name = "malbolge"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.97.1"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 build = "src/runtime/virtual-machine/composition/build.rs"
-license = "Apache-2.0"
-description = "Modern deterministic Malbolge toolchain and execution engine"
-repository = "https://github.com/albertovillaosorno/malbolge"
+license.workspace = true
+description.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "malbolge"
@@ -50,6 +50,19 @@ doc = false
 [workspace]
 resolver = "3"
 members = ["."]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+publish = false
+license = "Apache-2.0"
+description = "Modern deterministic Malbolge toolchain and execution engine"
+repository = "https://github.com/albertovillaosorno/malbolge"
+
+[workspace.dependencies]
+# All Cargo dependencies are declared here; members inherit only with
+# workspace = true.
 
 [lib]
 path = "src/runtime/virtual-machine/composition/lib.rs"

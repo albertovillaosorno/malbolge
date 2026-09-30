@@ -39,6 +39,8 @@ import re
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Git argv, never a shell command.
+import tomllib
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
@@ -51,6 +53,27 @@ FUNCTION_MANIFEST = "function.yml"
 MIN_COMPOSITION_PARTS = 4
 SOURCE_ROOT_NAME = "src"
 VM_FUNCTION = "src/runtime/virtual-machine"
+CARGO_EXCLUDED_ROOTS = frozenset({
+    ".cache",
+    ".dependencies",
+    ".git",
+    ".temp",
+    "target",
+})
+DEPENDENCY_TABLE_NAMES = frozenset({
+    "build-dependencies",
+    "dependencies",
+    "dev-dependencies",
+})
+WORKSPACE_PACKAGE_KEYS = frozenset({
+    "description",
+    "edition",
+    "license",
+    "publish",
+    "repository",
+    "rust-version",
+    "version",
+})
 EXPECTED_DOMAINS = (
     "automation",
     "compiler",
@@ -111,6 +134,79 @@ def _composition_paths(text: str) -> tuple[str, ...]:
     )
 
 
+def _toml_table(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    return cast("dict[str, object]", value)
+
+
+def _load_cargo_manifest(path: Path) -> dict[str, object]:
+    return cast(
+        "dict[str, object]",
+        tomllib.loads(path.read_text(encoding="utf-8")),
+    )
+
+
+def _cargo_manifests() -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            (
+                path
+                for path in ROOT.rglob("Cargo.toml")
+                if not CARGO_EXCLUDED_ROOTS.intersection(
+                    path.relative_to(ROOT).parts
+                )
+            ),
+            key=lambda path: path.as_posix(),
+        )
+    )
+
+
+def _dependency_tables(
+    document: dict[str, object],
+) -> tuple[tuple[tuple[str, ...], dict[str, object]], ...]:
+    tables: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    def visit(value: dict[str, object], path: tuple[str, ...]) -> None:
+        for key, child in value.items():
+            if not isinstance(child, dict):
+                continue
+            table = cast("dict[str, object]", child)
+            current = (*path, key)
+            if key in DEPENDENCY_TABLE_NAMES:
+                tables.append((current, table))
+            visit(table, current)
+
+    visit(document, ())
+    return tuple(tables)
+
+
+def _is_workspace_dependency(declaration: object) -> bool:
+    if not isinstance(declaration, dict):
+        return False
+    table = cast("dict[str, object]", declaration)
+    allowed_keys = frozenset({"features", "optional", "workspace"})
+    return (
+        table.get("workspace") is True
+        and frozenset(table) <= allowed_keys
+    )
+
+
+def _manifest_dependency_violations(manifest: Path) -> tuple[str, ...]:
+    document = _load_cargo_manifest(manifest)
+    relative = manifest.relative_to(ROOT).as_posix()
+    violations: list[str] = []
+    for path, dependencies in _dependency_tables(document):
+        if path == ("workspace", "dependencies"):
+            continue
+        table = ".".join(path)
+        violations.extend(
+            f"{relative}:{table}:{name}"
+            for name, declaration in dependencies.items()
+            if not _is_workspace_dependency(declaration)
+        )
+    return tuple(violations)
+
+
 def _is_git_ignored(path: Path) -> bool:
     relative = path.relative_to(ROOT).as_posix()
     # jig-ignore-next-line: indivisible reviewed identifier
@@ -165,6 +261,47 @@ def test_every_function_has_one_governed_manifest() -> None:
             mixed_language_functions.append(relative)
 
     assert VM_FUNCTION in mixed_language_functions
+
+
+def test_cargo_package_metadata_inherits_workspace_authority() -> None:
+    """Every inheritable root-package field comes from workspace authority."""
+    document = _load_cargo_manifest(CARGO_MANIFEST)
+    package = _toml_table(document["package"])
+    workspace = _toml_table(document["workspace"])
+    workspace_package = _toml_table(workspace["package"])
+    assert workspace_package.keys() >= WORKSPACE_PACKAGE_KEYS
+    for key in WORKSPACE_PACKAGE_KEYS:
+        assert package[key] == {"workspace": True}
+
+
+def test_workspace_dependency_rule_rejects_local_sources() -> None:
+    """Workspace members may add features, never local source ownership."""
+    accepted = (
+        {"workspace": True},
+        {"features": ["serde"], "workspace": True},
+        {"optional": True, "workspace": True},
+    )
+    rejected = (
+        "1.2.3",
+        {"git": "https://example.invalid/repository.git"},
+        {"path": "../dependency"},
+        {"version": "1.2.3"},
+        {"version": "1.2.3", "workspace": True},
+    )
+    assert all(_is_workspace_dependency(value) for value in accepted)
+    assert not any(_is_workspace_dependency(value) for value in rejected)
+
+
+def test_cargo_dependencies_are_declared_only_by_workspace() -> None:
+    """Cargo members cannot own dependency versions or source locations."""
+    violations = tuple(
+        violation
+        for manifest in _cargo_manifests()
+        for violation in _manifest_dependency_violations(manifest)
+    )
+    assert not violations, "non-workspace Cargo dependencies:\n" + "\n".join(
+        violations
+    )
 
 
 def test_cargo_composition_stays_inside_owned_functions() -> None:

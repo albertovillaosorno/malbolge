@@ -71,7 +71,7 @@ stable = "1.97.1"
 [authority.rust-stable.projection.cargo_rust_version]
 kind = "toml"
 path = "Cargo.toml"
-selector = "package.rust-version"
+selector = "workspace.package.rust-version"
 template = "{version}"
 
 [authority.rust-stable.projection.cargo_tool]
