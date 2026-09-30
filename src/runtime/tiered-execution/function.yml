@@ -612,6 +612,18 @@ parts:
     language: rust
     responsibility: >-
       Persist executable-cache limit policy without executable authority.
+  - id: part-0113
+    path: composition/tier/executable_cache_limits_activation.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply restored cache-limit policy through transactional reconfiguration.
+  - id: part-0114
+    path: composition/tier/executable_cache_limits_cas.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish canonical cache-limit policy through durable compare-and-swap.
 projects: []
 tests: []
 graph:
