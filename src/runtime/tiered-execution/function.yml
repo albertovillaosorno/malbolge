@@ -624,6 +624,12 @@ parts:
     language: rust
     responsibility: >-
       Publish canonical cache-limit policy through durable compare-and-swap.
+  - id: part-0115
+    path: composition/tier/executable_cache_limits_durable_activation.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply committed durable cache-limit policy to live cache state.
 projects: []
 tests: []
 graph:
