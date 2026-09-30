@@ -45,10 +45,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::blob_store::{
     NativeContinuationBlobConditionalPublication,
     NativeContinuationBlobConditionalPublicationResult,
+    NativeContinuationBlobConditionalRemoval,
+    NativeContinuationBlobConditionalRemovalResult,
     NativeContinuationBlobLoadResult, NativeContinuationBlobRemoval,
     NativeContinuationBlobRemovalResult, NativeContinuationBlobStore,
-    NativeContinuationConditionalBlobStore, NativeContinuationDurableBlobStore,
-    NativeContinuationRemovableBlobStore,
+    NativeContinuationConditionalBlobStore,
+    NativeContinuationConditionalRemovableBlobStore,
+    NativeContinuationDurableBlobStore, NativeContinuationRemovableBlobStore,
 };
 use crate::file_coordination::{
     NativeContinuationFileCoordination,
@@ -149,6 +152,9 @@ pub enum NativeContinuationFileBlobStoreError {
         kind: ErrorKind,
     },
 }
+
+type NativeContinuationFileBlobRemovalResult =
+    NativeContinuationBlobRemovalResult<NativeContinuationFileBlobStoreError>;
 
 type NativeContinuationFileStagingOpenResult =
     Result<(File, PathBuf), NativeContinuationFileBlobStoreError>;
@@ -351,6 +357,18 @@ impl NativeContinuationFileBlobStore {
         Err(NativeContinuationFileBlobStoreError::StagingExhausted)
     }
 
+    fn remove_locked(&self) -> NativeContinuationFileBlobRemovalResult {
+        match fs::remove_file(&self.destination) {
+            Ok(()) => Ok(NativeContinuationBlobRemoval::Removed),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                Ok(NativeContinuationBlobRemoval::Missing)
+            },
+            Err(error) => Err(NativeContinuationFileBlobStoreError::Remove {
+                kind: error.kind(),
+            }),
+        }
+    }
+
     fn replace_locked(
         &self,
         bytes: &[u8],
@@ -458,18 +476,42 @@ impl NativeContinuationConditionalBlobStore
     }
 }
 
+impl NativeContinuationConditionalRemovableBlobStore
+    for NativeContinuationFileBlobStore
+{
+    fn compare_and_remove(
+        &mut self,
+        expected: Option<&[u8]>,
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobConditionalRemovalResult<Self::Error> {
+        let coordination = self.coordination()?;
+        let guard = coordination
+            .acquire_exclusive()
+            .map_err(map_coordination_error)?;
+        let current = self.load_prelocked(&guard, maximum_bytes)?;
+        if current.as_deref() != expected {
+            return Ok(NativeContinuationBlobConditionalRemoval::Conflict {
+                current,
+            });
+        }
+        let Some(_current) = current else {
+            return Ok(NativeContinuationBlobConditionalRemoval::Missing);
+        };
+        match self.remove_locked()? {
+            NativeContinuationBlobRemoval::Missing => {
+                Ok(NativeContinuationBlobConditionalRemoval::Missing)
+            },
+            NativeContinuationBlobRemoval::Removed => {
+                Ok(NativeContinuationBlobConditionalRemoval::Removed)
+            },
+        }
+    }
+}
+
 impl NativeContinuationRemovableBlobStore for NativeContinuationFileBlobStore {
     fn remove(&mut self) -> NativeContinuationBlobRemovalResult<Self::Error> {
         let _lock = self.open_publication_lock()?;
-        match fs::remove_file(&self.destination) {
-            Ok(()) => Ok(NativeContinuationBlobRemoval::Removed),
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                Ok(NativeContinuationBlobRemoval::Missing)
-            },
-            Err(error) => Err(NativeContinuationFileBlobStoreError::Remove {
-                kind: error.kind(),
-            }),
-        }
+        self.remove_locked()
     }
 }
 

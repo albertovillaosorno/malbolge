@@ -35,6 +35,24 @@
 
 use std::num::NonZeroUsize;
 
+/// Result of one bounded conditional blob removal attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobConditionalRemoval {
+    /// Expected bytes differed from the exact bounded current publication.
+    Conflict {
+        /// Current bounded bytes observed while removal authority was held.
+        current: Option<Vec<u8>>,
+    },
+    /// Expected absence matched and no publication required removal.
+    Missing,
+    /// Expected bytes matched and the publication was removed.
+    Removed,
+}
+
+/// Conditional removal result returned by one blob-store adapter.
+pub type NativeContinuationBlobConditionalRemovalResult<StoreError> =
+    Result<NativeContinuationBlobConditionalRemoval, StoreError>;
+
 /// Result of one bounded conditional blob publication attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationBlobConditionalPublication {
@@ -127,6 +145,30 @@ pub trait NativeContinuationConditionalBlobStore:
         replacement: &[u8],
         maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error>;
+}
+
+/// Optional optimistic-concurrency removal for one removable blob store.
+///
+/// Implementations must serialize cooperating conditional removers and
+/// publishers around the compare plus removal operation. An absent expectation
+/// matches only missing state; present expected bytes match only exact current
+/// bytes.
+pub trait NativeContinuationConditionalRemovableBlobStore:
+    NativeContinuationRemovableBlobStore
+{
+    /// Atomically compares current bytes and conditionally removes publication.
+    ///
+    /// Conflict returns the exact bounded current publication observed while
+    /// conditional removal authority was held.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local bounded-read, coordination, or removal failure.
+    fn compare_and_remove(
+        &mut self,
+        expected: Option<&[u8]>,
+        maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationBlobConditionalRemovalResult<Self::Error>;
 }
 
 /// Optional post-publication durability confirmation for one blob store.

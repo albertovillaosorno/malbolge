@@ -60,3 +60,7 @@ destinations return Missing; an existing destination is removed atomically
 with respect to cooperating adapter callers and returns Removed. Application
 orchestration may then confirm directory durability. A directory-sync failure
 after removal remains committed absence evidence rather than rollback.
+
+Conditional removal holds that same sibling lock across bounded load, exact
+byte comparison, and removal. A stale expectation returns the exact bounded
+current publication and leaves it untouched; matched absence is a no-op.

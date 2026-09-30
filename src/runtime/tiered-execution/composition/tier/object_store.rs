@@ -42,6 +42,7 @@ use std::num::NonZeroUsize;
 use malbolge::{RegisterMaskedRegionEffectProgram, RuntimeCapability};
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
+    NativeContinuationConditionalRemovableBlobStore as ConditionalRemoveStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
     NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
@@ -114,6 +115,19 @@ pub enum RegisterMaskedAotObjectRestorePersistenceError<
     Native(Box<AheadOfExecutionRegisterMaskedObjectRestoreError<'requirement>>),
 }
 
+type ObjectConditionalRemoval<Store> =
+    blob_persistence::NativeContinuationBlobConditionalDurableRemoval<
+        <Store as DurableBlobStore>::DurabilityError,
+    >;
+type ObjectPersistenceError<Store> =
+    blob_persistence::NativeContinuationBlobPersistenceError<
+        <Store as BlobStore>::Error,
+    >;
+
+/// Conditional durable object eviction result for one outbound store type.
+pub type RegisterMaskedAotObjectConditionalDurableRemovalResult<Store> =
+    Result<ObjectConditionalRemoval<Store>, ObjectPersistenceError<Store>>;
+
 /// Result of one typed durable object restoration.
 pub type RegisterMaskedAotObjectRestoreResult<'requirement, Value, StoreError> =
     Result<
@@ -139,6 +153,30 @@ where
     Store: DurableBlobStore + RemovableBlobStore,
 {
     blob_persistence::remove_blob_durably(store)
+}
+
+/// Durably evicts this exact verified object only if it is still current.
+///
+/// The verified object bytes are the compare expectation. A newer or different
+/// publication returns conflict evidence and remains authoritative.
+///
+/// # Errors
+///
+/// Returns byte-limit or outbound coordination/removal failure before absence
+/// commits.
+pub fn evict_register_masked_aot_object_if_current_durably<Store>(
+    store: &mut Store,
+    artifact: &VerifiedAheadOfExecutionRegisterMaskedArtifact,
+    maximum_bytes: NonZeroUsize,
+) -> RegisterMaskedAotObjectConditionalDurableRemovalResult<Store>
+where
+    Store: ConditionalRemoveStore + DurableBlobStore,
+{
+    blob_persistence::compare_and_remove_blob_durably(
+        store,
+        Some(artifact.object()),
+        maximum_bytes,
+    )
 }
 
 /// Persists exact verified COFF bytes under an explicit positive byte bound.

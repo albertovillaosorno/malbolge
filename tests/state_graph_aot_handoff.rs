@@ -128,6 +128,7 @@ use register_masked_aot_bundle_persistence::{
     RegisterMaskedAotBundleRestoreRequest, RegisterMaskedAotBundleSource,
     RegisterMaskedAotBundleStoreError,
     evict_register_masked_aot_bundle_durably,
+    evict_register_masked_aot_bundle_if_current_durably,
     persist_register_masked_aot_bundle,
     persist_register_masked_aot_bundle_durably,
     restore_register_masked_aot_bundle,
@@ -137,6 +138,7 @@ use register_masked_aot_object_persistence::{
     RegisterMaskedAotObjectRestorePersistenceError,
     RegisterMaskedAotObjectRestoreRequest,
     evict_register_masked_aot_object_durably,
+    evict_register_masked_aot_object_if_current_durably,
     persist_register_masked_aot_object_durably,
     restore_register_masked_aot_object,
 };
@@ -1261,6 +1263,57 @@ fn product_register_masked_aot_bundle_rejects_untrusted_framing()
 }
 
 #[test]
+fn product_register_masked_aot_bundle_conditional_eviction_rejects_stale()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("bundle_conditional_evict")?;
+    let result = (|| -> HandoffResult<()> {
+        let (graph, _entry) = reduced_dispatch_fixture()?;
+        let programs = reduced_dispatch_programs(&graph)?;
+        let aot = prepare_reduced_dispatch_aot(&graph)?;
+        let maximum_bytes = NonZeroUsize::new(65_536)
+            .ok_or_else(|| String::from("AOT bundle bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let request = bundle_persist_request(&programs, &aot, maximum_bytes);
+        let _write = persist_register_masked_aot_bundle(&mut store, request)
+            .map_err(|error| format!("AOT bundle persist: {error:?}"))?;
+        let mut current = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("load AOT bundle: {error:?}"))?
+        .ok_or_else(|| String::from("AOT bundle disappeared"))?;
+        let last = current
+            .last_mut()
+            .ok_or_else(|| String::from("AOT bundle unexpectedly empty"))?;
+        *last ^= 1;
+        blob_store::NativeContinuationBlobStore::replace(&mut store, &current)
+            .map_err(|error| format!("replace AOT bundle: {error:?}"))?;
+        let outcome = evict_register_masked_aot_bundle_if_current_durably(
+            &mut store, request,
+        )
+        .map_err(|error| {
+            format!("conditional AOT bundle eviction: {error:?}")
+        })?;
+        let retained = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("reload AOT bundle: {error:?}"))?;
+        if outcome.conflict() == Some(current.as_slice())
+            && retained.as_deref() == Some(current.as_slice())
+        {
+            Ok(())
+        } else {
+            Err(String::from("stale bundle eviction changed publication"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
 fn product_register_masked_aot_bundle_missing_is_explicit() -> HandoffResult<()>
 {
     let fixture = reduced_graph_store_fixture("bundle_missing")?;
@@ -1431,6 +1484,51 @@ fn product_register_masked_aot_bundle_round_trips_reduced_graph()
             }
         }
         evict_bundle_and_require_missing(&mut store, &programs, maximum_bytes)
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_object_conditional_eviction_matches_current()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("object_conditional_evict")?;
+    let result = (|| -> HandoffResult<()> {
+        let program = first_reduced_aot_program()?;
+        let source = select_prepared_reduced_artifact(&program)?;
+        let maximum_bytes = NonZeroUsize::new(4096)
+            .ok_or_else(|| String::from("AOT object bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let _durable = persist_register_masked_aot_object_durably(
+            &mut store,
+            &source,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("durable AOT object persist: {error:?}"))?;
+        let outcome = evict_register_masked_aot_object_if_current_durably(
+            &mut store,
+            &source,
+            maximum_bytes,
+        )
+        .map_err(|error| {
+            format!("conditional AOT object eviction: {error:?}")
+        })?;
+        let load = restore_register_masked_aot_object(
+            &mut store,
+            object_restore_request(&program, maximum_bytes),
+        )
+        .map_err(|error| {
+            format!("post-eviction AOT object restore: {error:?}")
+        })?;
+        if outcome.is_removed()
+            && load == RegisterMaskedAotObjectPersistenceLoad::Missing
+        {
+            Ok(())
+        } else {
+            Err(String::from("current object eviction did not commit"))
+        }
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;

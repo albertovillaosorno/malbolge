@@ -45,6 +45,7 @@ use std::sync::Arc;
 use malbolge::{RegisterMaskedRegionEffectProgram, RuntimeCapability};
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
+    NativeContinuationConditionalRemovableBlobStore as ConditionalRemoveStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
     NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
@@ -237,6 +238,18 @@ pub struct RegisterMaskedAotBundleSource<'requirement> {
     runtime: &'static RuntimeCapability,
 }
 
+/// Conditional durable bundle eviction result for one outbound store type.
+pub type RegisterMaskedAotBundleConditionalDurableRemovalResult<
+    'requirement,
+    Store,
+> = RegisterMaskedAotBundleStoreResult<
+    'requirement,
+    blob_persistence::NativeContinuationBlobConditionalDurableRemoval<
+        <Store as DurableBlobStore>::DurabilityError,
+    >,
+    <Store as BlobStore>::Error,
+>;
+
 /// Durable bundle publication result specialized to one outbound store type.
 pub type RegisterMaskedAotBundleDurableStoreResult<'requirement, Store> =
     RegisterMaskedAotBundleStoreResult<
@@ -323,6 +336,37 @@ where
     Store: DurableBlobStore + RemovableBlobStore,
 {
     blob_persistence::remove_blob_durably(store)
+}
+
+/// Durably evicts this exact canonical bundle only if it is still current.
+///
+/// The same canonical encoder used for publication builds the compare
+/// expectation, so a newer or different bundle returns conflict evidence and
+/// remains authoritative.
+///
+/// # Errors
+///
+/// Returns bundle preparation, byte-limit, or outbound coordination/removal
+/// failure before absence commits.
+pub fn evict_register_masked_aot_bundle_if_current_durably<
+    'requirement,
+    Store,
+>(
+    store: &mut Store,
+    request: RegisterMaskedAotBundlePersistRequest<'requirement>,
+) -> RegisterMaskedAotBundleConditionalDurableRemovalResult<'requirement, Store>
+where
+    Store: ConditionalRemoveStore + DurableBlobStore,
+{
+    let bytes = encode_bundle(request).map_err(|error| {
+        RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
+    })?;
+    blob_persistence::compare_and_remove_blob_durably(
+        store,
+        Some(&bytes),
+        request.maximum_bytes,
+    )
+    .map_err(|error| RegisterMaskedAotBundleStoreError::Blob(Box::new(error)))
 }
 
 /// Atomically persists one complete ordered AOT object bundle.
