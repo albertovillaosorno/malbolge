@@ -1325,10 +1325,10 @@ def test_host_git_import_requires_matching_version_and_exec_path(
     tmp_path: Path,
 ) -> None:
     """Host Git becomes repository authority only with matching runtime data."""
-    jig_config = tmp_path / ".jig/jig.toml"
-    jig_config.parent.mkdir(parents=True)
-    _ = jig_config.write_text(
-        '[tool.git]\nversion = "2.55.0"\n',
+    versions = tmp_path / ".jig/settings/versions.toml"
+    versions.parent.mkdir(parents=True)
+    _ = versions.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n',
         encoding="utf-8",
     )
     git = tmp_path / "host/bin/git"

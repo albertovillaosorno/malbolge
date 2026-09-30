@@ -494,12 +494,20 @@ def _run_git_exec_path(git: Path) -> Path | None:
 
 
 def _configured_git_version(root: Path) -> str:
-    document = _toml_document(root / ".jig/jig.toml", "Jig configuration")
-    tools = _mapping(document.get("tool"), "Jig configuration.tool")
-    git = _mapping(tools.get("git"), "Jig configuration.tool.git")
+    path = root / ".jig/settings/versions.toml"
+    document = _toml_document(path, "version authority")
+    authority = _mapping(
+        document.get("authority"),
+        "version authority.authority",
+    )
+    git = _mapping(authority.get("git"), "version authority.authority.git")
     return _path_segment(
-        _required_string(git, "version", "Jig configuration.tool.git"),
-        "Jig configuration.tool.git.version",
+        _required_string(
+            git,
+            "current",
+            "version authority.authority.git",
+        ),
+        "version authority.authority.git.current",
     )
 
 
