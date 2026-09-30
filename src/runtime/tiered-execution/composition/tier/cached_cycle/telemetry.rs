@@ -39,6 +39,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use super::{
     NativeContinuationCachedRetryAttempt,
     NativeContinuationCachedRetryCompletion,
+    NativeContinuationCachedRetryCycleFailure,
+    NativeContinuationCachedRetryCycleOutcome,
+    NativeContinuationCachedRetryCycleResult,
     NativeContinuationCachedRetryInterpreterFailure,
     NativeContinuationCachedRetryInterpreterOutcome,
 };
@@ -216,6 +219,51 @@ impl NativeContinuationCachedRetryTelemetrySource
     }
 }
 
+impl<MemoryError, RunnerError> NativeContinuationCachedRetryTelemetrySource
+    for NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError>
+{
+    fn cached_retry_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
+        match self {
+            Self::Cached(failure) => failure.prior_attempts(),
+            Self::FailureRebase(failure) => failure.prior_attempts(),
+            Self::Interpreter(failure) => failure.native_attempts(),
+            Self::Reschedule(failure) => failure.native_attempts(),
+            Self::Routing(failure) => failure.prior_attempts(),
+            Self::SuccessRebase(failure) => failure.prior_attempts(),
+        }
+    }
+
+    fn cached_retry_telemetry(
+        &self,
+    ) -> Result<
+        NativeContinuationCachedRetryTelemetry,
+        NativeContinuationCachedRetryTelemetryError,
+    > {
+        summarize_cached_retry_attempts(self.cached_retry_attempts())
+    }
+}
+
+impl<RunnerError> NativeContinuationCachedRetryTelemetrySource
+    for NativeContinuationCachedRetryCycleOutcome<RunnerError>
+{
+    fn cached_retry_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
+        match self {
+            Self::Interpreter(outcome) => outcome.native_attempts(),
+            Self::NativeCompletion(completion) => completion.native_attempts(),
+            Self::NativeFailure(failure) => failure.prior_attempts(),
+        }
+    }
+
+    fn cached_retry_telemetry(
+        &self,
+    ) -> Result<
+        NativeContinuationCachedRetryTelemetry,
+        NativeContinuationCachedRetryTelemetryError,
+    > {
+        summarize_cached_retry_attempts(self.cached_retry_attempts())
+    }
+}
+
 impl NativeContinuationCachedRetryTelemetrySource
     for NativeContinuationCachedRetryInterpreterFailure
 {
@@ -247,6 +295,23 @@ impl NativeContinuationCachedRetryTelemetrySource
         NativeContinuationCachedRetryTelemetryError,
     > {
         summarize_cached_retry_attempts(self.native_attempts())
+    }
+}
+
+/// Aggregates one complete cached-cycle result without losing failure identity.
+///
+/// # Errors
+///
+/// Returns the exact completed attempt whose contribution overflowed.
+pub fn summarize_cached_retry_cycle_result<MemoryError, RunnerError>(
+    cycle: &NativeContinuationCachedRetryCycleResult<MemoryError, RunnerError>,
+) -> Result<
+    NativeContinuationCachedRetryTelemetry,
+    NativeContinuationCachedRetryTelemetryError,
+> {
+    match cycle {
+        Ok(outcome) => outcome.cached_retry_telemetry(),
+        Err(failure) => failure.cached_retry_telemetry(),
     }
 }
 

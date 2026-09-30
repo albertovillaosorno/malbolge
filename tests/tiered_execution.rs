@@ -229,8 +229,10 @@ use cached_cycle::{
     NativeContinuationCachedRetryCycleExecution,
     NativeContinuationCachedRetryCycleFailure,
     NativeContinuationCachedRetryCycleInstrumentation,
+    NativeContinuationCachedRetryCycleObservation,
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
+    NativeContinuationCachedRetryCycleTelemetryPublication,
     NativeContinuationCachedRetryDurablePolicyBindingRequest,
     NativeContinuationCachedRetryDurablePolicyPublication,
     NativeContinuationCachedRetryInterpreterOutcome,
@@ -313,6 +315,7 @@ use cached_cycle::{
     encode_cached_retry_telemetry_ordered_state,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
     execute_measured_cached_native_retry_cycle,
+    execute_observed_cached_native_retry_cycle,
     finish_cached_retry_latency_measurement,
     merge_cached_retry_latency_histogram_durably,
     merge_cached_retry_latency_histogram_durably_with_retries,
@@ -1781,6 +1784,12 @@ type MeasuredCachedRetryFallbackFixture = (
 );
 type MeasuredLatencyHistogramError =
     NativeContinuationCachedRetryLatencyHistogramError;
+type ObservedCyclePublication =
+    NativeContinuationCachedRetryCycleTelemetryPublication<
+        TestMonotonicClockError,
+    >;
+type ObservedTelemetryWindowError =
+    NativeContinuationCachedRetryTelemetryWindowError;
 
 type RegisterMaskedMultiCacheFixture =
     (FakeNativeExecutableAdapter, RegisterMaskedNativeLeaseCache);
@@ -94615,6 +94624,231 @@ fn cached_retry_measured_fallback_fixture(
         adapter,
         FakeNativeSequenceRunner::new(Vec::new()),
     ))
+}
+
+#[test]
+fn cached_retry_observed_cycle_publishes_count_and_latency_atomically()
+-> Result<(), String> {
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_044, 0x10_8000)?;
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 47,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(2, "observed cycle count capacity")?,
+    );
+    let observed = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut observation =
+            NativeContinuationCachedRetryCycleObservation::new(
+                &mut clock,
+                &mut histogram,
+                &mut window,
+            );
+        execute_observed_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut observation,
+        )
+    };
+    let ObservedCyclePublication::Published {
+        latency,
+        sample,
+        telemetry,
+        window: append,
+    } = observed.publication()
+    else {
+        return Err(String::from("observed cycle telemetry was not published"));
+    };
+    if !observed.is_published()
+        || observed.cycle().is_err()
+        || sample.nanoseconds() != 47
+        || latency.samples() != 1
+        || telemetry.attempts() != 0
+        || append.observation().telemetry() != *telemetry
+        || histogram.samples() != 1
+        || window.len() != 1
+        || window.totals() != *telemetry
+        || clock.starts != 1
+        || clock.finishes != 1
+    {
+        Err(String::from("observed cycle publication evidence drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn cached_retry_observed_cycle_histogram_failure_keeps_both_owners()
+-> Result<(), String> {
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_045, 0x10_9000)?;
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 53,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    histogram.force_totals_for_test(usize::MAX, 0);
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(1, "observed histogram failure capacity")?,
+    );
+    let observed = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut observation =
+            NativeContinuationCachedRetryCycleObservation::new(
+                &mut clock,
+                &mut histogram,
+                &mut window,
+            );
+        execute_observed_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut observation,
+        )
+    };
+    let failure_matches = matches!(
+        observed.publication(),
+        ObservedCyclePublication::HistogramFailure {
+            error:
+                MeasuredLatencyHistogramError::SampleCountOverflow,
+            sample,
+        } if sample.nanoseconds() == 53
+    );
+    if failure_matches
+        && observed.cycle().is_ok()
+        && histogram.samples() == usize::MAX
+        && window.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("observed histogram rollback drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_observed_cycle_window_failure_keeps_both_owners()
+-> Result<(), String> {
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_046, 0x10_a000)?;
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 59,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(1, "observed window failure capacity")?,
+    );
+    window.force_counters_for_test(0, u64::MAX);
+    let observed = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut observation =
+            NativeContinuationCachedRetryCycleObservation::new(
+                &mut clock,
+                &mut histogram,
+                &mut window,
+            );
+        execute_observed_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut observation,
+        )
+    };
+    let failure_matches = matches!(
+        observed.publication(),
+        ObservedCyclePublication::WindowFailure {
+            error:
+                ObservedTelemetryWindowError::SequenceExhausted,
+            sample,
+            telemetry,
+        } if sample.nanoseconds() == 59 && telemetry.attempts() == 0
+    );
+    if failure_matches
+        && observed.cycle().is_ok()
+        && histogram.is_empty()
+        && window.is_empty()
+        && window.last_sequence() == Some(u64::MAX)
+    {
+        Ok(())
+    } else {
+        Err(String::from("observed count-window rollback drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_observed_cycle_publishes_semantic_failure() -> TieredTestResult
+{
+    let request = cached_retry_measured_routing_failure_request()?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "observed semantic failure cache capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 1_047, 0x10_b000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 61,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let mut window = NativeContinuationCachedRetryTelemetryWindow::new(
+        nonzero_test_limit(1, "observed semantic failure count capacity")?,
+    );
+    let observed = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut observation =
+            NativeContinuationCachedRetryCycleObservation::new(
+                &mut clock,
+                &mut histogram,
+                &mut window,
+            );
+        execute_observed_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut observation,
+        )
+    };
+    let cycle_failed = matches!(
+        observed.cycle(),
+        Err(failure)
+            if matches!(
+                failure.as_ref(),
+                NativeContinuationCachedRetryCycleFailure::Routing(_)
+            )
+    );
+    let publication_matches = matches!(
+        observed.publication(),
+        ObservedCyclePublication::Published {
+            sample,
+            telemetry,
+            ..
+        } if sample.nanoseconds() == 61 && telemetry.attempts() == 0
+    );
+    if cycle_failed
+        && publication_matches
+        && histogram.samples() == 1
+        && window.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("observed semantic failure telemetry drifted"))
+    }
 }
 
 #[test]

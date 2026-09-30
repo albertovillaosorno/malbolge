@@ -1790,6 +1790,17 @@ exact semantic cycle result, then finishes the clock and records at most one
 sample transactionally. Clock or histogram failure cannot erase execution
 evidence; a semantic cycle failure is still measured when timing succeeds.
 
+telemetry_cycle_observation.rs composes that measured result with exact
+cycle-level count summarization. It stages both the latency histogram and count
+window, then publishes both only after every fallible transition succeeds.
+Histogram, summary, or count-window failure leaves both caller-owned telemetry
+states unchanged while retaining the exact semantic cycle result.
+
+Cached reschedule failure now mirrors the fused-cycle ownership model: a
+successfully rebased guard attempt is included in retained completed-attempt
+evidence before zero-step rescheduling, so failure cannot erase that
+observation.
+
 Canonical blob persistence and durable CAS merge with bounded conflict retry
 retain exact histogram evidence.
 
@@ -1804,8 +1815,8 @@ filesystem regression confirms that the rebound request and restored state
 agree.
 
 Automatic asynchronous interval ownership and broader distributed aggregation
-remain outside this boundary; synchronous complete-cycle instrumentation is
-owned.
+remain outside this boundary; synchronous same-cycle count/latency publication
+is owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

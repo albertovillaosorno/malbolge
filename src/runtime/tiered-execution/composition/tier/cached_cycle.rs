@@ -42,6 +42,8 @@ mod telemetry;
 mod telemetry_assessment;
 #[path = "cached_cycle/telemetry_codec.rs"]
 mod telemetry_codec;
+#[path = "cached_cycle/telemetry_cycle_observation.rs"]
+mod telemetry_cycle_observation;
 #[path = "cached_cycle/telemetry_latency.rs"]
 mod telemetry_latency;
 #[path = "cached_cycle/telemetry_latency_assessment.rs"]
@@ -107,7 +109,7 @@ pub use telemetry::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetryError,
     NativeContinuationCachedRetryTelemetrySource,
-    summarize_cached_retry_attempts,
+    summarize_cached_retry_attempts, summarize_cached_retry_cycle_result,
 };
 pub use telemetry_assessment::{
     NativeContinuationCachedRetryTelemetryAssessment,
@@ -123,6 +125,12 @@ pub use telemetry_codec::{
     NativeContinuationCachedRetryTelemetryCodecField,
     decode_cached_retry_telemetry_snapshot,
     encode_cached_retry_telemetry_snapshot,
+};
+pub use telemetry_cycle_observation::{
+    NativeContinuationCachedRetryCycleObservation,
+    NativeContinuationCachedRetryCycleTelemetryPublication,
+    NativeContinuationCachedRetryObservedCycle,
+    execute_observed_cached_native_retry_cycle,
 };
 pub use telemetry_latency::{
     NativeContinuationCachedRetryLatencyHistogram,
@@ -447,6 +455,16 @@ pub enum NativeContinuationCachedRetryRescheduleFailure {
     Execution(Box<NativeInterpreterHandoffExecutionFailure>),
 }
 
+type CachedRetryRescheduleFailure =
+    NativeContinuationCachedRetryRescheduleFailure;
+
+/// Rescheduling failure retaining all completed cached attempts.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryRescheduleCycleFailure {
+    failure: Box<NativeContinuationCachedRetryRescheduleFailure>,
+    native_attempts: Vec<NativeContinuationCachedRetryAttempt>,
+}
+
 /// Routing failure retaining cache evidence from earlier successful attempts.
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryRoutingCycleFailure {
@@ -473,7 +491,7 @@ pub enum NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError> {
     /// Normative fallback execution failed at an exact checkpoint.
     Interpreter(Box<NativeContinuationCachedRetryInterpreterFailure>),
     /// Zero-step guard rescheduling failed closed.
-    Reschedule(Box<NativeContinuationCachedRetryRescheduleFailure>),
+    Reschedule(Box<NativeContinuationCachedRetryRescheduleCycleFailure>),
     /// Attempt policy or exact host planning failed with suspension ownership.
     Routing(Box<NativeContinuationCachedRetryRoutingCycleFailure>),
     /// Successful loaded execution could not be semantically rebased.
@@ -821,6 +839,22 @@ impl<RunnerError> NativeContinuationCachedRetryFailureRebaseCycle<RunnerError> {
     }
 }
 
+impl NativeContinuationCachedRetryRescheduleCycleFailure {
+    /// Returns the exact zero-step rescheduling failure.
+    #[must_use]
+    pub const fn failure(
+        &self,
+    ) -> &NativeContinuationCachedRetryRescheduleFailure {
+        &self.failure
+    }
+
+    /// Returns every successfully completed cached attempt before failure.
+    #[must_use]
+    pub fn native_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
+        &self.native_attempts
+    }
+}
+
 impl Display for NativeContinuationCachedRetryRoutingCycleFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         Display::fmt(self.failure.as_ref(), f)
@@ -1022,7 +1056,10 @@ where
             ))
         },
         NativeContinuationRetryDisposition::Resumable(resumption) => {
-            let suspension = reschedule_cached_guard(*resumption)?;
+            let mut completed_attempts = prior_attempts.to_vec();
+            completed_attempts.push(evidence.clone());
+            let suspension =
+                reschedule_cached_guard(*resumption, &completed_attempts)?;
             Ok(NativeContinuationCachedRetryProgress::Continue {
                 attempt,
                 evidence,
@@ -1138,6 +1175,7 @@ where
 
 fn reschedule_cached_guard<MemoryError, RunnerError>(
     resumption: NativeContinuationRetryResumption,
+    native_attempts: &[NativeContinuationCachedRetryAttempt],
 ) -> NativeContinuationCachedRetryRescheduleResult<MemoryError, RunnerError> {
     let decision = NativeContinuationScheduleDecision::yield_to(
         NativeContinuationYieldTarget::NativeRetry,
@@ -1151,18 +1189,22 @@ fn reschedule_cached_guard<MemoryError, RunnerError>(
         },
         Ok(NativeContinuationScheduleOutcome::Completed(completion)) => Err(
             Box::new(NativeContinuationCachedRetryCycleFailure::Reschedule(
-                Box::new(
-                    NativeContinuationCachedRetryRescheduleFailure::Completed(
+                Box::new(NativeContinuationCachedRetryRescheduleCycleFailure {
+                    failure: Box::new(CachedRetryRescheduleFailure::Completed(
                         Box::new(completion),
-                    ),
-                ),
+                    )),
+                    native_attempts: native_attempts.to_vec(),
+                }),
             )),
         ),
         Err(failure) => Err(Box::new(
             NativeContinuationCachedRetryCycleFailure::Reschedule(Box::new(
-                NativeContinuationCachedRetryRescheduleFailure::Execution(
-                    failure,
-                ),
+                NativeContinuationCachedRetryRescheduleCycleFailure {
+                    failure: Box::new(CachedRetryRescheduleFailure::Execution(
+                        failure,
+                    )),
+                    native_attempts: native_attempts.to_vec(),
+                },
             )),
         )),
     }

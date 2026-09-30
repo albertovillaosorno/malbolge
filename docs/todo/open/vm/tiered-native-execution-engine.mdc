@@ -553,6 +553,12 @@ behavior.
   complete semantic cycle result, while semantic cycle failure remains eligible
   for latency evidence when timing succeeds.
 
+  Observed-cycle orchestration now derives count telemetry from that same cycle
+  result and publishes count-window plus latency-histogram state atomically.
+  Histogram, summary, or window failure leaves both telemetry owners unchanged.
+  Zero-step reschedule failure now retains the just-completed guard attempt, so
+  cycle-level summaries do not lose committed attempt evidence.
+
   Canonical blob persistence,
   durable CAS merge with bounded conflict retry, and count/latency policy
   recommendation plus durable publication retain typed evidence and
@@ -565,7 +571,7 @@ behavior.
   round-trips with the rebound request.
 
   Automatic asynchronous interval ownership and broader distributed aggregation
-  remain open; synchronous complete-cycle instrumentation is now owned.
+  remain open; synchronous same-cycle count/latency publication is now owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
