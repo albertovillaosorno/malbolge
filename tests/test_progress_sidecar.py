@@ -85,6 +85,10 @@ CHECKPOINT_INSPECTION_FAILED_PREFIX = "portable checkpoint inspection failed:"
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
 CHECKPOINT_INFO_HELP = "--checkpoint-info PROGRESS.json"
 EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
+FOLLOW_HELP = "--follow PROGRESS.json"
+FOLLOW_BACKWARD_DIAGNOSTIC = "moved backward"
+FOLLOW_FAILED_PREFIX = "progress sidecar follow failed:"
+FOLLOW_INTERVAL_SECONDS = 1.0
 WRONG_CODEC_DIAGNOSTIC = b"checkpoint state codec"
 BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
 WINDOWS_PAYLOAD = b"windows-payload"
@@ -842,11 +846,12 @@ def test_progress_cli_extraction_fails_closed_without_binary_stdout(
 def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Operator help exposes verified checkpoint discovery and extraction."""
+    """Operator help exposes checkpoint discovery, extraction, and following."""
     assert progress.main(["--help"]) == 0
     captured = capsys.readouterr()
     assert CHECKPOINT_INFO_HELP in captured.out
     assert EXTRACT_HELP in captured.out
+    assert FOLLOW_HELP in captured.out
     assert not captured.err
 
 
@@ -3449,6 +3454,97 @@ def test_inspector_cli_prints_summary_and_fails_closed(
     captured = capsys.readouterr()
     assert not captured.out
     assert INSPECTION_FAILED_PREFIX in captured.err
+
+
+def test_follow_inspector_emits_changes_and_stops_at_terminal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Follow suppresses duplicates and permits skipped sampled generations."""
+    running = _sidecar(tmp_path)
+    path = progress.write_atomic(running)
+    checkpointed = _checkpointed(running, sequence=2)
+    completed = replace(
+        checkpointed,
+        completed_at="2026-08-06T14:00:04Z",
+        partial_bytes=None,
+        partial_path=None,
+        partial_sha256=None,
+        status=progress.ProgressStatus.COMPLETED,
+        updated_at="2026-08-06T14:00:04Z",
+    )
+    waits: list[float] = []
+    publications = [None, checkpointed, completed]
+
+    def wait(interval: float) -> None:
+        waits.append(interval)
+        candidate = publications.pop(0)
+        if candidate is not None:
+            _ = path.write_bytes(progress.encode(candidate))
+
+    follow = cast("Callable[..., int]", vars(progress)["_follow_path"])
+    assert follow(path, wait=wait) == 0
+    captured = capsys.readouterr()
+    assert captured.out == (
+        progress.render_summary(running)
+        + progress.render_summary(checkpointed)
+        + progress.render_summary(completed)
+    )
+    assert not captured.err
+    assert waits == [FOLLOW_INTERVAL_SECONDS] * 3
+    assert not publications
+
+
+def test_follow_inspector_rejects_backward_observation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A valid-looking externally regressed pointer fails closed."""
+    running = _sidecar(tmp_path)
+    progressed = replace(
+        running,
+        active_elapsed_ns=running.active_elapsed_ns + 100,
+        units_completed=running.units_completed + 1,
+        updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=running.wall_elapsed_ns + 100,
+    )
+    path = progress.write_atomic(progressed)
+
+    def wait(interval: float) -> None:
+        assert interval == FOLLOW_INTERVAL_SECONDS
+        _ = path.write_bytes(progress.encode(running))
+
+    follow = cast("Callable[..., int]", vars(progress)["_follow_path"])
+    assert follow(path, wait=wait) == 1
+    captured = capsys.readouterr()
+    assert captured.out == progress.render_summary(progressed)
+    assert FOLLOW_FAILED_PREFIX in captured.err
+    assert FOLLOW_BACKWARD_DIAGNOSTIC in captured.err
+
+
+def test_follow_cli_terminal_sidecar_exits_after_one_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An already terminal sidecar never enters the polling wait."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    path = progress.write_atomic(completed)
+    assert progress.main(["--follow", str(path)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == progress.render_summary(completed)
+    assert not captured.err
+
+
+def test_follow_cli_missing_sidecar_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Follow reports unavailable storage through one stable diagnostic."""
+    missing = tmp_path / "missing-follow.progress.json"
+    assert progress.main(["--follow", str(missing)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert FOLLOW_FAILED_PREFIX in captured.err
 
 
 def test_inspector_rejects_invalid_utf8_as_stable_failure(

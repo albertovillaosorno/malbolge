@@ -185,15 +185,27 @@ opaque state bytes to binary stdout. Together these provide an operator bridge
 from `malbolge-progress-v1` into codec-aware consumers without allowing unknown
 checkpoint state to execute automatically.
 
+`--follow PROGRESS.json` adds continuous read-only inspection over the same
+validated sidecar summary. It emits the initial state, suppresses unchanged
+polls, emits each later sampled change, and exits after emitting a terminal
+cancelled/completed/failed state. Observed transitions retain stable job
+identity, monotonic timing/unit evidence, immutable same-generation payload
+references, and nondecreasing checkpoint sequence.
+
+Polling may skip
+intermediate checkpoint generations, so sampled sequence jumps are admitted
+while regression fails closed. The reference poll interval is one second.
+
 The optimizer still consumes an explicit extracted file. Typed-IR compiler
 composition now has `resume_typed_ir_from_progress()`, a composition bridge that
 invokes the verified extractor for `malbolge-typed-ir-v1` and immediately reruns
 complete typed-IR checkpoint admission. The product `malbolge` CLI now exposes
-both `--checkpoint-info PROGRESS.json` and
-`--extract-checkpoint STATE_CODEC PROGRESS.json`. Command-line composition
-selects the repository-pinned Python 3.14.6 interpreter plus this trusted
-inspector and delegates metadata validation or binary-safe extraction without
-parsing sidecar JSON in Rust.
+`--checkpoint-info PROGRESS.json`,
+`--extract-checkpoint STATE_CODEC PROGRESS.json`, and
+`--follow-progress PROGRESS.json`. Command-line composition selects the
+repository-pinned Python 3.14.6 interpreter plus this trusted inspector and
+delegates metadata validation, binary-safe extraction, or continuous
+validated summary streaming without parsing sidecar JSON in Rust.
 
 Product compiler resume selection/wiring remains
 open because no product compilation command yet consumes restored typed IR.
@@ -238,11 +250,12 @@ process death at ten checkpoint/pointer boundaries. Pre-pointer crashes
 restore the prior CPU-labelled generation; post-replacement crashes restore
 the new CUDA-labelled generation through the production inspector.
 
-Product CLI metadata inspection and explicit-codec binary checkpoint extraction
-are now wired through the trusted inspector. Product compiler resume
-selection/wiring, compiler-stage codecs beyond ternary lowering, crash
-injection beyond the ternary stage and final-artifact publication, and later
-compiler-execution CPU/CUDA resume equivalence remain unimplemented.
+Product CLI metadata inspection, explicit-codec binary checkpoint extraction,
+and continuous validated progress following are now wired through the trusted
+inspector. Product compiler resume selection/wiring and compiler-stage codecs
+beyond ternary lowering, crash injection beyond the ternary stage and final-
+artifact publication, and later compiler-execution CPU/CUDA resume equivalence
+remain unimplemented.
 
 ### Sidecar Schema
 
@@ -460,9 +473,13 @@ jobs that requested resumability.
 - Direct-construction tests mutate resume identity and sidecar fields, reject
   boolean sequence aliases and impossible UTC dates, and prove pointer
   publication validates the referenced checkpoint/partial generation first.
+- Continuous sidecar inspection is implemented by the reference `--follow` mode
+  and product `--follow-progress` delegation. Tests cover unchanged-poll
+  suppression, sampled checkpoint-generation jumps, backward-state rejection,
+  terminal exit, missing storage, and exact one-line terminal product output.
 - Final `.malbolge` artifact publication remains an open verification item.
   No current compiler backend emits that artifact, so atomic final publication
-  and continuous sidecar inspection are not yet claimed as implemented evidence.
+  is not yet claimed as implemented evidence.
 
 ## References
 

@@ -57,6 +57,7 @@ import re
 import sys
 import tempfile
 from time import monotonic_ns
+from time import sleep
 from typing import Final
 from typing import Never
 from typing import Protocol
@@ -71,10 +72,14 @@ SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
+_CALLBACK_ERRORS: Final = (Exception,)
 _CHECKPOINT_INFO_FLAG: Final = "--checkpoint-info"
 _CHECKPOINT_INFO_ARGUMENT_COUNT: Final = 2
 _EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
 _EXTRACT_ARGUMENT_COUNT: Final = 3
+_FOLLOW_FLAG: Final = "--follow"
+_FOLLOW_ARGUMENT_COUNT: Final = 2
+_FOLLOW_INTERVAL_SECONDS: Final = 1.0
 WINDOWS_PLATFORM: Final = "nt"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -202,7 +207,7 @@ def _sample_clock(clock: object) -> int:
         value = clock()
     except ProgressSidecarError:
         raise
-    except Exception as error:  # ruff: ignore[blind-except] -- clock boundary.
+    except _CALLBACK_ERRORS as error:
         _fail(f"monotonic clock failed: {error}")
     return _monotonic_sample(value)
 
@@ -1394,6 +1399,54 @@ def validate_transition(
     return new
 
 
+def _validate_observed_identity_and_status(
+    old: ProgressSidecar,
+    new: ProgressSidecar,
+) -> None:
+    stable_fields = (
+        "compatibility_fingerprint",
+        "operation_id",
+        "output_path",
+        "progress_path",
+        "repository_revision",
+        "source_path",
+        "started_at",
+    )
+    for field_name in stable_fields:
+        if getattr(new, field_name) != getattr(old, field_name):
+            _fail(f"{field_name} changed across observed progress transition")
+    allowed = _ALLOWED_TRANSITIONS.get(old.status, frozenset())
+    if new.status not in allowed:
+        transition = f"{old.status.value}->{new.status.value}"
+        _fail(f"invalid observed progress transition: {transition}")
+    if _timestamp(new.updated_at, "updated_at") < _timestamp(
+        old.updated_at,
+        "previous.updated_at",
+    ):
+        _fail("observed updated_at moved backward")
+
+
+def _validate_observed_transition(
+    previous: ProgressSidecar,
+    current: ProgressSidecar,
+) -> ProgressSidecar:
+    """Validate a sampled observation without requiring every generation.
+
+    Returns:
+        Validated current sidecar after sampled-transition checks pass.
+
+    """
+    old = validate(previous)
+    new = validate(current)
+    _validate_observed_identity_and_status(old, new)
+    _validate_total_transition(old, new)
+    if new.checkpoint_sequence < old.checkpoint_sequence:
+        _fail("observed checkpoint sequence moved backward")
+    _validate_same_generation(old, new)
+    _validate_elapsed_transition(old, new)
+    return new
+
+
 def to_document(sidecar: ProgressSidecar) -> JsonObject:
     """Convert one validated sidecar to its flat JSON object.
 
@@ -2218,6 +2271,77 @@ def _inspect_path(path: Path) -> int:
     return 0
 
 
+def _follow_wait(wait: Callable[[float], None]) -> None:
+    try:
+        wait(_FOLLOW_INTERVAL_SECONDS)
+    except ProgressSidecarError:
+        raise
+    except _CALLBACK_ERRORS as error:
+        _fail(f"progress follow wait failed: {error}")
+
+
+def _next_observed_change(
+    path: Path,
+    current: ProgressSidecar,
+    wait: Callable[[float], None],
+) -> ProgressSidecar:
+    while True:
+        _follow_wait(wait)
+        observed = _validate_observed_transition(current, read(path))
+        if observed != current:
+            return observed
+
+
+def _follow_validated_path(
+    path: Path,
+    wait: Callable[[float], None],
+) -> int:
+    current = read(path)
+    while True:
+        _ = sys.stdout.write(render_summary(current))
+        _ = sys.stdout.flush()
+        if current.status.value in TERMINAL_STATUSES:
+            return 0
+        current = _next_observed_change(path, current, wait)
+
+
+def _follow_path(
+    path: Path,
+    *,
+    wait: Callable[[float], None] = sleep,
+) -> int:
+    try:
+        return _follow_validated_path(path, wait)
+    except (OSError, ProgressSidecarError) as error:
+        message = f"progress sidecar follow failed: {error}\n"
+        _ = sys.stderr.write(message)
+        return 1
+
+
+def _dispatch_inspection(arguments: list[str], usage: str) -> int:
+    if (
+        len(arguments) == _CHECKPOINT_INFO_ARGUMENT_COUNT
+        and arguments[0] == _CHECKPOINT_INFO_FLAG
+    ):
+        status = _checkpoint_info_path(Path(arguments[1]))
+    elif (
+        len(arguments) == _FOLLOW_ARGUMENT_COUNT
+        and arguments[0] == _FOLLOW_FLAG
+    ):
+        status = _follow_path(Path(arguments[1]))
+    elif (
+        len(arguments) == _EXTRACT_ARGUMENT_COUNT
+        and arguments[0] == _EXTRACT_CHECKPOINT_FLAG
+    ):
+        status = _extract_checkpoint_path(Path(arguments[2]), arguments[1])
+    elif len(arguments) == 1:
+        status = _inspect_path(Path(arguments[0]))
+    else:
+        _ = sys.stderr.write(usage)
+        status = 2
+    return status
+
+
 def main(argv: list[str] | None = None) -> int:
     """Inspect a sidecar, checkpoint metadata, or verified state payload.
 
@@ -2231,26 +2355,12 @@ def main(argv: list[str] | None = None) -> int:
         "       progress_sidecar.py --checkpoint-info PROGRESS.json\n"
         "       progress_sidecar.py --extract-checkpoint "
         "STATE_CODEC PROGRESS.json\n"
+        "       progress_sidecar.py --follow PROGRESS.json\n"
     )
     if arguments in (["-h"], ["--help"]):
         _ = sys.stdout.write(usage)
-        status = 0
-    elif (
-        len(arguments) == _CHECKPOINT_INFO_ARGUMENT_COUNT
-        and arguments[0] == _CHECKPOINT_INFO_FLAG
-    ):
-        status = _checkpoint_info_path(Path(arguments[1]))
-    elif (
-        len(arguments) == _EXTRACT_ARGUMENT_COUNT
-        and arguments[0] == _EXTRACT_CHECKPOINT_FLAG
-    ):
-        status = _extract_checkpoint_path(Path(arguments[2]), arguments[1])
-    elif len(arguments) == 1:
-        status = _inspect_path(Path(arguments[0]))
-    else:
-        _ = sys.stderr.write(usage)
-        status = 2
-    return status
+        return 0
+    return _dispatch_inspection(arguments, usage)
 
 
 if __name__ == "__main__":

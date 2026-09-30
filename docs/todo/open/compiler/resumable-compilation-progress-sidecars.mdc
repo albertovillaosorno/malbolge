@@ -210,10 +210,17 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   CPU-labelled generation to a CUDA-labelled generation, alongside malformed-
   state and bridge failure regressions.
 - Product CLI progress access now selects repository-pinned Python 3.14.6 and
-  the trusted inspector for `--checkpoint-info` plus
-  `--extract-checkpoint STATE_CODEC`. Rust duplicates no sidecar parsing, and an
-  end-to-end CLI regression proves exact binary payload preservation through NUL
-  and `0xFF`.
+  the trusted inspector for `--checkpoint-info`,
+  `--extract-checkpoint STATE_CODEC`, and `--follow-progress`. Rust
+  duplicates no sidecar parsing. End-to-end CLI regressions prove exact binary
+  payload preservation through NUL/`0xFF`, fail-closed follow delegation,
+  and immediate one-line exit for an already terminal sidecar.
+
+  The reference `--follow` inspector emits only validated changed snapshots at
+  a fixed one-second poll cadence. It admits sampled checkpoint-generation
+  jumps that can occur between polls while rejecting backward sequence, timing/
+  unit regression, stable-identity drift, and same-generation payload-reference
+  changes. Terminal state is emitted once before exit.
 
   Typed-IR and ternary-lowering composition now each expose one explicit
   Fresh-versus-Progress selector. Fresh input enters the existing stage

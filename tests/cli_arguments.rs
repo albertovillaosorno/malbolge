@@ -48,6 +48,7 @@ sys.path.insert(0, sys.argv[1])
 from scripts import progress_sidecar as progress
 
 directory = Path(sys.argv[2])
+terminal = sys.argv[3] == "completed"
 output = directory / "program.malbolge"
 source_hash = "sha256:" + ("1" * 64)
 toolchain_hash = "sha256:" + ("2" * 64)
@@ -91,7 +92,7 @@ sidecar = progress.ProgressSidecar(
     compatibility_fingerprint=(
         progress.resume_compatibility_fingerprint(identity)
     ),
-    completed_at=None,
+    completed_at="2026-08-06T14:00:03Z" if terminal else None,
     device=None,
     diagnostic_code=None,
     diagnostic_message=None,
@@ -110,13 +111,21 @@ sidecar = progress.ProgressSidecar(
     source_sha256=source_hash,
     stage="candidate-search",
     started_at="2026-08-06T14:00:00Z",
-    status=progress.ProgressStatus.CHECKPOINTED,
+    status=(
+        progress.ProgressStatus.COMPLETED
+        if terminal
+        else progress.ProgressStatus.CHECKPOINTED
+    ),
     target_profile_fingerprint=profile_hash,
     target_profile_id="malbolge-2026",
     toolchain_fingerprint=toolchain_hash,
     units_completed=14,
     units_total=None,
-    updated_at="2026-08-06T14:00:02Z",
+    updated_at=(
+        "2026-08-06T14:00:03Z"
+        if terminal
+        else "2026-08-06T14:00:02Z"
+    ),
     verification_elapsed_ns=30,
     wall_elapsed_ns=870,
 )
@@ -134,6 +143,7 @@ fn repository_python(root: &Path) -> PathBuf {
 fn publish_portable_fixture(
     root: &Path,
     directory: &Path,
+    terminal: bool,
 ) -> Result<PathBuf, String> {
     if directory.exists() {
         remove_dir_all(directory).map_err(|error| {
@@ -149,6 +159,11 @@ fn publish_portable_fixture(
         .arg(PORTABLE_FIXTURE_SCRIPT)
         .arg(module_root)
         .arg(directory)
+        .arg(if terminal {
+            "completed"
+        } else {
+            "checkpointed"
+        })
         .output()
         .map_err(|error| format!("publish progress fixture: {error}"))?;
     if !output.status.success() {
@@ -177,6 +192,8 @@ fn help_is_accepted_only_as_the_sole_argument() -> Result<(), String> {
                 .contains("malbolge --checkpoint-info")
             || !String::from_utf8_lossy(&output.stdout)
                 .contains("malbolge --extract-checkpoint")
+            || !String::from_utf8_lossy(&output.stdout)
+                .contains("malbolge --follow-progress")
             || !output.stderr.is_empty()
         {
             return Err(format!(
@@ -315,6 +332,112 @@ fn checkpoint_info_delegates_validation_to_trusted_inspector()
 }
 
 #[test]
+fn follow_progress_requires_exactly_one_progress_path() -> Result<(), String> {
+    for arguments in [vec!["--follow-progress"], vec![
+        "--follow-progress",
+        "first.progress.json",
+        "second.progress.json",
+    ]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .args(&arguments)
+            .output()
+            .map_err(|error| {
+                format!("run follow-progress arity case {arguments:?}: {error}")
+            })?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success()
+            || !output.stdout.is_empty()
+            || !stderr.contains(
+                "--follow-progress requires exactly one progress sidecar path",
+            )
+        {
+            return Err(format!(
+                concat!(
+                    "follow-progress arity did not fail closed: {:?}: ",
+                    "status={} stdout={} stderr={}",
+                ),
+                arguments,
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                stderr,
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn follow_progress_delegates_validation_to_trusted_inspector()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let missing = root.join(".temp").join(format!(
+        "missing-cli-follow-{}.malbolge.progress.json",
+        id(),
+    ));
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", root)
+        .arg("--follow-progress")
+        .arg(&missing)
+        .output()
+        .map_err(|error| {
+            format!("run follow-progress inspector case: {error}")
+        })?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains("progress sidecar follow failed:")
+        && stderr.contains("progress sidecar is unavailable")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "follow-progress did not delegate to inspector: status={} ",
+                "stdout={} stderr={}",
+            ),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            stderr,
+        ))
+    }
+}
+
+#[test]
+fn follow_progress_streams_terminal_summary_once() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp")
+        .join(format!("cli-follow-fixture-{}", id()));
+    let progress_path = publish_portable_fixture(root, &directory, true)?;
+    let output_result = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", root)
+        .arg("--follow-progress")
+        .arg(&progress_path)
+        .output()
+        .map_err(|error| format!("run terminal progress follow: {error}"));
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove progress fixture: {error}"));
+    let output = output_result?;
+    cleanup?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success()
+        && output.stderr.is_empty()
+        && stdout.lines().count() == 1
+        && stdout.contains("status=completed")
+        && !stdout.contains("checkpoint_sequence")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!("terminal follow mismatch: status={} stdout={} stderr={}",),
+            output.status,
+            stdout,
+            String::from_utf8_lossy(&output.stderr),
+        ))
+    }
+}
+
+#[test]
 fn extract_checkpoint_requires_codec_and_progress_path() -> Result<(), String> {
     let cases = [
         vec!["--extract-checkpoint"],
@@ -400,7 +523,7 @@ fn extract_checkpoint_preserves_verified_binary_state() -> Result<(), String> {
     let directory = root
         .join(".temp")
         .join(format!("cli-extract-fixture-{}", id()));
-    let progress_path = publish_portable_fixture(root, &directory)?;
+    let progress_path = publish_portable_fixture(root, &directory, false)?;
     let output_result = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .env("MALBOLGE_ROOT", root)
         .arg("--extract-checkpoint")

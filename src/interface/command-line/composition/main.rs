@@ -57,6 +57,7 @@ use malbolge::{
 
 const CHECKPOINT_INFO_ARGUMENT: &str = "--checkpoint-info";
 const EXTRACT_CHECKPOINT_ARGUMENT: &str = "--extract-checkpoint";
+const FOLLOW_PROGRESS_ARGUMENT: &str = "--follow-progress";
 const C_EXTENSION: &str = "c";
 const DOOM_IWAD_NAMES: [&str; 8] = [
     "freedoom1.wad",
@@ -514,6 +515,9 @@ fn run() -> Result<ExitCode, String> {
     if first_argument == OsStr::new(EXTRACT_CHECKPOINT_ARGUMENT) {
         return run_extract_checkpoint_command(&mut arguments);
     }
+    if first_argument == OsStr::new(FOLLOW_PROGRESS_ARGUMENT) {
+        return run_follow_progress_command(&mut arguments);
+    }
     let canonical = PathBuf::from(first_argument)
         .canonicalize()
         .map_err(|error| format!("cannot open source path: {error}"))?;
@@ -563,6 +567,26 @@ fn run_extract_checkpoint_command(
     run_progress_inspector(&root, &[
         OsStr::new(EXTRACT_CHECKPOINT_ARGUMENT),
         state_codec.as_os_str(),
+        progress_argument.as_os_str(),
+    ])
+}
+
+fn run_follow_progress_command(
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<ExitCode, String> {
+    let Some(progress_argument) = arguments.next() else {
+        return Err(String::from(
+            "--follow-progress requires exactly one progress sidecar path",
+        ));
+    };
+    if arguments.next().is_some() {
+        return Err(String::from(
+            "--follow-progress requires exactly one progress sidecar path",
+        ));
+    }
+    let root = progress_inspector_root()?;
+    run_progress_inspector(&root, &[
+        OsStr::new("--follow"),
         progress_argument.as_os_str(),
     ])
 }
@@ -827,6 +851,8 @@ fn write_usage() -> Result<(), String> {
         "<program.malbolge.progress.json>\n",
         "       malbolge --extract-checkpoint <state-codec> ",
         "<program.malbolge.progress.json>\n",
+        "       malbolge --follow-progress ",
+        "<program.malbolge.progress.json>\n",
         "\n",
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
         "  .c         Debug-run C directly on the host via a ",
@@ -834,6 +860,8 @@ fn write_usage() -> Result<(), String> {
         "  --checkpoint-info  Validate and inspect durable checkpoint ",
         "metadata.\n",
         "  --extract-checkpoint  Emit verified opaque checkpoint state.\n",
+        "  --follow-progress  Stream validated progress until ",
+        "terminal state.\n",
     );
     io::stdout()
         .lock()
