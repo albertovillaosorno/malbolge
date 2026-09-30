@@ -226,7 +226,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryActivePolicyPublication,
     NativeContinuationCachedRetryAttempt,
     NativeContinuationCachedRetryCompletion,
+    NativeContinuationCachedRetryCycleExecution,
     NativeContinuationCachedRetryCycleFailure,
+    NativeContinuationCachedRetryCycleInstrumentation,
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
     NativeContinuationCachedRetryDurablePolicyBindingRequest,
@@ -254,6 +256,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencySnapshotCounts,
     NativeContinuationCachedRetryLatencySnapshotError,
     NativeContinuationCachedRetryLatencySnapshotRange,
+    NativeContinuationCachedRetryMeasuredCycle,
     NativeContinuationCachedRetryNativeFailure,
     NativeContinuationCachedRetryOrderedPairReconciliation,
     NativeContinuationCachedRetryOrderedPairReconciliationError,
@@ -309,6 +312,7 @@ use cached_cycle::{
     encode_cached_retry_latency_snapshot,
     encode_cached_retry_telemetry_ordered_state,
     encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
+    execute_measured_cached_native_retry_cycle,
     finish_cached_retry_latency_measurement,
     merge_cached_retry_latency_histogram_durably,
     merge_cached_retry_latency_histogram_durably_with_retries,
@@ -1769,6 +1773,14 @@ type LeaseCacheFixture = (
     NativeExecutableSequenceLeaseCache,
     FakeNativeExecutableAdapter,
 );
+type MeasuredCachedRetryFallbackFixture = (
+    NativeContinuationCachedRetryCycleRequest,
+    NativeExecutableSequenceLeaseCache,
+    FakeNativeExecutableAdapter,
+    FakeNativeSequenceRunner,
+);
+type MeasuredLatencyHistogramError =
+    NativeContinuationCachedRetryLatencyHistogramError;
 
 type RegisterMaskedMultiCacheFixture =
     (FakeNativeExecutableAdapter, RegisterMaskedNativeLeaseCache);
@@ -94578,6 +94590,265 @@ fn publish_ordered_file_cas_for_test(
         Ok(())
     } else {
         Err(String::from("ordered file CAS publication conflicted"))
+    }
+}
+
+fn cached_retry_measured_fallback_fixture(
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<MeasuredCachedRetryFallbackFixture, String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let request = windows_cached_retry_cycle_request(
+        complete_retry_policy(0),
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "measured cached cycle capacity",
+    )?);
+    let (cache, adapter) = lease_fixture(limits, mapping_value, base_value)?;
+    Ok((
+        request,
+        cache,
+        adapter,
+        FakeNativeSequenceRunner::new(Vec::new()),
+    ))
+}
+
+#[test]
+fn cached_retry_measured_cycle_records_complete_fallback() -> Result<(), String>
+{
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_040, 0x10_4000)?;
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 37,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let measured = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut instrumentation =
+            NativeContinuationCachedRetryCycleInstrumentation::new(
+                &mut clock,
+                &mut histogram,
+            );
+        execute_measured_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut instrumentation,
+        )
+    };
+    let NativeContinuationCachedRetryMeasuredCycle::Recorded {
+        cycle,
+        record,
+        sample,
+    } = measured
+    else {
+        return Err(String::from("measured cached cycle was not recorded"));
+    };
+    let interpreter =
+        cached_cycle_interpreter(cycle.map_err(|failure| {
+            format!("measured cycle failed: {failure:?}")
+        })?)?;
+    if sample.nanoseconds() == 37
+        && record.samples() == 1
+        && histogram.samples() == 1
+        && histogram.total_nanoseconds() == 37
+        && interpreter.attempts() == 0
+        && runner.calls == 0
+        && cache.is_empty()
+        && adapter.operations.is_empty()
+        && clock.starts == 1
+        && clock.finishes == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("measured cached cycle evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_measured_cycle_retains_clock_failure_after_execution()
+-> Result<(), String> {
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_041, 0x10_5000)?;
+    let mut clock = TestMonotonicClock {
+        fail_finish: true,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let measured = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut instrumentation =
+            NativeContinuationCachedRetryCycleInstrumentation::new(
+                &mut clock,
+                &mut histogram,
+            );
+        execute_measured_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut instrumentation,
+        )
+    };
+    let NativeContinuationCachedRetryMeasuredCycle::ClockFailure {
+        cycle,
+        error,
+    } = measured
+    else {
+        return Err(String::from("measured clock failure was not retained"));
+    };
+    let interpreter = cached_cycle_interpreter(
+        cycle.map_err(|failure| format!("clock failure cycle: {failure:?}"))?,
+    )?;
+    if error == TestMonotonicClockError::Finish
+        && interpreter.attempts() == 0
+        && histogram.is_empty()
+        && clock.starts == 1
+        && clock.finishes == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("measured clock failure evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_measured_cycle_retains_histogram_failure_after_execution()
+-> Result<(), String> {
+    let (request, mut cache, mut adapter, mut runner) =
+        cached_retry_measured_fallback_fixture(1_042, 0x10_6000)?;
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 41,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    histogram.force_totals_for_test(usize::MAX, 0);
+    let measured = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut instrumentation =
+            NativeContinuationCachedRetryCycleInstrumentation::new(
+                &mut clock,
+                &mut histogram,
+            );
+        execute_measured_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut instrumentation,
+        )
+    };
+    let NativeContinuationCachedRetryMeasuredCycle::HistogramFailure {
+        cycle,
+        error,
+        sample,
+    } = measured
+    else {
+        return Err(String::from("histogram failure was not retained"));
+    };
+    let interpreter =
+        cached_cycle_interpreter(cycle.map_err(|failure| {
+            format!("histogram failure cycle: {failure:?}")
+        })?)?;
+    let sample_count_overflow =
+        error == MeasuredLatencyHistogramError::SampleCountOverflow;
+    if sample_count_overflow
+        && sample.nanoseconds() == 41
+        && interpreter.attempts() == 0
+        && histogram.samples() == usize::MAX
+        && clock.starts == 1
+        && clock.finishes == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("measured histogram failure evidence drifted"))
+    }
+}
+
+fn cached_retry_measured_routing_failure_request()
+-> Result<NativeContinuationCachedRetryCycleRequest, String> {
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    Ok(NativeContinuationCachedRetryCycleRequest::new(
+        complete_retry_policy(2),
+        fixture.suspension,
+        0,
+        NativeContinuationRetryHost::new(
+            safe_rust_classic_capability(),
+            HostOperatingSystem::Windows,
+            HostIsa::AArch64,
+        ),
+    ))
+}
+
+#[test]
+fn cached_retry_measured_cycle_records_semantic_failure() -> Result<(), String>
+{
+    let request = cached_retry_measured_routing_failure_request()?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "measured failure cache capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 1_043, 0x10_7000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let mut clock = TestMonotonicClock {
+        elapsed_nanoseconds: 43,
+        ..TestMonotonicClock::default()
+    };
+    let mut histogram = cached_retry_latency_histogram()?;
+    let measured = {
+        let mut execution = NativeContinuationCachedRetryCycleExecution::new(
+            &mut cache,
+            &mut adapter,
+            &mut runner,
+        );
+        let mut instrumentation =
+            NativeContinuationCachedRetryCycleInstrumentation::new(
+                &mut clock,
+                &mut histogram,
+            );
+        execute_measured_cached_native_retry_cycle(
+            request,
+            &mut execution,
+            &mut instrumentation,
+        )
+    };
+    let NativeContinuationCachedRetryMeasuredCycle::Recorded {
+        cycle,
+        record,
+        sample,
+    } = measured
+    else {
+        return Err(String::from("semantic failure latency was not recorded"));
+    };
+    if !matches!(
+        cycle,
+        Err(failure)
+            if matches!(
+                failure.as_ref(),
+                NativeContinuationCachedRetryCycleFailure::Routing(_)
+            )
+    ) || sample.nanoseconds() != 43
+        || record.samples() != 1
+        || histogram.samples() != 1
+        || runner.calls != 0
+        || !cache.is_empty()
+        || !adapter.operations.is_empty()
+    {
+        Err(String::from("measured semantic failure evidence drifted"))
+    } else {
+        Ok(())
     }
 }
 

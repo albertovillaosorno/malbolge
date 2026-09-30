@@ -1782,8 +1782,16 @@ histogram bytes with exact extrema flags, `u128` totals, bound/count pairs, and
 repeated snapshot validation. Exact schema coarsening derives shared schemas
 for normalized merge, while witness-backed refinement refuses to infer
 hidden within-bucket distributions. Caller-delimited monotonic timing
-produces explicit latency samples. Canonical blob persistence and durable
-CAS merge with bounded conflict retry retain exact histogram evidence.
+produces explicit latency samples.
+
+telemetry_latency_cycle.rs adds synchronous complete-cycle instrumentation. It
+begins the monotonic interval before cached retry execution, always retains the
+exact semantic cycle result, then finishes the clock and records at most one
+sample transactionally. Clock or histogram failure cannot erase execution
+evidence; a semantic cycle failure is still measured when timing succeeds.
+
+Canonical blob persistence and durable CAS merge with bounded conflict retry
+retain exact histogram evidence.
 
 Count/latency policy recommendation and durable publication likewise retain
 typed evidence across file-backed regressions.
@@ -1796,7 +1804,8 @@ filesystem regression confirms that the rebound request and restored state
 agree.
 
 Automatic asynchronous interval ownership and broader distributed aggregation
-remain outside this boundary.
+remain outside this boundary; synchronous complete-cycle instrumentation is
+owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

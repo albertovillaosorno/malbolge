@@ -547,6 +547,12 @@ behavior.
   enables exact merges across compatible histograms. Caller-delimited
   monotonic timing yields explicit samples.
 
+  Synchronous measured-cycle orchestration now owns one whole cached retry
+  interval from clock begin through semantic execution, clock finish, and
+  transactional histogram recording. Clock or histogram failure retains the
+  complete semantic cycle result, while semantic cycle failure remains eligible
+  for latency evidence when timing succeeds.
+
   Canonical blob persistence,
   durable CAS merge with bounded conflict retry, and count/latency policy
   recommendation plus durable publication retain typed evidence and
@@ -559,7 +565,7 @@ behavior.
   round-trips with the rebound request.
 
   Automatic asynchronous interval ownership and broader distributed aggregation
-  remain open.
+  remain open; synchronous complete-cycle instrumentation is now owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
