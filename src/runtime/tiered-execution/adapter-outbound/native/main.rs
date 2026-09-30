@@ -44,6 +44,7 @@ mod compiler;
 mod direct;
 mod executable_cache;
 mod executable_cache_capacity;
+mod executable_cache_limits_codec;
 mod executable_lease_cache;
 mod executable_sequence;
 mod fused_lease_cache;
@@ -408,6 +409,12 @@ pub use executable_cache_capacity::{
     NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceCacheUsage,
     NativeExecutableSequenceWeight,
+};
+pub use executable_cache_limits_codec::{
+    NativeExecutableSequenceCacheLimitsCodecError,
+    NativeExecutableSequenceCacheLimitsCodecField,
+    decode_native_executable_sequence_cache_limits,
+    encode_native_executable_sequence_cache_limits,
 };
 pub use executable_lease_cache::{
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,

@@ -600,6 +600,12 @@ parts:
     language: rust
     responsibility: >-
       Arbitrate ready count and latency retry-policy recommendations.
+  - id: part-0111
+    path: adapter-outbound/native/executable_cache_limits_codec.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: >-
+      Encode and decode canonical executable-cache limit configuration.
 projects: []
 tests: []
 graph:
