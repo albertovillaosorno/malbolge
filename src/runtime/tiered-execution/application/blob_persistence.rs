@@ -36,9 +36,11 @@
 use std::num::NonZeroUsize;
 
 use store_port::{
+    NativeContinuationBlobRemoval as BlobRemoval,
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationConditionalBlobStore as ConditionalBlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+    NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
 
 use crate::blob_store as store_port;
@@ -115,6 +117,29 @@ pub enum NativeContinuationBlobPersistenceError<StoreError> {
     Store(StoreError),
 }
 
+/// Outcome of one explicit blob removal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobPersistenceRemoval {
+    /// No publication existed when removal authority was held.
+    Missing,
+    /// One existing publication was removed.
+    Removed,
+}
+
+/// Outcome after removal plus explicit durability confirmation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobDurableRemoval<DurabilityError> {
+    /// Removal committed and directory/storage durability was confirmed.
+    Durable,
+    /// No publication existed; no durability confirmation was required.
+    Missing,
+    /// Removal committed, but durability confirmation failed afterward.
+    Removed {
+        /// Exact post-removal durability failure.
+        durability_error: DurabilityError,
+    },
+}
+
 /// Result of one bounded blob load.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeContinuationBlobPersistenceLoad {
@@ -146,6 +171,14 @@ pub type NativeContinuationBlobConditionalDurableStoreResult<Store> =
         <Store as BlobStore>::Error,
         <Store as DurableBlobStore>::DurabilityError,
     >;
+
+/// Durable removal result specialized to one outbound store type.
+pub type NativeContinuationBlobDurableRemovalStoreResult<Store> = Result<
+    NativeContinuationBlobDurableRemoval<
+        <Store as DurableBlobStore>::DurabilityError,
+    >,
+    NativeContinuationBlobPersistenceError<<Store as BlobStore>::Error>,
+>;
 
 /// Result of publication plus optional durability confirmation.
 pub type NativeContinuationBlobDurablePersistenceResult<
@@ -234,6 +267,23 @@ impl<DurabilityError>
     #[must_use]
     pub const fn is_durable(&self) -> bool {
         matches!(self, Self::Durable { .. })
+    }
+}
+
+impl<DurabilityError> NativeContinuationBlobDurableRemoval<DurabilityError> {
+    /// Returns post-removal durability failure when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(&self) -> Option<&DurabilityError> {
+        match self {
+            Self::Removed { durability_error } => Some(durability_error),
+            Self::Durable | Self::Missing => None,
+        }
+    }
+
+    /// Reports whether one publication was actually removed.
+    #[must_use]
+    pub const fn is_removed(&self) -> bool {
+        matches!(self, Self::Durable | Self::Removed { .. })
     }
 }
 
@@ -388,6 +438,65 @@ where
     Ok(NativeContinuationBlobPersistenceWrite { bytes: bytes.len() })
 }
 
+/// Removes one configured blob and then confirms committed absence durability.
+///
+/// Missing state is a successful no-op and does not request durability
+/// confirmation. Once removal returns Removed, a later durability failure is
+/// retained as committed removal evidence rather than reported as rollback.
+///
+/// # Errors
+///
+/// Returns outbound coordination/removal failure before absence commits.
+pub fn remove_blob_durably<Store>(
+    store: &mut Store,
+) -> NativeContinuationBlobDurableRemovalStoreResult<Store>
+where
+    Store: DurableBlobStore + RemovableBlobStore,
+{
+    match remove_blob(store)? {
+        NativeContinuationBlobPersistenceRemoval::Missing => {
+            Ok(NativeContinuationBlobDurableRemoval::Missing)
+        },
+        NativeContinuationBlobPersistenceRemoval::Removed => {
+            match store.confirm_durability() {
+                Ok(()) => Ok(NativeContinuationBlobDurableRemoval::Durable),
+                Err(durability_error) => {
+                    Ok(NativeContinuationBlobDurableRemoval::Removed {
+                        durability_error,
+                    })
+                },
+            }
+        },
+    }
+}
+
+/// Removes one configured blob publication when present.
+///
+/// # Errors
+///
+/// Returns outbound coordination/removal failure before absence is claimed.
+pub fn remove_blob<Store>(
+    store: &mut Store,
+) -> NativeContinuationBlobPersistenceResult<
+    NativeContinuationBlobPersistenceRemoval,
+    Store::Error,
+>
+where
+    Store: RemovableBlobStore,
+{
+    store
+        .remove()
+        .map(|outcome| match outcome {
+            BlobRemoval::Missing => {
+                NativeContinuationBlobPersistenceRemoval::Missing
+            },
+            BlobRemoval::Removed => {
+                NativeContinuationBlobPersistenceRemoval::Removed
+            },
+        })
+        .map_err(NativeContinuationBlobPersistenceError::Store)
+}
+
 /// Restores one bounded blob without interpreting its bytes.
 ///
 /// # Errors
@@ -425,5 +534,208 @@ const fn admit_byte_limit<StoreError>(
             maximum_bytes,
             observed_bytes,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::{create_dir_all, remove_dir_all};
+    use std::io::ErrorKind;
+    use std::{env, process};
+
+    use super::*;
+    use crate::blob_store::{
+        NativeContinuationBlobRemoval, NativeContinuationBlobRemovalResult,
+        NativeContinuationBlobStore, NativeContinuationDurableBlobStore,
+        NativeContinuationRemovableBlobStore,
+    };
+    use crate::file_blob_store::NativeContinuationFileBlobStore;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum DurabilityError {
+        Failed,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum StoreError {
+        Failed,
+    }
+
+    #[derive(Debug, Default)]
+    struct MemoryStore {
+        bytes: Option<Vec<u8>>,
+        durability_calls: usize,
+        fail_durability: bool,
+        fail_remove: bool,
+    }
+
+    impl NativeContinuationBlobStore for MemoryStore {
+        type Error = StoreError;
+
+        fn load(
+            &mut self,
+            _maximum_bytes: NonZeroUsize,
+        ) -> Result<Option<Vec<u8>>, Self::Error> {
+            Ok(self.bytes.clone())
+        }
+
+        fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+            self.bytes = Some(bytes.to_vec());
+            Ok(())
+        }
+    }
+
+    impl NativeContinuationRemovableBlobStore for MemoryStore {
+        fn remove(
+            &mut self,
+        ) -> NativeContinuationBlobRemovalResult<Self::Error> {
+            if self.fail_remove {
+                return Err(StoreError::Failed);
+            }
+            if self.bytes.take().is_some() {
+                Ok(NativeContinuationBlobRemoval::Removed)
+            } else {
+                Ok(NativeContinuationBlobRemoval::Missing)
+            }
+        }
+    }
+
+    impl NativeContinuationDurableBlobStore for MemoryStore {
+        type DurabilityError = DurabilityError;
+
+        fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+            self.durability_calls = self.durability_calls.saturating_add(1);
+            if self.fail_durability {
+                Err(DurabilityError::Failed)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn durable_removal_confirms_committed_absence() -> Result<(), String> {
+        let mut store = MemoryStore {
+            bytes: Some(vec![1, 2, 3]),
+            ..MemoryStore::default()
+        };
+        let outcome = remove_blob_durably(&mut store)
+            .map_err(|error| format!("{error:?}"))?;
+        if outcome == NativeContinuationBlobDurableRemoval::Durable
+            && store.bytes.is_none()
+            && store.durability_calls == 1
+        {
+            Ok(())
+        } else {
+            Err(String::from("durable removal evidence drifted"))
+        }
+    }
+
+    #[test]
+    fn durability_failure_keeps_removed_state() -> Result<(), String> {
+        let mut store = MemoryStore {
+            bytes: Some(vec![4, 5, 6]),
+            fail_durability: true,
+            ..MemoryStore::default()
+        };
+        let outcome = remove_blob_durably(&mut store)
+            .map_err(|error| format!("{error:?}"))?;
+        if outcome
+            == (NativeContinuationBlobDurableRemoval::Removed {
+                durability_error: DurabilityError::Failed,
+            })
+            && store.bytes.is_none()
+            && store.durability_calls == 1
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "durability failure did not retain committed removal",
+            ))
+        }
+    }
+
+    #[test]
+    fn file_store_removal_round_trip() -> Result<(), String> {
+        let directory = env::temp_dir()
+            .join(format!("malbolge-blob-remove-{}", process::id()));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test directory cleanup failed: {error}"));
+            },
+        }
+        create_dir_all(&directory).map_err(|error| {
+            format!("test directory create failed: {error}")
+        })?;
+        let destination = directory.join("blob.bin");
+        let mut store = NativeContinuationFileBlobStore::new(destination);
+        let _write = persist_blob(
+            &mut store,
+            &[7, 8, 9],
+            NonZeroUsize::new(3)
+                .ok_or_else(|| String::from("test bound missing"))?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let removed = remove_blob_durably(&mut store)
+            .map_err(|error| format!("{error:?}"))?;
+        let missing = remove_blob_durably(&mut store)
+            .map_err(|error| format!("{error:?}"))?;
+        let load = restore_blob(
+            &mut store,
+            NonZeroUsize::new(3)
+                .ok_or_else(|| String::from("test bound missing"))?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        drop(store);
+        remove_dir_all(&directory).map_err(|error| {
+            format!("test directory removal failed: {error}")
+        })?;
+        if removed == NativeContinuationBlobDurableRemoval::Durable
+            && missing == NativeContinuationBlobDurableRemoval::Missing
+            && load == NativeContinuationBlobPersistenceLoad::Missing
+        {
+            Ok(())
+        } else {
+            Err(String::from("file blob removal round trip drifted"))
+        }
+    }
+
+    #[test]
+    fn missing_removal_skips_durability_confirmation() -> Result<(), String> {
+        let mut store = MemoryStore::default();
+        let outcome = remove_blob_durably(&mut store)
+            .map_err(|error| format!("{error:?}"))?;
+        if outcome == NativeContinuationBlobDurableRemoval::Missing
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from("missing removal requested durability"))
+        }
+    }
+
+    #[test]
+    fn removal_failure_preserves_publication() -> Result<(), String> {
+        let original = vec![10, 11, 12];
+        let mut store = MemoryStore {
+            bytes: Some(original.clone()),
+            fail_remove: true,
+            ..MemoryStore::default()
+        };
+        let outcome = remove_blob_durably(&mut store);
+        if matches!(
+            outcome,
+            Err(NativeContinuationBlobPersistenceError::Store(
+                StoreError::Failed,
+            ))
+        ) && store.bytes == Some(original)
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from("failed removal changed publication"))
+        }
     }
 }

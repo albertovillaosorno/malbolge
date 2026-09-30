@@ -37,7 +37,7 @@
 //     bundles fail closed without publishing or returning a partial AOT set.
 //
 
-//! Atomic durable bundles for register-masked v6 AOT objects.
+//! Atomic durable storage and eviction for register-masked v6 AOT bundles.
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -46,6 +46,7 @@ use malbolge::{RegisterMaskedRegionEffectProgram, RuntimeCapability};
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+    NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
 
 use crate::execution_native::{
@@ -305,6 +306,23 @@ impl<'requirement> RegisterMaskedAotBundleSource<'requirement> {
             runtime,
         }
     }
+}
+
+/// Durably evicts the complete bundle at the configured blob location.
+///
+/// Missing state is an explicit successful no-op. Committed removal followed by
+/// durability-confirmation failure remains committed absence evidence.
+///
+/// # Errors
+///
+/// Returns outbound coordination/removal failure before absence commits.
+pub fn evict_register_masked_aot_bundle_durably<Store>(
+    store: &mut Store,
+) -> blob_persistence::NativeContinuationBlobDurableRemovalStoreResult<Store>
+where
+    Store: DurableBlobStore + RemovableBlobStore,
+{
+    blob_persistence::remove_blob_durably(store)
 }
 
 /// Atomically persists one complete ordered AOT object bundle.

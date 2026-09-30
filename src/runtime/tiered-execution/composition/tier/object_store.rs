@@ -35,7 +35,7 @@
 //     fails closed before any AOT artifact is returned.
 //
 
-//! Typed durable storage for one register-masked v6 AOT object.
+//! Typed durable storage and eviction for one register-masked v6 AOT object.
 
 use std::num::NonZeroUsize;
 
@@ -43,6 +43,7 @@ use malbolge::{RegisterMaskedRegionEffectProgram, RuntimeCapability};
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+    NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
 
 use crate::execution_native::{
@@ -122,6 +123,23 @@ pub type RegisterMaskedAotObjectRestoreResult<'requirement, Value, StoreError> =
             StoreError,
         >,
     >;
+
+/// Durably evicts the object at the caller-configured blob location.
+///
+/// Missing state remains explicit. Once removal commits, later durability
+/// failure is returned as committed removal evidence and never as rollback.
+///
+/// # Errors
+///
+/// Returns outbound coordination/removal failure before absence commits.
+pub fn evict_register_masked_aot_object_durably<Store>(
+    store: &mut Store,
+) -> blob_persistence::NativeContinuationBlobDurableRemovalStoreResult<Store>
+where
+    Store: DurableBlobStore + RemovableBlobStore,
+{
+    blob_persistence::remove_blob_durably(store)
+}
 
 /// Persists exact verified COFF bytes under an explicit positive byte bound.
 ///

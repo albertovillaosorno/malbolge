@@ -45,8 +45,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::blob_store::{
     NativeContinuationBlobConditionalPublication,
     NativeContinuationBlobConditionalPublicationResult,
-    NativeContinuationBlobLoadResult, NativeContinuationBlobStore,
+    NativeContinuationBlobLoadResult, NativeContinuationBlobRemoval,
+    NativeContinuationBlobRemovalResult, NativeContinuationBlobStore,
     NativeContinuationConditionalBlobStore, NativeContinuationDurableBlobStore,
+    NativeContinuationRemovableBlobStore,
 };
 use crate::file_coordination::{
     NativeContinuationFileCoordination,
@@ -115,6 +117,11 @@ pub enum NativeContinuationFileBlobStoreError {
     },
     /// Reading bounded destination bytes failed.
     Read {
+        /// Host filesystem error category.
+        kind: ErrorKind,
+    },
+    /// Removing the configured destination failed.
+    Remove {
         /// Host filesystem error category.
         kind: ErrorKind,
     },
@@ -448,6 +455,21 @@ impl NativeContinuationConditionalBlobStore
                 maximum_bytes,
             ),
         )
+    }
+}
+
+impl NativeContinuationRemovableBlobStore for NativeContinuationFileBlobStore {
+    fn remove(&mut self) -> NativeContinuationBlobRemovalResult<Self::Error> {
+        let _lock = self.open_publication_lock()?;
+        match fs::remove_file(&self.destination) {
+            Ok(()) => Ok(NativeContinuationBlobRemoval::Removed),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                Ok(NativeContinuationBlobRemoval::Missing)
+            },
+            Err(error) => Err(NativeContinuationFileBlobStoreError::Remove {
+                kind: error.kind(),
+            }),
+        }
     }
 }
 

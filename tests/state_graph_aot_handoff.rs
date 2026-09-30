@@ -126,7 +126,9 @@ use register_masked_aot_bundle_persistence::{
     RegisterMaskedAotBundlePreparationError,
     RegisterMaskedAotBundleRestorePersistenceError,
     RegisterMaskedAotBundleRestoreRequest, RegisterMaskedAotBundleSource,
-    RegisterMaskedAotBundleStoreError, persist_register_masked_aot_bundle,
+    RegisterMaskedAotBundleStoreError,
+    evict_register_masked_aot_bundle_durably,
+    persist_register_masked_aot_bundle,
     persist_register_masked_aot_bundle_durably,
     restore_register_masked_aot_bundle,
 };
@@ -134,6 +136,7 @@ use register_masked_aot_object_persistence::{
     RegisterMaskedAotObjectPersistenceLoad,
     RegisterMaskedAotObjectRestorePersistenceError,
     RegisterMaskedAotObjectRestoreRequest,
+    evict_register_masked_aot_object_durably,
     persist_register_masked_aot_object_durably,
     restore_register_masked_aot_object,
 };
@@ -1172,6 +1175,50 @@ fn expect_trailing_bundle_rejected(
     }
 }
 
+fn evict_bundle_and_require_missing(
+    store: &mut NativeContinuationFileBlobStore,
+    programs: &[RegisterMaskedRegionEffectProgram],
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let eviction = evict_register_masked_aot_bundle_durably(store)
+        .map_err(|error| format!("durable AOT bundle eviction: {error:?}"))?;
+    if !eviction.is_removed() {
+        return Err(String::from("durable AOT bundle was not evicted"));
+    }
+    let load = restore_register_masked_aot_bundle(
+        store,
+        bundle_restore_request(programs, maximum_bytes),
+    )
+    .map_err(|error| format!("post-eviction AOT bundle restore: {error:?}"))?;
+    if load == RegisterMaskedAotBundlePersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("evicted AOT bundle remained restorable"))
+    }
+}
+
+fn evict_object_and_require_missing(
+    store: &mut NativeContinuationFileBlobStore,
+    program: &RegisterMaskedRegionEffectProgram,
+    maximum_bytes: NonZeroUsize,
+) -> HandoffResult<()> {
+    let eviction = evict_register_masked_aot_object_durably(store)
+        .map_err(|error| format!("durable AOT object eviction: {error:?}"))?;
+    if !eviction.is_removed() {
+        return Err(String::from("durable AOT object was not evicted"));
+    }
+    let load = restore_register_masked_aot_object(
+        store,
+        object_restore_request(program, maximum_bytes),
+    )
+    .map_err(|error| format!("post-eviction AOT object restore: {error:?}"))?;
+    if load == RegisterMaskedAotObjectPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("evicted AOT object remained restorable"))
+    }
+}
+
 #[test]
 fn product_register_masked_aot_bundle_rejects_untrusted_framing()
 -> HandoffResult<()> {
@@ -1383,7 +1430,7 @@ fn product_register_masked_aot_bundle_round_trips_reduced_graph()
                 ));
             }
         }
-        Ok(())
+        evict_bundle_and_require_missing(&mut store, &programs, maximum_bytes)
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;
@@ -1523,11 +1570,10 @@ fn product_register_masked_aot_object_store_round_trips_file_blob()
             &restored_set,
         )
         .map_err(|error| error.to_string())?;
-        if matches!(selected, AheadOfExecutionRegisterMaskedTier::Direct(_)) {
-            Ok(())
-        } else {
-            Err(String::from("restored AOT object was not selectable"))
+        if !matches!(selected, AheadOfExecutionRegisterMaskedTier::Direct(_)) {
+            return Err(String::from("restored AOT object was not selectable"));
         }
+        evict_object_and_require_missing(&mut store, &program, maximum_bytes)
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;

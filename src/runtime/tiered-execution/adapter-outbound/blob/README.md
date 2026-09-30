@@ -11,6 +11,7 @@ codec authority.
 - bounded file reads from one caller-configured destination;
 - same-directory collision-resistant staging files;
 - complete staging writes and file-content synchronization before publication;
+- explicit locked removal of one existing publication;
 - atomic `rename` publication when the host filesystem supports replacement;
 - one persistent sibling lock file for cooperating publication/CAS callers;
 - best-effort cleanup of adapter-owned staging files after rejected writes,
@@ -21,7 +22,7 @@ codec authority.
 - telemetry framing, validation, assessment, or policy selection;
 - byte-limit selection;
 - directory creation or destination discovery;
-- removal of a previously published destination before replacement;
+- remove-then-replace fallbacks that weaken atomic replacement;
 - directory-entry synchronization after successful publication;
 - protection from writers that do not honor this adapter's sibling lock;
 - multi-blob transactions or distributed consensus.
@@ -53,3 +54,9 @@ capability rather than hidden inside `replace`. Application orchestration first
 commits publication, then confirms the destination directory; sync failure is
 returned as committed `Published` evidence, never as rollback. The ordinary
 replacement API keeps its original prepublication failure contract.
+
+Explicit removal uses the same sibling lock as replacement and CAS. Missing
+destinations return Missing; an existing destination is removed atomically
+with respect to cooperating adapter callers and returns Removed. Application
+orchestration may then confirm directory durability. A directory-sync failure
+after removal remains committed absence evidence rather than rollback.

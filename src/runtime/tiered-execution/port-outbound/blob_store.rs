@@ -60,6 +60,19 @@ pub type NativeContinuationBlobDurabilityResult<DurabilityError> =
 pub type NativeContinuationBlobLoadResult<StoreError> =
     Result<Option<Vec<u8>>, StoreError>;
 
+/// Result of removing one configured blob publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationBlobRemoval {
+    /// No blob existed when removal authority was held.
+    Missing,
+    /// One existing blob publication was removed.
+    Removed,
+}
+
+/// Removal result returned by one blob-store adapter.
+pub type NativeContinuationBlobRemovalResult<StoreError> =
+    Result<NativeContinuationBlobRemoval, StoreError>;
+
 /// Replaceable storage for one caller-preconfigured blob location.
 pub trait NativeContinuationBlobStore {
     /// Adapter-local storage failure retained by application orchestration.
@@ -136,4 +149,23 @@ pub trait NativeContinuationDurableBlobStore:
     fn confirm_durability(
         &mut self,
     ) -> NativeContinuationBlobDurabilityResult<Self::DurabilityError>;
+}
+
+/// Optional removal capability for one preconfigured blob location.
+///
+/// Implementations must serialize cooperating removers and publishers through
+/// the same coordination domain when the backing store is shared.
+pub trait NativeContinuationRemovableBlobStore:
+    NativeContinuationBlobStore
+{
+    /// Removes the current publication when present.
+    ///
+    /// Missing is successful evidence that no publication existed while
+    /// removal authority was held. Removed means absence has committed.
+    ///
+    /// # Errors
+    ///
+    /// Returns adapter-local coordination or removal failure before absence is
+    /// claimed.
+    fn remove(&mut self) -> NativeContinuationBlobRemovalResult<Self::Error>;
 }
