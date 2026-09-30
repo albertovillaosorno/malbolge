@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
+#[path = "tier/executable_cache_limits_store.rs"]
+pub mod executable_cache_limits_persistence;
 #[path = "../adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../adapter-outbound/clock/main.rs"]

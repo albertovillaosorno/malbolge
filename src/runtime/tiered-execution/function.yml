@@ -606,6 +606,12 @@ parts:
     language: rust
     responsibility: >-
       Encode and decode canonical executable-cache limit configuration.
+  - id: part-0112
+    path: composition/tier/executable_cache_limits_store.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist executable-cache limit policy without executable authority.
 projects: []
 tests: []
 graph:
