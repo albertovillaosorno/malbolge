@@ -1,42 +1,76 @@
-# Normalize authored text to LF in the index and working tree.
+# Core
 * text=auto eol=lf
 
-# Explicit authored text families.
-*.rs text eol=lf
-*.c text eol=lf
-*.h text eol=lf
-*.cu text eol=lf linguist-language=Cuda linguist-detectable
-*.cuh text eol=lf linguist-language=Cuda linguist-detectable
-*.py text eol=lf
-*.toml text eol=lf
-*.lock text eol=lf
-*.json text eol=lf
-*.jsonc text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.md text eol=lf
-*.mdc text eol=lf
-*.tex text eol=lf
-*.bib text eol=lf
-*.malbolge text eol=lf linguist-language=Malbolge linguist-detectable
-*.editorconfig text eol=lf
-*.props text eol=lf
+# Source Code
+*.c               text eol=lf linguist-detectable
+*.h               text eol=lf linguist-detectable
+*.cpp             text eol=lf linguist-detectable
+*.hpp             text eol=lf linguist-detectable
+*.inc             text eol=lf linguist-detectable
+*.inl             text eol=lf linguist-detectable
+*.s               text eol=lf linguist-detectable
+*.S               text eol=lf linguist-detectable
+*.asm             text eol=lf linguist-detectable
+*.cu              text eol=lf linguist-language=Cuda linguist-detectable
+*.cuh             text eol=lf linguist-language=Cuda linguist-detectable
+*.rs              text eol=lf linguist-detectable
+*.py              text eol=lf linguist-detectable
+*.sh              text eol=lf linguist-detectable
+*.bash            text eol=lf linguist-detectable
+*.malbolge        text eol=lf linguist-language=Malbolge linguist-detectable
 
-# Binary families.
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.webp binary
-*.ico binary
-*.pdf binary
-*.zip binary
-*.gz binary
-*.7z binary
-*.exe binary
-*.dll binary
-*.so binary
-*.dylib binary
-*.a binary
-*.lib binary
-*.pdf binary
+# Web Assets
+*.html            text eol=lf
+*.css             text eol=lf
+*.js              text eol=lf
+*.ts              text eol=lf
+
+# Build & Toolchain
+CMakeLists.txt    text eol=lf
+Makefile          text eol=lf
+*.cmake           text eol=lf
+*.mk              text eol=lf
+*.editorconfig    text eol=lf
+*.clang-format    text eol=lf
+*.clang-tidy      text eol=lf
+*.props           text eol=lf
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+
+# Data & Documents
+*.json            text eol=lf
+*.jsonc           text eol=lf
+*.lock            text eol=lf
+*.toml            text eol=lf
+*.yaml            text eol=lf
+*.yml             text eol=lf
+*.md              text eol=lf linguist-detectable
+*.mdc             text eol=lf linguist-detectable
+*.bib             text eol=lf linguist-detectable
+*.tex             text eol=lf linguist-detectable
+
+# Linguist Overrides
+docs/**/*         linguist-documentation=false eol=lf linguist-detectable
+tests/**/*        linguist-documentation=false eol=lf linguist-detectable
+tools/**/*        linguist-documentation=false eol=lf linguist-detectable
+cpp/**/*          linguist-documentation=false eol=lf linguist-detectable
+src/**/*          linguist-documentation=false eol=lf linguist-detectable
+
+# Binaries
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.webp            binary
+*.ico             binary
+*.zip             binary
+*.gz              binary
+*.7z              binary
+*.tar             binary
+*.pdf             binary
+*.exe             binary
+*.dll             binary
+*.so              binary
+*.dylib           binary
+*.a               binary
+*.lib             binary
