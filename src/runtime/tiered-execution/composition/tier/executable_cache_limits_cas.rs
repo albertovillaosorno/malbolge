@@ -344,6 +344,98 @@ mod tests {
     }
 
     #[test]
+    fn file_store_compare_and_swap_round_trip() -> Result<(), String> {
+        use std::fs::{create_dir, remove_dir_all};
+        use std::process;
+
+        use crate::executable_cache_limits_persistence::{
+            NativeExecutableSequenceCacheLimitsPersistenceLoad,
+            restore_native_executable_sequence_cache_limits,
+        };
+        use crate::file_blob_store::NativeContinuationFileBlobStore;
+
+        let directory = std::env::temp_dir()
+            .join(format!("malbolge-cache-limits-cas-{}", process::id(),));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test directory cleanup failed: {error}"));
+            },
+        }
+        create_dir(&directory).map_err(|error| {
+            format!("test directory create failed: {error}")
+        })?;
+        let destination = directory.join("limits.bin");
+        let mut store = NativeContinuationFileBlobStore::new(destination);
+        let first = limits(9)?;
+        let second = limits(10)?;
+        let stale_candidate = limits(11)?;
+        let initialized =
+            compare_and_swap_native_executable_sequence_cache_limits_durably(
+                &mut store,
+                None,
+                first,
+                positive(40)?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        let updated =
+            compare_and_swap_native_executable_sequence_cache_limits_durably(
+                &mut store,
+                Some(first),
+                second,
+                positive(40)?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        let conflict =
+            compare_and_swap_native_executable_sequence_cache_limits_durably(
+                &mut store,
+                Some(first),
+                stale_candidate,
+                positive(40)?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        let restored = restore_native_executable_sequence_cache_limits(
+            &mut store,
+            positive(40)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let expected_restored =
+            NativeExecutableSequenceCacheLimitsPersistenceLoad::Restored {
+                bytes: 40,
+                limits: second,
+            };
+        let valid = initialized
+            == NativeExecutableSequenceCacheLimitsCas::Durable {
+                bytes: 40,
+                current: first,
+                previous: None,
+            }
+            && updated
+                == NativeExecutableSequenceCacheLimitsCas::Durable {
+                    bytes: 40,
+                    current: second,
+                    previous: Some(first),
+                }
+            && conflict
+                == NativeExecutableSequenceCacheLimitsCas::Conflict {
+                    candidate: stale_candidate,
+                    current: Some(second),
+                    expected: Some(first),
+                }
+            && restored == expected_restored;
+        drop(store);
+        remove_dir_all(&directory).map_err(|error| {
+            format!("test directory removal failed: {error}")
+        })?;
+        if valid {
+            Ok(())
+        } else {
+            Err(String::from("file cache-limit CAS round trip drifted"))
+        }
+    }
+
+    #[test]
     fn malformed_conflict_fails_closed() -> Result<(), String> {
         let mut store = MemoryStore {
             bytes: Some(vec![0; 40]),
