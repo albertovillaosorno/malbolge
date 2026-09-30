@@ -149,6 +149,9 @@ format.
   mirror, DOOM emitted 4,646,568 bytes of Rust and reproduced the intended
   151-file
   tree exactly under Rust GNU 1.97.1.
+- Current stable-toolchain revalidation compiles both checked-in DOOM Rust
+  transforms with Rust 1.98.1 and `-D warnings`; the synthetic emitted-Rust
+  compile/run suite passes 14/14 under the same repository-local rustc.
 - Compatible/fuzzy Rust emission remains unfinished: consumer canonical
   identity,
   thresholds, behavior probes, and bug-routing still need runtime

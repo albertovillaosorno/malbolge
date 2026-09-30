@@ -65,10 +65,10 @@ WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
 LLVM_DEVELOPMENT_COMPONENT = "llvm-development"
 CAPTURED_BOOTSTRAP_ARGUMENTS = "captured bootstrap arguments"
-RUST_CHANNEL = "1.97.1"
+RUST_CHANNEL = "1.98.1"
 RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
-RUST_CARGO_BYTES = b"cargo-1.97.1"
-RUST_RUSTC_BYTES = b"rustc-1.97.1"
+RUST_CARGO_BYTES = b"cargo-1.98.1"
+RUST_RUSTC_BYTES = b"rustc-1.98.1"
 RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
 GIT_VERSION = "2.55.0"
@@ -1038,7 +1038,7 @@ def test_rust_linker_adapter_binds_explicit_linux_host_linker(
     linker = tmp_path / "host/bin/cc"
     linker.parent.mkdir(parents=True)
     linker.touch()
-    stable = tmp_path / ".dependencies/rust/1.97.1"
+    stable = tmp_path / ".dependencies/rust/1.98.1"
     nightly = tmp_path / ".dependencies/rust/nightly-2026-07-14"
     stable_bin = stable / "bin"
     nightly_bin = nightly / "bin"
@@ -1084,7 +1084,7 @@ def test_rust_linker_adapters_leave_windows_aliases_unchanged(
     tmp_path: Path,
 ) -> None:
     """Linux linker adaptation never rewrites Windows Rust aliases."""
-    root = tmp_path / ".dependencies/rust/1.97.1"
+    root = tmp_path / ".dependencies/rust/1.98.1"
     binary = root / "bin/cargo.exe"
     alias = root / "bin/cargo.bin"
     binary.parent.mkdir(parents=True)
@@ -1146,7 +1146,7 @@ def test_rustup_resolver_never_queries_uninstalled_channel(
 
     def list_runner(observed: Path) -> tuple[str, ...]:
         assert observed == rustup
-        return ("1.97.1-x86_64-unknown-linux-gnu",)
+        return ("1.98.1-x86_64-unknown-linux-gnu",)
 
     def which_runner(observed: Path, channel: str) -> str:
         assert observed == rustup
@@ -1167,13 +1167,13 @@ def test_rustup_resolver_never_queries_uninstalled_channel(
 def test_rustup_installed_channel_match_accepts_native_host_suffix() -> None:
     """Pinned channels match installed host-qualified Rustup identities."""
     installed = (
-        "1.97.1-x86_64-unknown-linux-gnu",
+        "1.98.1-x86_64-unknown-linux-gnu",
         "nightly-2026-07-14-x86_64-unknown-linux-gnu",
     )
 
     assert project.rustup_channel_is_installed(RUST_CHANNEL, installed)
     assert project.rustup_channel_is_installed(RUST_NIGHTLY_CHANNEL, installed)
-    assert not project.rustup_channel_is_installed("1.97.0", installed)
+    assert not project.rustup_channel_is_installed("1.98.0", installed)
     assert not project.rustup_channel_is_installed(
         "nightly-2026-07-13",
         installed,

@@ -307,7 +307,7 @@ Windows:
 cli\build-windows.cmd
 ```
 
-If `cargo.exe` is not on `PATH`, set `MALBOLGE_CARGO` to a Rust 1.97.1 Cargo
+If `cargo.exe` is not on `PATH`, set `MALBOLGE_CARGO` to a Rust 1.98.1 Cargo
 executable before running the build script.
 
 Linux/macOS:

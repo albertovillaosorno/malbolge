@@ -93,7 +93,7 @@ BASELINE_RECORDS = (
     "libraries/pygments.md",
     "platforms-and-runtimes/aarch64.md",
     "platforms-and-runtimes/nodejs-24-19-0.md",
-    "platforms-and-runtimes/rust-toolchain-1-97-1.md",
+    "platforms-and-runtimes/rust-toolchain-1-98-1.md",
     "platforms-and-runtimes/accelerators/nvidia-cuda.md",
     "platforms-and-runtimes/accelerators/pytorch.md",
     "platforms-and-runtimes/compiler/clang-libtooling.md",

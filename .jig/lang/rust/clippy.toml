@@ -1,6 +1,6 @@
 # Clippy configuration is intentionally machine-oriented. Thresholds are lower
 # than upstream defaults to force small, explicit units before complexity grows.
-msrv = "1.97.1"
+msrv = "1.98.1"
 avoid-breaking-exported-api = false
 check-inconsistent-struct-field-initializers = true
 lint-commented-code = true

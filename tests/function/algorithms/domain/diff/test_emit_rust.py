@@ -63,10 +63,12 @@ _CONTEXT = b"synthetic-rust-emitter-v1"
 _PROFILE = "synthetic-rust-emitter-v1"
 _BLOCK_COUNT = 48
 _RUSTC_ENV = "MALBOLGE_RUSTC"
+_WINDOWS_OS_NAME = "nt"
+_RUSTC_NAME = "rustc.exe" if os.name == _WINDOWS_OS_NAME else "rustc"
 _PINNED_RUSTC = (
     Path(__file__).resolve().parents[5]
-    / ".dependencies/jig/source/.dependencies/rust"
-    / "stable-1.97.1-x86_64-pc-windows-gnu/bin/rustc.exe"
+    / ".dependencies/rust/1.98.1/bin"
+    / _RUSTC_NAME
 )
 _TARGET_ONLY_TEXT = "TARGET-ONLY"
 _NEW_TARGET_TEXT = "new-target-only"

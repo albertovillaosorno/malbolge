@@ -96,7 +96,7 @@ Users need only the final transform. Compile it with the pinned Rust toolchain
 and point it directly at the original source tree:
 
 ```sh
-rust=.dependencies/rust/1.97.1/bin/rustc
+rust=.dependencies/rust/1.98.1/bin/rustc
 rm -rf .temp/doom-final-transform .temp/doom-final
 
 "$rust" --edition 2024 -D warnings -C opt-level=2 \
@@ -151,7 +151,7 @@ playtested C artifact.
 
 - 63/63 normalized C translation units pass the complete pre-Malbolge validator.
 - The canonical `doom.c` passes the pinned Clang pre-Malbolge C preflight.
-- Both generated Rust transforms compile with Rust 1.97.1 and `-D warnings`.
+- Both generated Rust transforms compile with Rust 1.98.1 and `-D warnings`.
 - Fresh materialization reproduces the accepted quality tree byte-for-byte.
 - Fresh final materialization directly from the 165-file upstream source
   reproduces the playtested `doom.c` byte-for-byte.

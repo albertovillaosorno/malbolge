@@ -306,7 +306,7 @@ instruction into a staging tree, verifies the complete target snapshot, and
 publishes
 only by a final rename. It never requires Python or the local oracle at runtime.
 
-Synthetic tests compile emitted source with Rust 1.97.1 and `-D warnings`,
+Synthetic tests compile emitted source with Rust 1.98.1 and `-D warnings`,
 execute it, verify exact target reconstruction, reject a changed source before
 output, reject an existing output root, and verify that target-only plaintext
 strings do not occur in the emitted source. The emitter also writes the

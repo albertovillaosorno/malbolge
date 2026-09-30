@@ -146,7 +146,7 @@ verification result, and threats to validity.
 ### Tooling And Publication Verification
 
 The repository records authoritative references for C, Rust, Python, the Rust
-1.97.1 toolchain, Node.js 24.19.0, uv, LLVM/Clang, clang-tidy, pytest, Ruff,
+1.98.1 toolchain, Node.js 24.19.0, uv, LLVM/Clang, clang-tidy, pytest, Ruff,
 BasedPyright, CUDA, ROCm, PyTorch, x86-64, AArch64, CommonMark, TOML,
 LaTeX, Git,
 GitHub repository citation metadata, and Citation File Format. Source records
@@ -178,7 +178,7 @@ tests, and the repository's own canonical URL are excluded deliberately.
 
 - **Required source class:** Compiler/toolchain
   - **Canonical records:** `platforms-and-runtimes/compiler/`,
-                           `rust-toolchain-1-97-1.md`,
+                           `rust-toolchain-1-98-1.md`,
                            `tooling/clang-tidy.md`
   - **State:** covered
 
@@ -246,7 +246,7 @@ are listed explicitly so provenance reachability is deterministic and auditable.
 - `docs/bibliography/platforms-and-runtimes/compiler/llvm-ir.md`
 - `docs/bibliography/platforms-and-runtimes/nodejs-24-19-0.md`
 - `docs/bibliography/platforms-and-runtimes/rocm.md`
-- `docs/bibliography/platforms-and-runtimes/rust-toolchain-1-97-1.md`
+- `docs/bibliography/platforms-and-runtimes/rust-toolchain-1-98-1.md`
 - `docs/bibliography/platforms-and-runtimes/x86-64.md`
 - `docs/bibliography/provenance-and-methodology/disclaimer.md`
 <!-- jig-ignore-next-line: canonical source path is indivisible -->

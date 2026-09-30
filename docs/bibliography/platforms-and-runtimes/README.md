@@ -19,5 +19,5 @@ Repository policy, legal conclusions, or research conclusions.
 - `aarch64.md`
 - `nodejs-24-19-0.md`
 - `rocm.md`
-- `rust-toolchain-1-97-1.md`
+- `rust-toolchain-1-98-1.md`
 - `x86-64.md`

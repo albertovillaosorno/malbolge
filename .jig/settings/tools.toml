@@ -26,4 +26,4 @@ path = ".dependencies/rust/nightly-2026-07-14/bin/cargo-clippy.bin"
 path = ".dependencies/rust/nightly-2026-07-14/bin/cargo-fmt.bin"
 
 [entry.rust_stable_cargo]
-path = ".dependencies/rust/1.97.1/bin/cargo.bin"
+path = ".dependencies/rust/1.98.1/bin/cargo.bin"

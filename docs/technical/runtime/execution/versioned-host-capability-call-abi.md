@@ -399,7 +399,7 @@ semantics to keep execution moving.
   Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
 - [Tiered Native Execution](../../adr/tiered-native-execution.md)
 - [Verification Trust Boundary](../../adr/verification-trust-boundary.md)
-- [Rust Toolchain 1.97.1](
-  ../../../bibliography/platforms-and-runtimes/rust-toolchain-1-97-1.md)
+- [Rust Toolchain 1.98.1](
+  ../../../bibliography/platforms-and-runtimes/rust-toolchain-1-98-1.md)
 - [Cross-platform Native Capability Runners](
   cross-platform-native-capability-runners.md)

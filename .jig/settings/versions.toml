@@ -65,8 +65,8 @@ target = "ruff"
 template = "{version}"
 
 [authority.rust-stable]
-current = "1.97.1"
-stable = "1.97.1"
+current = "1.98.1"
+stable = "1.98.1"
 
 [authority.rust-stable.projection.cargo_rust_version]
 kind = "toml"

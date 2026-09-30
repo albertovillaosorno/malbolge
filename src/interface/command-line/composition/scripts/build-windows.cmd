@@ -9,7 +9,7 @@ if defined MALBOLGE_CARGO (
   for %%I in (cargo.exe) do set "CARGO=%%~$PATH:I"
 )
 if not defined CARGO (
-  echo malbolge: cargo.exe was not found. Install Rust 1.97.1 or set ^
+  echo malbolge: cargo.exe was not found. Install Rust 1.98.1 or set ^
 MALBOLGE_CARGO. 1>&2
   exit /b 1
 )

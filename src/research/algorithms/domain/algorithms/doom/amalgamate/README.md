@@ -46,7 +46,7 @@ tree, or the local single-file oracle at materialization time.
 - 128 expanded includes, 529 duplicate-header elisions, one guarded cycle
   elision.
 
-The generated transform compiles with pinned Rust 1.97.1 and `-D warnings`.
+The generated transform compiles with pinned Rust 1.98.1 and `-D warnings`.
 Materializing it directly from the exact 165-file original source snapshot
 reproduces the ignored single-TU oracle byte-for-byte. That output is also
 byte-identical to the `doom.c` exercised by the canonical Linux native-debug
