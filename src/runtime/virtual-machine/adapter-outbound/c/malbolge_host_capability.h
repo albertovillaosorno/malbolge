@@ -10,7 +10,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE-APACHE-2.0
+//   - LICENSE
 // Path-Rule:
 //   - All paths in this header are repository-root relative.
 //

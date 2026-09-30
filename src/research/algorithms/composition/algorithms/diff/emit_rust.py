@@ -5,7 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE-APACHE-2.0
+#   - LICENSE
 #
 # Boundary-Contract:
 # - Owns:
@@ -140,7 +140,7 @@ _GENERATED_HEADER = (
     "// Confidential:\n"
     "//   - false\n"
     "// License-File:\n"
-    "//   - LICENSE-APACHE-2.0\n"
+    "//   - LICENSE\n"
     "//\n"
     "// Boundary-Contract:\n"
     "// - Owns:\n"

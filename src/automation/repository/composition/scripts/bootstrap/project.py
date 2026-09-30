@@ -5,7 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE-APACHE-2.0
+#   - LICENSE
 #
 # Boundary-Contract:
 # - Owns:
@@ -65,7 +65,7 @@ from scripts.repository_root import repository_root
 ROOT: Final = repository_root(Path(__file__))
 REQUIRED_ROOT_FILES: Final = (
     "Cargo.toml",
-    "LICENSE-APACHE-2.0",
+    "LICENSE",
     ".jig/jig.toml",
     "malbolge.json",
     ".jig/version/rust-toolchain.toml",

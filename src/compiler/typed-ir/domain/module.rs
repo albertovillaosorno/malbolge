@@ -5,7 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE-APACHE-2.0
+//   - LICENSE
 //
 // Boundary-Contract:
 // - Owns:

@@ -22,7 +22,7 @@ paths = [".jig/"]
 paths = ["src/"]
 
 [role.root_governance]
-paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "DOOM.md", "LICENSE-APACHE-2.0", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
+paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "DOOM.md", "LICENSE", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
 
 [role.tests]
 paths = ["tests/"]

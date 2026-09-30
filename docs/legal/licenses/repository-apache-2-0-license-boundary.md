@@ -14,7 +14,7 @@ What material does the repository represent as Apache-2.0 licensed?
 
 ## Verified Baseline
 
-The root `LICENSE-APACHE-2.0` contains the Apache License, Version 2.0.
+The root `LICENSE` contains the Apache License, Version 2.0.
 Repository-authored files retain their 2026 Alberto Villa Osorno copyright
 notices.
 
@@ -59,5 +59,5 @@ This record is bounded repository research and is not legal advice.
 
 ## Sources
 
-- `LICENSE-APACHE-2.0`
+- `LICENSE`
 - [Ben Olmstead public-domain boundary](ben-olmstead-malbolge-public-domain.md)

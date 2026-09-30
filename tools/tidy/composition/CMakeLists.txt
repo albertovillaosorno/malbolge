@@ -5,7 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE-APACHE-2.0
+#   - LICENSE
 
 cmake_minimum_required(VERSION 3.20)
 project(MalbolgeClangTidy LANGUAGES CXX)

@@ -49,7 +49,7 @@ repository
 may add project-authored wrappers, tests, documentation, and replacement
 implementations under Apache-2.0 without rewriting the historical source notice.
 
-The root `LICENSE-APACHE-2.0` applies to repository-authored material unless a
+The root `LICENSE` applies to repository-authored material unless a
 file or record states a different applicable boundary.
 
 Re-review if the historical file is replaced, modified, vendored from a
@@ -64,4 +64,4 @@ This record is bounded repository research and is not legal advice.
 
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
 - `src/interoperability/historical-malbolge/adapter-outbound/main.c`
-- `LICENSE-APACHE-2.0`
+- `LICENSE`

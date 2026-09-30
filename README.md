@@ -221,7 +221,7 @@ software citation. Citation-format provenance is documented in the
 bibliography rather than duplicated here.
 
 Repository-authored material is available under the Apache License 2.0 in
-[`LICENSE-APACHE-2.0`](LICENSE-APACHE-2.0). Historical material and
+[`LICENSE`](LICENSE). Historical material and
 third-party boundaries
 keep their own licensing records under [docs/legal/](docs/legal/).
 
