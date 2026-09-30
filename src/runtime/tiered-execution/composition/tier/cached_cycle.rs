@@ -94,6 +94,8 @@ mod telemetry_persistence;
 mod telemetry_policy_durable_binding;
 #[path = "cached_cycle/telemetry_policy_durable_publication.rs"]
 mod telemetry_policy_durable_publication;
+#[path = "cached_cycle/telemetry_policy_owner_synchronization.rs"]
+mod telemetry_policy_owner_synchronization;
 #[path = "cached_cycle/telemetry_policy_publication.rs"]
 mod telemetry_policy_publication;
 #[path = "cached_cycle/telemetry_recommendation.rs"]
@@ -319,6 +321,10 @@ pub use telemetry_policy_durable_publication::{
     NativeContinuationCachedRetryDurablePolicyStoreResult,
     publish_cached_retry_latency_policy_recommendation_durably,
     publish_cached_retry_policy_recommendation_durably,
+};
+pub use telemetry_policy_owner_synchronization::{
+    NativeContinuationCachedRetryPolicyOwnerSynchronization,
+    synchronize_cached_retry_policy_owner_from_durable_binding,
 };
 pub use telemetry_policy_publication::{
     NativeContinuationCachedRetryActivePolicyPublication,

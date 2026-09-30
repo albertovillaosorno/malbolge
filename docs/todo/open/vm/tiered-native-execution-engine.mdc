@@ -570,6 +570,12 @@ behavior.
   committed active revision. A filesystem regression proves committed state
   round-trips with the rebound request.
 
+  Process-local policy-owner synchronization now consumes only committed
+  binding evidence. Newer durable revision advances local ownership, exact
+  equality is a no-op, stale durable state cannot roll local ownership back,
+  and equal-revision policy divergence remains explicit non-mutating evidence.
+  Deferred and conflict bindings leave the local owner unchanged.
+
   Automatic asynchronous interval ownership and broader distributed aggregation
   remain open; synchronous same-cycle count/latency publication is now owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension

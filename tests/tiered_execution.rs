@@ -233,6 +233,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
     NativeContinuationCachedRetryCycleTelemetryPublication,
+    NativeContinuationCachedRetryDurablePolicyBinding,
     NativeContinuationCachedRetryDurablePolicyBindingRequest,
     NativeContinuationCachedRetryDurablePolicyPublication,
     NativeContinuationCachedRetryInterpreterOutcome,
@@ -263,6 +264,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryOrderedPairReconciliation,
     NativeContinuationCachedRetryOrderedPairReconciliationError,
     NativeContinuationCachedRetryOrderedPairReconciliationRequest,
+    NativeContinuationCachedRetryPolicyOwnerSynchronization,
     NativeContinuationCachedRetryPolicyPublication,
     NativeContinuationCachedRetryPolicyRecommendation,
     NativeContinuationCachedRetryPolicyRecommendationSet,
@@ -349,6 +351,7 @@ use cached_cycle::{
     restore_cached_retry_telemetry_pair,
     restore_cached_retry_telemetry_pair_versioned,
     restore_cached_retry_telemetry_window, summarize_cached_retry_attempts,
+    synchronize_cached_retry_policy_owner_from_durable_binding,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -1790,6 +1793,8 @@ type ObservedCyclePublication =
     >;
 type ObservedTelemetryWindowError =
     NativeContinuationCachedRetryTelemetryWindowError;
+type PolicyOwnerSynchronization =
+    NativeContinuationCachedRetryPolicyOwnerSynchronization;
 
 type RegisterMaskedMultiCacheFixture =
     (FakeNativeExecutableAdapter, RegisterMaskedNativeLeaseCache);
@@ -102324,6 +102329,225 @@ fn cached_retry_durable_policy_binding_binds_committed_state()
 }
 
 #[test]
+fn cached_retry_durable_policy_binding_synchronizes_newer_local_owner()
+-> Result<(), String> {
+    let local_state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(1),
+        NativeContinuationRetryPolicyRevision::from_value(1),
+    );
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(2),
+    );
+    let candidate = complete_retry_policy(4);
+    let expected_bytes =
+        encode_native_continuation_retry_policy_state(expected)
+            .map_err(|error| error.to_string())?;
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let recommendation = cached_retry_ready_policy_recommendation(candidate)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            Some(expected),
+            nonzero_test_limit(52, "owner synchronization bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| {
+        format!("owner synchronization binding failed: {error:?}")
+    })?;
+    let committed = binding
+        .active_state()
+        .ok_or_else(|| String::from("owner synchronization state missing"))?;
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(local_state, &binding);
+    if policy_owner_is_synchronized(
+        synchronization,
+        owner_state,
+        local_state,
+        committed,
+    ) && committed.policy() == candidate
+        && committed.revision().value() == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "newer durable binding did not synchronize local owner",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_recognizes_current_local_owner()
+-> Result<(), String> {
+    let candidate = complete_retry_policy(4);
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let recommendation = cached_retry_ready_policy_recommendation(candidate)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "owner current bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("owner current binding failed: {error:?}"))?;
+    let committed = binding
+        .active_state()
+        .ok_or_else(|| String::from("owner current state missing"))?;
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(committed, &binding);
+    if matches!(
+        synchronization,
+        PolicyOwnerSynchronization::Unchanged {
+            current,
+        } if current == committed
+    ) && owner_state == committed
+    {
+        Ok(())
+    } else {
+        Err(String::from("equal durable owner was not preserved"))
+    }
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_never_rolls_local_owner_back()
+-> Result<(), String> {
+    let candidate = complete_retry_policy(4);
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let recommendation = cached_retry_ready_policy_recommendation(candidate)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "owner rollback bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("owner rollback binding failed: {error:?}"))?;
+    let committed = binding
+        .active_state()
+        .ok_or_else(|| String::from("owner rollback state missing"))?;
+    let local_state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(9),
+        NativeContinuationRetryPolicyRevision::from_value(2),
+    );
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(local_state, &binding);
+    if matches!(
+        synchronization,
+        PolicyOwnerSynchronization::LocalAhead {
+            committed: observed,
+            current,
+        } if observed == committed && current == local_state
+    ) && owner_state == local_state
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale durable state rolled local owner back"))
+    }
+}
+
+#[test]
+fn cached_retry_durable_policy_binding_rejects_equal_revision_divergence()
+-> Result<(), String> {
+    let candidate = complete_retry_policy(4);
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let recommendation = cached_retry_ready_policy_recommendation(candidate)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "owner divergence bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("owner divergence binding failed: {error:?}"))?;
+    let committed = binding
+        .active_state()
+        .ok_or_else(|| String::from("owner divergence state missing"))?;
+    let local_state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(9),
+        committed.revision(),
+    );
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(local_state, &binding);
+    if matches!(
+        synchronization,
+        PolicyOwnerSynchronization::Diverged {
+            committed: observed,
+            current,
+        } if observed == committed && current == local_state
+    ) && owner_state == local_state
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "equal-revision durable divergence mutated local owner",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_deferred_policy_binding_does_not_synchronize_local_owner()
+-> Result<(), String> {
+    let local_state = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(7),
+        NativeContinuationRetryPolicyRevision::from_value(5),
+    );
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let recommendation =
+        NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+            observed_attempts: 1,
+            required_attempts: nonzero_test_limit(
+                2,
+                "owner deferred attempts",
+            )?,
+        };
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_recommendation_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "owner deferred bytes")?,
+        ),
+        recommendation,
+    )
+    .map_err(|error| format!("owner deferred binding failed: {error:?}"))?;
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(local_state, &binding);
+    if matches!(
+        synchronization,
+        PolicyOwnerSynchronization::NoCommit {
+            current,
+        } if current == local_state
+    ) && owner_state == local_state
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("deferred binding mutated local owner"))
+    }
+}
+
+#[test]
 fn cached_retry_file_durable_policy_binding_roundtrips_committed_state()
 -> Result<(), String> {
     let fixture = file_blob_store_fixture("durable-policy-binding")?;
@@ -102394,16 +102618,7 @@ fn cached_retry_durable_policy_binding_preserves_request_on_conflict()
     );
     let candidate = complete_retry_policy(9);
     let request = cached_retry_policy_publication_request(original_policy)?;
-    let telemetry = cached_retry_window_telemetry(
-        1,
-        2,
-        NativeExecutableSequenceLeaseCacheDisposition::Hit,
-    )?;
-    let recommendation =
-        NativeContinuationCachedRetryPolicyRecommendation::Meets {
-            policy: candidate,
-            telemetry,
-        };
+    let recommendation = cached_retry_ready_policy_recommendation(candidate)?;
     let actual_bytes = encode_native_continuation_retry_policy_state(actual)
         .map_err(|error| error.to_string())?;
     let mut store = TestCachedRetryTelemetryBlobStore {
@@ -102420,6 +102635,8 @@ fn cached_retry_durable_policy_binding_preserves_request_on_conflict()
         recommendation,
     )
     .map_err(|error| format!("durable binding conflict failed: {error:?}"))?;
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(actual, &binding);
     if binding.is_bound()
         || binding.active_state().is_some()
         || binding.request().policy() != original_policy
@@ -102434,8 +102651,15 @@ fn cached_retry_durable_policy_binding_preserves_request_on_conflict()
                 && *current == actual
                 && *observed_expected == expected
         )
+        || !matches!(
+            synchronization,
+            PolicyOwnerSynchronization::NoCommit {
+                current,
+            } if current == actual
+        )
+        || owner_state != actual
     {
-        return Err(String::from("durable conflict rebound request"));
+        return Err(String::from("durable conflict rebound request or owner"));
     }
     Ok(())
 }
@@ -102486,9 +102710,7 @@ fn cached_retry_durable_latency_binding_keeps_committed_sync_failure()
             ),
             recommendation,
         )
-        .map_err(|error| {
-            format!("durable latency binding failed: {error:?}")
-        })?;
+        .map_err(|error| format!("durable latency binding: {error:?}"))?;
     let state = binding
         .active_state()
         .ok_or_else(|| String::from("committed sync failure was not bound"))?;
@@ -102502,11 +102724,19 @@ fn cached_retry_durable_latency_binding_keeps_committed_sync_failure()
             ..
         }) if *current == state && *previous == expected
     );
+    let (synchronization, owner_state) =
+        synchronize_test_policy_owner(expected, &binding);
     if binding.is_bound()
         && state.policy() == policies.meets()
         && state.revision().value() == 7
         && binding.request().policy() == policies.meets()
         && published
+        && policy_owner_is_synchronized(
+            synchronization,
+            owner_state,
+            expected,
+            state,
+        )
     {
         Ok(())
     } else {
@@ -102708,6 +102938,53 @@ fn cached_retry_latency_policy_durable_publication_advances_active_state()
     } else {
         Err(String::from("durable latency policy evidence drifted"))
     }
+}
+
+fn cached_retry_ready_policy_recommendation(
+    policy: NativeContinuationRetryPolicy,
+) -> Result<NativeContinuationCachedRetryPolicyRecommendation, String> {
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    Ok(NativeContinuationCachedRetryPolicyRecommendation::Meets {
+        policy,
+        telemetry,
+    })
+}
+
+fn policy_owner_is_synchronized(
+    synchronization: PolicyOwnerSynchronization,
+    owner_state: NativeContinuationRetryPolicyState,
+    previous: NativeContinuationRetryPolicyState,
+    current: NativeContinuationRetryPolicyState,
+) -> bool {
+    matches!(
+        synchronization,
+        PolicyOwnerSynchronization::Synchronized {
+            current: observed,
+            previous: prior,
+        } if observed == current && prior == previous
+    ) && owner_state == current
+}
+
+fn synchronize_test_policy_owner<Recommendation, DurabilityError>(
+    state: NativeContinuationRetryPolicyState,
+    binding: &NativeContinuationCachedRetryDurablePolicyBinding<
+        Recommendation,
+        DurabilityError,
+    >,
+) -> (
+    PolicyOwnerSynchronization,
+    NativeContinuationRetryPolicyState,
+) {
+    let mut owner = NativeContinuationRetryPolicyOwner::from_state(state);
+    let synchronization =
+        synchronize_cached_retry_policy_owner_from_durable_binding(
+            &mut owner, binding,
+        );
+    (synchronization, owner.state())
 }
 
 fn cached_retry_policy_publication_request(

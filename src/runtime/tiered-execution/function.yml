@@ -588,6 +588,12 @@ parts:
     responsibility: >-
       Dispatch installed verified JIT mappings through exact loaded-call
       admission.
+  - id: part-0109
+    path: composition/tier/cached_cycle/telemetry_policy_owner_synchronization.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Align process-local retry-policy ownership with committed durable binding.
 projects: []
 tests: []
 graph:

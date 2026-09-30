@@ -1814,6 +1814,13 @@ committed active revision and retains the complete publication evidence. A
 filesystem regression confirms that the rebound request and restored state
 agree.
 
+Process-local policy ownership can now synchronize from that committed binding
+evidence. A strictly newer committed revision advances the local owner, exact
+equal state is unchanged, stale durable state cannot roll the owner backward,
+and equal-revision policy divergence remains explicit non-mutating evidence.
+Deferred or conflicting durable binding has no committed state and therefore
+cannot mutate the local owner.
+
 Automatic asynchronous interval ownership and broader distributed aggregation
 remain outside this boundary; synchronous same-cycle count/latency publication
 is owned.
