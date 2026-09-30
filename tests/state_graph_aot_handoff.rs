@@ -115,6 +115,7 @@ use malbolge::{
 use reduced_graph_persistence::{
     RegisterMaskedReducedGraphPersistenceError,
     RegisterMaskedReducedGraphPersistenceLoad,
+    evict_register_masked_reduced_graph_if_current_durably,
     persist_register_masked_reduced_graph_durably,
     restore_register_masked_reduced_graph,
 };
@@ -1706,6 +1707,61 @@ fn product_reduced_graph_store_rejects_corrupt_file_blob() -> HandoffResult<()>
 }
 
 #[test]
+fn product_reduced_graph_conditional_eviction_rejects_stale()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("conditional_evict_stale")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, _entry) = reduced_dispatch_claim()?;
+        let maximum_bytes = NonZeroUsize::new(134_217_728)
+            .ok_or_else(|| String::from("graph blob bound became zero"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(fixture.destination.clone());
+        let durable = persist_register_masked_reduced_graph_durably(
+            &mut store,
+            &claim,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("durable graph persist: {error:?}"))?;
+        if !durable.is_durable() {
+            return Err(String::from("graph durability not confirmed"));
+        }
+        let mut current = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("load graph blob: {error:?}"))?
+        .ok_or_else(|| String::from("graph blob disappeared"))?;
+        let last = current
+            .last_mut()
+            .ok_or_else(|| String::from("graph blob unexpectedly empty"))?;
+        *last ^= 1;
+        blob_store::NativeContinuationBlobStore::replace(&mut store, &current)
+            .map_err(|error| format!("replace graph blob: {error:?}"))?;
+        let outcome = evict_register_masked_reduced_graph_if_current_durably(
+            &mut store,
+            &claim,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("conditional graph eviction: {error:?}"))?;
+        let retained = blob_store::NativeContinuationBlobStore::load(
+            &mut store,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("reload graph blob: {error:?}"))?;
+        if outcome.conflict() == Some(current.as_slice())
+            && retained.as_deref() == Some(current.as_slice())
+        {
+            Ok(())
+        } else {
+            Err(String::from("stale graph eviction changed publication"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
 fn product_reduced_graph_store_round_trips_file_blob() -> HandoffResult<()> {
     let fixture = reduced_graph_store_fixture("round_trip")?;
     let result = (|| -> HandoffResult<()> {
@@ -1721,7 +1777,17 @@ fn product_reduced_graph_store_round_trips_file_blob() -> HandoffResult<()> {
             &claim,
             &expected,
             maximum_bytes,
+        )?;
+        let outcome = evict_register_masked_reduced_graph_if_current_durably(
+            &mut store,
+            &claim,
+            maximum_bytes,
         )
+        .map_err(|error| format!("conditional graph eviction: {error:?}"))?;
+        if !outcome.is_removed() {
+            return Err(String::from("current graph eviction did not commit"));
+        }
+        expect_reduced_graph_blob_missing(&mut store, maximum_bytes)
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;

@@ -36,13 +36,15 @@
 //     closed without inventing graph authority.
 //
 
-//! Typed bounded persistence for dependency-reduced register-masked AOT graphs.
+//! Typed bounded storage and eviction for dependency-reduced AOT graphs.
 
 use std::num::NonZeroUsize;
 
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
+    NativeContinuationConditionalRemovableBlobStore as ConditionalRemoveStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+    NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
 
 use crate::execution_native::{
@@ -109,6 +111,15 @@ pub type RegisterMaskedReducedGraphDurablePersistenceResult<
     RegisterMaskedReducedGraphDurablePersistence<DurabilityError>,
     RegisterMaskedReducedGraphPersistenceError<StoreError>,
 >;
+
+/// Conditional durable graph eviction result for one store type.
+pub type RegisterMaskedReducedGraphConditionalDurableRemovalResult<Store> =
+    Result<
+        blob_persistence::NativeContinuationBlobConditionalDurableRemoval<
+            <Store as DurableBlobStore>::DurabilityError,
+        >,
+        RegisterMaskedReducedGraphPersistenceError<<Store as BlobStore>::Error>,
+    >;
 
 /// Durable typed graph result specialized to one store type.
 pub type RegisterMaskedReducedGraphDurableStoreResult<Store> =
@@ -182,6 +193,51 @@ fn map_durable_persistence<DurabilityError>(
             }
         },
     }
+}
+
+/// Durably evicts the configured reduced-graph provenance blob.
+///
+/// Missing state remains explicit. Post-removal durability failure is committed
+/// absence evidence and never rollback.
+///
+/// # Errors
+///
+/// Returns outbound coordination/removal failure before absence commits.
+pub fn evict_register_masked_reduced_graph_durably<Store>(
+    store: &mut Store,
+) -> blob_persistence::NativeContinuationBlobDurableRemovalStoreResult<Store>
+where
+    Store: DurableBlobStore + RemovableBlobStore,
+{
+    blob_persistence::remove_blob_durably(store)
+}
+
+/// Durably evicts this exact canonical graph claim only if it is still current.
+///
+/// Canonical claim bytes are the compare expectation. A newer or different
+/// publication returns conflict evidence and remains authoritative.
+///
+/// # Errors
+///
+/// Returns codec, byte-limit, or outbound coordination/removal failure before
+/// absence commits.
+pub fn evict_register_masked_reduced_graph_if_current_durably<Store>(
+    store: &mut Store,
+    claim: &UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph,
+    maximum_bytes: NonZeroUsize,
+) -> RegisterMaskedReducedGraphConditionalDurableRemovalResult<Store>
+where
+    Store: ConditionalRemoveStore + DurableBlobStore,
+{
+    let bytes =
+        encode_ahead_of_execution_register_masked_reduced_state_graph(claim)
+            .map_err(RegisterMaskedReducedGraphPersistenceError::Codec)?;
+    blob_persistence::compare_and_remove_blob_durably(
+        store,
+        Some(&bytes),
+        maximum_bytes,
+    )
+    .map_err(RegisterMaskedReducedGraphPersistenceError::Blob)
 }
 
 /// Persists one admitted reduced graph as canonical bounded provenance bytes.
