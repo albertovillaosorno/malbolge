@@ -1805,7 +1805,10 @@ Canonical blob persistence and durable CAS merge with bounded conflict retry
 retain exact histogram evidence.
 
 Count/latency policy recommendation and durable publication likewise retain
-typed evidence across file-backed regressions.
+typed evidence across file-backed regressions. Multi-signal arbitration now
+requires both count and latency recommendations to be ready and to select the
+same exact retry policy before exposing policy authority. Deferred evidence or
+ready disagreement retains both recommendations without inventing precedence.
 
 Durable policy binding now consumes that exact publication before a future
 cached cycle. Deferred evidence and durable CAS conflict preserve the original

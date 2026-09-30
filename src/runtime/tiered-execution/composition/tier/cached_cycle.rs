@@ -90,6 +90,8 @@ mod telemetry_pair_cas;
 mod telemetry_pair_persistence;
 #[path = "cached_cycle/telemetry_persistence.rs"]
 mod telemetry_persistence;
+#[path = "cached_cycle/telemetry_policy_arbitration.rs"]
+mod telemetry_policy_arbitration;
 #[path = "cached_cycle/telemetry_policy_durable_binding.rs"]
 mod telemetry_policy_durable_binding;
 #[path = "cached_cycle/telemetry_policy_durable_publication.rs"]
@@ -307,6 +309,10 @@ pub use telemetry_persistence::{
     persist_cached_retry_telemetry_window_durably,
     restore_cached_retry_latency_histogram,
     restore_cached_retry_telemetry_window,
+};
+pub use telemetry_policy_arbitration::{
+    NativeContinuationCachedRetryPolicyArbitration,
+    arbitrate_cached_retry_policy_recommendations,
 };
 pub use telemetry_policy_durable_binding::{
     NativeContinuationCachedRetryDurablePolicyBinding,

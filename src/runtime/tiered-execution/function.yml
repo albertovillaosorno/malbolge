@@ -594,6 +594,12 @@ parts:
     language: rust
     responsibility: >-
       Align process-local retry-policy ownership with committed durable binding.
+  - id: part-0110
+    path: composition/tier/cached_cycle/telemetry_policy_arbitration.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Arbitrate ready count and latency retry-policy recommendations.
 projects: []
 tests: []
 graph:

@@ -264,6 +264,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryOrderedPairReconciliation,
     NativeContinuationCachedRetryOrderedPairReconciliationError,
     NativeContinuationCachedRetryOrderedPairReconciliationRequest,
+    NativeContinuationCachedRetryPolicyArbitration,
     NativeContinuationCachedRetryPolicyOwnerSynchronization,
     NativeContinuationCachedRetryPolicyPublication,
     NativeContinuationCachedRetryPolicyRecommendation,
@@ -305,7 +306,8 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindowCounter,
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
-    assess_cached_retry_latency, assess_cached_retry_telemetry,
+    arbitrate_cached_retry_policy_recommendations, assess_cached_retry_latency,
+    assess_cached_retry_telemetry,
     begin_cached_retry_latency_measurement,
     coarsen_cached_retry_latency_histogram,
     compare_and_swap_cached_retry_telemetry_pair_durably,
@@ -102140,6 +102142,40 @@ const fn cached_retry_policy_recommendation_set()
     )
 }
 
+fn cached_retry_ready_count_policy_recommendation(
+    policy: NativeContinuationRetryPolicy,
+) -> Result<NativeContinuationCachedRetryPolicyRecommendation, String> {
+    let telemetry = cached_retry_window_telemetry(
+        2,
+        5,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    Ok(NativeContinuationCachedRetryPolicyRecommendation::Meets {
+        policy,
+        telemetry,
+    })
+}
+
+fn cached_retry_ready_latency_policy_recommendation(
+    policy: NativeContinuationRetryPolicy,
+) -> Result<NativeContinuationCachedRetryLatencyPolicyRecommendation, String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "policy arbitration latency samples")?,
+            15,
+            20,
+            0,
+        );
+    let policies =
+        NativeContinuationCachedRetryPolicyRecommendationSet::new(policy, policy);
+    Ok(recommend_cached_retry_latency_policy(
+        assess_cached_retry_latency(&histogram, thresholds),
+        policies,
+    ))
+}
+
 #[test]
 fn cached_retry_policy_recommendation_defers_insufficient_evidence()
 -> Result<(), String> {
@@ -102240,6 +102276,113 @@ fn cached_retry_policy_recommendation_retains_miss_evidence()
         Err(String::from(
             "missed telemetry recommendation lost evidence",
         ))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_defers_when_count_is_not_ready()
+-> Result<(), String> {
+    let count = NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+        observed_attempts: 1,
+        required_attempts: nonzero_test_limit(2, "count arbitration gate")?,
+    };
+    let latency = cached_retry_ready_latency_policy_recommendation(
+        complete_retry_policy(3),
+    )?;
+    let arbitration =
+        arbitrate_cached_retry_policy_recommendations(count, latency);
+    if matches!(
+        arbitration,
+        NativeContinuationCachedRetryPolicyArbitration::Deferred {
+            count: retained_count,
+            latency: retained_latency,
+        } if retained_count == count && retained_latency == latency
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("count defer authorized policy arbitration"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_defers_when_latency_is_not_ready()
+-> Result<(), String> {
+    let count = cached_retry_ready_count_policy_recommendation(
+        complete_retry_policy(3),
+    )?;
+    let latency =
+        NativeContinuationCachedRetryLatencyPolicyRecommendation::Deferred {
+            observed_samples: 1,
+            required_samples: nonzero_test_limit(2, "latency arbitration gate")?,
+        };
+    let arbitration =
+        arbitrate_cached_retry_policy_recommendations(count, latency);
+    if matches!(
+        arbitration,
+        NativeContinuationCachedRetryPolicyArbitration::Deferred {
+            count: retained_count,
+            latency: retained_latency,
+        } if retained_count == count && retained_latency == latency
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency defer authorized policy arbitration"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_agrees_on_exact_policy()
+-> Result<(), String> {
+    let policy = complete_retry_policy(3);
+    let count = cached_retry_ready_count_policy_recommendation(policy)?;
+    let latency = cached_retry_ready_latency_policy_recommendation(policy)?;
+    let arbitration =
+        arbitrate_cached_retry_policy_recommendations(count, latency);
+    if matches!(
+        arbitration,
+        NativeContinuationCachedRetryPolicyArbitration::Agreed {
+            count: retained_count,
+            latency: retained_latency,
+            policy: agreed,
+        } if retained_count == count
+            && retained_latency == latency
+            && agreed == policy
+    ) && arbitration.policy() == Some(policy)
+    {
+        Ok(())
+    } else {
+        Err(String::from("ready policy agreement evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_retains_ready_conflict()
+-> Result<(), String> {
+    let count_policy = complete_retry_policy(3);
+    let latency_policy = complete_retry_policy(1);
+    let count = cached_retry_ready_count_policy_recommendation(count_policy)?;
+    let latency =
+        cached_retry_ready_latency_policy_recommendation(latency_policy)?;
+    let arbitration =
+        arbitrate_cached_retry_policy_recommendations(count, latency);
+    if matches!(
+        arbitration,
+        NativeContinuationCachedRetryPolicyArbitration::Conflict {
+            count: retained_count,
+            count_policy: retained_count_policy,
+            latency: retained_latency,
+            latency_policy: retained_latency_policy,
+        } if retained_count == count
+            && retained_count_policy == count_policy
+            && retained_latency == latency
+            && retained_latency_policy == latency_policy
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("conflicting ready signals authorized policy"))
     }
 }
 
