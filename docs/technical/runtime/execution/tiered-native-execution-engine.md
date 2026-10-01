@@ -2514,15 +2514,22 @@ Concrete same-process native memory/runner integration remains open.
 Register-masked AOT objects and complete ordered bundles now persist through
 bounded blob storage and rebuild current exact-key authority only after fresh
 program/runtime/host verification. Dependency-reduced graph provenance likewise
-restores through normative replay, and whole-graph executable residency loads
-all reviewed one-step families transactionally with reverse rollback and
-retryable cleanup. Guarded graph dispatch retains caller-owned execution
-authority and rechecks successor identity after each native turn.
+restores through normative replay. One graph provenance blob and its complete
+ordered AOT bundle can now publish as one durable atomic blob-pair generation.
+Both canonical members are prepared before pair mutation; restoration first
+replays the graph, requires exact graph/program order, and then independently
+reverifies every native object before returning graph or AOT authority. A bundle
+preparation failure leaves the prior committed pair unchanged. Whole-graph
+executable residency loads all reviewed one-step families transactionally with
+reverse rollback and retryable cleanup. Guarded graph dispatch retains
+caller-owned execution authority and rechecks successor identity after each
+native turn.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, durable cache eviction and cross-process
-leasing, concrete same-process native memory/runner integration, and broader
-end-to-end performance policy remain open.
+asynchronous/product scheduling, broader durable AOT-package generation
+retention/reclamation and cross-process leasing, concrete same-process native
+memory/runner integration, and broader end-to-end performance policy remain
+open.
 
 Host-real AArch64 and Windows worker execution are explicitly non-blocking
 compatibility follow-ups. Cross-compiled x86-64/AArch64 objects, independent

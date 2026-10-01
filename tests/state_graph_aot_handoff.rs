@@ -38,6 +38,10 @@
 
 //! Research-to-product register-masked AOT handoff integration evidence.
 
+#[path = "../src/runtime/tiered-execution/application/blob_pair_persistence.rs"]
+pub mod blob_pair_persistence;
+#[path = "../src/runtime/tiered-execution/port-outbound/blob_pair_store.rs"]
+pub mod blob_pair_store;
 #[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
 pub mod blob_persistence;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_store.rs"]
@@ -46,6 +50,8 @@ pub mod blob_store;
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/blob_pair/main.rs"]
+pub mod file_blob_pair_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/blob/main.rs"]
 pub mod file_blob_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/fs_coord/main.rs"]
@@ -66,6 +72,8 @@ pub mod region_certificate;
 pub mod register_masked_aot_bundle_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/object_store.rs"]
 pub mod register_masked_aot_object_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/aot_package.rs"]
+pub mod register_masked_aot_package_persistence;
 
 use std::fs;
 use std::io::ErrorKind;
@@ -75,6 +83,7 @@ use std::process::id as process_id;
 use std::slice::from_ref;
 use std::sync::Arc;
 
+use blob_pair_store::NativeContinuationBlobPairStore as BlobPairStore;
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
     AheadOfExecutionRegisterMaskedPreparationError,
@@ -102,6 +111,7 @@ use execution_native::{
     prepare_ahead_of_execution_register_masked_set,
     select_ahead_of_execution_register_masked_tier,
 };
+use file_blob_pair_store::NativeContinuationFileBlobPairStore;
 use file_blob_store::NativeContinuationFileBlobStore;
 use indexed_state::IndexedMachineState;
 use malbolge::{
@@ -143,10 +153,25 @@ use register_masked_aot_object_persistence::{
     persist_register_masked_aot_object_durably,
     restore_register_masked_aot_object,
 };
+use register_masked_aot_package_persistence::{
+    RegisterMaskedAotPackagePersistRequest,
+    RegisterMaskedAotPackagePersistenceLoad,
+    RegisterMaskedAotPackagePreparationError,
+    RegisterMaskedAotPackageRestoreRequest, RegisterMaskedAotPackageSource,
+    RegisterMaskedAotPackageStoreError,
+    persist_register_masked_aot_package_durably,
+    restore_register_masked_aot_package,
+};
 
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
 type HandoffResult<T> = Result<T, String>;
+type AotPackageMaterial = (
+    ReducedGraphClaim,
+    ReducedGraph,
+    Vec<RegisterMaskedRegionEffectProgram>,
+    VerifiedAheadOfExecutionRegisterMaskedSet,
+);
 type ReducedCodecError =
     AheadOfExecutionRegisterMaskedReducedStateGraphCodecError;
 type ReducedCodecLimits =
@@ -171,6 +196,12 @@ type ReducedGraphError = AheadOfExecutionRegisterMaskedReducedStateGraphError;
 type ReducedGraph = VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph;
 type ReducedGraphClaim =
     UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph;
+
+#[derive(Clone, Copy)]
+struct AotPackageBounds {
+    bundle: NonZeroUsize,
+    graph: NonZeroUsize,
+}
 
 #[derive(Debug, Eq, PartialEq)]
 struct ReducedGraphStoreFixture {
@@ -1053,6 +1084,62 @@ const fn bundle_restore_request(
     )
 }
 
+fn aot_package_bounds() -> HandoffResult<AotPackageBounds> {
+    Ok(AotPackageBounds {
+        bundle: NonZeroUsize::new(65_536).ok_or_else(|| {
+            String::from("AOT package bundle bound became zero")
+        })?,
+        graph: NonZeroUsize::new(128 * 1024 * 1024).ok_or_else(|| {
+            String::from("AOT package graph bound became zero")
+        })?,
+    })
+}
+
+fn aot_package_material() -> HandoffResult<AotPackageMaterial> {
+    let (claim, _entry) = reduced_dispatch_claim()?;
+    let graph = claim.verify().map_err(|error| error.to_string())?;
+    let programs = reduced_dispatch_programs(&graph)?;
+    let aot = prepare_reduced_dispatch_aot(&graph)?;
+    Ok((claim, graph, programs, aot))
+}
+
+const fn package_persist_request<'package>(
+    claim: &'package ReducedGraphClaim,
+    programs: &'package [RegisterMaskedRegionEffectProgram],
+    aot: &'package VerifiedAheadOfExecutionRegisterMaskedSet,
+    bounds: AotPackageBounds,
+) -> RegisterMaskedAotPackagePersistRequest<'package> {
+    let bundle = RegisterMaskedAotBundleSource::new(
+        programs,
+        aot,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+    );
+    let source = RegisterMaskedAotPackageSource::new(claim, bundle);
+    RegisterMaskedAotPackagePersistRequest::new(
+        source,
+        bounds.graph,
+        bounds.bundle,
+    )
+}
+
+const fn package_restore_request(
+    programs: &[RegisterMaskedRegionEffectProgram],
+    bounds: AotPackageBounds,
+) -> RegisterMaskedAotPackageRestoreRequest<'_> {
+    let bundle = RegisterMaskedAotBundleRestoreRequest::new(
+        programs,
+        safe_rust_profiled_capability(),
+        windows_x86_64(),
+        bounds.bundle,
+    );
+    RegisterMaskedAotPackageRestoreRequest::new(
+        bundle,
+        reduced_codec_limits(),
+        bounds.graph,
+    )
+}
+
 const fn object_restore_request(
     program: &RegisterMaskedRegionEffectProgram,
     maximum_bytes: NonZeroUsize,
@@ -1220,6 +1307,152 @@ fn evict_object_and_require_missing(
     } else {
         Err(String::from("evicted AOT object remained restorable"))
     }
+}
+
+fn load_aot_package_pair(
+    store: &mut NativeContinuationFileBlobPairStore,
+    bounds: AotPackageBounds,
+) -> HandoffResult<blob_pair_store::NativeContinuationBlobPair> {
+    BlobPairStore::load_pair(store, bounds.graph, bounds.bundle)
+        .map_err(|error| format!("load AOT package pair: {error:?}"))?
+        .ok_or_else(|| String::from("AOT package pair disappeared"))
+}
+
+fn verify_restored_aot_package(
+    restored: RegisterMaskedAotPackagePersistenceLoad,
+    expected_graph: &ReducedGraph,
+    programs: &[RegisterMaskedRegionEffectProgram],
+    expected_bytes: (usize, usize),
+) -> HandoffResult<()> {
+    let RegisterMaskedAotPackagePersistenceLoad::Restored {
+        bundle_bytes,
+        graph,
+        graph_bytes,
+        objects,
+        set,
+    } = restored
+    else {
+        return Err(String::from("durable AOT package disappeared"));
+    };
+    if (graph_bytes, bundle_bytes) != expected_bytes
+        || objects != programs.len()
+        || graph != *expected_graph
+    {
+        return Err(String::from("AOT package round-trip evidence drifted"));
+    }
+    for program in programs {
+        let selected = select_ahead_of_execution_register_masked_tier(
+            program,
+            safe_rust_profiled_capability(),
+            windows_x86_64(),
+            &set,
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(selected, AheadOfExecutionRegisterMaskedTier::Direct(_)) {
+            return Err(String::from(
+                "restored AOT package lost exact native coverage",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn product_register_masked_aot_package_round_trips_atomically()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_round_trip")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut store = NativeContinuationFileBlobPairStore::new(manifest);
+        let read_guard = store
+            .open_read_lock_for_test()
+            .map_err(|error| format!("AOT package read lock: {error:?}"))?;
+        drop(read_guard);
+        let durable = persist_register_masked_aot_package_durably(
+            &mut store,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )
+        .map_err(|error| format!("durable AOT package persist: {error:?}"))?;
+        let expected_bytes = (
+            durable.write().first_bytes(),
+            durable.write().second_bytes(),
+        );
+        if !durable.is_durable()
+            || expected_bytes.0 == 0
+            || expected_bytes.1 == 0
+        {
+            return Err(String::from(
+                "AOT package durability evidence was incomplete",
+            ));
+        }
+        let restored = restore_register_masked_aot_package(
+            &mut store,
+            package_restore_request(&programs, bounds),
+        )
+        .map_err(|error| format!("durable AOT package restore: {error:?}"))?;
+        verify_restored_aot_package(restored, &graph, &programs, expected_bytes)
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_rejects_partial_replacement()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_atomic_reject")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, _graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut store = NativeContinuationFileBlobPairStore::new(manifest);
+        let _durable = persist_register_masked_aot_package_durably(
+            &mut store,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )
+        .map_err(|error| format!("initial AOT package persist: {error:?}"))?;
+        let before = load_aot_package_pair(&mut store, bounds)?;
+        let first = programs
+            .first()
+            .ok_or_else(|| String::from("AOT package graph was empty"))?;
+        let incomplete =
+            prepare_one(first).map_err(|error| error.to_string())?;
+        let replacement = persist_register_masked_aot_package_durably(
+            &mut store,
+            package_persist_request(&claim, &programs, &incomplete, bounds),
+        );
+        let rejected = matches!(
+            &replacement,
+            Err(RegisterMaskedAotPackageStoreError::Preparation(error))
+                if matches!(
+                    error.as_ref(),
+                    RegisterMaskedAotPackagePreparationError::Bundle(bundle)
+                        if matches!(
+                            bundle.as_ref(),
+                            RegisterMaskedAotBundlePreparationError::Uncovered {
+                                index: 1,
+                            }
+                        )
+                )
+        );
+        if !rejected {
+            return Err(format!(
+                "incomplete package accepted: {replacement:?}"
+            ));
+        }
+        let after = load_aot_package_pair(&mut store, bounds)?;
+        if after != before {
+            return Err(String::from(
+                "rejected AOT package replacement changed committed pair",
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
 }
 
 #[test]

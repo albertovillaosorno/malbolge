@@ -1077,7 +1077,11 @@ behavior.
   only as `VerifiedDirectNativeArtifact`.
 - Durable register-masked AOT object/bundle persistence now rebuilds current
   exact-key authority from caller-owned IR/runtime/host assumptions. Reduced
-  graph provenance restore replays and reverifies every node, while whole-graph
+  graph provenance restore replays and reverifies every node. Graph provenance
+  plus its complete ordered AOT bundle can now publish through one durable atomic
+  blob-pair generation: both canonical members are prepared before mutation,
+  restore replays the graph and independently reverifies every native object,
+  and an incomplete replacement preserves the prior complete pair. Whole-graph
   residency loads exact mappings transactionally. Input, JumpCode, and JumpData
   now join Crazy, HaltFetch, NoOperation, NonGraphical, Output, and Rotate in
   complete resident loading/release with retryable cleanup.
@@ -1092,5 +1096,6 @@ behavior.
   and exact ready-image identity, then enters the existing loaded-call rollback
   boundary before delegating to a caller-owned native runner.
 
-  Durable cache serialization/storage/eviction, broader platform execution
-  evidence, and broader end-to-end tier performance policy also remain open.
+  Broader durable AOT-package generation retention/reclamation policy, broader
+  platform execution evidence, and broader end-to-end tier performance policy
+  also remain open.

@@ -286,6 +286,12 @@ impl<'requirement> RegisterMaskedAotBundlePersistRequest<'requirement> {
 }
 
 impl<'requirement> RegisterMaskedAotBundleRestoreRequest<'requirement> {
+    /// Returns the positive bundle storage bound.
+    #[must_use]
+    pub(crate) const fn maximum_bytes(&self) -> NonZeroUsize {
+        self.maximum_bytes
+    }
+
     /// Binds exact expected programs/current native assumptions and byte bound.
     #[must_use]
     pub const fn new(
@@ -300,6 +306,14 @@ impl<'requirement> RegisterMaskedAotBundleRestoreRequest<'requirement> {
             programs,
             runtime,
         }
+    }
+
+    /// Returns the exact expected ordered programs.
+    #[must_use]
+    pub(crate) const fn programs(
+        &self,
+    ) -> &'requirement [RegisterMaskedRegionEffectProgram] {
+        self.programs
     }
 }
 
@@ -318,6 +332,14 @@ impl<'requirement> RegisterMaskedAotBundleSource<'requirement> {
             programs,
             runtime,
         }
+    }
+
+    /// Returns the exact ordered programs bound to this source.
+    #[must_use]
+    pub(crate) const fn programs(
+        &self,
+    ) -> &'requirement [RegisterMaskedRegionEffectProgram] {
+        self.programs
     }
 }
 
@@ -358,9 +380,10 @@ pub fn evict_register_masked_aot_bundle_if_current_durably<
 where
     Store: ConditionalRemoveStore + DurableBlobStore,
 {
-    let bytes = encode_bundle(request).map_err(|error| {
-        RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
-    })?;
+    let bytes =
+        encode_register_masked_aot_bundle(request).map_err(|error| {
+            RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
+        })?;
     blob_persistence::compare_and_remove_blob_durably(
         store,
         Some(&bytes),
@@ -390,9 +413,10 @@ pub fn persist_register_masked_aot_bundle<'requirement, Store>(
 where
     Store: BlobStore,
 {
-    let bytes = encode_bundle(request).map_err(|error| {
-        RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
-    })?;
+    let bytes =
+        encode_register_masked_aot_bundle(request).map_err(|error| {
+            RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
+        })?;
     blob_persistence::persist_blob(store, &bytes, request.maximum_bytes)
         .map_err(|error| {
             RegisterMaskedAotBundleStoreError::Blob(Box::new(error))
@@ -412,9 +436,10 @@ pub fn persist_register_masked_aot_bundle_durably<'requirement, Store>(
 where
     Store: DurableBlobStore,
 {
-    let bytes = encode_bundle(request).map_err(|error| {
-        RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
-    })?;
+    let bytes =
+        encode_register_masked_aot_bundle(request).map_err(|error| {
+            RegisterMaskedAotBundleStoreError::Preparation(Box::new(error))
+        })?;
     blob_persistence::persist_blob_durably(store, &bytes, request.maximum_bytes)
         .map_err(|error| {
             RegisterMaskedAotBundleStoreError::Blob(Box::new(error))
@@ -455,7 +480,7 @@ where
     else {
         return Ok(RegisterMaskedAotBundlePersistenceLoad::Missing);
     };
-    decode_bundle(&bytes, request)
+    decode_register_masked_aot_bundle(&bytes, request)
 }
 
 fn admit_expected_program_count(
@@ -493,7 +518,7 @@ fn append_object(
     Ok(())
 }
 
-fn decode_bundle<'requirement, StoreError>(
+pub(crate) fn decode_register_masked_aot_bundle<'requirement, StoreError>(
     bytes: &[u8],
     request: RegisterMaskedAotBundleRestoreRequest<'requirement>,
 ) -> RegisterMaskedAotBundleRestoreResult<
@@ -600,7 +625,7 @@ fn decode_object(
     Ok((object, object_end))
 }
 
-fn encode_bundle(
+pub(crate) fn encode_register_masked_aot_bundle(
     request: RegisterMaskedAotBundlePersistRequest<'_>,
 ) -> Result<Vec<u8>, RegisterMaskedAotBundlePreparationError<'_>> {
     if request.source.programs.is_empty() {

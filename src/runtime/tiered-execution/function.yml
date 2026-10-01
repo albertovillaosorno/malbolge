@@ -642,6 +642,12 @@ parts:
     language: rust
     responsibility: >-
       Retry exact durable lease-owner conflicts under caller-selected bounds.
+  - id: part-0118
+    path: composition/tier/aot_package.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish reduced-graph provenance and its AOT bundle atomically.
 projects: []
 tests: []
 graph:
