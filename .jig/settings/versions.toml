@@ -76,13 +76,22 @@ template = "{version}"
 
 [authority.rust-stable.projection.cargo_tool]
 kind = "tool"
-target = "rust_stable_cargo"
+target = "rust_product_cargo"
 template = "{version}"
 
 [authority.rust-stable.projection.rust_toolchain]
 kind = "toml"
 path = ".jig/version/rust-toolchain.toml"
 selector = "toolchain.channel"
+template = "{version}"
+
+[authority.rustc-lints]
+current = "1.97.1"
+stable = "1.97.1"
+
+[authority.rustc-lints.projection.cargo_tool]
+kind = "tool"
+target = "rust_stable_cargo"
 template = "{version}"
 
 [authority.rustfmt-nightly]
