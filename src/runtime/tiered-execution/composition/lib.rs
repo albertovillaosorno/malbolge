@@ -59,6 +59,8 @@ pub mod executable_cache_limits_cas;
 pub mod executable_cache_limits_durable_activation;
 #[path = "tier/executable_cache_limits_store.rs"]
 pub mod executable_cache_limits_persistence;
+#[path = "tier/executable_durable_lease_journal.rs"]
+pub mod executable_durable_lease_journal;
 #[path = "../adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../adapter-outbound/clock/main.rs"]

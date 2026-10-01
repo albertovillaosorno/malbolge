@@ -630,6 +630,12 @@ parts:
     language: rust
     responsibility: >-
       Apply committed durable cache-limit policy to live cache state.
+  - id: part-0116
+    path: composition/tier/executable_durable_lease_journal.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Journal caller-supplied executable lease owners with durable exact CAS.
 projects: []
 tests: []
 graph:
