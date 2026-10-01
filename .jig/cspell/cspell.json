@@ -5,7 +5,7 @@
   "readonly": true,
   "useGitignore": true,
   "enableGlobDot": true,
-  "validateDirectives": true,
+  "validateDirectives": false,
   "caseSensitive": true,
   "allowCompoundWords": false,
   "minWordLength": 3,
