@@ -311,6 +311,20 @@ impl<'registry> NativeExecutableDurableLeaseJournalCasRequest<'registry> {
     }
 }
 
+const fn admit_registry_owner_limit(
+    registry: &NativeExecutableDurableLeaseRegistry,
+    limits: NativeExecutableDurableLeaseRegistryDecodeLimits,
+) -> Result<(), NativeExecutableDurableLeaseRegistryCodecError> {
+    if registry.len() <= limits.maximum_owners().get() {
+        Ok(())
+    } else {
+        Err(NativeExecutableDurableLeaseRegistryCodecError::OwnerLimit {
+            maximum_owners: limits.maximum_owners(),
+            observed_owners: registry.len(),
+        })
+    }
+}
+
 /// Encodes one exact lease registry into canonical sorted fixed-width bytes.
 ///
 /// # Errors
@@ -432,6 +446,12 @@ pub fn compare_and_swap_executable_durable_lease_journal<Store>(
 where
     Store: ConditionalBlobStore + DurableBlobStore,
 {
+    if let Some(expected) = request.expected {
+        admit_registry_owner_limit(expected, request.decode_limits)
+            .map_err(NativeExecutableDurableLeaseJournalError::Codec)?;
+    }
+    admit_registry_owner_limit(request.replacement, request.decode_limits)
+        .map_err(NativeExecutableDurableLeaseJournalError::Codec)?;
     let expected_bytes = request
         .expected
         .map(encode_executable_durable_lease_registry)
@@ -749,6 +769,69 @@ mod tests {
             Ok(())
         } else {
             Err(String::from("lease owner bound mutated registry"))
+        }
+    }
+
+    #[test]
+    fn replacement_owner_limit_fails_before_publication() -> TestResult {
+        let directory = env::temp_dir()
+            .join(format!("malbolge-durable-lease-bound-{}", process::id(),));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test cleanup failed: {error}"));
+            },
+        }
+        create_dir_all(&directory)
+            .map_err(|error| format!("test create failed: {error}"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
+        let construction_bound = NonZeroUsize::new(2).ok_or("owner bound")?;
+        let mut replacement = NativeExecutableDurableLeaseRegistry::new();
+        let _first = replacement
+            .acquire(owner(1), construction_bound)
+            .map_err(|error| format!("{error:?}"))?;
+        let _second = replacement
+            .acquire(owner(2), construction_bound)
+            .map_err(|error| format!("{error:?}"))?;
+        let maximum_owners = NonZeroUsize::new(1).ok_or("CAS owner bound")?;
+        let decode_limits =
+            NativeExecutableDurableLeaseRegistryDecodeLimits::new(
+                maximum_owners,
+            );
+        let result = compare_and_swap_executable_durable_lease_journal(
+            &mut store,
+            NativeExecutableDurableLeaseJournalCasRequest::new(
+                None,
+                &replacement,
+                decode_limits,
+                maximum_bytes()?,
+            ),
+        );
+        let load = restore_executable_durable_lease_journal(
+            &mut store,
+            decode_limits,
+            maximum_bytes()?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        drop(store);
+        remove_dir_all(&directory)
+            .map_err(|error| format!("test removal failed: {error}"))?;
+        if result
+            == Err(NativeExecutableDurableLeaseJournalError::Codec(
+                NativeExecutableDurableLeaseRegistryCodecError::OwnerLimit {
+                    maximum_owners,
+                    observed_owners: 2,
+                },
+            ))
+            && load == NativeExecutableDurableLeaseJournalLoad::Missing
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "over-limit durable lease replacement reached storage",
+            ))
         }
     }
 
