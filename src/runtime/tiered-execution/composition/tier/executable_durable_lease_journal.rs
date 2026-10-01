@@ -34,6 +34,7 @@
 //   - Missing durable state means no journal; an explicit empty registry is
 //     valid and distinct from missing state.
 //
+
 //! Durable optimistic-concurrency journal for executable lease owners.
 
 use std::num::NonZeroUsize;

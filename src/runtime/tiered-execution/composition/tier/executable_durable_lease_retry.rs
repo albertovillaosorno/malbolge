@@ -32,6 +32,7 @@
 // - Defaults:
 //   - Convenience entry points retry every conflict until budget exhaustion.
 //
+
 //! Bounded synchronous retry for durable executable lease owner transitions.
 
 use std::num::NonZeroUsize;

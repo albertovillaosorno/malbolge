@@ -58,8 +58,8 @@ enabled = true
 reason = "The repository pins Rust for authored utilities and future product code."
 
 [applicability.rustc-lints]
-enabled = false
-reason = "Rustc lints execute through validation.rust_stable_check at the repository-pinned Rust version."
+enabled = true
+reason = "Workspace rustc lint levels govern every Rust package."
 
 [applicability.rustfmt]
 enabled = true

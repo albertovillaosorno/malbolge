@@ -32,6 +32,7 @@
 // - Defaults:
 //   - Missing expected state matches only a missing durable policy.
 //
+
 //! Durable compare-and-swap publication and guarded eviction for cache limits.
 
 use std::num::NonZeroUsize;
