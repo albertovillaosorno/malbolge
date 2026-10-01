@@ -2518,10 +2518,12 @@ restores through normative replay. One graph provenance blob and its complete
 ordered AOT bundle can now publish as one durable atomic blob-pair generation.
 Both canonical members are prepared before pair mutation; restoration first
 replays the graph, requires exact graph/program order, and then independently
-reverifies every native object before returning graph or AOT authority. A bundle
-preparation failure leaves the prior committed pair unchanged. Whole-graph
-executable residency loads all reviewed one-step families transactionally with
-reverse rollback and retryable cleanup. Guarded graph dispatch retains
+reverifies every native object before returning graph or AOT authority.
+
+A bundle preparation failure leaves the prior committed pair unchanged.
+Whole-graph executable residency loads all reviewed one-step families
+transactionally with reverse rollback and retryable cleanup. Guarded graph
+dispatch retains
 caller-owned execution authority and rechecks successor identity after each
 native turn.
 
