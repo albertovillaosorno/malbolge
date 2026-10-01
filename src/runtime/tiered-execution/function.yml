@@ -636,6 +636,12 @@ parts:
     language: rust
     responsibility: >-
       Journal caller-supplied executable lease owners with durable exact CAS.
+  - id: part-0117
+    path: composition/tier/executable_durable_lease_retry.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Retry exact durable lease-owner conflicts under caller-selected bounds.
 projects: []
 tests: []
 graph:
