@@ -1080,9 +1080,18 @@ behavior.
   graph provenance restore replays and reverifies every node. Graph provenance
   plus its complete ordered AOT bundle can now publish through one durable
   atomic blob-pair generation: both canonical members are prepared before
-  mutation,
-  restore replays the graph and independently reverifies every native object,
-  and an incomplete replacement preserves the prior complete pair.
+  mutation, restore replays the graph and independently reverifies every native
+  object, and an incomplete replacement preserves the prior complete pair.
+
+  Versioned package restore now exposes one opaque generation revision only
+  after that same graph/object reverification. Revision-conditional durable
+  publication returns the exact fresh revision on success, while stale expected
+  revisions conflict without exposing unverified current package authority.
+
+  Exact caller retention preserves selected revisions during explicit package
+  reclamation. The freshly verified current revision is also preserved across
+  the cleanup call to close publication races. Corrupt current package bytes
+  fail before any superseded generation deletion.
 
   Whole-graph residency loads exact mappings transactionally. Input, JumpCode,
   and JumpData now join Crazy, HaltFetch, NoOperation, NonGraphical, Output, and
@@ -1098,6 +1107,6 @@ behavior.
   and exact ready-image identity, then enters the existing loaded-call rollback
   boundary before delegating to a caller-owned native runner.
 
-  Broader durable AOT-package generation retention/reclamation policy, broader
-  platform execution evidence, and broader end-to-end tier performance policy
-  also remain open.
+  Automatic durable AOT-package retention scheduling and cross-process leasing,
+  broader platform execution evidence, and broader end-to-end tier performance
+  policy also remain open.

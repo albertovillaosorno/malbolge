@@ -40,6 +40,10 @@
 
 #[path = "../src/runtime/tiered-execution/application/blob_pair_persistence.rs"]
 pub mod blob_pair_persistence;
+#[path = "../src/runtime/tiered-execution/application/blob_pair_reclamation.rs"]
+pub mod blob_pair_reclamation;
+#[path = "../src/runtime/tiered-execution/application/blob_pair_retention.rs"]
+pub mod blob_pair_retention;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_pair_store.rs"]
 pub mod blob_pair_store;
 #[path = "../src/runtime/tiered-execution/application/blob_persistence.rs"]
@@ -83,6 +87,7 @@ use std::process::id as process_id;
 use std::slice::from_ref;
 use std::sync::Arc;
 
+use blob_pair_retention::NativeContinuationBlobPairRetention;
 use blob_pair_store::NativeContinuationBlobPairStore as BlobPairStore;
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
@@ -111,7 +116,12 @@ use execution_native::{
     prepare_ahead_of_execution_register_masked_set,
     select_ahead_of_execution_register_masked_tier,
 };
-use file_blob_pair_store::NativeContinuationFileBlobPairStore;
+use file_blob_pair_store::{
+    NativeContinuationFileBlobPairDurabilityError,
+    NativeContinuationFileBlobPairReclamation,
+    NativeContinuationFileBlobPairRevision,
+    NativeContinuationFileBlobPairStore,
+};
 use file_blob_store::NativeContinuationFileBlobStore;
 use indexed_state::IndexedMachineState;
 use malbolge::{
@@ -154,18 +164,34 @@ use register_masked_aot_object_persistence::{
     restore_register_masked_aot_object,
 };
 use register_masked_aot_package_persistence::{
+    RegisterMaskedAotPackageConditionalDurablePersistence,
     RegisterMaskedAotPackagePersistRequest,
     RegisterMaskedAotPackagePersistenceLoad,
     RegisterMaskedAotPackagePreparationError,
+    RegisterMaskedAotPackageReclamation,
+    RegisterMaskedAotPackageReclamationError,
     RegisterMaskedAotPackageRestoreRequest, RegisterMaskedAotPackageSource,
     RegisterMaskedAotPackageStoreError,
+    RegisterMaskedAotPackageVersionedPersistenceLoad,
+    compare_and_swap_register_masked_aot_package_durably,
     persist_register_masked_aot_package_durably,
+    reclaim_register_masked_aot_package_generations,
     restore_register_masked_aot_package,
+    restore_register_masked_aot_package_versioned,
 };
 
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
 type HandoffResult<T> = Result<T, String>;
+type AotPackageFileConditional =
+    RegisterMaskedAotPackageConditionalDurablePersistence<
+        NativeContinuationFileBlobPairRevision,
+        NativeContinuationFileBlobPairDurabilityError,
+    >;
+type AotPackageFileReclamation = RegisterMaskedAotPackageReclamation<
+    NativeContinuationFileBlobPairRevision,
+    NativeContinuationFileBlobPairReclamation,
+>;
 type AotPackageMaterial = (
     ReducedGraphClaim,
     ReducedGraph,
@@ -1357,6 +1383,47 @@ fn verify_restored_aot_package(
     Ok(())
 }
 
+fn restore_versioned_aot_package_revision(
+    store: &mut NativeContinuationFileBlobPairStore,
+    expected_graph: &ReducedGraph,
+    programs: &[RegisterMaskedRegionEffectProgram],
+    bounds: AotPackageBounds,
+) -> HandoffResult<NativeContinuationFileBlobPairRevision> {
+    let restored = restore_register_masked_aot_package_versioned(
+        store,
+        package_restore_request(programs, bounds),
+    )
+    .map_err(|error| format!("versioned AOT package restore: {error:?}"))?;
+    let RegisterMaskedAotPackageVersionedPersistenceLoad::Restored {
+        graph,
+        objects,
+        revision,
+        set,
+        ..
+    } = restored
+    else {
+        return Err(String::from("versioned AOT package disappeared"));
+    };
+    if graph != *expected_graph || objects != programs.len() {
+        return Err(String::from("versioned AOT package authority drifted"));
+    }
+    for program in programs {
+        let selected = select_ahead_of_execution_register_masked_tier(
+            program,
+            safe_rust_profiled_capability(),
+            windows_x86_64(),
+            &set,
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(selected, AheadOfExecutionRegisterMaskedTier::Direct(_)) {
+            return Err(String::from(
+                "versioned AOT package lost exact native coverage",
+            ));
+        }
+    }
+    Ok(revision)
+}
+
 #[test]
 fn product_register_masked_aot_package_round_trips_atomically()
 -> HandoffResult<()> {
@@ -1393,6 +1460,221 @@ fn product_register_masked_aot_package_round_trips_atomically()
         )
         .map_err(|error| format!("durable AOT package restore: {error:?}"))?;
         verify_restored_aot_package(restored, &graph, &programs, expected_bytes)
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+fn require_durable_aot_package_publication(
+    outcome: &AotPackageFileConditional,
+) -> HandoffResult<NativeContinuationFileBlobPairRevision> {
+    match outcome {
+        RegisterMaskedAotPackageConditionalDurablePersistence::Durable {
+            revision,
+            ..
+        } => Ok(*revision),
+        RegisterMaskedAotPackageConditionalDurablePersistence::Conflict => {
+            Err(String::from("AOT package publication conflicted"))
+        },
+        RegisterMaskedAotPackageConditionalDurablePersistence::Published {
+            ..
+        } => Err(String::from("AOT package publication was not durable")),
+    }
+}
+
+fn publish_aot_package_conditionally(
+    store: &mut NativeContinuationFileBlobPairStore,
+    expected: Option<&NativeContinuationFileBlobPairRevision>,
+    request: RegisterMaskedAotPackagePersistRequest<'_>,
+) -> HandoffResult<NativeContinuationFileBlobPairRevision> {
+    let outcome = compare_and_swap_register_masked_aot_package_durably(
+        store, expected, request,
+    )
+    .map_err(|error| format!("AOT package conditional publish: {error:?}"))?;
+    require_durable_aot_package_publication(&outcome)
+}
+
+fn require_stale_aot_package_conflict(
+    store: &mut NativeContinuationFileBlobPairStore,
+    expected: &NativeContinuationFileBlobPairRevision,
+    request: RegisterMaskedAotPackagePersistRequest<'_>,
+) -> HandoffResult<()> {
+    let outcome = compare_and_swap_register_masked_aot_package_durably(
+        store,
+        Some(expected),
+        request,
+    )
+    .map_err(|error| format!("stale AOT package CAS: {error:?}"))?;
+    if outcome
+        == RegisterMaskedAotPackageConditionalDurablePersistence::Conflict
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale AOT package revision was accepted"))
+    }
+}
+
+fn aot_package_generation_member(
+    manifest: &Path,
+    revision: NativeContinuationFileBlobPairRevision,
+    member: &str,
+) -> HandoffResult<PathBuf> {
+    let encoded = revision.encode();
+    let epoch: [u8; 8] = encoded[8..16]
+        .try_into()
+        .map_err(|_error| String::from("AOT package epoch decode failed"))?;
+    let generation: [u8; 8] = encoded[16..24].try_into().map_err(|_error| {
+        String::from("AOT package generation decode failed")
+    })?;
+    let name = manifest
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| String::from("AOT package manifest name missing"))?;
+    Ok(manifest.with_file_name(format!(
+        "{name}.generation.{}.{generation_id}.{member}",
+        u64::from_le_bytes(epoch),
+        generation_id = u64::from_le_bytes(generation),
+    )))
+}
+
+fn require_aot_package_reclamation(
+    outcome: AotPackageFileReclamation,
+    expected_revision: NativeContinuationFileBlobPairRevision,
+    expected_retained: usize,
+    expected_removed: usize,
+) -> HandoffResult<()> {
+    let RegisterMaskedAotPackageReclamation::Reclaimed {
+        current_revision,
+        reclamation,
+        retained_revisions,
+    } = outcome
+    else {
+        return Err(String::from("current AOT package disappeared"));
+    };
+    if current_revision == expected_revision
+        && retained_revisions == expected_retained
+        && reclamation.removed().len() == expected_removed
+    {
+        Ok(())
+    } else {
+        Err(String::from("AOT package reclamation evidence drifted"))
+    }
+}
+
+#[test]
+fn product_register_masked_aot_package_reclaim_rejects_corrupt_current()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_reclaim_corrupt")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut store =
+            NativeContinuationFileBlobPairStore::new(manifest.clone());
+        let _first = persist_register_masked_aot_package_durably(
+            &mut store,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )
+        .map_err(|error| format!("first corrupt-case persist: {error:?}"))?;
+        let first_revision = restore_versioned_aot_package_revision(
+            &mut store, &graph, &programs, bounds,
+        )?;
+        let _second = persist_register_masked_aot_package_durably(
+            &mut store,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )
+        .map_err(|error| format!("second corrupt-case persist: {error:?}"))?;
+        let current_revision = restore_versioned_aot_package_revision(
+            &mut store, &graph, &programs, bounds,
+        )?;
+        let current_bundle = aot_package_generation_member(
+            &manifest,
+            current_revision,
+            "second",
+        )?;
+        fs::write(current_bundle, b"corrupt-package-bundle")
+            .map_err(|error| format!("corrupt current AOT package: {error}"))?;
+        let retention = NativeContinuationBlobPairRetention::new();
+        let error = reclaim_register_masked_aot_package_generations(
+            &mut store,
+            package_restore_request(&programs, bounds),
+            &retention,
+        )
+        .err()
+        .ok_or_else(|| String::from("corrupt current package was reclaimed"))?;
+        let first_graph =
+            aot_package_generation_member(&manifest, first_revision, "first")?;
+        let first_bundle =
+            aot_package_generation_member(&manifest, first_revision, "second")?;
+        if matches!(error, RegisterMaskedAotPackageReclamationError::Restore(_))
+            && first_graph.exists()
+            && first_bundle.exists()
+        {
+            Ok(())
+        } else {
+            Err(String::from("corrupt package reclamation failed open"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_retains_exact_revisions_before_reclaim()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_retention_reclaim")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut store = NativeContinuationFileBlobPairStore::new(manifest);
+        let first_revision = publish_aot_package_conditionally(
+            &mut store,
+            None,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let mut retention = NativeContinuationBlobPairRetention::new();
+        let _retained = retention.retain(first_revision);
+        let second_revision = publish_aot_package_conditionally(
+            &mut store,
+            Some(&first_revision),
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        if first_revision == second_revision {
+            return Err(String::from("AOT package revision did not advance"));
+        }
+        require_stale_aot_package_conflict(
+            &mut store,
+            &first_revision,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let preserved = reclaim_register_masked_aot_package_generations(
+            &mut store,
+            package_restore_request(&programs, bounds),
+            &retention,
+        )
+        .map_err(|error| format!("preserved package reclaim: {error:?}"))?;
+        require_aot_package_reclamation(preserved, second_revision, 1, 0)?;
+        let _released = retention.release(&first_revision);
+        let reclaimed = reclaim_register_masked_aot_package_generations(
+            &mut store,
+            package_restore_request(&programs, bounds),
+            &retention,
+        )
+        .map_err(|error| format!("released package reclaim: {error:?}"))?;
+        require_aot_package_reclamation(reclaimed, second_revision, 0, 2)?;
+        let final_revision = restore_versioned_aot_package_revision(
+            &mut store, &graph, &programs, bounds,
+        )?;
+        if final_revision == second_revision {
+            Ok(())
+        } else {
+            Err(String::from(
+                "current AOT package changed during reclamation",
+            ))
+        }
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;

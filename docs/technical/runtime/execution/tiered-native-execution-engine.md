@@ -2521,17 +2521,25 @@ replays the graph, requires exact graph/program order, and then independently
 reverifies every native object before returning graph or AOT authority.
 
 A bundle preparation failure leaves the prior committed pair unchanged.
+Versioned package restore exposes one opaque pair revision only after the same
+graph/object verification succeeds. Revision-conditional durable publication
+returns the exact fresh revision after commit; stale expected revisions conflict
+without exposing raw current package bytes or revision authority.
+
+Explicit package reclamation accepts exact caller retention and additionally
+preserves the current revision it just verified, so a concurrent publication
+cannot delete that last verified package. Corrupt current package bytes fail
+before any superseded generation deletion.
+
 Whole-graph executable residency loads all reviewed one-step families
 transactionally with reverse rollback and retryable cleanup. Guarded graph
-dispatch retains
-caller-owned execution authority and rechecks successor identity after each
-native turn.
+dispatch retains caller-owned execution authority and rechecks successor
+identity after each native turn.
 
 Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, broader durable AOT-package generation
-retention/reclamation and cross-process leasing, concrete same-process native
-memory/runner integration, and broader end-to-end performance policy remain
-open.
+asynchronous/product scheduling, automatic durable AOT-package retention
+scheduling and cross-process leasing, concrete same-process native memory/runner
+integration, and broader end-to-end performance policy remain open.
 
 Host-real AArch64 and Windows worker execution are explicitly non-blocking
 compatibility follow-ups. Cross-compiled x86-64/AArch64 objects, independent

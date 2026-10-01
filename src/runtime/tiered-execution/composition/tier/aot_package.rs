@@ -9,30 +9,34 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Atomic durable publication and restoration of reduced-graph provenance
-//     together with its complete register-masked AOT object bundle.
+//   - Atomic durable publication/restoration of reduced-graph provenance with
+//     its complete register-masked AOT bundle, plus explicit exact-revision
+//     generation reclamation.
 // - Must-Not:
 //   - Choose storage paths, trust persisted graph/object authority, publish one
-//     member independently, load executable memory, or infer eviction policy.
+//     member independently, load executable memory, infer revision chronology,
+//     or choose automatic retention/eviction policy.
 // - Allows:
 //   - Inputs: exact graph claim, graph-ordered programs, sealed AOT set,
 //     runtime/host assumptions, decode limits, and independent positive bounds.
-//   - Outputs: one atomic pair publication or freshly replayed/reverified graph
-//     and object authority.
-//   - Side effects: delegated through bounded atomic blob-pair persistence.
+//   - Outputs: atomic publication, reverified versioned package authority, or
+//     exact adapter-owned generation-reclamation evidence.
+//   - Side effects: delegated through bounded atomic pair persistence/reclaim.
 // - Split-When:
-//   - Package migration, retention scheduling, or executable residency gains
-//     independent authority.
+//   - Package migration, automatic retention scheduling, cross-process leasing,
+//     or executable residency gains independent authority.
 // - Merge-When:
 //   - One general durable native-cache package owner subsumes this pair.
 // - Summary:
-//   - Prevents graph provenance and its native bundle from crossing
-//     generations.
+//   - Keeps graph/native generations atomic and reclaims only explicitly safe
+//     superseded revisions.
 // - Description:
-//   - Both canonical payloads are prepared before one pair commit; restore
-//     rebuilds graph and native authority before returning either to callers.
+//   - Both canonical payloads are prepared before commit. Versioned restore
+//     exposes revision identity only after verification, and reclamation first
+//     protects the package revision it just reverified.
 // - Usage:
-//   - Persist and restore one exact reduced graph plus its sealed AOT coverage.
+//   - Persist/restore exact graph+AOT packages, retain verified revisions, and
+//     explicitly reclaim unretained superseded generations.
 // - Defaults:
 //   - Missing pair state is explicit; any graph/program/object drift fails
 //     closed without partial authority.
@@ -45,9 +49,12 @@ use std::num::NonZeroUsize;
 use malbolge::RegisterMaskedRegionEffectProgram;
 use pair_port::{
     NativeContinuationBlobPairStore as PairStore,
+    NativeContinuationConditionalBlobPairStore as ConditionalPairStore,
     NativeContinuationDurableBlobPairStore as DurablePairStore,
+    NativeContinuationReclaimableBlobPairStore as ReclaimablePairStore,
 };
 
+use crate::blob_pair_retention::NativeContinuationBlobPairRetention;
 use crate::execution_native::{
     AheadOfExecutionRegisterMaskedReducedStateGraphCodecError,
     AheadOfExecutionRegisterMaskedReducedStateGraphDecodeLimits,
@@ -66,13 +73,19 @@ use crate::register_masked_aot_bundle_persistence::{
     decode_register_masked_aot_bundle, encode_register_masked_aot_bundle,
 };
 use crate::{
-    blob_pair_persistence as pair_persistence, blob_pair_store as pair_port,
+    blob_pair_persistence as pair_persistence,
+    blob_pair_reclamation as pair_reclamation, blob_pair_store as pair_port,
 };
 
 type PackageGraphClaim =
     UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph;
 type PackageGraphDecodeLimits =
     AheadOfExecutionRegisterMaskedReducedStateGraphDecodeLimits;
+type PairConditionalDurable<Revision, DurabilityError> =
+    pair_persistence::NativeContinuationBlobPairConditionalDurablePersistence<
+        Revision,
+        DurabilityError,
+    >;
 
 /// Exact source authority for one graph-plus-native package publication.
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +177,32 @@ pub enum RegisterMaskedAotPackageRestoreError<'requirement, StoreError> {
     Programs(RegisterMaskedAotPackageProgramError),
 }
 
+/// Durable outcome of one revision-conditional package publication.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedAotPackageConditionalDurablePersistence<
+    Revision,
+    DurabilityError,
+> {
+    /// Expected revision differed; no package publication occurred.
+    Conflict,
+    /// Conditional package publication and durability confirmation completed.
+    Durable {
+        /// Fresh adapter-owned revision assigned to the committed package.
+        revision: Revision,
+        /// Exact committed member byte counts.
+        write: pair_persistence::NativeContinuationBlobPairPersistenceWrite,
+    },
+    /// Package publication committed, then durability confirmation failed.
+    Published {
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Fresh adapter-owned revision assigned to the committed package.
+        revision: Revision,
+        /// Exact committed member byte counts.
+        write: pair_persistence::NativeContinuationBlobPairPersistenceWrite,
+    },
+}
+
 /// Result of one bounded atomic package restoration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RegisterMaskedAotPackagePersistenceLoad {
@@ -185,6 +224,74 @@ pub enum RegisterMaskedAotPackagePersistenceLoad {
     },
 }
 
+/// Result of one bounded versioned atomic package restoration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedAotPackageVersionedPersistenceLoad<Revision> {
+    /// No atomically published graph/object package exists.
+    Missing,
+    /// Both members independently rebuilt current authority at one revision.
+    Restored {
+        /// Exact AOT bundle byte count loaded from the atomic pair.
+        bundle_bytes: usize,
+        /// Freshly replay-verified reduced graph.
+        graph: VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph,
+        /// Exact graph provenance byte count loaded from the atomic pair.
+        graph_bytes: usize,
+        /// Exact object count independently reverified from the bundle.
+        objects: usize,
+        /// Opaque adapter-owned publication revision verified with this
+        /// package.
+        revision: Revision,
+        /// Fresh sealed AOT set rebuilt only after complete object
+        /// verification.
+        set: VerifiedAheadOfExecutionRegisterMaskedSet,
+    },
+}
+
+/// Result of one package-aware generation reclamation pass.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedAotPackageReclamation<Revision, Reclamation> {
+    /// No current package exists, so no generation deletion was attempted.
+    Missing,
+    /// A current package was reverified before explicit reclamation.
+    Reclaimed {
+        /// Exact verified revision retained across the reclamation call.
+        current_revision: Revision,
+        /// Adapter-owned reclamation evidence.
+        reclamation: Reclamation,
+        /// Caller-selected exact retained revision count.
+        retained_revisions: usize,
+    },
+}
+
+/// Why package-aware generation reclamation failed closed.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedAotPackageReclamationError<
+    'requirement,
+    StoreError,
+    ReclamationError,
+> {
+    /// Pair generation reclamation failed before cleanup could proceed.
+    Reclamation(ReclamationError),
+    /// Current package bytes failed bounded restore or semantic reverification.
+    Restore(RegisterMaskedAotPackageRestoreError<'requirement, StoreError>),
+}
+
+/// Conditional durable package result specialized to one pair store.
+pub type RegisterMaskedAotPackageConditionalDurableStoreResult<
+    'requirement,
+    Store,
+> = Result<
+    RegisterMaskedAotPackageConditionalDurablePersistence<
+        <Store as ConditionalPairStore>::Revision,
+        <Store as DurablePairStore>::DurabilityError,
+    >,
+    RegisterMaskedAotPackageStoreError<
+        'requirement,
+        <Store as PairStore>::Error,
+    >,
+>;
+
 /// Durable package publication result specialized to one pair store.
 pub type RegisterMaskedAotPackageDurableStoreResult<'requirement, Store> =
     Result<
@@ -201,6 +308,32 @@ pub type RegisterMaskedAotPackageDurableStoreResult<'requirement, Store> =
 pub type RegisterMaskedAotPackageRestoreStoreResult<'requirement, Store> =
     Result<
         RegisterMaskedAotPackagePersistenceLoad,
+        RegisterMaskedAotPackageRestoreError<
+            'requirement,
+            <Store as PairStore>::Error,
+        >,
+    >;
+
+/// Package-aware reclamation result specialized to one pair store.
+pub type RegisterMaskedAotPackageReclamationStoreResult<'requirement, Store> =
+    Result<
+        RegisterMaskedAotPackageReclamation<
+            <Store as ConditionalPairStore>::Revision,
+            <Store as ReclaimablePairStore>::Reclamation,
+        >,
+        RegisterMaskedAotPackageReclamationError<
+            'requirement,
+            <Store as PairStore>::Error,
+            <Store as ReclaimablePairStore>::ReclamationError,
+        >,
+    >;
+
+/// Versioned package restore result specialized to one pair store.
+pub type RegisterMaskedAotPackageVersionedStoreResult<'requirement, Store> =
+    Result<
+        RegisterMaskedAotPackageVersionedPersistenceLoad<
+            <Store as ConditionalPairStore>::Revision,
+        >,
         RegisterMaskedAotPackageRestoreError<
             'requirement,
             <Store as PairStore>::Error,
@@ -307,6 +440,64 @@ fn prepare_package(
     Ok((graph_bytes, bundle_bytes))
 }
 
+/// Conditionally publishes one package and returns its exact fresh revision.
+///
+/// Both members are fully prepared before the pair compare-and-swap. Conflict
+/// discards the store's raw current bytes and revision; callers must use typed
+/// versioned restore before treating current state as package authority.
+///
+/// # Errors
+///
+/// Returns package preparation, byte-limit, or pair-store failure before a
+/// typed conflict/publication outcome exists. Post-commit durability failure
+/// remains a committed `Published` outcome with the fresh revision.
+pub fn compare_and_swap_register_masked_aot_package_durably<
+    'requirement,
+    Store,
+>(
+    store: &mut Store,
+    expected: Option<&Store::Revision>,
+    request: RegisterMaskedAotPackagePersistRequest<'requirement>,
+) -> RegisterMaskedAotPackageConditionalDurableStoreResult<'requirement, Store>
+where
+    Store: ConditionalPairStore + DurablePairStore,
+{
+    use RegisterMaskedAotPackageConditionalDurablePersistence as Outcome;
+
+    let (graph_bytes, bundle_bytes) =
+        prepare_package(request).map_err(|error| {
+            RegisterMaskedAotPackageStoreError::Preparation(Box::new(error))
+        })?;
+    let pair_request =
+        pair_persistence::NativeContinuationBlobPairPersistenceRequest::new(
+            &graph_bytes,
+            &bundle_bytes,
+            request.graph_maximum_bytes,
+            request.bundle_maximum_bytes,
+        );
+    let outcome = pair_persistence::compare_and_swap_blob_pair_durably(
+        store,
+        expected,
+        pair_request,
+    )
+    .map_err(RegisterMaskedAotPackageStoreError::Pair)?;
+    match outcome {
+        PairConditionalDurable::Conflict { .. } => Ok(Outcome::Conflict),
+        PairConditionalDurable::Durable { revision, write } => {
+            Ok(Outcome::Durable { revision, write })
+        },
+        PairConditionalDurable::Published {
+            durability_error,
+            revision,
+            write,
+        } => Ok(Outcome::Published {
+            durability_error,
+            revision,
+            write,
+        }),
+    }
+}
+
 /// Atomically publishes graph provenance and its complete AOT bundle durably.
 ///
 /// Both members are fully prepared before the atomic pair store is touched.
@@ -340,6 +531,43 @@ where
     .map_err(RegisterMaskedAotPackageStoreError::Pair)
 }
 
+fn restore_package_bytes<'requirement, StoreError>(
+    graph_bytes: &[u8],
+    bundle_bytes: &[u8],
+    request: RegisterMaskedAotPackageRestoreRequest<'requirement>,
+) -> Result<
+    RegisterMaskedAotPackagePersistenceLoad,
+    RegisterMaskedAotPackageRestoreError<'requirement, StoreError>,
+> {
+    let graph = decode_ahead_of_execution_register_masked_reduced_state_graph(
+        graph_bytes,
+        request.decode_limits,
+    )
+    .map_err(RegisterMaskedAotPackageRestoreError::Graph)?;
+    validate_program_order(&graph, request.bundle.programs())
+        .map_err(RegisterMaskedAotPackageRestoreError::Programs)?;
+    let bundle = decode_register_masked_aot_bundle::<StoreError>(
+        bundle_bytes,
+        request.bundle,
+    )
+    .map_err(|error| {
+        RegisterMaskedAotPackageRestoreError::Bundle(Box::new(error))
+    })?;
+    let RegisterMaskedAotBundlePersistenceLoad::Restored {
+        objects, set, ..
+    } = bundle
+    else {
+        return Err(RegisterMaskedAotPackageRestoreError::BundleMissing);
+    };
+    Ok(RegisterMaskedAotPackagePersistenceLoad::Restored {
+        bundle_bytes: bundle_bytes.len(),
+        graph,
+        graph_bytes: graph_bytes.len(),
+        objects,
+        set,
+    })
+}
+
 /// Atomically restores graph provenance and its complete AOT bundle.
 ///
 /// Pair atomicity prevents cross-generation member mixing. The graph is
@@ -371,31 +599,108 @@ where
     else {
         return Ok(RegisterMaskedAotPackagePersistenceLoad::Missing);
     };
-    let graph = decode_ahead_of_execution_register_masked_reduced_state_graph(
-        &graph_bytes,
-        request.decode_limits,
+    restore_package_bytes(&graph_bytes, &bundle_bytes, request)
+}
+
+/// Restores one package together with its exact opaque publication revision.
+///
+/// The revision is exposed only after the graph and complete native bundle have
+/// rebuilt current authority. Callers may therefore retain only a revision that
+/// crossed the same semantic verification boundary as an ordinary restore.
+///
+/// # Errors
+///
+/// Returns bounded pair load, graph replay, program-order, framing, or native
+/// verification failure without exposing an unverified revision.
+pub fn restore_register_masked_aot_package_versioned<'requirement, Store>(
+    store: &mut Store,
+    request: RegisterMaskedAotPackageRestoreRequest<'requirement>,
+) -> RegisterMaskedAotPackageVersionedStoreResult<'requirement, Store>
+where
+    Store: ConditionalPairStore,
+{
+    let Some(versioned) = pair_persistence::restore_blob_pair_versioned(
+        store,
+        request.graph_maximum_bytes,
+        request.bundle.maximum_bytes(),
     )
-    .map_err(RegisterMaskedAotPackageRestoreError::Graph)?;
-    validate_program_order(&graph, request.bundle.programs())
-        .map_err(RegisterMaskedAotPackageRestoreError::Programs)?;
-    let bundle = decode_register_masked_aot_bundle::<Store::Error>(
-        &bundle_bytes,
-        request.bundle,
-    )
-    .map_err(|error| {
-        RegisterMaskedAotPackageRestoreError::Bundle(Box::new(error))
-    })?;
-    let RegisterMaskedAotBundlePersistenceLoad::Restored {
-        objects, set, ..
-    } = bundle
+    .map_err(RegisterMaskedAotPackageRestoreError::Pair)?
+    else {
+        return Ok(RegisterMaskedAotPackageVersionedPersistenceLoad::Missing);
+    };
+    let restored = restore_package_bytes::<Store::Error>(
+        &versioned.first,
+        &versioned.second,
+        request,
+    )?;
+    let RegisterMaskedAotPackagePersistenceLoad::Restored {
+        bundle_bytes,
+        graph,
+        graph_bytes,
+        objects,
+        set,
+    } = restored
     else {
         return Err(RegisterMaskedAotPackageRestoreError::BundleMissing);
     };
-    Ok(RegisterMaskedAotPackagePersistenceLoad::Restored {
-        bundle_bytes: bundle_bytes.len(),
+    Ok(RegisterMaskedAotPackageVersionedPersistenceLoad::Restored {
+        bundle_bytes,
         graph,
-        graph_bytes: graph_bytes.len(),
+        graph_bytes,
         objects,
+        revision: versioned.revision,
         set,
+    })
+}
+
+/// Reclaims superseded package generations under exact caller retention.
+///
+/// The current package is first restored and reverified with its opaque
+/// revision. That verified revision is added to the preservation set for this
+/// pass, so a concurrent newer publication cannot cause the last package this
+/// call verified to be deleted. The adapter also preserves whatever generation
+/// is current when reclamation actually acquires storage authority.
+///
+/// Missing package state performs no deletion. No chronology, expiry, or
+/// capacity policy is inferred from opaque revisions.
+///
+/// # Errors
+///
+/// Returns current-package verification failure before deletion, or adapter
+/// reclamation failure from the explicit cleanup pass.
+pub fn reclaim_register_masked_aot_package_generations<'requirement, Store>(
+    store: &mut Store,
+    request: RegisterMaskedAotPackageRestoreRequest<'requirement>,
+    retention: &NativeContinuationBlobPairRetention<Store::Revision>,
+) -> RegisterMaskedAotPackageReclamationStoreResult<'requirement, Store>
+where
+    Store: ReclaimablePairStore,
+{
+    let current = restore_register_masked_aot_package_versioned(store, request)
+        .map_err(RegisterMaskedAotPackageReclamationError::Restore)?;
+    let RegisterMaskedAotPackageVersionedPersistenceLoad::Restored {
+        revision: current_revision,
+        ..
+    } = current
+    else {
+        return Ok(RegisterMaskedAotPackageReclamation::Missing);
+    };
+    let mut preserved = retention.revisions().to_vec();
+    if !preserved.contains(&current_revision) {
+        preserved.push(current_revision.clone());
+    }
+    let reclamation_request =
+        pair_reclamation::NativeContinuationBlobPairReclamationRequest::new(
+            &preserved,
+        );
+    let reclamation = pair_reclamation::reclaim_blob_pair_generations(
+        store,
+        &reclamation_request,
+    )
+    .map_err(RegisterMaskedAotPackageReclamationError::Reclamation)?;
+    Ok(RegisterMaskedAotPackageReclamation::Reclaimed {
+        current_revision,
+        reclamation,
+        retained_revisions: retention.revisions().len(),
     })
 }

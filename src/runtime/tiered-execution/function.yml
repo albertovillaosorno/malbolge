@@ -647,7 +647,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Publish reduced-graph provenance and its AOT bundle atomically.
+      Publish, version, and reclaim reduced-graph provenance plus AOT bundles.
 projects: []
 tests: []
 graph:
