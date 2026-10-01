@@ -9,13 +9,14 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Typed bounded persistence of executable-sequence cache limit policy.
+//   - Typed bounded persistence and explicit eviction of cache-limit policy.
 // - Must-Not:
 //   - Persist executable mappings, FIFO entries, usage, native keys, or choose
 //     storage locations.
 // - Allows:
 //   - Inputs: immutable cache limits, positive byte bound, and one blob store.
-//   - Outputs: explicit missing/restored limits or exact publication evidence.
+//   - Outputs: explicit missing/restored limits, publication, or removal
+//     evidence.
 //   - Side effects: delegated through bounded opaque-blob persistence only.
 // - Split-When:
 //   - Cache manifest migration, eviction journals, or concurrent ownership gain
@@ -23,7 +24,7 @@
 // - Merge-When:
 //   - One durable executable-cache policy owner subsumes limit persistence.
 // - Summary:
-//   - Persists caller-owned cache limits without granting executable authority.
+//   - Persists or evicts cache limits without granting executable authority.
 // - Description:
 //   - Canonical limit framing is validated before publication and after
 //     restore.
@@ -32,13 +33,14 @@
 // - Defaults:
 //   - Missing durable limits are explicit and never invent cache configuration.
 //
-//! Typed bounded persistence for executable-sequence cache limit policy.
+//! Typed bounded persistence and eviction for executable-cache limit policy.
 
 use std::num::NonZeroUsize;
 
 use store_port::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
+    NativeContinuationRemovableBlobStore as RemovableBlobStore,
 };
 
 use crate::execution_native::{
@@ -52,6 +54,20 @@ use crate::{blob_persistence, blob_store as store_port};
 type BlobDurablePersistence<DurabilityError> =
     blob_persistence::NativeContinuationBlobDurablePersistence<DurabilityError>;
 type BlobLoad = blob_persistence::NativeContinuationBlobPersistenceLoad;
+
+/// Durable removal state for one cache-limit policy blob.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeExecutableSequenceCacheLimitsDurableRemoval<DurabilityError> {
+    /// Removal committed and durability confirmation completed.
+    Durable,
+    /// No durable cache-limit policy existed.
+    Missing,
+    /// Removal committed, then durability confirmation failed.
+    Removed {
+        /// Exact post-removal durability failure.
+        durability_error: DurabilityError,
+    },
+}
 
 /// Cache-limit publication plus explicit post-publication durability state.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -109,6 +125,17 @@ pub type NativeExecutableSequenceCacheLimitsDurablePersistenceResult<
     NativeExecutableSequenceCacheLimitsPersistenceError<StoreError>,
 >;
 
+/// Durable cache-limit removal result specialized to one store type.
+pub type NativeExecutableSequenceCacheLimitsDurableRemovalStoreResult<Store> =
+    Result<
+        NativeExecutableSequenceCacheLimitsDurableRemoval<
+            <Store as DurableBlobStore>::DurabilityError,
+        >,
+        NativeExecutableSequenceCacheLimitsPersistenceError<
+            <Store as BlobStore>::Error,
+        >,
+    >;
+
 /// Durable typed limit result specialized to one store type.
 pub type NativeExecutableSequenceCacheLimitsDurableStoreResult<Store> =
     NativeExecutableSequenceCacheLimitsDurablePersistenceResult<
@@ -124,6 +151,25 @@ pub type NativeExecutableSequenceCacheLimitsPersistenceResult<
     Value,
     NativeExecutableSequenceCacheLimitsPersistenceError<StoreError>,
 >;
+
+impl<DurabilityError>
+    NativeExecutableSequenceCacheLimitsDurableRemoval<DurabilityError>
+{
+    /// Returns post-removal durability failure when confirmation failed.
+    #[must_use]
+    pub const fn durability_error(&self) -> Option<&DurabilityError> {
+        match self {
+            Self::Removed { durability_error } => Some(durability_error),
+            Self::Durable | Self::Missing => None,
+        }
+    }
+
+    /// Reports whether a durable publication was actually removed.
+    #[must_use]
+    pub const fn is_removed(&self) -> bool {
+        matches!(self, Self::Durable | Self::Removed { .. })
+    }
+}
 
 impl<DurabilityError>
     NativeExecutableSequenceCacheLimitsDurablePersistence<DurabilityError>
@@ -181,6 +227,37 @@ fn map_durable_persistence<DurabilityError>(
                 },
             }
         },
+    }
+}
+
+/// Durably removes the cache-limit policy at the configured blob location.
+///
+/// Missing policy is a successful no-op. Once removal commits, a later
+/// durability-confirmation failure remains committed absence evidence.
+///
+/// # Errors
+///
+/// Returns outbound coordination or removal failure before absence commits.
+pub fn evict_native_executable_sequence_cache_limits_durably<Store>(
+    store: &mut Store,
+) -> NativeExecutableSequenceCacheLimitsDurableRemovalStoreResult<Store>
+where
+    Store: DurableBlobStore + RemovableBlobStore,
+{
+    let outcome = blob_persistence::remove_blob_durably(store)
+        .map_err(NativeExecutableSequenceCacheLimitsPersistenceError::Blob)?;
+    match outcome {
+        blob_persistence::NativeContinuationBlobDurableRemoval::Durable => {
+            Ok(NativeExecutableSequenceCacheLimitsDurableRemoval::Durable)
+        },
+        blob_persistence::NativeContinuationBlobDurableRemoval::Missing => {
+            Ok(NativeExecutableSequenceCacheLimitsDurableRemoval::Missing)
+        },
+        blob_persistence::NativeContinuationBlobDurableRemoval::Removed {
+            durability_error,
+        } => Ok(NativeExecutableSequenceCacheLimitsDurableRemoval::Removed {
+            durability_error,
+        }),
     }
 }
 
@@ -271,6 +348,7 @@ mod tests {
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum TestStoreError {
+        Remove,
         Replace,
     }
 
@@ -282,8 +360,11 @@ mod tests {
     #[derive(Debug, Default)]
     struct MemoryStore {
         bytes: Option<Vec<u8>>,
+        durability_calls: usize,
         fail_durability: bool,
+        fail_remove: bool,
         fail_replace: bool,
+        remove_calls: usize,
         replace_calls: usize,
     }
 
@@ -307,10 +388,28 @@ mod tests {
         }
     }
 
+    impl RemovableBlobStore for MemoryStore {
+        fn remove(
+            &mut self,
+        ) -> crate::blob_store::NativeContinuationBlobRemovalResult<Self::Error>
+        {
+            self.remove_calls = self.remove_calls.saturating_add(1);
+            if self.fail_remove {
+                return Err(TestStoreError::Remove);
+            }
+            if self.bytes.take().is_some() {
+                Ok(crate::blob_store::NativeContinuationBlobRemoval::Removed)
+            } else {
+                Ok(crate::blob_store::NativeContinuationBlobRemoval::Missing)
+            }
+        }
+    }
+
     impl DurableBlobStore for MemoryStore {
         type DurabilityError = TestDurabilityError;
 
         fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+            self.durability_calls = self.durability_calls.saturating_add(1);
             if self.fail_durability {
                 Err(TestDurabilityError::Failed)
             } else {
@@ -322,6 +421,85 @@ mod tests {
     fn positive(value: usize) -> Result<NonZeroUsize, String> {
         NonZeroUsize::new(value)
             .ok_or_else(|| String::from("test positive value missing"))
+    }
+
+    #[test]
+    fn durable_eviction_removes_policy() -> Result<(), String> {
+        let limits = NativeExecutableSequenceCacheLimits::new(positive(3)?);
+        let mut store = MemoryStore::default();
+        let _write = persist_native_executable_sequence_cache_limits(
+            &mut store,
+            limits,
+            positive(40)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let outcome =
+            evict_native_executable_sequence_cache_limits_durably(&mut store)
+                .map_err(|error| format!("{error:?}"))?;
+        let load = restore_native_executable_sequence_cache_limits(
+            &mut store,
+            positive(40)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        if outcome == NativeExecutableSequenceCacheLimitsDurableRemoval::Durable
+            && outcome.is_removed()
+            && store.remove_calls == 1
+            && store.durability_calls == 1
+            && load
+                == NativeExecutableSequenceCacheLimitsPersistenceLoad::Missing
+        {
+            Ok(())
+        } else {
+            Err(String::from("durable cache-limit eviction drifted"))
+        }
+    }
+
+    #[test]
+    fn eviction_durability_failure_retains_absence() -> Result<(), String> {
+        let limits = NativeExecutableSequenceCacheLimits::new(positive(4)?);
+        let mut store = MemoryStore {
+            bytes: Some(
+                encode_native_executable_sequence_cache_limits(limits)
+                    .map_err(|error| format!("{error:?}"))?,
+            ),
+            fail_durability: true,
+            ..MemoryStore::default()
+        };
+        let outcome =
+            evict_native_executable_sequence_cache_limits_durably(&mut store)
+                .map_err(|error| format!("{error:?}"))?;
+        if outcome
+            == (NativeExecutableSequenceCacheLimitsDurableRemoval::Removed {
+                durability_error: TestDurabilityError::Failed,
+            })
+            && outcome.is_removed()
+            && outcome.durability_error() == Some(&TestDurabilityError::Failed)
+            && store.bytes.is_none()
+            && store.durability_calls == 1
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "cache-limit eviction durability evidence drifted",
+            ))
+        }
+    }
+
+    #[test]
+    fn missing_eviction_skips_durability() -> Result<(), String> {
+        let mut store = MemoryStore::default();
+        let outcome =
+            evict_native_executable_sequence_cache_limits_durably(&mut store)
+                .map_err(|error| format!("{error:?}"))?;
+        if outcome == NativeExecutableSequenceCacheLimitsDurableRemoval::Missing
+            && !outcome.is_removed()
+            && store.remove_calls == 1
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from("missing cache-limit eviction drifted"))
+        }
     }
 
     #[test]

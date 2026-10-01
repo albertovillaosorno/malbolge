@@ -255,7 +255,18 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+
     use super::*;
+    use crate::blob_store::{
+        NativeContinuationBlobRemoval, NativeContinuationBlobRemovalResult,
+        NativeContinuationDurableBlobStore,
+        NativeContinuationRemovableBlobStore,
+    };
+    use crate::executable_cache_limits_persistence::{
+        NativeExecutableSequenceCacheLimitsDurableRemoval,
+        evict_native_executable_sequence_cache_limits_durably,
+    };
     use crate::execution_native::{
         NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
         NativeExecutableMappingReport, NativeExecutableReleaseRequest,
@@ -295,6 +306,26 @@ mod tests {
 
         fn replace(&mut self, _bytes: &[u8]) -> Result<(), Self::Error> {
             Err(StoreError::Replace)
+        }
+    }
+
+    impl NativeContinuationDurableBlobStore for MemoryStore {
+        type DurabilityError = Infallible;
+
+        fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+            Ok(())
+        }
+    }
+
+    impl NativeContinuationRemovableBlobStore for MemoryStore {
+        fn remove(
+            &mut self,
+        ) -> NativeContinuationBlobRemovalResult<Self::Error> {
+            if self.bytes.take().is_some() {
+                Ok(NativeContinuationBlobRemoval::Removed)
+            } else {
+                Ok(NativeContinuationBlobRemoval::Missing)
+            }
         }
     }
 
@@ -450,6 +481,40 @@ mod tests {
         } else {
             Err(String::from(
                 "invalid durable policy changed ordinary cache",
+            ))
+        }
+    }
+
+    #[test]
+    fn evicted_policy_does_not_change_live_cache() -> Result<(), String> {
+        let initial = NativeExecutableSequenceCacheLimits::new(positive(5)?);
+        let mut cache = NativeExecutableSequenceCache::with_limits(initial);
+        let mut adapter = NoOpAdapter::default();
+        let mut store = MemoryStore {
+            bytes: Some(encoded_limits(2)?),
+        };
+        let eviction =
+            evict_native_executable_sequence_cache_limits_durably(&mut store)
+                .map_err(|error| format!("{error:?}"))?;
+        let activation =
+            restore_and_apply_native_executable_sequence_cache_limits(
+                &mut store,
+                &mut cache,
+                &mut adapter,
+                positive(40)?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        if eviction
+            == NativeExecutableSequenceCacheLimitsDurableRemoval::Durable
+            && activation
+                == NativeExecutableSequenceCacheLimitsActivation::Missing
+            && cache.limits() == initial
+            && adapter.calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "durable policy eviction changed live cache state",
             ))
         }
     }
