@@ -9,38 +9,41 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Durable active-policy publication from ready cached-retry
-//     recommendations.
+//   - Durable active-policy publication from ready cached-retry recommendation
+//     or arbitration evidence.
 // - Must-Not:
 //   - Infer recommendations, mutate requests, choose storage paths, or retry
 //     CAS.
 // - Allows:
-//   - Inputs: exact recommendation, expected active state, bound, and store.
-//   - Outputs: deferred evidence or exact typed active-state CAS evidence.
+//   - Inputs: exact recommendation/arbitration evidence, expected active state,
+//     bound, and store.
+//   - Outputs: non-publishable evidence or exact typed active-state CAS
+//     evidence.
 //   - Side effects: one conditional durable publication for ready evidence
 //     only.
 // - Split-When:
-//   - Multi-signal arbitration or distributed consensus gains authority.
+//   - Distributed consensus gains authority.
 // - Merge-When:
 //   - One policy orchestrator owns recommendation, durable CAS, and binding.
 // - Summary:
-//   - Publishes ready telemetry policy across cycles without mutating requests.
+//   - Publishes only evidence that exposes one exact policy candidate.
 // - Description:
-//   - Deferral performs zero storage work; ready evidence retains its exact
-//     CAS.
+//   - Non-publishable evidence performs zero storage work; ready evidence
+//     retains its exact CAS.
 // - Usage:
 //   - Publish recommendation durably, then bind returned active state
 //     explicitly.
 // - Defaults:
-//   - Insufficient evidence never touches durable active-policy state.
+//   - Evidence without policy authority never touches durable active state.
 //
 
-//! Durable cross-cycle publication of cached-retry policy recommendations.
+//! Durable cross-cycle publication of cached-retry policy evidence.
 
 use std::num::NonZeroUsize;
 
 use super::{
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
+    NativeContinuationCachedRetryPolicyArbitration,
     NativeContinuationCachedRetryPolicyRecommendation,
 };
 use crate::blob_store::{
@@ -69,16 +72,16 @@ pub enum NativeContinuationCachedRetryDurablePolicyPublication<
     Recommendation,
     DurabilityError,
 > {
-    /// Recommendation evidence was insufficient and storage was not touched.
+    /// Input exposed no publishable policy and storage was not touched.
     Deferred {
-        /// Exact insufficient recommendation evidence.
+        /// Exact non-publishable recommendation or arbitration evidence.
         recommendation: Recommendation,
     },
-    /// Ready recommendation attempted typed durable active-policy CAS.
+    /// Publishable input attempted typed durable active-policy CAS.
     Ready {
         /// Exact durable/conflict publication evidence.
         publication: NativeContinuationRetryPolicyStateCas<DurabilityError>,
-        /// Exact ready recommendation evidence that selected the candidate.
+        /// Exact input evidence that selected the candidate.
         recommendation: Recommendation,
     },
 }
@@ -118,13 +121,13 @@ impl<Recommendation, DurabilityError>
         DurabilityError,
     >
 {
-    /// Reports whether insufficient evidence skipped durable publication.
+    /// Reports whether input evidence skipped durable publication.
     #[must_use]
     pub const fn is_deferred(&self) -> bool {
         matches!(self, Self::Deferred { .. })
     }
 
-    /// Returns typed active-state CAS evidence when recommendation was ready.
+    /// Returns typed active-state CAS evidence when input exposed a policy.
     #[must_use]
     pub const fn publication(
         &self,
@@ -135,7 +138,7 @@ impl<Recommendation, DurabilityError>
         }
     }
 
-    /// Returns the exact recommendation retained by this publication decision.
+    /// Returns the exact input evidence retained by this publication decision.
     #[must_use]
     pub const fn recommendation(&self) -> &Recommendation {
         match self {
@@ -143,6 +146,35 @@ impl<Recommendation, DurabilityError>
             | Self::Ready { recommendation, .. } => recommendation,
         }
     }
+}
+
+/// Durably publishes one agreed multi-signal arbitration into active policy.
+///
+/// # Errors
+///
+/// Returns typed active-state CAS failure only for agreed policy authority.
+/// Deferred or conflicting signal evidence performs no storage operation.
+pub fn publish_cached_retry_policy_arbitration_durably<Store>(
+    store: &mut Store,
+    expected: Option<NativeContinuationRetryPolicyState>,
+    arbitration: &NativeContinuationCachedRetryPolicyArbitration,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationCachedRetryDurablePolicyStoreResult<
+    NativeContinuationCachedRetryPolicyArbitration,
+    Store,
+>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    publish_recommendation_durably(
+        store,
+        *arbitration,
+        DurablePolicyPublicationRequest {
+            expected,
+            maximum_bytes,
+            policy: arbitration.policy(),
+        },
+    )
 }
 
 /// Durably publishes one count-telemetry recommendation into active policy.

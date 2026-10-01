@@ -14,9 +14,9 @@
 // - Must-Not:
 //   - Infer recommendations, retry conflicts, choose storage paths, or execute.
 // - Allows:
-//   - Inputs: one request, expected active state, ready/deferred
-//     recommendation, byte bound, and conditional durable store.
-//   - Outputs: unchanged deferred/conflict request or request bound to
+//   - Inputs: one request, expected active state, recommendation/arbitration
+//     evidence, byte bound, and conditional durable store.
+//   - Outputs: unchanged no-policy/CAS-conflict request or request bound to
 //     committed revisioned active state with exact durable publication
 //     evidence.
 //   - Side effects: delegated conditional durable policy publication only.
@@ -27,15 +27,17 @@
 // - Summary:
 //   - Binds only policy state proven committed by durable active-state CAS.
 // - Description:
-//   - Conflict/defer leave request policy untouched; post-commit sync failure
-//     still binds the committed active state while retaining durability error.
+//   - No-policy evidence and CAS conflict leave request policy untouched;
+//     post-commit sync failure still binds committed state with durability
+//     error.
 // - Usage:
-//   - Consume one recommendation immediately before its target cached cycle.
+//   - Consume recommendation/arbitration evidence before its target cached
+//     cycle.
 // - Defaults:
 //   - No committed active state means no request-policy mutation.
 //
 
-//! Durable cached-retry policy publication with exact request binding.
+//! Durable cached-retry policy evidence publication and request binding.
 
 use std::num::NonZeroUsize;
 
@@ -44,9 +46,11 @@ use super::{
     NativeContinuationCachedRetryCycleRequest,
     NativeContinuationCachedRetryDurablePolicyPublication,
     NativeContinuationCachedRetryLatencyPolicyRecommendation,
+    NativeContinuationCachedRetryPolicyArbitration,
     NativeContinuationCachedRetryPolicyRecommendation,
     publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation_durably,
+    publish_cached_retry_policy_arbitration_durably,
     publish_cached_retry_policy_recommendation_durably,
 };
 use crate::blob_store::{
@@ -86,9 +90,9 @@ pub enum NativeContinuationCachedRetryDurablePolicyBinding<
         /// Unchanged cached-cycle request owner.
         request: Box<NativeContinuationCachedRetryCycleRequest>,
     },
-    /// Recommendation lacked sufficient evidence; request is unchanged.
+    /// Input exposed no publishable policy; request is unchanged.
     Deferred {
-        /// Exact deferred durable-publication evidence.
+        /// Exact non-publishable durable-publication evidence.
         publication: NativeContinuationCachedRetryDurablePolicyPublication<
             Recommendation,
             DurabilityError,
@@ -261,6 +265,32 @@ where
             recommendation,
             binding.maximum_bytes,
         )?;
+    Ok(bind_durable_publication(binding.request, publication))
+}
+
+/// Durably publishes and binds one agreed multi-signal policy arbitration.
+///
+/// # Errors
+///
+/// Returns typed durable active-state CAS failure before any binding occurs.
+/// Deferred or conflicting signal evidence performs no storage operation.
+pub fn publish_and_bind_cached_retry_policy_arbitration_durably<Store>(
+    store: &mut Store,
+    binding: NativeContinuationCachedRetryDurablePolicyBindingRequest,
+    arbitration: &NativeContinuationCachedRetryPolicyArbitration,
+) -> NativeContinuationCachedRetryDurablePolicyBindingStoreResult<
+    NativeContinuationCachedRetryPolicyArbitration,
+    Store,
+>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let publication = publish_cached_retry_policy_arbitration_durably(
+        store,
+        binding.expected,
+        arbitration,
+        binding.maximum_bytes,
+    )?;
     Ok(bind_durable_publication(binding.request, publication))
 }
 

@@ -562,15 +562,15 @@ behavior.
   Canonical blob persistence,
   durable CAS merge with bounded conflict retry, and count/latency policy
   recommendation plus durable publication retain typed evidence and
-  file-backed regressions. Multi-signal arbitration now requires both
-  recommendations to be ready and select the same exact policy; deferred
-  evidence or ready disagreement retains both signals without precedence.
+  file-backed regressions. Multi-signal arbitration requires both
+  recommendations to be ready and select the same exact policy before durable
+  active-policy CAS and next-request binding. Deferred or conflicting signal
+  evidence performs no storage work; later durable CAS conflict remains
+  distinct and preserves the request.
 
-  Durable policy binding now consumes that CAS evidence immediately before a
-  future cached cycle. Deferred evidence and CAS conflict preserve the request
-  policy, while durable publication or post-commit sync failure binds the
-  committed active revision. A filesystem regression proves committed state
-  round-trips with the rebound request.
+  Durable commit or post-commit sync failure still binds the committed active
+  revision. File-backed arbitration evidence proves the restored committed
+  state agrees with the rebound request.
 
   Process-local policy-owner synchronization now consumes only committed
   binding evidence. Newer durable revision advances local ownership, exact

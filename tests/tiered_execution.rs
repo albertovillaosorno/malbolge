@@ -307,8 +307,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindowError,
     NativeContinuationCachedRetryTelemetryWindowSnapshot,
     arbitrate_cached_retry_policy_recommendations, assess_cached_retry_latency,
-    assess_cached_retry_telemetry,
-    begin_cached_retry_latency_measurement,
+    assess_cached_retry_telemetry, begin_cached_retry_latency_measurement,
     coarsen_cached_retry_latency_histogram,
     compare_and_swap_cached_retry_telemetry_pair_durably,
     decode_cached_retry_latency_snapshot,
@@ -333,6 +332,7 @@ use cached_cycle::{
     persist_cached_retry_telemetry_window,
     persist_cached_retry_telemetry_window_durably,
     publish_and_bind_cached_retry_latency_policy_recommendation_durably,
+    publish_and_bind_cached_retry_policy_arbitration_durably,
     publish_and_bind_cached_retry_policy_recommendation_durably,
     publish_cached_retry_active_policy,
     publish_cached_retry_latency_policy_recommendation,
@@ -102168,11 +102168,24 @@ fn cached_retry_ready_latency_policy_recommendation(
             20,
             0,
         );
-    let policies =
-        NativeContinuationCachedRetryPolicyRecommendationSet::new(policy, policy);
+    let policies = NativeContinuationCachedRetryPolicyRecommendationSet::new(
+        policy, policy,
+    );
     Ok(recommend_cached_retry_latency_policy(
         assess_cached_retry_latency(&histogram, thresholds),
         policies,
+    ))
+}
+
+fn cached_retry_ready_policy_arbitration(
+    count_policy: NativeContinuationRetryPolicy,
+    latency_policy: NativeContinuationRetryPolicy,
+) -> Result<NativeContinuationCachedRetryPolicyArbitration, String> {
+    let count = cached_retry_ready_count_policy_recommendation(count_policy)?;
+    let latency =
+        cached_retry_ready_latency_policy_recommendation(latency_policy)?;
+    Ok(arbitrate_cached_retry_policy_recommendations(
+        count, latency,
     ))
 }
 
@@ -102314,7 +102327,10 @@ fn cached_retry_policy_arbitration_defers_when_latency_is_not_ready()
     let latency =
         NativeContinuationCachedRetryLatencyPolicyRecommendation::Deferred {
             observed_samples: 1,
-            required_samples: nonzero_test_limit(2, "latency arbitration gate")?,
+            required_samples: nonzero_test_limit(
+                2,
+                "latency arbitration gate",
+            )?,
         };
     let arbitration =
         arbitrate_cached_retry_policy_recommendations(count, latency);
@@ -102333,8 +102349,7 @@ fn cached_retry_policy_arbitration_defers_when_latency_is_not_ready()
 }
 
 #[test]
-fn cached_retry_policy_arbitration_agrees_on_exact_policy()
--> Result<(), String> {
+fn cached_retry_policy_arbitration_agrees_exactly() -> Result<(), String> {
     let policy = complete_retry_policy(3);
     let count = cached_retry_ready_count_policy_recommendation(policy)?;
     let latency = cached_retry_ready_latency_policy_recommendation(policy)?;
@@ -102358,8 +102373,7 @@ fn cached_retry_policy_arbitration_agrees_on_exact_policy()
 }
 
 #[test]
-fn cached_retry_policy_arbitration_retains_ready_conflict()
--> Result<(), String> {
+fn cached_retry_policy_arbitration_retains_conflict() -> Result<(), String> {
     let count_policy = complete_retry_policy(3);
     let latency_policy = complete_retry_policy(1);
     let count = cached_retry_ready_count_policy_recommendation(count_policy)?;
@@ -102383,6 +102397,163 @@ fn cached_retry_policy_arbitration_retains_ready_conflict()
         Ok(())
     } else {
         Err(String::from("conflicting ready signals authorized policy"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_binding_defers_without_storage()
+-> Result<(), String> {
+    let original = complete_retry_policy(2);
+    let count = NativeContinuationCachedRetryPolicyRecommendation::Deferred {
+        observed_attempts: 1,
+        required_attempts: nonzero_test_limit(2, "arbitration defer attempts")?,
+    };
+    let latency = cached_retry_ready_latency_policy_recommendation(
+        complete_retry_policy(3),
+    )?;
+    let arbitration =
+        arbitrate_cached_retry_policy_recommendations(count, latency);
+    let request = cached_retry_policy_publication_request(original)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_arbitration_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "arbitration defer bytes")?,
+        ),
+        &arbitration,
+    )
+    .map_err(|error| format!("arbitration defer binding failed: {error:?}"))?;
+    if binding.is_bound()
+        || binding.request().policy() != original
+        || !binding.publication().is_deferred()
+        || binding.publication().recommendation() != &arbitration
+        || store.compare_and_swap_calls != 0
+    {
+        Err(String::from("deferred arbitration touched durable policy"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_binding_conflict_skips_storage()
+-> Result<(), String> {
+    let original = complete_retry_policy(2);
+    let arbitration = cached_retry_ready_policy_arbitration(
+        complete_retry_policy(3),
+        complete_retry_policy(1),
+    )?;
+    let request = cached_retry_policy_publication_request(original)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_arbitration_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "signal conflict bytes")?,
+        ),
+        &arbitration,
+    )
+    .map_err(|error| format!("signal conflict binding failed: {error:?}"))?;
+    if binding.is_bound()
+        || binding.request().policy() != original
+        || !binding.publication().is_deferred()
+        || binding.publication().recommendation() != &arbitration
+        || store.compare_and_swap_calls != 0
+    {
+        Err(String::from("signal conflict touched durable policy"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_binding_binds_agreed_policy()
+-> Result<(), String> {
+    let original = complete_retry_policy(2);
+    let candidate = complete_retry_policy(3);
+    let arbitration =
+        cached_retry_ready_policy_arbitration(candidate, candidate)?;
+    let request = cached_retry_policy_publication_request(original)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let binding = publish_and_bind_cached_retry_policy_arbitration_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            nonzero_test_limit(52, "agreed arbitration bytes")?,
+        ),
+        &arbitration,
+    )
+    .map_err(|error| format!("agreed arbitration binding failed: {error:?}"))?;
+    let state = binding
+        .active_state()
+        .ok_or_else(|| String::from("agreed arbitration was not bound"))?;
+    if binding.is_bound()
+        && state.policy() == candidate
+        && binding.request().policy() == candidate
+        && binding.publication().recommendation() == &arbitration
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("agreed arbitration binding evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_policy_arbitration_binding_retains_cas_conflict()
+-> Result<(), String> {
+    let original = complete_retry_policy(1);
+    let expected = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(2),
+        NativeContinuationRetryPolicyRevision::from_value(2),
+    );
+    let actual = NativeContinuationRetryPolicyState::new(
+        complete_retry_policy(5),
+        NativeContinuationRetryPolicyRevision::from_value(3),
+    );
+    let candidate = complete_retry_policy(9);
+    let arbitration =
+        cached_retry_ready_policy_arbitration(candidate, candidate)?;
+    let actual_bytes = encode_native_continuation_retry_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let request = cached_retry_policy_publication_request(original)?;
+    let binding = publish_and_bind_cached_retry_policy_arbitration_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            Some(expected),
+            nonzero_test_limit(52, "arbitration CAS conflict bytes")?,
+        ),
+        &arbitration,
+    )
+    .map_err(|error| format!("arbitration CAS conflict failed: {error:?}"))?;
+    let publication = binding.publication().publication();
+    if !binding.is_bound()
+        && binding.request().policy() == original
+        && binding.publication().recommendation() == &arbitration
+        && store.compare_and_swap_calls == 1
+        && matches!(
+            publication,
+            Some(PolicyStateCas::Conflict {
+                candidate: observed,
+                current: Some(current),
+                expected: Some(observed_expected),
+            }) if *observed == candidate
+                && *current == actual
+                && *observed_expected == expected
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("arbitration CAS conflict evidence drifted"))
     }
 }
 
@@ -102742,6 +102913,58 @@ fn cached_retry_file_durable_policy_binding_roundtrips_committed_state()
         Ok(())
     } else {
         Err(String::from("file durable binding state drifted"))
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
+}
+
+#[test]
+fn cached_retry_file_policy_arbitration_binding_roundtrips_state()
+-> Result<(), String> {
+    let fixture =
+        file_blob_store_fixture("durable-policy-arbitration-binding")?;
+    let candidate = complete_retry_policy(3);
+    let arbitration =
+        cached_retry_ready_policy_arbitration(candidate, candidate)?;
+    let request =
+        cached_retry_policy_publication_request(complete_retry_policy(1))?;
+    let maximum_bytes =
+        nonzero_test_limit(52, "file arbitration binding bytes")?;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let binding = publish_and_bind_cached_retry_policy_arbitration_durably(
+        &mut store,
+        NativeContinuationCachedRetryDurablePolicyBindingRequest::new(
+            request,
+            None,
+            maximum_bytes,
+        ),
+        &arbitration,
+    )
+    .map_err(|error| format!("file arbitration binding failed: {error:?}"))?;
+    let state = binding
+        .active_state()
+        .ok_or_else(|| String::from("file arbitration state was not bound"))?;
+    let restored = restore_native_continuation_retry_policy_state(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file arbitration restore: {error:?}"))?;
+    let NativeContinuationRetryPolicyStatePersistenceLoad::Restored {
+        state: restored_state,
+        ..
+    } = restored
+    else {
+        return Err(String::from("file arbitration state disappeared"));
+    };
+    let result = if binding.request().policy() == candidate
+        && binding.publication().recommendation() == &arbitration
+        && restored_state == state
+        && state.policy() == candidate
+    {
+        Ok(())
+    } else {
+        Err(String::from("file arbitration binding state drifted"))
     };
     remove_file_blob_store_fixture(&fixture.directory)?;
     result

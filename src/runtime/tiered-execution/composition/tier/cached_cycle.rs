@@ -20,7 +20,7 @@
 //     ownership.
 //   - Side effects: bounded cache acquisitions and loaded native attempts.
 // - Split-When:
-//   - Multi-signal policy arbitration or async ownership gains a lifecycle.
+//   - Async policy ownership or product scheduling gains a lifecycle.
 // - Merge-When:
 //   - Product orchestration owns the complete cached tiered lifecycle.
 // - Summary:
@@ -319,6 +319,7 @@ pub use telemetry_policy_durable_binding::{
     NativeContinuationCachedRetryDurablePolicyBindingRequest,
     NativeContinuationCachedRetryDurablePolicyBindingStoreResult,
     publish_and_bind_cached_retry_latency_policy_recommendation_durably,
+    publish_and_bind_cached_retry_policy_arbitration_durably,
     publish_and_bind_cached_retry_policy_recommendation_durably,
 };
 pub use telemetry_policy_durable_publication::{
@@ -326,6 +327,7 @@ pub use telemetry_policy_durable_publication::{
     NativeContinuationCachedRetryDurablePolicyPublicationResult,
     NativeContinuationCachedRetryDurablePolicyStoreResult,
     publish_cached_retry_latency_policy_recommendation_durably,
+    publish_cached_retry_policy_arbitration_durably,
     publish_cached_retry_policy_recommendation_durably,
 };
 pub use telemetry_policy_owner_synchronization::{

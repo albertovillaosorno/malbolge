@@ -17,7 +17,7 @@
 //   - Outputs: deferred evidence or one exact recommended retry policy.
 //   - Side effects: none.
 // - Split-When:
-//   - Multi-signal recommendation arbitration gains authority.
+//   - Additional policy signals or caller-selected precedence gains authority.
 // - Merge-When:
 //   - Caller orchestration owns assessment and publication atomically.
 // - Summary:
