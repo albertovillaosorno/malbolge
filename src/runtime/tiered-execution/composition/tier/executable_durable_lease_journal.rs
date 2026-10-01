@@ -40,13 +40,15 @@ use std::num::NonZeroUsize;
 
 use crate::blob_persistence::{
     NativeContinuationBlobConditionalDurablePersistence,
+    NativeContinuationBlobConditionalDurableRemoval,
     NativeContinuationBlobPersistenceError,
-    NativeContinuationBlobPersistenceLoad, compare_and_swap_blob_durably,
-    restore_blob,
+    NativeContinuationBlobPersistenceLoad, compare_and_remove_blob_durably,
+    compare_and_swap_blob_durably, restore_blob,
 };
 use crate::blob_store::{
     NativeContinuationBlobStore as BlobStore,
     NativeContinuationConditionalBlobStore as ConditionalBlobStore,
+    NativeContinuationConditionalRemovableBlobStore as ConditionalRemoveStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
 
@@ -77,6 +79,14 @@ pub struct NativeExecutableDurableLeaseJournalCasRequest<'registry> {
     expected: Option<&'registry NativeExecutableDurableLeaseRegistry>,
     maximum_bytes: NonZeroUsize,
     replacement: &'registry NativeExecutableDurableLeaseRegistry,
+}
+
+/// Caller-owned inputs for one durable lease owner transition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeExecutableDurableLeaseTransitionRequest {
+    decode_limits: NativeExecutableDurableLeaseRegistryDecodeLimits,
+    maximum_bytes: NonZeroUsize,
+    owner: NativeExecutableDurableLeaseOwnerId,
 }
 
 /// Why canonical durable lease bytes failed closed.
@@ -148,6 +158,64 @@ pub enum NativeExecutableDurableLeaseJournalCas<DurabilityError> {
     },
 }
 
+/// Outcome of exact-empty durable lease-journal reclamation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeExecutableDurableLeaseJournalRemoval<DurabilityError> {
+    /// Journal was missing, nonempty, or changed; no removal occurred.
+    Conflict {
+        /// Exact current durable registry, or missing state.
+        current: Option<NativeExecutableDurableLeaseRegistry>,
+    },
+    /// Exact empty journal removal committed and durability was confirmed.
+    Durable,
+    /// Exact empty journal removal committed, then durability confirmation
+    /// failed.
+    Removed {
+        /// Exact post-removal durability failure.
+        durability_error: DurabilityError,
+    },
+}
+
+/// Typed result of one bounded acquire or release transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeExecutableDurableLeaseTransition<DurabilityError> {
+    /// Durable state changed after restore; no retry occurred.
+    Conflict {
+        /// Exact current durable registry, or missing state.
+        current: Option<NativeExecutableDurableLeaseRegistry>,
+    },
+    /// Replacement committed and durability confirmation completed.
+    Durable {
+        /// Exact committed canonical byte count.
+        bytes: usize,
+        /// Exact registry committed by this transition.
+        registry: NativeExecutableDurableLeaseRegistry,
+    },
+    /// Replacement committed, then durability confirmation failed.
+    Published {
+        /// Exact committed canonical byte count.
+        bytes: usize,
+        /// Exact post-publication durability failure.
+        durability_error: DurabilityError,
+        /// Exact registry committed by this transition.
+        registry: NativeExecutableDurableLeaseRegistry,
+    },
+    /// Requested owner state already matched; storage was not mutated.
+    Unchanged {
+        /// Exact restored registry, or missing state.
+        current: Option<NativeExecutableDurableLeaseRegistry>,
+    },
+}
+
+/// Why one one-shot durable lease transition failed closed.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeExecutableDurableLeaseTransitionError<StoreError> {
+    /// Local acquisition would exceed the caller's positive owner bound.
+    Capacity(NativeExecutableDurableLeaseRegistryCapacityError),
+    /// Durable restore/CAS or canonical decoding failed.
+    Journal(NativeExecutableDurableLeaseJournalError<StoreError>),
+}
+
 /// Why typed durable lease journal orchestration failed closed.
 #[derive(Debug, Eq, PartialEq)]
 pub enum NativeExecutableDurableLeaseJournalError<StoreError> {
@@ -162,6 +230,23 @@ pub type NativeExecutableDurableLeaseJournalStoreResult<Store, Value> = Result<
     Value,
     NativeExecutableDurableLeaseJournalError<<Store as BlobStore>::Error>,
 >;
+
+/// One-shot lease transition result specialized to one blob store.
+pub type NativeExecutableDurableLeaseTransitionStoreResult<Store> = Result<
+    NativeExecutableDurableLeaseTransition<
+        <Store as DurableBlobStore>::DurabilityError,
+    >,
+    NativeExecutableDurableLeaseTransitionError<<Store as BlobStore>::Error>,
+>;
+
+/// Empty-journal durable removal result specialized to one blob store.
+pub type NativeExecutableDurableLeaseJournalRemovalStoreResult<Store> =
+    NativeExecutableDurableLeaseJournalStoreResult<
+        Store,
+        NativeExecutableDurableLeaseJournalRemoval<
+            <Store as DurableBlobStore>::DurabilityError,
+        >,
+    >;
 
 /// Durable lease-journal CAS result specialized to one blob store.
 pub type NativeExecutableDurableLeaseJournalCasStoreResult<Store> =
@@ -265,6 +350,22 @@ impl Default for NativeExecutableDurableLeaseRegistry {
     }
 }
 
+impl NativeExecutableDurableLeaseTransitionRequest {
+    /// Binds one caller-supplied owner to explicit decode and byte bounds.
+    #[must_use]
+    pub const fn new(
+        owner: NativeExecutableDurableLeaseOwnerId,
+        decode_limits: NativeExecutableDurableLeaseRegistryDecodeLimits,
+        maximum_bytes: NonZeroUsize,
+    ) -> Self {
+        Self {
+            decode_limits,
+            maximum_bytes,
+            owner,
+        }
+    }
+}
+
 impl NativeExecutableDurableLeaseRegistryCapacityError {
     /// Returns the positive owner bound that rejected insertion.
     #[must_use]
@@ -323,6 +424,124 @@ const fn admit_registry_owner_limit(
             observed_owners: registry.len(),
         })
     }
+}
+
+fn transition_executable_durable_lease_once<Store, Mutate>(
+    store: &mut Store,
+    request: NativeExecutableDurableLeaseTransitionRequest,
+    mutate: Mutate,
+) -> NativeExecutableDurableLeaseTransitionStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+    Mutate: FnOnce(
+        &mut NativeExecutableDurableLeaseRegistry,
+        NativeExecutableDurableLeaseTransitionRequest,
+    ) -> Result<
+        bool,
+        NativeExecutableDurableLeaseRegistryCapacityError,
+    >,
+{
+    let load = restore_executable_durable_lease_journal(
+        store,
+        request.decode_limits,
+        request.maximum_bytes,
+    )
+    .map_err(NativeExecutableDurableLeaseTransitionError::Journal)?;
+    let expected = match load {
+        NativeExecutableDurableLeaseJournalLoad::Missing => None,
+        NativeExecutableDurableLeaseJournalLoad::Present { registry } => {
+            Some(registry)
+        },
+    };
+    let mut replacement = expected.clone().unwrap_or_default();
+    let changed = mutate(&mut replacement, request)
+        .map_err(NativeExecutableDurableLeaseTransitionError::Capacity)?;
+    if !changed {
+        return Ok(NativeExecutableDurableLeaseTransition::Unchanged {
+            current: expected,
+        });
+    }
+    let publication = compare_and_swap_executable_durable_lease_journal(
+        store,
+        NativeExecutableDurableLeaseJournalCasRequest::new(
+            expected.as_ref(),
+            &replacement,
+            request.decode_limits,
+            request.maximum_bytes,
+        ),
+    )
+    .map_err(NativeExecutableDurableLeaseTransitionError::Journal)?;
+    match publication {
+        NativeExecutableDurableLeaseJournalCas::Conflict { current } => {
+            Ok(NativeExecutableDurableLeaseTransition::Conflict { current })
+        },
+        NativeExecutableDurableLeaseJournalCas::Durable { bytes } => {
+            Ok(NativeExecutableDurableLeaseTransition::Durable {
+                bytes,
+                registry: replacement,
+            })
+        },
+        NativeExecutableDurableLeaseJournalCas::Published {
+            bytes,
+            durability_error,
+        } => Ok(NativeExecutableDurableLeaseTransition::Published {
+            bytes,
+            durability_error,
+            registry: replacement,
+        }),
+    }
+}
+
+/// Acquires one caller-supplied durable lease owner exactly once.
+///
+/// Missing state starts from an explicit empty registry. Existing membership is
+/// idempotent and performs no publication. A concurrent journal change returns
+/// typed conflict evidence and is never retried here.
+///
+/// # Errors
+///
+/// Returns bounded restore/CAS, codec, or owner-capacity failure.
+pub fn acquire_executable_durable_lease_once<Store>(
+    store: &mut Store,
+    request: NativeExecutableDurableLeaseTransitionRequest,
+) -> NativeExecutableDurableLeaseTransitionStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    transition_executable_durable_lease_once(
+        store,
+        request,
+        |registry, transition| {
+            registry.acquire(
+                transition.owner,
+                transition.decode_limits.maximum_owners(),
+            )
+        },
+    )
+}
+
+/// Releases one caller-supplied durable lease owner exactly once.
+///
+/// Missing state and absent membership are idempotent no-ops. Last-owner
+/// release commits an explicit empty registry rather than deleting the journal.
+/// A concurrent journal change returns typed conflict evidence and is never
+/// retried here.
+///
+/// # Errors
+///
+/// Returns bounded restore/CAS or canonical codec failure.
+pub fn release_executable_durable_lease_once<Store>(
+    store: &mut Store,
+    request: NativeExecutableDurableLeaseTransitionRequest,
+) -> NativeExecutableDurableLeaseTransitionStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    transition_executable_durable_lease_once(
+        store,
+        request,
+        |registry, transition| Ok(registry.release(transition.owner)),
+    )
 }
 
 /// Encodes one exact lease registry into canonical sorted fixed-width bytes.
@@ -497,6 +716,64 @@ where
     }
 }
 
+/// Removes the journal only when its exact current registry is empty.
+///
+/// Missing or nonempty state is conflict evidence and is left untouched.
+/// This operation performs no expiry, owner inference, retry, or artifact
+/// eviction.
+///
+/// # Errors
+///
+/// Returns canonical decoding, byte-limit, coordination, removal, or durability
+/// orchestration failure before typed outcome publication.
+pub fn remove_empty_executable_durable_lease_journal_durably<Store>(
+    store: &mut Store,
+    decode_limits: NativeExecutableDurableLeaseRegistryDecodeLimits,
+    maximum_bytes: NonZeroUsize,
+) -> NativeExecutableDurableLeaseJournalRemovalStoreResult<Store>
+where
+    Store: ConditionalRemoveStore + DurableBlobStore,
+{
+    let empty = NativeExecutableDurableLeaseRegistry::new();
+    let expected_bytes = encode_executable_durable_lease_registry(&empty)
+        .map_err(NativeExecutableDurableLeaseJournalError::Codec)?;
+    let outcome = compare_and_remove_blob_durably(
+        store,
+        Some(&expected_bytes),
+        maximum_bytes,
+    )
+    .map_err(NativeExecutableDurableLeaseJournalError::Blob)?;
+    match outcome {
+        NativeContinuationBlobConditionalDurableRemoval::Conflict {
+            current,
+        } => Ok(NativeExecutableDurableLeaseJournalRemoval::Conflict {
+            current: current
+                .as_deref()
+                .map(|bytes| {
+                    decode_executable_durable_lease_registry(
+                        bytes,
+                        decode_limits,
+                    )
+                })
+                .transpose()
+                .map_err(NativeExecutableDurableLeaseJournalError::Codec)?,
+        }),
+        NativeContinuationBlobConditionalDurableRemoval::Durable => {
+            Ok(NativeExecutableDurableLeaseJournalRemoval::Durable)
+        },
+        NativeContinuationBlobConditionalDurableRemoval::Missing => {
+            Ok(NativeExecutableDurableLeaseJournalRemoval::Conflict {
+                current: None,
+            })
+        },
+        NativeContinuationBlobConditionalDurableRemoval::Removed {
+            durability_error,
+        } => Ok(NativeExecutableDurableLeaseJournalRemoval::Removed {
+            durability_error,
+        }),
+    }
+}
+
 /// Restores one bounded exact durable lease journal.
 ///
 /// # Errors
@@ -531,9 +808,124 @@ mod tests {
     use std::{env, process};
 
     use super::*;
+    use crate::blob_store::{
+        NativeContinuationBlobConditionalPublication,
+        NativeContinuationBlobConditionalPublicationResult,
+        NativeContinuationBlobConditionalRemoval,
+        NativeContinuationBlobConditionalRemovalResult,
+        NativeContinuationBlobRemoval, NativeContinuationBlobRemovalResult,
+        NativeContinuationBlobStore, NativeContinuationConditionalBlobStore,
+        NativeContinuationConditionalRemovableBlobStore,
+        NativeContinuationDurableBlobStore,
+        NativeContinuationRemovableBlobStore,
+    };
     use crate::file_blob_store::NativeContinuationFileBlobStore;
 
     type TestResult = Result<(), String>;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum TestDurabilityError {
+        Failed,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum TestStoreError {
+        Failed,
+    }
+
+    #[derive(Debug, Default)]
+    struct TransitionStore {
+        bytes: Option<Vec<u8>>,
+        durability_calls: usize,
+        fail_durability: bool,
+        race_bytes: Option<Vec<u8>>,
+    }
+
+    impl NativeContinuationBlobStore for TransitionStore {
+        type Error = TestStoreError;
+
+        fn load(
+            &mut self,
+            _maximum_bytes: NonZeroUsize,
+        ) -> Result<Option<Vec<u8>>, Self::Error> {
+            Ok(self.bytes.clone())
+        }
+
+        fn replace(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+            self.bytes = Some(bytes.to_vec());
+            Ok(())
+        }
+    }
+
+    impl NativeContinuationConditionalBlobStore for TransitionStore {
+        fn compare_and_swap(
+            &mut self,
+            expected: Option<&[u8]>,
+            replacement: &[u8],
+            _maximum_bytes: NonZeroUsize,
+        ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error>
+        {
+            if let Some(race_bytes) = self.race_bytes.take() {
+                self.bytes = Some(race_bytes);
+            }
+            if self.bytes.as_deref() != expected {
+                return Ok(
+                    NativeContinuationBlobConditionalPublication::Conflict {
+                        current: self.bytes.clone(),
+                    },
+                );
+            }
+            self.bytes = Some(replacement.to_vec());
+            Ok(NativeContinuationBlobConditionalPublication::Published)
+        }
+    }
+
+    impl NativeContinuationRemovableBlobStore for TransitionStore {
+        fn remove(
+            &mut self,
+        ) -> NativeContinuationBlobRemovalResult<Self::Error> {
+            if self.bytes.take().is_some() {
+                Ok(NativeContinuationBlobRemoval::Removed)
+            } else {
+                Ok(NativeContinuationBlobRemoval::Missing)
+            }
+        }
+    }
+
+    impl NativeContinuationConditionalRemovableBlobStore for TransitionStore {
+        fn compare_and_remove(
+            &mut self,
+            expected: Option<&[u8]>,
+            _maximum_bytes: NonZeroUsize,
+        ) -> NativeContinuationBlobConditionalRemovalResult<Self::Error>
+        {
+            if self.bytes.as_deref() != expected {
+                return Ok(
+                    NativeContinuationBlobConditionalRemoval::Conflict {
+                        current: self.bytes.clone(),
+                    },
+                );
+            }
+            if self.bytes.take().is_some() {
+                Ok(NativeContinuationBlobConditionalRemoval::Removed)
+            } else {
+                Ok(NativeContinuationBlobConditionalRemoval::Missing)
+            }
+        }
+    }
+
+    impl NativeContinuationDurableBlobStore for TransitionStore {
+        type DurabilityError = TestDurabilityError;
+
+        fn confirm_durability(&mut self) -> Result<(), Self::DurabilityError> {
+            self.durability_calls = self.durability_calls.saturating_add(1);
+            if self.fail_durability {
+                Err(TestDurabilityError::Failed)
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     fn decode_limits(
         maximum: usize,
@@ -550,6 +942,360 @@ mod tests {
 
     const fn owner(value: u8) -> NativeExecutableDurableLeaseOwnerId {
         NativeExecutableDurableLeaseOwnerId::new([value; OWNER_BYTES])
+    }
+
+    fn transition_request(
+        owner: NativeExecutableDurableLeaseOwnerId,
+        maximum_owners: usize,
+    ) -> Result<NativeExecutableDurableLeaseTransitionRequest, String> {
+        Ok(NativeExecutableDurableLeaseTransitionRequest::new(
+            owner,
+            decode_limits(maximum_owners)?,
+            maximum_bytes()?,
+        ))
+    }
+
+    #[test]
+    fn acquire_capacity_failure_preserves_durable_registry() -> TestResult {
+        let bound = NonZeroUsize::new(1).ok_or("owner bound")?;
+        let mut current = NativeExecutableDurableLeaseRegistry::new();
+        let _inserted = current
+            .acquire(owner(1), bound)
+            .map_err(|error| format!("{error:?}"))?;
+        let current_bytes = encode_executable_durable_lease_registry(&current)
+            .map_err(|error| format!("{error:?}"))?;
+        let mut store = TransitionStore {
+            bytes: Some(current_bytes.clone()),
+            ..TransitionStore::default()
+        };
+        let result = acquire_executable_durable_lease_once(
+            &mut store,
+            transition_request(owner(2), 1)?,
+        );
+        if matches!(
+            result,
+            Err(NativeExecutableDurableLeaseTransitionError::Capacity(error))
+                if error.maximum_owners() == bound
+                    && error.observed_owners() == 2
+        ) && store.bytes == Some(current_bytes)
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "capacity failure changed durable lease registry",
+            ))
+        }
+    }
+
+    #[test]
+    fn acquire_conflict_returns_current_without_retry() -> TestResult {
+        let bound = NonZeroUsize::new(4).ok_or("owner bound")?;
+        let mut first = NativeExecutableDurableLeaseRegistry::new();
+        let _inserted = first
+            .acquire(owner(1), bound)
+            .map_err(|error| format!("{error:?}"))?;
+        let mut raced = first.clone();
+        let _inserted = raced
+            .acquire(owner(2), bound)
+            .map_err(|error| format!("{error:?}"))?;
+        let first_bytes = encode_executable_durable_lease_registry(&first)
+            .map_err(|error| format!("{error:?}"))?;
+        let raced_bytes = encode_executable_durable_lease_registry(&raced)
+            .map_err(|error| format!("{error:?}"))?;
+        let mut store = TransitionStore {
+            bytes: Some(first_bytes),
+            race_bytes: Some(raced_bytes.clone()),
+            ..TransitionStore::default()
+        };
+        let outcome = acquire_executable_durable_lease_once(
+            &mut store,
+            transition_request(owner(3), 4)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        if outcome
+            == (NativeExecutableDurableLeaseTransition::Conflict {
+                current: Some(raced),
+            })
+            && store.bytes == Some(raced_bytes)
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from("lease acquire conflict retried or drifted"))
+        }
+    }
+
+    #[test]
+    fn acquire_post_commit_durability_failure_keeps_registry() -> TestResult {
+        let mut store = TransitionStore {
+            fail_durability: true,
+            ..TransitionStore::default()
+        };
+        let request = transition_request(owner(4), 4)?;
+        let outcome =
+            acquire_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let bytes = store
+            .bytes
+            .as_deref()
+            .ok_or_else(|| String::from("committed lease journal missing"))?;
+        let restored =
+            decode_executable_durable_lease_registry(bytes, decode_limits(4)?)
+                .map_err(|error| format!("{error:?}"))?;
+        if matches!(
+            outcome,
+            NativeExecutableDurableLeaseTransition::Published {
+                bytes: 32,
+                durability_error: TestDurabilityError::Failed,
+                ref registry,
+            } if registry == &restored && restored.contains(owner(4))
+        ) && store.durability_calls == 1
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "post-commit durability failure lost lease registry",
+            ))
+        }
+    }
+
+    #[test]
+    fn file_owner_transitions_are_idempotent() -> TestResult {
+        let directory = env::temp_dir().join(format!(
+            "malbolge-durable-lease-transition-{}",
+            process::id(),
+        ));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test cleanup failed: {error}"));
+            },
+        }
+        create_dir_all(&directory)
+            .map_err(|error| format!("test create failed: {error}"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
+        let request = transition_request(owner(7), 4)?;
+        let acquired =
+            acquire_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let duplicate =
+            acquire_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let released =
+            release_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let duplicate_release =
+            release_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let restored = restore_executable_durable_lease_journal(
+            &mut store,
+            request.decode_limits,
+            request.maximum_bytes,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        drop(store);
+        remove_dir_all(&directory)
+            .map_err(|error| format!("test removal failed: {error}"))?;
+        let empty = NativeExecutableDurableLeaseRegistry::new();
+        if matches!(
+            acquired,
+            NativeExecutableDurableLeaseTransition::Durable {
+                ref registry,
+                ..
+            } if registry.contains(owner(7))
+        ) && matches!(
+            duplicate,
+            NativeExecutableDurableLeaseTransition::Unchanged {
+                current: Some(ref registry),
+            } if registry.contains(owner(7))
+        ) && matches!(
+            released,
+            NativeExecutableDurableLeaseTransition::Durable {
+                ref registry,
+                ..
+            } if registry.is_empty()
+        ) && duplicate_release
+            == (NativeExecutableDurableLeaseTransition::Unchanged {
+                current: Some(empty.clone()),
+            })
+            && restored
+                == (NativeExecutableDurableLeaseJournalLoad::Present {
+                    registry: empty,
+                })
+        {
+            Ok(())
+        } else {
+            Err(String::from("one-shot lease transitions drifted"))
+        }
+    }
+
+    #[test]
+    fn empty_removal_durability_failure_retains_absence() -> TestResult {
+        let empty = NativeExecutableDurableLeaseRegistry::new();
+        let empty_bytes = encode_executable_durable_lease_registry(&empty)
+            .map_err(|error| format!("{error:?}"))?;
+        let mut store = TransitionStore {
+            bytes: Some(empty_bytes),
+            fail_durability: true,
+            ..TransitionStore::default()
+        };
+        let removal = remove_empty_executable_durable_lease_journal_durably(
+            &mut store,
+            decode_limits(4)?,
+            maximum_bytes()?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        if removal
+            == (NativeExecutableDurableLeaseJournalRemoval::Removed {
+                durability_error: TestDurabilityError::Failed,
+            })
+            && store.bytes.is_none()
+            && store.durability_calls == 1
+        {
+            Ok(())
+        } else {
+            Err(String::from(
+                "post-removal durability failure restored lease journal",
+            ))
+        }
+    }
+
+    #[test]
+    fn empty_file_journal_can_be_removed_durably() -> TestResult {
+        let directory = env::temp_dir().join(format!(
+            "malbolge-durable-lease-empty-remove-{}",
+            process::id(),
+        ));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test cleanup failed: {error}"));
+            },
+        }
+        create_dir_all(&directory)
+            .map_err(|error| format!("test create failed: {error}"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
+        let request = transition_request(owner(8), 4)?;
+        let _acquired =
+            acquire_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let _released =
+            release_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let removed = remove_empty_executable_durable_lease_journal_durably(
+            &mut store,
+            request.decode_limits,
+            request.maximum_bytes,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let restored = restore_executable_durable_lease_journal(
+            &mut store,
+            request.decode_limits,
+            request.maximum_bytes,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        drop(store);
+        remove_dir_all(&directory)
+            .map_err(|error| format!("test removal failed: {error}"))?;
+        if removed == NativeExecutableDurableLeaseJournalRemoval::Durable
+            && restored == NativeExecutableDurableLeaseJournalLoad::Missing
+        {
+            Ok(())
+        } else {
+            Err(String::from("empty lease journal removal drifted"))
+        }
+    }
+
+    #[test]
+    fn nonempty_file_journal_blocks_empty_removal() -> TestResult {
+        let directory = env::temp_dir().join(format!(
+            "malbolge-durable-lease-nonempty-remove-{}",
+            process::id(),
+        ));
+        match remove_dir_all(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => {
+                return Err(format!("test cleanup failed: {error}"));
+            },
+        }
+        create_dir_all(&directory)
+            .map_err(|error| format!("test create failed: {error}"))?;
+        let mut store =
+            NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
+        let request = transition_request(owner(8), 4)?;
+        let acquired =
+            acquire_executable_durable_lease_once(&mut store, request)
+                .map_err(|error| format!("{error:?}"))?;
+        let expected = match acquired {
+            NativeExecutableDurableLeaseTransition::Durable {
+                registry,
+                ..
+            }
+            | NativeExecutableDurableLeaseTransition::Published {
+                registry,
+                ..
+            } => registry,
+            _ => {
+                return Err(String::from(
+                    "test lease acquisition did not commit",
+                ));
+            },
+        };
+        let removal = remove_empty_executable_durable_lease_journal_durably(
+            &mut store,
+            request.decode_limits,
+            request.maximum_bytes,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let restored = restore_executable_durable_lease_journal(
+            &mut store,
+            request.decode_limits,
+            request.maximum_bytes,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        drop(store);
+        remove_dir_all(&directory)
+            .map_err(|error| format!("test removal failed: {error}"))?;
+        if removal
+            == (NativeExecutableDurableLeaseJournalRemoval::Conflict {
+                current: Some(expected.clone()),
+            })
+            && restored
+                == (NativeExecutableDurableLeaseJournalLoad::Present {
+                    registry: expected,
+                })
+        {
+            Ok(())
+        } else {
+            Err(String::from("nonempty lease journal was removed"))
+        }
+    }
+
+    #[test]
+    fn release_missing_journal_is_unchanged() -> TestResult {
+        let mut store = TransitionStore::default();
+        let outcome = release_executable_durable_lease_once(
+            &mut store,
+            transition_request(owner(9), 4)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        if outcome
+            == (NativeExecutableDurableLeaseTransition::Unchanged {
+                current: None,
+            })
+            && store.bytes.is_none()
+            && store.durability_calls == 0
+        {
+            Ok(())
+        } else {
+            Err(String::from("missing lease release mutated storage"))
+        }
     }
 
     #[test]
