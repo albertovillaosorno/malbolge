@@ -48,6 +48,7 @@ GRAPH_MIRROR_ROOT = ROOT / ".jig" / "graph" / "mirror"
 SOURCE_CATALOG = SRC_ROOT / "README.md"
 SOURCE_SIDECAR = GRAPH_MIRROR_ROOT / "src" / "README.md.yml"
 CARGO_MANIFEST = ROOT / "Cargo.toml"
+CARGO_CONFIG = ROOT / ".cargo" / "config.toml"
 GIT = "git"
 FUNCTION_MANIFEST = "function.yml"
 MIN_COMPOSITION_PARTS = 4
@@ -272,6 +273,21 @@ def test_cargo_package_metadata_inherits_workspace_authority() -> None:
     assert workspace_package.keys() >= WORKSPACE_PACKAGE_KEYS
     for key in WORKSPACE_PACKAGE_KEYS:
         assert package[key] == {"workspace": True}
+
+
+def test_cargo_compiler_path_matches_workspace_rust_version() -> None:
+    """Cargo rustc selection follows workspace MSRV authority."""
+    manifest = _load_cargo_manifest(CARGO_MANIFEST)
+    workspace = _toml_table(manifest["workspace"])
+    workspace_package = _toml_table(workspace["package"])
+    rust_version = workspace_package["rust-version"]
+    assert isinstance(rust_version, str)
+
+    config = _load_cargo_manifest(CARGO_CONFIG)
+    build = _toml_table(config["build"])
+    assert build["rustc"] == (
+        f".dependencies/rust/{rust_version}/bin/rustc"
+    )
 
 
 def test_workspace_dependency_rule_rejects_local_sources() -> None:
