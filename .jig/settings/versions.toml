@@ -89,7 +89,7 @@ template = "{version}"
 kind = "toml"
 path = ".cargo/config.toml"
 selector = "build.rustc"
-template = ".dependencies/rust/{version}/bin/rustc"
+template = ".dependencies/rust/{version}/bin/rustc.bin"
 
 [authority.rustc-lints]
 current = "1.97.1"

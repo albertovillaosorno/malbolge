@@ -1114,24 +1114,55 @@ def test_rust_toolchain_import_preserves_native_tree_and_alias(
     cargo = source_bin / "cargo"
     _ = cargo.write_bytes(RUST_CARGO_BYTES)
     _ = cargo.chmod(cargo.stat().st_mode | stat.S_IXUSR)
-    _ = (source_bin / "rustc").write_bytes(RUST_RUSTC_BYTES)
+    rustc = source_bin / "rustc"
+    _ = rustc.write_bytes(RUST_RUSTC_BYTES)
+    _ = rustc.chmod(rustc.stat().st_mode | stat.S_IXUSR)
     _ = (source_lib / "manifest").write_bytes(RUST_STD_BYTES)
     destination = tmp_path / ".dependencies" / "rust" / RUST_CHANNEL
 
     aliases = project.import_rust_toolchain(
         source,
         destination,
-        tool_ids=("cargo",),
+        tool_ids=("cargo", "rustc"),
         windows=False,
     )
 
-    alias = destination / "bin" / "cargo.bin"
-    assert aliases == (alias,)
-    assert alias.read_bytes() == RUST_CARGO_BYTES
-    assert alias.stat().st_mode & stat.S_IXUSR
+    cargo_alias = destination / "bin" / "cargo.bin"
+    rustc_alias = destination / "bin" / "rustc.bin"
+    assert aliases == (cargo_alias, rustc_alias)
+    assert cargo_alias.read_bytes() == RUST_CARGO_BYTES
+    assert cargo_alias.stat().st_mode & stat.S_IXUSR
+    assert rustc_alias.read_bytes() == RUST_RUSTC_BYTES
+    assert rustc_alias.stat().st_mode & stat.S_IXUSR
     assert (destination / "bin" / "rustc").read_bytes() == RUST_RUSTC_BYTES
     assert (destination / "lib/rustlib/manifest").read_bytes() == RUST_STD_BYTES
     assert project.rust_toolchain_import_complete(destination)
+
+
+def test_rust_toolchain_import_aliases_windows_compiler(
+    tmp_path: Path,
+) -> None:
+    """Windows stable imports expose neutral Cargo and rustc aliases."""
+    source = tmp_path / "host-rust"
+    source_bin = source / "bin"
+    source_bin.mkdir(parents=True)
+    _ = (source_bin / "cargo.exe").write_bytes(RUST_CARGO_BYTES)
+    _ = (source_bin / "rustc.exe").write_bytes(RUST_RUSTC_BYTES)
+    (source / "lib/rustlib").mkdir(parents=True)
+    destination = tmp_path / ".dependencies" / "rust" / RUST_CHANNEL
+
+    aliases = project.import_rust_toolchain(
+        source,
+        destination,
+        tool_ids=("cargo", "rustc"),
+        windows=True,
+    )
+
+    cargo_alias = destination / "bin/cargo.bin"
+    rustc_alias = destination / "bin/rustc.bin"
+    assert aliases == (cargo_alias, rustc_alias)
+    assert cargo_alias.read_bytes() == RUST_CARGO_BYTES
+    assert rustc_alias.read_bytes() == RUST_RUSTC_BYTES
 
 
 def test_rustup_resolver_never_queries_uninstalled_channel(
@@ -1269,10 +1300,43 @@ def test_rust_import_orchestration_materializes_stable_and_nightly(
     nightly_root = tmp_path / ".dependencies/rust" / RUST_NIGHTLY_CHANNEL
     assert imported == (stable_root, nightly_root)
     assert (stable_root / "bin/cargo.bin").is_file()
+    assert (stable_root / "bin/rustc.bin").is_file()
     assert (nightly_root / "bin/cargo-clippy.bin").is_file()
     assert (nightly_root / "bin/cargo-fmt.bin").is_file()
     assert project.rust_toolchain_import_complete(stable_root)
     assert project.rust_toolchain_import_complete(nightly_root)
+
+
+def test_rust_import_orchestration_backfills_stable_rustc_alias(
+    tmp_path: Path,
+) -> None:
+    """Completed stable imports gain the compiler alias without reimporting."""
+    _ = _write_rust_manifest(tmp_path)
+    stable_root = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    stable_bin = stable_root / "bin"
+    stable_bin.mkdir(parents=True)
+    cargo = stable_bin / "cargo"
+    rustc = stable_bin / "rustc"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    _ = rustc.write_bytes(RUST_RUSTC_BYTES)
+    _ = (stable_bin / "cargo.bin").write_bytes(RUST_CARGO_BYTES)
+    _ = (stable_root / project.RUST_IMPORT_MARKER).write_text(
+        "malbolge-rust-toolchain-import/v1\n",
+        encoding="ascii",
+    )
+
+    def resolve(channel: str) -> Path | None:
+        assert channel == RUST_NIGHTLY_CHANNEL
+        return None
+
+    imported = project.import_installed_rust_toolchains(
+        tmp_path,
+        LINUX_PLATFORM,
+        resolver=resolve,
+    )
+
+    assert imported == (stable_root,)
+    assert (stable_bin / "rustc.bin").read_bytes() == RUST_RUSTC_BYTES
 
 
 def test_rust_inspection_requires_completed_neutral_alias(

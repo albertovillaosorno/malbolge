@@ -1,6 +1,6 @@
 [build]
 target-dir = ".cache/rust/target"
-rustc = ".dependencies/rust/1.98.1/bin/rustc"
+rustc = ".dependencies/rust/1.98.1/bin/rustc.bin"
 
 [env]
 CLIPPY_CONF_DIR = { value = ".jig/lang/rust", relative = true }

@@ -286,7 +286,7 @@ def test_cargo_compiler_path_matches_workspace_rust_version() -> None:
     config = _load_cargo_manifest(CARGO_CONFIG)
     build = _toml_table(config["build"])
     assert build["rustc"] == (
-        f".dependencies/rust/{rust_version}/bin/rustc"
+        f".dependencies/rust/{rust_version}/bin/rustc.bin"
     )
 
 

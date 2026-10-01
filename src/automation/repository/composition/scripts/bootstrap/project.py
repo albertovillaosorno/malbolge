@@ -732,6 +732,31 @@ def write_rust_linker_adapters(
     )
 
 
+def _ensure_rust_toolchain_aliases(
+    toolchain_root: Path,
+    tool_ids: tuple[str, ...],
+    *,
+    windows: bool,
+) -> tuple[Path, ...]:
+    """Materialize neutral executable aliases for imported Rust tools.
+
+    Returns:
+        Alias paths inside the imported native toolchain `bin` directory.
+
+    """
+    suffix = ".exe" if windows else ""
+    aliases: list[Path] = []
+    for tool_id in tool_ids:
+        native = toolchain_root / "bin" / f"{tool_id}{suffix}"
+        if not native.is_file():
+            _fail(f"imported Rust tool is missing: {native}")
+        alias = toolchain_root / "bin" / f"{tool_id}.bin"
+        if not alias.is_file():
+            _ = _link_or_copy(str(native), str(alias))
+        aliases.append(alias)
+    return tuple(aliases)
+
+
 def import_rust_toolchain(
     source: Path,
     destination: Path,
@@ -753,21 +778,17 @@ def import_rust_toolchain(
         copy_function=_link_or_copy,
         symlinks=True,
     )
-    suffix = ".exe" if windows else ""
-    aliases: list[Path] = []
-    for tool_id in tool_ids:
-        native = destination / "bin" / f"{tool_id}{suffix}"
-        if not native.is_file():
-            _fail(f"imported Rust tool is missing: {native}")
-        alias = destination / "bin" / f"{tool_id}.bin"
-        _ = _link_or_copy(str(native), str(alias))
-        aliases.append(alias)
+    aliases = _ensure_rust_toolchain_aliases(
+        destination,
+        tool_ids,
+        windows=windows,
+    )
     _ = (destination / RUST_IMPORT_MARKER).write_text(
         "malbolge-rust-toolchain-import/v1\n",
         encoding="ascii",
         newline="\n",
     )
-    return tuple(aliases)
+    return aliases
 
 
 type RustToolchainResolver = Callable[[str], Path | None]
@@ -917,13 +938,18 @@ def import_installed_rust_toolchains(
     """
     windows = platform_id.startswith(WINDOWS_SYSTEM)
     requests = (
-        (_rust_channel(root), ("cargo",)),
+        (_rust_channel(root), ("cargo", "rustc")),
         (RUST_NIGHTLY_CHANNEL, ("cargo-clippy", "cargo-fmt")),
     )
     imported: list[Path] = []
     for channel, tool_ids in requests:
         destination = root / ".dependencies" / "rust" / channel
         if rust_toolchain_import_complete(destination):
+            _ = _ensure_rust_toolchain_aliases(
+                destination,
+                tool_ids,
+                windows=windows,
+            )
             imported.append(destination)
             continue
         if destination.exists():
