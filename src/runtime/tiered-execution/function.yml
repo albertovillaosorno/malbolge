@@ -684,6 +684,12 @@ parts:
     language: rust
     responsibility: >-
       Apply one immutable bounded decision policy to synchronous dispatch.
+  - id: part-0125
+    path: composition/tier/dispatch_codec.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Encode canonical immutable synchronous dispatch-policy snapshots.
 projects: []
 tests: []
 graph:

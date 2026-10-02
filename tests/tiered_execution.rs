@@ -53,6 +53,8 @@ pub mod cached_retry;
 pub mod continuation_dispatch_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_policy.rs"]
 pub mod continuation_dispatch_policy;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
+pub mod continuation_dispatch_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
@@ -377,6 +379,11 @@ use continuation_dispatch_cycle::{
 use continuation_dispatch_policy::{
     NativeContinuationDispatchPolicy, NativeContinuationDispatchPolicyDecision,
     execute_native_continuation_dispatch_policy,
+};
+use continuation_dispatch_policy_codec::{
+    NativeContinuationDispatchPolicyCodecError,
+    decode_native_continuation_dispatch_policy_snapshot,
+    encode_native_continuation_dispatch_policy_snapshot,
 };
 use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
@@ -95403,6 +95410,230 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
 }
 
 #[test]
+fn continuation_dispatch_policy_codec_roundtrips_complete_bytes()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(4, "dispatch codec turns")?;
+    let snapshot = NativeContinuationDispatchPolicy::new(
+        maximum_turns,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_dispatch_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let expected = [
+        b'M', b'B', b'D', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0, 0, 0, 0, 0,
+        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let decoded = decode_native_continuation_dispatch_policy_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes == expected
+        && decoded == snapshot
+        && encode_native_continuation_dispatch_policy_snapshot(decoded)
+            .map_err(|error| error.to_string())?
+            == expected
+    {
+        Ok(())
+    } else {
+        Err(String::from("complete dispatch policy codec drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_codec_roundtrips_interpret_bytes()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(7, "dispatch codec turns")?;
+    let step_budget = nonzero_test_limit(3, "dispatch codec slice")?;
+    let snapshot = NativeContinuationDispatchPolicy::new(
+        maximum_turns,
+        NativeContinuationDispatchPolicyDecision::Interpret { step_budget },
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_dispatch_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let expected = [
+        b'M', b'B', b'D', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0, 1, 0, 0, 0,
+        7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let decoded = decode_native_continuation_dispatch_policy_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes == expected && decoded == snapshot {
+        Ok(())
+    } else {
+        Err(String::from("interpret dispatch policy codec drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_codec_roundtrips_yield_tags()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(2, "dispatch codec turns")?;
+    let cases = [
+        (NativeContinuationDispatchPolicyDecision::YieldCaller, 2u8),
+        (
+            NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+            3u8,
+        ),
+    ];
+    for (decision, tag) in cases {
+        let snapshot =
+            NativeContinuationDispatchPolicy::new(maximum_turns, decision)
+                .snapshot();
+        let bytes =
+            encode_native_continuation_dispatch_policy_snapshot(snapshot)
+                .map_err(|error| error.to_string())?;
+        let mut expected = [
+            b'M', b'B', b'D', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0, 0, 0,
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        set_dispatch_policy_codec_byte(&mut expected, 12, tag)?;
+        let decoded =
+            decode_native_continuation_dispatch_policy_snapshot(&bytes)
+                .map_err(|error| error.to_string())?;
+        if bytes != expected || decoded != snapshot {
+            return Err(String::from("yield dispatch policy codec drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_codec_rejects_semantic_drift()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(2, "dispatch codec turns")?;
+    let snapshot = NativeContinuationDispatchPolicy::new(
+        maximum_turns,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_dispatch_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let mut zero_turns = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut zero_turns, 16, 0)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&zero_turns)
+        != Err(NativeContinuationDispatchPolicyCodecError::MaximumTurnsZero)
+    {
+        return Err(String::from("zero dispatch turn bound was accepted"));
+    }
+    let mut zero_slice = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut zero_slice, 12, 1)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&zero_slice)
+        != Err(NativeContinuationDispatchPolicyCodecError::StepBudgetZero)
+    {
+        return Err(String::from("zero dispatch slice budget was accepted"));
+    }
+    let mut illegal_budget = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut illegal_budget, 24, 1)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&illegal_budget)
+        != Err(
+            NativeContinuationDispatchPolicyCodecError::NonInterpretBudget {
+                observed: 1,
+            },
+        )
+    {
+        return Err(String::from("non-interpret dispatch budget was accepted"));
+    }
+    let mut unknown = bytes;
+    set_dispatch_policy_codec_byte(&mut unknown, 12, 9)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&unknown)
+        != Err(NativeContinuationDispatchPolicyCodecError::DecisionKind {
+            observed: 9,
+        })
+    {
+        return Err(String::from("unknown dispatch decision tag was accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_codec_rejects_framing_drift()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(2, "dispatch codec turns")?;
+    let snapshot = NativeContinuationDispatchPolicy::new(
+        maximum_turns,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_dispatch_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let mut magic = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut magic, 0, b'N')?;
+    if decode_native_continuation_dispatch_policy_snapshot(&magic)
+        != Err(NativeContinuationDispatchPolicyCodecError::Magic)
+    {
+        return Err(String::from("dispatch codec magic drift was accepted"));
+    }
+    let mut version = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut version, 8, 2)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&version)
+        != Err(NativeContinuationDispatchPolicyCodecError::Version {
+            observed: 2,
+        })
+    {
+        return Err(String::from("dispatch codec revision drift was accepted"));
+    }
+    let mut header = bytes.clone();
+    set_dispatch_policy_codec_byte(&mut header, 10, 1)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&header)
+        != Err(NativeContinuationDispatchPolicyCodecError::ReservedHeader {
+            observed: 1,
+        })
+    {
+        return Err(String::from(
+            "dispatch header reserved bits were accepted",
+        ));
+    }
+    let mut decision = bytes;
+    set_dispatch_policy_codec_byte(&mut decision, 14, 1)?;
+    if decode_native_continuation_dispatch_policy_snapshot(&decision)
+        != Err(
+            NativeContinuationDispatchPolicyCodecError::ReservedDecision {
+                observed: 1,
+            },
+        )
+    {
+        return Err(String::from(
+            "dispatch decision reserved bits were accepted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_codec_rejects_length_drift()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(2, "dispatch codec turns")?;
+    let snapshot = NativeContinuationDispatchPolicy::new(
+        maximum_turns,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    )
+    .snapshot();
+    let bytes = encode_native_continuation_dispatch_policy_snapshot(snapshot)
+        .map_err(|error| error.to_string())?;
+    let short = bytes
+        .get(..31)
+        .ok_or_else(|| String::from("dispatch codec short fixture missing"))?;
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for drifted in [short, trailing.as_slice()] {
+        let Err(NativeContinuationDispatchPolicyCodecError::Length {
+            expected,
+            observed,
+        }) = decode_native_continuation_dispatch_policy_snapshot(drifted)
+        else {
+            return Err(String::from(
+                "dispatch policy length drift was accepted",
+            ));
+        };
+        if expected != 32 || !matches!(observed, 31 | 33) {
+            return Err(String::from(
+                "dispatch policy length evidence drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn continuation_dispatch_policy_round_trips_canonical_decisions()
 -> Result<(), String> {
     let maximum_turns = nonzero_test_limit(3, "dispatch policy turns")?;
@@ -96140,6 +96371,18 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     } else {
         Err(String::from("worker semantic-failure evidence drifted"))
     }
+}
+
+fn set_dispatch_policy_codec_byte(
+    bytes: &mut [u8],
+    index: usize,
+    value: u8,
+) -> Result<(), String> {
+    let slot = bytes
+        .get_mut(index)
+        .ok_or_else(|| format!("dispatch codec byte {index} missing"))?;
+    *slot = value;
+    Ok(())
 }
 
 fn dispatch_cycle_pair(

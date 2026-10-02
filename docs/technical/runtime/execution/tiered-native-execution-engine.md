@@ -1853,10 +1853,15 @@ slicing, caller yield, and native-retry yield map directly to public scheduler
 constructors; policy snapshots round-trip exact decision and turn-bound evidence
 without inspecting the scheduler's private representation.
 
-Adaptive or mixed-decision policy, policy persistence, parallel/background
-worker lifecycle, durable queue/timing identity, and distributed scheduling
-remain outside this boundary; synchronous same-cycle count/latency publication
-remains owned.
+Revision-one dispatch-policy transport now uses a fixed 32-byte little-endian
+`MBDPOL01` frame. Four public decision tags, zero reserved fields, positive
+maximum turns, and an interpret-only positive step-budget payload are validated
+fail-closed before a policy snapshot is reconstructed.
+
+Adaptive or mixed-decision policy, durable policy publication/CAS/migration,
+parallel/background worker lifecycle, durable queue/timing identity, and
+distributed scheduling remain outside this boundary. Synchronous same-cycle
+count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
