@@ -106,9 +106,23 @@ pub fn execute_native_continuation_dispatch_cycle<Clock>(
 where
     Clock: NativeContinuationMonotonicClock,
 {
+    execute_native_continuation_dispatch_decisions(
+        queue,
+        decisions.iter().copied(),
+    )
+}
+
+pub(crate) fn execute_native_continuation_dispatch_decisions<Clock, Decisions>(
+    queue: &mut NativeContinuationDispatchQueue<Clock>,
+    decisions: Decisions,
+) -> NativeContinuationDispatchWorkerCycle<Clock::Error>
+where
+    Clock: NativeContinuationMonotonicClock,
+    Decisions: IntoIterator<Item = NativeContinuationScheduleDecision>,
+{
     let mut completions = Vec::new();
     for decision in decisions {
-        match execute_next_native_continuation_dispatch(queue, *decision) {
+        match execute_next_native_continuation_dispatch(queue, decision) {
             Ok(NativeContinuationDispatchWorkerTurn::Idle) => {
                 return NativeContinuationDispatchWorkerCycle {
                     completions,

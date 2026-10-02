@@ -595,9 +595,15 @@ behavior.
   Per-item semantic or timing failure remains item evidence and does not cancel
   unrelated queued owners.
 
-  Parallel or background worker lifecycle, durable queue/timing identity, and
-  distributed scheduling remain open. Synchronous same-cycle count/latency
-  publication remains owned.
+  An immutable synchronous dispatch policy now binds one canonical decision
+  variant to a positive maximum-turn count. Complete interpretation, positive
+  slicing, caller yield, and native-retry yield reconstruct directly through
+  public scheduler constructors, and exact snapshots round-trip without private
+  scheduler introspection.
+
+  Adaptive or mixed-decision policy, policy persistence, parallel/background
+  worker lifecycle, durable queue/timing identity, and distributed scheduling
+  remain open. Synchronous same-cycle count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -636,10 +642,10 @@ behavior.
   adapters.
 
   Cached execution is owned by `cached_retry.rs` and `cached_cycle.rs`;
-  process-local affine dispatch queueing plus finite explicit-decision
-  synchronous worker cycles are now bounded. Parallel/background worker
-  lifecycle, durable queue identity, distributed scheduling, and product
-  orchestration that chooses decisions automatically remain open.
+  process-local affine dispatch queueing, finite explicit-decision cycles, and
+  fixed immutable synchronous dispatch policy are now bounded. Adaptive or
+  mixed-decision orchestration, policy persistence, parallel/background worker
+  lifecycle, durable queue identity, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

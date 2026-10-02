@@ -1847,9 +1847,16 @@ decision-exhausted, idle, or pre-dispatch blocked before another affine owner
 moves. Per-item semantic or timing failure remains item evidence and does not
 cancel later unrelated queued owners.
 
-Parallel or background worker lifecycle, durable queue/timing identity, and
-distributed scheduling remain outside this boundary; synchronous same-cycle
-count/latency publication remains owned.
+An immutable synchronous dispatch policy now binds one canonical public decision
+variant to a positive maximum-turn count. Complete interpretation, positive
+slicing, caller yield, and native-retry yield map directly to public scheduler
+constructors; policy snapshots round-trip exact decision and turn-bound evidence
+without inspecting the scheduler's private representation.
+
+Adaptive or mixed-decision policy, policy persistence, parallel/background
+worker lifecycle, durable queue/timing identity, and distributed scheduling
+remain outside this boundary; synchronous same-cycle count/latency publication
+remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

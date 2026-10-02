@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cycle.rs"]
 pub mod continuation_dispatch_cycle;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_policy.rs"]
+pub mod continuation_dispatch_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
@@ -371,6 +373,10 @@ use continuation_dispatch_cycle::{
     NativeContinuationDispatchWorkerCompletionList,
     NativeContinuationDispatchWorkerCycleStop,
     execute_native_continuation_dispatch_cycle,
+};
+use continuation_dispatch_policy::{
+    NativeContinuationDispatchPolicy, NativeContinuationDispatchPolicyDecision,
+    execute_native_continuation_dispatch_policy,
 };
 use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
@@ -95393,6 +95399,225 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
         Err(String::from(
             "unknown interval finish changed pending state",
         ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_round_trips_canonical_decisions()
+-> Result<(), String> {
+    let maximum_turns = nonzero_test_limit(3, "dispatch policy turns")?;
+    let step_budget = nonzero_test_limit(2, "dispatch policy slice")?;
+    let cases = [
+        (
+            NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+            NativeContinuationScheduleDecision::complete_interpreter(),
+        ),
+        (
+            NativeContinuationDispatchPolicyDecision::Interpret { step_budget },
+            NativeContinuationScheduleDecision::interpret(step_budget),
+        ),
+        (
+            NativeContinuationDispatchPolicyDecision::YieldCaller,
+            NativeContinuationScheduleDecision::yield_to(
+                NativeContinuationYieldTarget::Caller,
+            ),
+        ),
+        (
+            NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+            NativeContinuationScheduleDecision::yield_to(
+                NativeContinuationYieldTarget::NativeRetry,
+            ),
+        ),
+    ];
+    for (decision, expected) in cases {
+        let policy =
+            NativeContinuationDispatchPolicy::new(maximum_turns, decision);
+        let snapshot = policy.snapshot();
+        let restored =
+            NativeContinuationDispatchPolicy::from_snapshot(snapshot);
+        if restored != policy
+            || restored.decision() != decision
+            || restored.maximum_turns() != maximum_turns
+            || snapshot.decision() != decision
+            || snapshot.maximum_turns() != maximum_turns
+            || decision.schedule_decision() != expected
+        {
+            return Err(String::from("dispatch policy snapshot drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_enforces_turn_bound_and_retains_pending()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let third = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(3, "dispatch policy pending")?;
+    let maximum_in_flight = nonzero_test_limit(2, "dispatch policy active")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let first_id = enqueue_dispatch_fixture(&mut queue, first)?;
+    let second_id = enqueue_dispatch_fixture(&mut queue, second)?;
+    let third_id = enqueue_dispatch_fixture(&mut queue, third)?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "dispatch policy turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let cycle = execute_native_continuation_dispatch_policy(&mut queue, policy);
+    let (first_completion, second_completion) =
+        dispatch_cycle_pair(cycle.completions())?;
+    let pending_after = queue.pending();
+    let third_handoff = queue
+        .cancel_pending(third_id)
+        .ok_or_else(|| String::from("dispatch policy lost pending owner"))?;
+    if cycle.stop()
+        == NativeContinuationDispatchWorkerCycleStop::DecisionsExhausted
+        && first_completion.dispatch() == first_id
+        && second_completion.dispatch() == second_id
+        && worker_schedule_reason(first_completion)
+            == Some(NativeContinuationScheduleStopReason::CallerYield)
+        && worker_schedule_reason(second_completion)
+            == Some(NativeContinuationScheduleStopReason::CallerYield)
+        && pending_after == 1
+        && handoff_yields_to_caller(third_handoff)?
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy turn bound drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_stops_idle_before_turn_bound()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(3, "dispatch policy capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let id = enqueue_dispatch_fixture(&mut queue, fixture)?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        maximum,
+        NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+    );
+    let cycle = execute_native_continuation_dispatch_policy(&mut queue, policy);
+    let completion = dispatch_cycle_single(cycle.completions())?;
+    if cycle.stop() == NativeContinuationDispatchWorkerCycleStop::Idle
+        && completion.dispatch() == id
+        && worker_schedule_reason(completion)
+            == Some(NativeContinuationScheduleStopReason::NativeRetry)
+        && worker_latency_nanoseconds(completion)? == 10
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy idle stop drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_applies_positive_interpreter_slice()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "dispatch policy capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let id = enqueue_dispatch_fixture(&mut queue, fixture)?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        maximum,
+        NativeContinuationDispatchPolicyDecision::Interpret {
+            step_budget: maximum,
+        },
+    );
+    let cycle = execute_native_continuation_dispatch_policy(&mut queue, policy);
+    let completion = dispatch_cycle_single(cycle.completions())?;
+    if cycle.stop()
+        == NativeContinuationDispatchWorkerCycleStop::DecisionsExhausted
+        && completion.dispatch() == id
+        && worker_schedule_reason(completion)
+            == Some(NativeContinuationScheduleStopReason::BudgetExhausted)
+        && worker_latency_nanoseconds(completion)? == 10
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy interpreter slice drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_completes_interpreter_normatively()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "dispatch policy capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let dispatch = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("policy complete enqueue: {:?}", failure.error())
+    })?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        maximum,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    );
+    let cycle = execute_native_continuation_dispatch_policy(&mut queue, policy);
+    let completion = dispatch_cycle_single(cycle.completions())?;
+    let NativeContinuationDispatchWorkerSemantic::Scheduled(outcome) =
+        completion.semantic()
+    else {
+        return Err(String::from("policy completion became failure"));
+    };
+    let NativeContinuationScheduleOutcome::Completed(result) = outcome.as_ref()
+    else {
+        return Err(String::from("policy completion remained suspended"));
+    };
+    if cycle.stop()
+        == NativeContinuationDispatchWorkerCycleStop::DecisionsExhausted
+        && completion.dispatch() == dispatch
+        && result.outcome() == fixture.plan.outcome()
+        && result.interpreter_outcome()
+            == (RunOutcome::BudgetExhausted { steps: 1 })
+        && result.state().memory() == expected.final_memory
+        && result.state().io().output() == expected.final_output
+        && worker_latency_nanoseconds(completion)? == 10
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy completion drifted"))
     }
 }
 

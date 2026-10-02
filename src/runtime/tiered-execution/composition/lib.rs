@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "tier/dispatch_cycle.rs"]
 pub mod continuation_dispatch_cycle;
+#[path = "tier/dispatch_policy.rs"]
+pub mod continuation_dispatch_policy;
 #[path = "tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
 #[path = "tier/dispatch_worker.rs"]

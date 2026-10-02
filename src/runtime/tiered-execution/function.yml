@@ -678,6 +678,12 @@ parts:
     language: rust
     responsibility: >-
       Drain explicit synchronous worker decisions without losing item evidence.
+  - id: part-0124
+    path: composition/tier/dispatch_policy.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply one immutable bounded decision policy to synchronous dispatch.
 projects: []
 tests: []
 graph:
