@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
+#[path = "tier/dispatch_worker.rs"]
+pub mod continuation_dispatch_worker;
 #[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "tier/executable_cache_limits_activation.rs"]

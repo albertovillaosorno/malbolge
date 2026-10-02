@@ -1834,9 +1834,15 @@ Opaque clock starts never escape.
 A bounded affine-handoff dispatch queue now owns automatic one-based work IDs,
 recoverable enqueue rejection, FIFO handoff transfer, in-flight timing
 backpressure, and out-of-order completion by returned work identity. Queue or
-timing capacity fails before affine ownership moves. Worker execution, durable
-queue/timing identity, and distributed scheduling remain outside this boundary;
-synchronous same-cycle count/latency publication remains owned.
+timing capacity fails before affine ownership moves.
+
+A synchronous process-local worker turn now composes FIFO dequeue, one explicit
+scheduler decision, and timing completion. Semantic success/failure and timing
+success/failure remain independent evidence, so timing failure cannot erase a
+scheduler disposition and scheduler failure still closes its timing interval.
+Parallel or background worker lifecycle, durable queue/timing identity, and
+distributed scheduling remain outside this boundary; synchronous same-cycle
+count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

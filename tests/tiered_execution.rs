@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
+pub mod continuation_dispatch_worker;
 #[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
@@ -367,6 +369,11 @@ use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
     NativeContinuationDispatchEnqueueError, NativeContinuationDispatchId,
     NativeContinuationDispatchQueue, NativeContinuationDispatchedHandoff,
+};
+use continuation_dispatch_worker::{
+    NativeContinuationDispatchWorkerSemantic,
+    NativeContinuationDispatchWorkerTurn,
+    execute_next_native_continuation_dispatch,
 };
 use continuation_scheduler::{
     NativeContinuationScheduleDecision, NativeContinuationScheduleOutcome,
@@ -2291,6 +2298,14 @@ struct NativeScheduleFixture {
     handoff: NativeInterpreterHandoff,
     memory: Vec<u32>,
     plan: VerifiedDirectSequencePlan,
+}
+
+struct NativeWorkerFailureFixture {
+    address: u32,
+    expected: u32,
+    handoff: NativeInterpreterHandoff,
+    index: usize,
+    observed: u32,
 }
 
 struct NativeRetryFixture {
@@ -70793,6 +70808,52 @@ fn native_schedule_fixture(
     })
 }
 
+fn native_worker_failure_fixture() -> Result<NativeWorkerFailureFixture, String>
+{
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        mut memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let live_in = distinct_second_live_in(plan.programs())?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("worker drift index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("worker drift address missing"))? =
+        observed;
+    let handoff = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?;
+    let first = schedule_native_interpreter_handoff(
+        handoff,
+        NativeContinuationScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "worker drift slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("worker drift did not suspend"));
+    };
+    Ok(NativeWorkerFailureFixture {
+        address: live_in.address,
+        expected: live_in.value,
+        handoff: pause.into_handoff(),
+        index,
+        observed,
+    })
+}
+
 fn native_retry_fixture(
     isa: HostIsa,
     interpreter_steps: usize,
@@ -95317,6 +95378,245 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
     }
 }
 
+#[test]
+fn continuation_dispatch_worker_backpressure_preserves_pending_owner()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(2, "worker pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(1, "worker active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let (first_id, first_work) = dispatch_fixture(&mut queue, first)?;
+    let second_id = queue.enqueue(second.handoff).map_err(|failure| {
+        format!("second worker enqueue: {:?}", failure.error())
+    })?;
+    let error = execute_next_native_continuation_dispatch(
+        &mut queue,
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .err()
+    .ok_or_else(|| String::from("worker backpressure unexpectedly executed"))?;
+    let pending_after_error = queue.pending();
+    let in_flight_after_error = queue.in_flight();
+    let first_sample =
+        queue.complete(first_id).map_err(|completion_error| {
+            format!("first worker completion: {completion_error:?}")
+        })?;
+    let second_handoff = queue.cancel_pending(second_id).ok_or_else(|| {
+        String::from("worker backpressure lost pending owner")
+    })?;
+    let second_valid = handoff_yields_to_caller(second_handoff)?;
+    if first_work.id() == first_id
+        && error
+            == (LatencyIntervalBeginError::Capacity {
+                in_flight: 1,
+                maximum_in_flight,
+            })
+        && pending_after_error == 1
+        && in_flight_after_error == 1
+        && first_sample.nanoseconds() == 10
+        && second_valid
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("worker backpressure changed affine ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_worker_idle_does_not_touch_clock() -> TieredTestResult
+{
+    let maximum = nonzero_test_limit(1, "worker idle capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let turn = execute_next_native_continuation_dispatch(
+        &mut queue,
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|error| format!("idle worker failed: {error:?}"))?;
+    if turn == NativeContinuationDispatchWorkerTurn::Idle
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+        && queue.clock().finishes.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("idle worker touched dispatch state"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_worker_yields_and_records_latency()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "worker yield capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let dispatch = queue
+        .enqueue(fixture.handoff)
+        .map_err(|failure| format!("worker enqueue: {:?}", failure.error()))?;
+    let turn = execute_next_native_continuation_dispatch(
+        &mut queue,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|error| format!("worker dispatch: {error:?}"))?;
+    let NativeContinuationDispatchWorkerTurn::Worked(completion) = turn else {
+        return Err(String::from("queued worker returned idle"));
+    };
+    let semantic = matches!(
+        completion.semantic(),
+        NativeContinuationDispatchWorkerSemantic::Scheduled(outcome)
+            if matches!(
+                outcome.as_ref(),
+                NativeContinuationScheduleOutcome::Suspended(suspension)
+                    if suspension.reason()
+                        == NativeContinuationScheduleStopReason::CallerYield
+            )
+    );
+    let latency = completion
+        .latency()
+        .map_err(|error| format!("worker latency failed: {error:?}"))?;
+    if completion.dispatch() == dispatch
+        && semantic
+        && latency.nanoseconds() == 10
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().finishes == [1]
+    {
+        Ok(())
+    } else {
+        Err(String::from("worker yield evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_worker_retains_semantics_on_clock_failure()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "worker clock capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock {
+            fail_start: Some(1),
+            ..TestIntervalClock::default()
+        },
+        maximum,
+        maximum,
+    );
+    let dispatch = queue
+        .enqueue(fixture.handoff)
+        .map_err(|failure| format!("worker enqueue: {:?}", failure.error()))?;
+    let turn = execute_next_native_continuation_dispatch(
+        &mut queue,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|error| format!("worker dispatch: {error:?}"))?;
+    let NativeContinuationDispatchWorkerTurn::Worked(completion) = turn else {
+        return Err(String::from("clock-failure worker returned idle"));
+    };
+    let semantic = matches!(
+        completion.semantic(),
+        NativeContinuationDispatchWorkerSemantic::Scheduled(outcome)
+            if matches!(
+                outcome.as_ref(),
+                NativeContinuationScheduleOutcome::Suspended(suspension)
+                    if suspension.reason()
+                        == NativeContinuationScheduleStopReason::CallerYield
+            )
+    );
+    let latency = completion
+        .latency()
+        .err()
+        .ok_or_else(|| String::from("configured worker clock did not fail"))?;
+    if completion.dispatch() == dispatch
+        && semantic
+        && latency
+            == &(ContinuationDispatchCompletionError::Clock {
+                dispatch,
+                error: TestMonotonicClockError::Finish,
+            })
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("clock failure erased worker semantics"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
+-> Result<(), String> {
+    let fixture = native_worker_failure_fixture()?;
+    let maximum = nonzero_test_limit(1, "worker failure capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let dispatch = queue
+        .enqueue(fixture.handoff)
+        .map_err(|failure| format!("worker enqueue: {:?}", failure.error()))?;
+    let turn = execute_next_native_continuation_dispatch(
+        &mut queue,
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|error| format!("worker dispatch: {error:?}"))?;
+    let NativeContinuationDispatchWorkerTurn::Worked(completion) = turn else {
+        return Err(String::from("failing worker returned idle"));
+    };
+    let NativeContinuationDispatchWorkerSemantic::Failed(failure) =
+        completion.semantic()
+    else {
+        return Err(String::from("worker semantic failure was hidden"));
+    };
+    let latency = completion.latency().map_err(|error| {
+        format!("failure latency did not finish: {error:?}")
+    })?;
+    if completion.dispatch() == dispatch
+        && failure.cause()
+            == (NativeInterpreterHandoffExecutionCause::LiveIn {
+                address: fixture.address,
+                expected: fixture.expected,
+                observed: fixture.observed,
+            })
+        && failure.interpreter_steps() == 1
+        && failure.resume_index() == 1
+        && failure.state().memory().get(fixture.index).copied()
+            == Some(fixture.observed)
+        && latency.nanoseconds() == 10
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("worker semantic-failure evidence drifted"))
+    }
+}
+
 fn dispatch_fixture(
     queue: &mut ContinuationDispatchQueue,
     fixture: NativeScheduleFixture,
@@ -95331,11 +95631,11 @@ fn dispatch_fixture(
     Ok((id, work))
 }
 
-fn dispatched_handoff_yields_to_caller(
-    work: DispatchedHandoff,
+fn handoff_yields_to_caller(
+    handoff: NativeInterpreterHandoff,
 ) -> Result<bool, String> {
     let outcome = schedule_native_interpreter_handoff(
-        work.into_handoff(),
+        handoff,
         NativeContinuationScheduleDecision::yield_to(
             NativeContinuationYieldTarget::Caller,
         ),
@@ -95347,6 +95647,12 @@ fn dispatched_handoff_yields_to_caller(
             if suspension.reason()
                 == NativeContinuationScheduleStopReason::CallerYield
     ))
+}
+
+fn dispatched_handoff_yields_to_caller(
+    work: DispatchedHandoff,
+) -> Result<bool, String> {
+    handoff_yields_to_caller(work.into_handoff())
 }
 
 #[test]

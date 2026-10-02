@@ -666,6 +666,12 @@ parts:
     language: rust
     responsibility: >-
       Queue affine handoffs and track bounded process-local dispatch completion.
+  - id: part-0122
+    path: composition/tier/dispatch_worker.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Execute one queued affine handoff with independent timing evidence.
 projects: []
 tests: []
 graph:
