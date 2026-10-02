@@ -55,6 +55,8 @@ pub mod continuation_dispatch_cycle;
 pub mod continuation_dispatch_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
+pub mod continuation_dispatch_policy_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
@@ -384,6 +386,13 @@ use continuation_dispatch_policy_codec::{
     NativeContinuationDispatchPolicyCodecError,
     decode_native_continuation_dispatch_policy_snapshot,
     encode_native_continuation_dispatch_policy_snapshot,
+};
+use continuation_dispatch_policy_persistence::{
+    NativeContinuationDispatchPolicyDurablePersistence,
+    NativeContinuationDispatchPolicyPersistenceError,
+    NativeContinuationDispatchPolicyPersistenceLoad,
+    persist_native_continuation_dispatch_policy_durably,
+    restore_native_continuation_dispatch_policy,
 };
 use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
@@ -95407,6 +95416,204 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
             "unknown interval finish changed pending state",
         ))
     }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_roundtrips_policy()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(32, "dispatch policy bytes")?;
+    let step_budget = nonzero_test_limit(3, "dispatch policy slice")?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(5, "dispatch policy turns")?,
+        NativeContinuationDispatchPolicyDecision::Interpret { step_budget },
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = persist_native_continuation_dispatch_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("dispatch policy persistence failed: {error:?}")
+    })?;
+    let restored =
+        restore_native_continuation_dispatch_policy(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("dispatch policy restoration failed: {error:?}")
+            })?;
+    let NativeContinuationDispatchPolicyPersistenceLoad::Restored {
+        bytes,
+        policy: restored_policy,
+    } = restored
+    else {
+        return Err(String::from("persisted dispatch policy disappeared"));
+    };
+    if outcome.is_durable()
+        && outcome.bytes() == 32
+        && bytes == 32
+        && restored_policy == policy
+    {
+        Ok(())
+    } else {
+        Err(String::from("persisted dispatch policy drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_rejects_corrupt_load()
+-> Result<(), String> {
+    let maximum_bytes =
+        nonzero_test_limit(32, "corrupt dispatch policy bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(vec![0; 32]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        restore_native_continuation_dispatch_policy(&mut store, maximum_bytes)
+            .err()
+            .ok_or_else(|| {
+                String::from("corrupt dispatch policy bytes were accepted")
+            })?;
+    if error
+        == NativeContinuationDispatchPolicyPersistenceError::Codec(
+            NativeContinuationDispatchPolicyCodecError::Magic,
+        )
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "dispatch policy corrupt rejection drifted: {error:?}"
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_rejects_write_limit_before_store()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(31, "small dispatch policy bytes")?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(1, "dispatch policy turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let error = persist_native_continuation_dispatch_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .err()
+    .ok_or_else(|| String::from("undersized dispatch policy limit accepted"))?;
+    let NativeContinuationDispatchPolicyPersistenceError::Blob(
+        BlobPersistenceError::ByteLimit {
+            maximum_bytes: observed_limit,
+            observed_bytes,
+        },
+    ) = error
+    else {
+        return Err(format!("dispatch policy byte-limit drifted: {error:?}"));
+    };
+    if observed_limit == maximum_bytes
+        && observed_bytes == 32
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy byte limit reached store"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_reports_missing_state()
+-> Result<(), String> {
+    let maximum_bytes =
+        nonzero_test_limit(32, "missing dispatch policy bytes")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let restored =
+        restore_native_continuation_dispatch_policy(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("missing dispatch policy restore failed: {error:?}")
+            })?;
+    if restored == NativeContinuationDispatchPolicyPersistenceLoad::Missing {
+        Ok(())
+    } else {
+        Err(String::from("missing dispatch policy invented state"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_retains_durability_failure()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(32, "dispatch durability bytes")?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "dispatch policy turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+    );
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = persist_native_continuation_dispatch_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("dispatch policy publication failed: {error:?}")
+    })?;
+    let NativeContinuationDispatchPolicyDurablePersistence::Published {
+        durability_error,
+        write,
+    } = outcome
+    else {
+        return Err(String::from("dispatch durability failure lost commit"));
+    };
+    if durability_error == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && write.bytes() == 32
+        && store.blob.is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch durability evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_persistence_file_store_roundtrips_durably()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("durable-dispatch-policy")?;
+    let maximum_bytes = nonzero_test_limit(32, "file dispatch policy bytes")?;
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(6, "file dispatch policy turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let outcome = persist_native_continuation_dispatch_policy_durably(
+        &mut store,
+        policy,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file dispatch persistence failed: {error:?}"))?;
+    let restored =
+        restore_native_continuation_dispatch_policy(&mut store, maximum_bytes)
+            .map_err(|error| {
+                format!("file dispatch restoration failed: {error:?}")
+            })?;
+    let NativeContinuationDispatchPolicyPersistenceLoad::Restored {
+        bytes,
+        policy: restored_policy,
+    } = restored
+    else {
+        return Err(String::from("file dispatch policy disappeared"));
+    };
+    let result =
+        if outcome.bytes() == 32 && bytes == 32 && restored_policy == policy {
+            Ok(())
+        } else {
+            Err(String::from("file dispatch policy round-trip drifted"))
+        };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    result
 }
 
 #[test]

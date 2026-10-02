@@ -1858,9 +1858,16 @@ Revision-one dispatch-policy transport now uses a fixed 32-byte little-endian
 maximum turns, and an interpret-only positive step-budget payload are validated
 fail-closed before a policy snapshot is reconstructed.
 
-Adaptive or mixed-decision policy, durable policy publication/CAS/migration,
-parallel/background worker lifecycle, durable queue/timing identity, and
-distributed scheduling remain outside this boundary. Synchronous same-cycle
+Typed bounded dispatch-policy persistence now surrounds the canonical codec with
+the existing opaque blob application service. Missing durable state remains
+explicit, corrupt bytes fail codec validation, undersized limits fail before
+store replacement, and a durability-confirmation failure after replacement is
+returned as committed `Published` evidence. The filesystem blob adapter provides
+one durable canonical round-trip without gaining policy authority.
+
+Adaptive or mixed-decision policy, revisioned active-policy ownership/CAS/
+migration, parallel/background worker lifecycle, durable queue/timing identity,
+and distributed scheduling remain outside this boundary. Synchronous same-cycle
 count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It

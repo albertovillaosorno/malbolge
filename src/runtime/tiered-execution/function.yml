@@ -690,6 +690,12 @@ parts:
     language: rust
     responsibility: >-
       Encode canonical immutable synchronous dispatch-policy snapshots.
+  - id: part-0126
+    path: composition/tier/dispatch_store.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Bind canonical synchronous dispatch policy to bounded blob persistence.
 projects: []
 tests: []
 graph:
