@@ -76,6 +76,8 @@ pub mod region_certificate;
 pub mod register_masked_aot_bundle_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/object_store.rs"]
 pub mod register_masked_aot_object_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/package_lease.rs"]
+pub mod register_masked_aot_package_lease_reclamation;
 #[path = "../src/runtime/tiered-execution/composition/tier/aot_package.rs"]
 pub mod register_masked_aot_package_persistence;
 
@@ -123,6 +125,7 @@ use file_blob_pair_store::{
     NativeContinuationFileBlobPairStore,
 };
 use file_blob_store::NativeContinuationFileBlobStore;
+use file_coordination::NativeContinuationFileCoordination;
 use indexed_state::IndexedMachineState;
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
@@ -163,8 +166,10 @@ use register_masked_aot_object_persistence::{
     persist_register_masked_aot_object_durably,
     restore_register_masked_aot_object,
 };
+use register_masked_aot_package_lease_reclamation as package_lease;
 use register_masked_aot_package_persistence::{
     RegisterMaskedAotPackageConditionalDurablePersistence,
+    RegisterMaskedAotPackageLeaseSnapshot,
     RegisterMaskedAotPackagePersistRequest,
     RegisterMaskedAotPackagePersistenceLoad,
     RegisterMaskedAotPackagePreparationError,
@@ -176,6 +181,7 @@ use register_masked_aot_package_persistence::{
     compare_and_swap_register_masked_aot_package_durably,
     persist_register_masked_aot_package_durably,
     reclaim_register_masked_aot_package_generations,
+    reclaim_register_masked_aot_package_generations_from_lease_snapshot,
     restore_register_masked_aot_package,
     restore_register_masked_aot_package_versioned,
 };
@@ -1615,6 +1621,120 @@ fn product_register_masked_aot_package_reclaim_rejects_corrupt_current()
         } else {
             Err(String::from("corrupt package reclamation failed open"))
         }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_reclaims_under_one_lease_guard()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_guarded_lease")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, _graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let coordination = NativeContinuationFileCoordination::new(
+            fixture.directory.join("aot-package.lock"),
+        );
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut package =
+            NativeContinuationFileBlobPairStore::with_coordination(
+                manifest,
+                coordination.clone(),
+            );
+        let first = publish_aot_package_conditionally(
+            &mut package,
+            None,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let second = publish_aot_package_conditionally(
+            &mut package,
+            Some(&first),
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let preserved =
+            package_lease::reclaim_file_aot_package_from_lease_snapshot(
+                &coordination,
+                &mut package,
+                package_restore_request(&programs, bounds),
+                |guard| {
+                    if !coordination.matches_exclusive(guard) {
+                        return Err(String::from(
+                            "package lease guard mismatch",
+                        ));
+                    }
+                    Ok(vec![RegisterMaskedAotPackageLeaseSnapshot::new(
+                        first, 2,
+                    )])
+                },
+            )
+            .map_err(|error| format!("guarded leased reclaim: {error:?}"))?;
+        require_aot_package_reclamation(preserved, second, 1, 0)?;
+        let reclaimed =
+            package_lease::reclaim_file_aot_package_from_lease_snapshot(
+                &coordination,
+                &mut package,
+                package_restore_request(&programs, bounds),
+                |_guard| Ok::<_, String>(vec![]),
+            )
+            .map_err(|error| format!("guarded released reclaim: {error:?}"))?;
+        require_aot_package_reclamation(reclaimed, second, 0, 2)
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_reclaims_from_durable_lease_snapshot()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_durable_lease")?;
+    let result = (|| -> HandoffResult<()> {
+        let (claim, graph, programs, aot) = aot_package_material()?;
+        let bounds = aot_package_bounds()?;
+        let manifest = fixture.directory.join("aot-package.manifest");
+        let mut package = NativeContinuationFileBlobPairStore::new(manifest);
+        let first = publish_aot_package_conditionally(
+            &mut package,
+            None,
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let second = publish_aot_package_conditionally(
+            &mut package,
+            Some(&first),
+            package_persist_request(&claim, &programs, &aot, bounds),
+        )?;
+        let leased = [
+            RegisterMaskedAotPackageLeaseSnapshot::new(first, 0),
+            RegisterMaskedAotPackageLeaseSnapshot::new(first, 2),
+        ];
+        let preserved =
+            reclaim_register_masked_aot_package_generations_from_lease_snapshot(
+                &mut package,
+                package_restore_request(&programs, bounds),
+                &leased,
+            )
+            .map_err(|error| format!("leased package reclaim: {error:?}"))?;
+        require_aot_package_reclamation(preserved, second, 1, 0)?;
+        let released = [RegisterMaskedAotPackageLeaseSnapshot::new(first, 0)];
+        let reclaimed =
+            reclaim_register_masked_aot_package_generations_from_lease_snapshot(
+                &mut package,
+                package_restore_request(&programs, bounds),
+                &released,
+            )
+            .map_err(|error| format!("released package reclaim: {error:?}"))?;
+        require_aot_package_reclamation(reclaimed, second, 0, 2)?;
+        let current = restore_versioned_aot_package_revision(
+            &mut package,
+            &graph,
+            &programs,
+            bounds,
+        )?;
+        (current == second).then_some(()).ok_or_else(|| {
+            String::from("lease-snapshot reclamation changed current package")
+        })
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
     result?;

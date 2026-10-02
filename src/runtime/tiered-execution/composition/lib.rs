@@ -171,6 +171,8 @@ pub mod reduced_graph_persistence;
 pub mod register_masked_aot_bundle_persistence;
 #[path = "tier/object_store.rs"]
 pub mod register_masked_aot_object_persistence;
+#[path = "tier/package_lease.rs"]
+pub mod register_masked_aot_package_lease_reclamation;
 #[path = "tier/aot_package.rs"]
 pub mod register_masked_aot_package_persistence;
 #[path = "retry_control.rs"]

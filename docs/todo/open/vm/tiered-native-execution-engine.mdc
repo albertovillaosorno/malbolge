@@ -1089,9 +1089,12 @@ behavior.
   revisions conflict without exposing unverified current package authority.
 
   Exact caller retention preserves selected revisions during explicit package
-  reclamation. The freshly verified current revision is also preserved across
-  the cleanup call to close publication races. Corrupt current package bytes
-  fail before any superseded generation deletion.
+  reclamation. Caller-coordinated durable lease snapshots now derive retention
+  automatically from exact per-revision owner counts: zero-owner snapshots do
+  not retain, positive snapshots do, and duplicate revisions collapse by exact
+  equality. The freshly verified current revision is also preserved across the
+  cleanup call. Corrupt current package bytes fail before any superseded
+  generation deletion.
 
   Whole-graph residency loads exact mappings transactionally. Input, JumpCode,
   and JumpData now join Crazy, HaltFetch, NoOperation, NonGraphical, Output, and
@@ -1107,6 +1110,9 @@ behavior.
   and exact ready-image identity, then enters the existing loaded-call rollback
   boundary before delegating to a caller-owned native runner.
 
-  Automatic durable AOT-package retention scheduling and cross-process leasing,
-  broader platform execution evidence, and broader end-to-end tier performance
-  policy also remain open.
+  Filesystem package cleanup can now hold one shared coordination guard across
+  current-package reverification, caller lease-snapshot capture, and generation
+  reclamation. Durable lease acquisition/publication does not yet join that
+  transaction, so callers must still serialize acquisition against guarded
+  cleanup. Temporal retention scheduling, broader platform execution evidence,
+  and broader end-to-end tier performance policy also remain open.

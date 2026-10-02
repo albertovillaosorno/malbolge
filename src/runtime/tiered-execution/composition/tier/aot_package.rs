@@ -23,8 +23,8 @@
 //     exact adapter-owned generation-reclamation evidence.
 //   - Side effects: delegated through bounded atomic pair persistence/reclaim.
 // - Split-When:
-//   - Package migration, automatic retention scheduling, cross-process leasing,
-//     or executable residency gains independent authority.
+//   - Package migration, temporal retention scheduling, cross-resource lease
+//     coordination, or executable residency gains independent authority.
 // - Merge-When:
 //   - One general durable native-cache package owner subsumes this pair.
 // - Summary:
@@ -35,8 +35,9 @@
 //     exposes revision identity only after verification, and reclamation first
 //     protects the package revision it just reverified.
 // - Usage:
-//   - Persist/restore exact graph+AOT packages, retain verified revisions, and
-//     explicitly reclaim unretained superseded generations.
+//   - Persist/restore exact graph+AOT packages, retain verified or durably
+//     leased revisions, and explicitly reclaim unretained superseded
+//     generations.
 // - Defaults:
 //   - Missing pair state is explicit; any graph/program/object drift fails
 //     closed without partial authority.
@@ -108,6 +109,37 @@ pub struct RegisterMaskedAotPackageRestoreRequest<'requirement> {
     bundle: RegisterMaskedAotBundleRestoreRequest<'requirement>,
     decode_limits: PackageGraphDecodeLimits,
     graph_maximum_bytes: NonZeroUsize,
+}
+
+/// One caller-coordinated durable lease snapshot for a package revision.
+#[derive(Clone, Copy, Debug)]
+pub struct RegisterMaskedAotPackageLeaseSnapshot<Revision> {
+    owners: usize,
+    revision: Revision,
+}
+
+/// Slice of caller-coordinated package lease snapshots for one cleanup pass.
+pub type RegisterMaskedAotPackageLeaseSnapshots<Revision> =
+    [RegisterMaskedAotPackageLeaseSnapshot<Revision>];
+
+impl<Revision> RegisterMaskedAotPackageLeaseSnapshot<Revision> {
+    /// Binds one exact package revision to its durable lease-owner count.
+    #[must_use]
+    pub const fn new(revision: Revision, owners: usize) -> Self {
+        Self { owners, revision }
+    }
+
+    /// Returns the exact durable owner count captured for this revision.
+    #[must_use]
+    pub const fn owners(&self) -> usize {
+        self.owners
+    }
+
+    /// Borrows the exact opaque package revision captured by this snapshot.
+    #[must_use]
+    pub const fn revision(&self) -> &Revision {
+        &self.revision
+    }
 }
 
 /// Why graph topology and the supplied ordered program list disagreed.
@@ -368,6 +400,12 @@ impl<'requirement> RegisterMaskedAotPackagePersistRequest<'requirement> {
 }
 
 impl<'requirement> RegisterMaskedAotPackageRestoreRequest<'requirement> {
+    pub(crate) const fn member_maximum_bytes(
+        self,
+    ) -> (NonZeroUsize, NonZeroUsize) {
+        (self.graph_maximum_bytes, self.bundle.maximum_bytes())
+    }
+
     /// Binds bundle restore authority to graph replay and provenance bounds.
     #[must_use]
     pub const fn new(
@@ -531,7 +569,10 @@ where
     .map_err(RegisterMaskedAotPackageStoreError::Pair)
 }
 
-fn restore_package_bytes<'requirement, StoreError>(
+pub(crate) fn verify_register_masked_aot_package_bytes<
+    'requirement,
+    StoreError,
+>(
     graph_bytes: &[u8],
     bundle_bytes: &[u8],
     request: RegisterMaskedAotPackageRestoreRequest<'requirement>,
@@ -599,7 +640,11 @@ where
     else {
         return Ok(RegisterMaskedAotPackagePersistenceLoad::Missing);
     };
-    restore_package_bytes(&graph_bytes, &bundle_bytes, request)
+    verify_register_masked_aot_package_bytes(
+        &graph_bytes,
+        &bundle_bytes,
+        request,
+    )
 }
 
 /// Restores one package together with its exact opaque publication revision.
@@ -628,7 +673,7 @@ where
     else {
         return Ok(RegisterMaskedAotPackageVersionedPersistenceLoad::Missing);
     };
-    let restored = restore_package_bytes::<Store::Error>(
+    let restored = verify_register_masked_aot_package_bytes::<Store::Error>(
         &versioned.first,
         &versioned.second,
         request,
@@ -651,6 +696,43 @@ where
         revision: versioned.revision,
         set,
     })
+}
+
+/// Reclaims package generations from caller-coordinated durable lease
+/// snapshots.
+///
+/// Every positive durable owner count contributes its exact package revision to
+/// the preservation set. Zero-owner snapshots contribute nothing. Duplicate
+/// revisions collapse through exact equality and no revision order, age, or
+/// expiry semantics are inferred.
+///
+/// The snapshots must come from coordination that prevents a new durable lease
+/// from becoming authoritative for a generation concurrently deleted by this
+/// reclamation pass. This function derives retention policy from those
+/// snapshots but does not itself create that cross-resource lock domain.
+///
+/// # Errors
+///
+/// Returns current-package verification failure before deletion, or adapter
+/// reclamation failure from the explicit cleanup pass.
+pub fn reclaim_register_masked_aot_package_generations_from_lease_snapshot<
+    'requirement,
+    Store,
+>(
+    store: &mut Store,
+    request: RegisterMaskedAotPackageRestoreRequest<'requirement>,
+    leases: &RegisterMaskedAotPackageLeaseSnapshots<Store::Revision>,
+) -> RegisterMaskedAotPackageReclamationStoreResult<'requirement, Store>
+where
+    Store: ReclaimablePairStore,
+{
+    let mut retention = NativeContinuationBlobPairRetention::new();
+    for lease in leases {
+        if lease.owners > 0 {
+            let _retained = retention.retain(lease.revision().clone());
+        }
+    }
+    reclaim_register_masked_aot_package_generations(store, request, &retention)
 }
 
 /// Reclaims superseded package generations under exact caller retention.

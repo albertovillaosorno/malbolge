@@ -647,7 +647,13 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Publish, version, and reclaim reduced-graph provenance plus AOT bundles.
+      Publish, version, and reclaim AOT packages under exact lease retention.
+  - id: part-0119
+    path: composition/tier/package_lease.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Reclaim AOT packages from lease snapshots captured under one file lock.
 projects: []
 tests: []
 graph:

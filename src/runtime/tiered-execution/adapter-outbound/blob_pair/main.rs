@@ -403,6 +403,15 @@ type NativeContinuationFileBlobPairRevisionOpenResult = Result<
     ),
     NativeContinuationFileBlobPairStoreError,
 >;
+/// Versioned prelocked pair load specialized to the filesystem adapter.
+pub type NativeContinuationFileBlobPairVersionedLoadResult = Result<
+    Option<
+        NativeContinuationVersionedBlobPair<
+            NativeContinuationFileBlobPairRevision,
+        >,
+    >,
+    NativeContinuationFileBlobPairStoreError,
+>;
 
 type PairManifestStagingOpenResult =
     Result<(File, PathBuf), NativeContinuationFileBlobPairStoreError>;
@@ -498,6 +507,26 @@ impl NativeContinuationFileBlobPairStore {
             generation_id = generation.generation,
         ));
         Ok(self.manifest.with_file_name(generation_name))
+    }
+
+    /// Loads one versioned pair while caller-held exclusive coordination lives.
+    ///
+    /// # Errors
+    ///
+    /// Returns coordination mismatch, manifest, or bounded generation-read
+    /// failure without releasing or replacing the caller's guard.
+    pub fn load_pair_versioned_prelocked(
+        &self,
+        guard: &NativeContinuationFileExclusiveGuard,
+        first_maximum_bytes: NonZeroUsize,
+        second_maximum_bytes: NonZeroUsize,
+    ) -> NativeContinuationFileBlobPairVersionedLoadResult {
+        self.require_exclusive_guard(guard)?;
+        let Some(revision) = self.read_manifest()? else {
+            return Ok(None);
+        };
+        self.versioned_pair(revision, first_maximum_bytes, second_maximum_bytes)
+            .map(Some)
     }
 
     fn lock_path(

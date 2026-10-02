@@ -2527,19 +2527,24 @@ returns the exact fresh revision after commit; stale expected revisions conflict
 without exposing raw current package bytes or revision authority.
 
 Explicit package reclamation accepts exact caller retention and additionally
-preserves the current revision it just verified, so a concurrent publication
-cannot delete that last verified package. Corrupt current package bytes fail
-before any superseded generation deletion.
+preserves the current revision it just verified. Caller-coordinated durable
+lease snapshots can now derive that retention automatically from exact
+per-revision owner counts. Zero-owner snapshots do not retain; positive
+snapshots retain, and duplicate revisions collapse by exact equality.
+Corrupt current package bytes fail before any superseded generation deletion.
 
 Whole-graph executable residency loads all reviewed one-step families
 transactionally with reverse rollback and retryable cleanup. Guarded graph
 dispatch retains caller-owned execution authority and rechecks successor
 identity after each native turn.
 
-Native-retry orchestration beyond bounded process-local cached cycles,
-asynchronous/product scheduling, automatic durable AOT-package retention
-scheduling and cross-process leasing, concrete same-process native memory/runner
-integration, and broader end-to-end performance policy remain open.
+Native-retry orchestration beyond bounded process-local cached cycles and
+asynchronous/product scheduling remain open. Filesystem package cleanup now
+holds one shared coordination guard across current-package reverification,
+lease-snapshot capture, and reclamation. Durable lease acquisition/publication
+still needs to join that transaction, and temporal scheduling remains separate.
+Concrete same-process native memory/runner integration and broader end-to-end
+performance policy also remain open.
 
 Host-real AArch64 and Windows worker execution are explicitly non-blocking
 compatibility follow-ups. Cross-compiled x86-64/AArch64 objects, independent
