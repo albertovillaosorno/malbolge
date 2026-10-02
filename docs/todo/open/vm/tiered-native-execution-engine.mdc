@@ -1110,9 +1110,11 @@ behavior.
   and exact ready-image identity, then enters the existing loaded-call rollback
   boundary before delegating to a caller-owned native runner.
 
-  Filesystem package cleanup can now hold one shared coordination guard across
-  current-package reverification, caller lease-snapshot capture, and generation
-  reclamation. Durable lease acquisition/publication does not yet join that
-  transaction, so callers must still serialize acquisition against guarded
-  cleanup. Temporal retention scheduling, broader platform execution evidence,
-  and broader end-to-end tier performance policy also remain open.
+  Filesystem package lease acquire/release now joins the same explicit
+  coordination domain as package cleanup. Guarded transitions reuse the held
+  advisory lock for bounded journal load/CAS instead of recursively acquiring
+  it, while cleanup holds that lock across current-package reverification,
+  lease-snapshot capture, and generation reclamation. Foreign coordination
+  fails before lease mutation. Temporal retention scheduling, non-filesystem
+  coordination, broader platform execution evidence, and broader end-to-end tier
+  performance policy remain open.

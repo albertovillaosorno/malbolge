@@ -631,7 +631,7 @@ parts:
     responsibility: >-
       Apply committed durable cache-limit policy to live cache state.
   - id: part-0116
-    path: composition/tier/executable_durable_lease_journal.rs
+    path: composition/tier/lease_journal.rs
     kind: composition
     language: rust
     responsibility: >-
@@ -653,7 +653,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Reclaim AOT packages from lease snapshots captured under one file lock.
+      Coordinate durable AOT package leases with guarded generation reclaim.
 projects: []
 tests: []
 graph:

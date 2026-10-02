@@ -35,6 +35,7 @@
 
 use std::fs::{create_dir_all, remove_dir_all};
 use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::{env, process};
 
 use super::*;
@@ -48,8 +49,28 @@ use crate::blob_store::{
     NativeContinuationConditionalRemovableBlobStore,
     NativeContinuationDurableBlobStore, NativeContinuationRemovableBlobStore,
 };
-use crate::file_blob_store::NativeContinuationFileBlobStore;
+use crate::file_blob_store::{
+    NativeContinuationFileBlobDurabilityError, NativeContinuationFileBlobStore,
+};
 
+type LeaseTestRegistries = (
+    NativeExecutableDurableLeaseRegistry,
+    NativeExecutableDurableLeaseRegistry,
+    NativeExecutableDurableLeaseRegistry,
+);
+type LeaseJournalCoordinationEvidence = (
+    NativeExecutableDurableLeaseJournalCas<
+        NativeContinuationFileBlobDurabilityError,
+    >,
+    NativeExecutableDurableLeaseJournalCas<
+        NativeContinuationFileBlobDurabilityError,
+    >,
+    NativeExecutableDurableLeaseJournalCas<
+        NativeContinuationFileBlobDurabilityError,
+    >,
+    NativeExecutableDurableLeaseJournalLoad,
+    NativeExecutableDurableLeaseRegistry,
+);
 type TestResult = Result<(), String>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,9 +79,7 @@ enum TestDurabilityError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TestStoreError {
-    Failed,
-}
+enum TestStoreError {}
 
 #[derive(Debug, Default)]
 struct TransitionStore {
@@ -158,6 +177,34 @@ fn decode_limits(
         .ok_or_else(|| String::from("test owner limit missing"))
 }
 
+fn lease_test_directory(label: &str) -> Result<PathBuf, String> {
+    let directory = env::temp_dir()
+        .join(format!("malbolge-durable-lease-{label}-{}", process::id()));
+    match remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => return Err(format!("test cleanup failed: {error}")),
+    }
+    create_dir_all(&directory)
+        .map_err(|error| format!("test create failed: {error}"))?;
+    Ok(directory)
+}
+
+fn lease_test_registries(
+    limits: NativeExecutableDurableLeaseRegistryDecodeLimits,
+) -> Result<LeaseTestRegistries, String> {
+    let empty = NativeExecutableDurableLeaseRegistry::new();
+    let mut one = empty.clone();
+    let _first_acquired = one
+        .acquire(owner(1), limits.maximum_owners())
+        .map_err(|error| format!("{error:?}"))?;
+    let mut two = one.clone();
+    let _second_acquired = two
+        .acquire(owner(2), limits.maximum_owners())
+        .map_err(|error| format!("{error:?}"))?;
+    Ok((empty, one, two))
+}
+
 fn maximum_bytes() -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(4096)
         .ok_or_else(|| String::from("test byte limit missing"))
@@ -165,6 +212,11 @@ fn maximum_bytes() -> Result<NonZeroUsize, String> {
 
 const fn owner(value: u8) -> NativeExecutableDurableLeaseOwnerId {
     NativeExecutableDurableLeaseOwnerId::new([value; OWNER_BYTES])
+}
+
+fn remove_lease_test_directory(directory: &Path) -> TestResult {
+    remove_dir_all(directory)
+        .map_err(|error| format!("test removal failed: {error}"))
 }
 
 fn transition_request(
@@ -215,11 +267,11 @@ fn acquire_capacity_failure_preserves_durable_registry() -> TestResult {
 fn acquire_conflict_returns_current_without_retry() -> TestResult {
     let bound = NonZeroUsize::new(4).ok_or("owner bound")?;
     let mut first = NativeExecutableDurableLeaseRegistry::new();
-    let _inserted = first
+    let _first_inserted = first
         .acquire(owner(1), bound)
         .map_err(|error| format!("{error:?}"))?;
     let mut raced = first.clone();
-    let _inserted = raced
+    let _raced_inserted = raced
         .acquire(owner(2), bound)
         .map_err(|error| format!("{error:?}"))?;
     let first_bytes = encode_executable_durable_lease_registry(&first)
@@ -266,11 +318,11 @@ fn acquire_post_commit_durability_failure_keeps_registry() -> TestResult {
         decode_executable_durable_lease_registry(bytes, decode_limits(4)?)
             .map_err(|error| format!("{error:?}"))?;
     if matches!(
-        outcome,
+        &outcome,
         NativeExecutableDurableLeaseTransition::Published {
             bytes: 32,
             durability_error: TestDurabilityError::Failed,
-            ref registry,
+            registry,
         } if registry == &restored && restored.contains(owner(4))
     ) && store.durability_calls == 1
     {
@@ -284,19 +336,7 @@ fn acquire_post_commit_durability_failure_keeps_registry() -> TestResult {
 
 #[test]
 fn file_owner_transitions_are_idempotent() -> TestResult {
-    let directory = env::temp_dir().join(format!(
-        "malbolge-durable-lease-transition-{}",
-        process::id(),
-    ));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("transition")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let request = transition_request(owner(7), 4)?;
@@ -316,26 +356,21 @@ fn file_owner_transitions_are_idempotent() -> TestResult {
     )
     .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     let empty = NativeExecutableDurableLeaseRegistry::new();
     if matches!(
-        acquired,
-        NativeExecutableDurableLeaseTransition::Durable {
-            ref registry,
-            ..
-        } if registry.contains(owner(7))
+        &acquired,
+        NativeExecutableDurableLeaseTransition::Durable { registry, .. }
+            if registry.contains(owner(7))
     ) && matches!(
-        duplicate,
+        &duplicate,
         NativeExecutableDurableLeaseTransition::Unchanged {
-            current: Some(ref registry),
+            current: Some(registry),
         } if registry.contains(owner(7))
     ) && matches!(
-        released,
-        NativeExecutableDurableLeaseTransition::Durable {
-            ref registry,
-            ..
-        } if registry.is_empty()
+        &released,
+        NativeExecutableDurableLeaseTransition::Durable { registry, .. }
+            if registry.is_empty()
     ) && duplicate_release
         == (NativeExecutableDurableLeaseTransition::Unchanged {
             current: Some(empty.clone()),
@@ -384,19 +419,7 @@ fn empty_removal_durability_failure_retains_absence() -> TestResult {
 
 #[test]
 fn empty_file_journal_can_be_removed_durably() -> TestResult {
-    let directory = env::temp_dir().join(format!(
-        "malbolge-durable-lease-empty-remove-{}",
-        process::id(),
-    ));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("empty-remove")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let request = transition_request(owner(8), 4)?;
@@ -417,8 +440,7 @@ fn empty_file_journal_can_be_removed_durably() -> TestResult {
     )
     .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     if removed == NativeExecutableDurableLeaseJournalRemoval::Durable
         && restored == NativeExecutableDurableLeaseJournalLoad::Missing
     {
@@ -430,34 +452,22 @@ fn empty_file_journal_can_be_removed_durably() -> TestResult {
 
 #[test]
 fn nonempty_file_journal_blocks_empty_removal() -> TestResult {
-    let directory = env::temp_dir().join(format!(
-        "malbolge-durable-lease-nonempty-remove-{}",
-        process::id(),
-    ));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("nonempty-remove")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let request = transition_request(owner(8), 4)?;
     let acquired = acquire_executable_durable_lease_once(&mut store, request)
         .map_err(|error| format!("{error:?}"))?;
-    let expected = match acquired {
-        NativeExecutableDurableLeaseTransition::Durable {
-            registry, ..
-        }
-        | NativeExecutableDurableLeaseTransition::Published {
-            registry, ..
-        } => registry,
-        _ => {
-            return Err(String::from("test lease acquisition did not commit"));
-        },
+    let (NativeExecutableDurableLeaseTransition::Durable {
+        registry: expected,
+        ..
+    }
+    | NativeExecutableDurableLeaseTransition::Published {
+        registry: expected,
+        ..
+    }) = acquired
+    else {
+        return Err(String::from("test lease acquisition did not commit"));
     };
     let removal = remove_empty_executable_durable_lease_journal_durably(
         &mut store,
@@ -472,8 +482,7 @@ fn nonempty_file_journal_blocks_empty_removal() -> TestResult {
     )
     .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     if removal
         == (NativeExecutableDurableLeaseJournalRemoval::Conflict {
             current: Some(expected.clone()),
@@ -543,9 +552,14 @@ fn decoder_rejects_noncanonical_owner_order() -> TestResult {
         .map_err(|error| format!("{error:?}"))?;
     let mut bytes = encode_executable_durable_lease_registry(&registry)
         .map_err(|error| format!("{error:?}"))?;
-    bytes[HEADER_BYTES..HEADER_BYTES + OWNER_BYTES]
+    bytes
+        .get_mut(HEADER_BYTES..HEADER_BYTES + OWNER_BYTES)
+        .ok_or_else(|| String::from("first owner bytes missing"))?
         .copy_from_slice(&owner(9).bytes());
-    bytes[HEADER_BYTES + OWNER_BYTES..].copy_from_slice(&owner(2).bytes());
+    bytes
+        .get_mut(HEADER_BYTES + OWNER_BYTES..)
+        .ok_or_else(|| String::from("second owner bytes missing"))?
+        .copy_from_slice(&owner(2).bytes());
     let result =
         decode_executable_durable_lease_registry(&bytes, decode_limits(4)?);
     if result == Err(NativeExecutableDurableLeaseRegistryCodecError::OwnerOrder)
@@ -556,30 +570,16 @@ fn decoder_rejects_noncanonical_owner_order() -> TestResult {
     }
 }
 
-#[test]
-fn file_journal_coordinates_acquire_release_and_conflict() -> TestResult {
-    let directory = env::temp_dir()
-        .join(format!("malbolge-durable-lease-journal-{}", process::id(),));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+fn file_journal_coordination_evidence(
+    directory: &Path,
+) -> Result<LeaseJournalCoordinationEvidence, String> {
     let destination = directory.join("leases.bin");
     let mut first_store =
         NativeContinuationFileBlobStore::new(destination.clone());
     let mut second_store = NativeContinuationFileBlobStore::new(destination);
     let limits = decode_limits(8)?;
     let bytes = maximum_bytes()?;
-    let empty = NativeExecutableDurableLeaseRegistry::new();
-    let mut one = empty.clone();
-    let _acquired = one
-        .acquire(owner(1), limits.maximum_owners())
-        .map_err(|error| format!("{error:?}"))?;
+    let (empty, one, two) = lease_test_registries(limits)?;
     let initialized = compare_and_swap_executable_durable_lease_journal(
         &mut first_store,
         NativeExecutableDurableLeaseJournalCasRequest::new(
@@ -587,10 +587,6 @@ fn file_journal_coordinates_acquire_release_and_conflict() -> TestResult {
         ),
     )
     .map_err(|error| format!("{error:?}"))?;
-    let mut two = one.clone();
-    let _acquired = two
-        .acquire(owner(2), limits.maximum_owners())
-        .map_err(|error| format!("{error:?}"))?;
     let expanded = compare_and_swap_executable_durable_lease_journal(
         &mut second_store,
         NativeExecutableDurableLeaseJournalCasRequest::new(
@@ -617,25 +613,28 @@ fn file_journal_coordinates_acquire_release_and_conflict() -> TestResult {
         bytes,
     )
     .map_err(|error| format!("{error:?}"))?;
-    drop(first_store);
-    drop(second_store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
-    if initialized
-        == (NativeExecutableDurableLeaseJournalCas::Durable { bytes: 32 })
-        && expanded
-            == (NativeExecutableDurableLeaseJournalCas::Durable { bytes: 48 })
-        && matches!(
-            stale,
-            NativeExecutableDurableLeaseJournalCas::Conflict {
-                current: Some(ref current),
-            } if current == &two
-        )
-        && restored
-            == (NativeExecutableDurableLeaseJournalLoad::Present {
-                registry: two,
-            })
-    {
+    Ok((initialized, expanded, stale, restored, two))
+}
+
+#[test]
+fn file_journal_coordinates_acquire_release_and_conflict() -> TestResult {
+    let directory = lease_test_directory("journal")?;
+    let (initialized, expanded, stale, restored, two) =
+        file_journal_coordination_evidence(&directory)?;
+    remove_lease_test_directory(&directory)?;
+    let initialized_ok = initialized
+        == (NativeExecutableDurableLeaseJournalCas::Durable { bytes: 32 });
+    let expanded_ok = expanded
+        == (NativeExecutableDurableLeaseJournalCas::Durable { bytes: 48 });
+    let stale_ok = matches!(
+        &stale,
+        NativeExecutableDurableLeaseJournalCas::Conflict {
+            current: Some(current),
+        } if current == &two
+    );
+    let restored_ok = restored
+        == (NativeExecutableDurableLeaseJournalLoad::Present { registry: two });
+    if initialized_ok && expanded_ok && stale_ok && restored_ok {
         Ok(())
     } else {
         Err(String::from("durable lease journal coordination drifted"))
@@ -644,17 +643,7 @@ fn file_journal_coordinates_acquire_release_and_conflict() -> TestResult {
 
 #[test]
 fn missing_file_journal_is_explicit() -> TestResult {
-    let directory = env::temp_dir()
-        .join(format!("malbolge-durable-lease-missing-{}", process::id(),));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("missing")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let load = restore_executable_durable_lease_journal(
@@ -664,8 +653,7 @@ fn missing_file_journal_is_explicit() -> TestResult {
     )
     .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     if load == NativeExecutableDurableLeaseJournalLoad::Missing {
         Ok(())
     } else {
@@ -709,9 +697,9 @@ fn owner_capacity_fails_before_registry_mutation() -> TestResult {
     let _acquired = registry
         .acquire(owner(1), maximum)
         .map_err(|error| format!("{error:?}"))?;
-    let error = registry
-        .acquire(owner(2), maximum)
-        .expect_err("second owner must exceed bound");
+    let Err(error) = registry.acquire(owner(2), maximum) else {
+        return Err(String::from("second owner did not exceed bound"));
+    };
     if error.maximum_owners() == maximum
         && error.observed_owners() == 2
         && registry.owners() == [owner(1)].as_slice()
@@ -724,17 +712,7 @@ fn owner_capacity_fails_before_registry_mutation() -> TestResult {
 
 #[test]
 fn replacement_owner_limit_fails_before_publication() -> TestResult {
-    let directory = env::temp_dir()
-        .join(format!("malbolge-durable-lease-bound-{}", process::id(),));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("bound")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let construction_bound = NonZeroUsize::new(2).ok_or("owner bound")?;
@@ -764,8 +742,7 @@ fn replacement_owner_limit_fails_before_publication() -> TestResult {
     )
     .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     if result
         == Err(NativeExecutableDurableLeaseJournalError::Codec(
             NativeExecutableDurableLeaseRegistryCodecError::OwnerLimit {
@@ -785,17 +762,7 @@ fn replacement_owner_limit_fails_before_publication() -> TestResult {
 
 #[test]
 fn release_to_explicit_empty_journal_is_durable() -> TestResult {
-    let directory = env::temp_dir()
-        .join(format!("malbolge-durable-lease-release-{}", process::id(),));
-    match remove_dir_all(&directory) {
-        Ok(()) => {},
-        Err(error) if error.kind() == ErrorKind::NotFound => {},
-        Err(error) => {
-            return Err(format!("test cleanup failed: {error}"));
-        },
-    }
-    create_dir_all(&directory)
-        .map_err(|error| format!("test create failed: {error}"))?;
+    let directory = lease_test_directory("release")?;
     let mut store =
         NativeContinuationFileBlobStore::new(directory.join("leases.bin"));
     let limits = decode_limits(2)?;
@@ -829,8 +796,7 @@ fn release_to_explicit_empty_journal_is_durable() -> TestResult {
         restore_executable_durable_lease_journal(&mut store, limits, bytes)
             .map_err(|error| format!("{error:?}"))?;
     drop(store);
-    remove_dir_all(&directory)
-        .map_err(|error| format!("test removal failed: {error}"))?;
+    remove_lease_test_directory(&directory)?;
     if publication
         == (NativeExecutableDurableLeaseJournalCas::Durable { bytes: 16 })
         && restored

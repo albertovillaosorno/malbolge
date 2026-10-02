@@ -50,6 +50,8 @@ pub mod blob_pair_store;
 pub mod blob_persistence;
 #[path = "../src/runtime/tiered-execution/port-outbound/blob_store.rs"]
 pub mod blob_store;
+#[path = "../src/runtime/tiered-execution/composition/tier/lease_journal.rs"]
+pub mod executable_durable_lease_journal;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
@@ -91,6 +93,15 @@ use std::sync::Arc;
 
 use blob_pair_retention::NativeContinuationBlobPairRetention;
 use blob_pair_store::NativeContinuationBlobPairStore as BlobPairStore;
+use executable_durable_lease_journal::{
+    NativeExecutableDurableLeaseJournalError as LeaseJournalError,
+    NativeExecutableDurableLeaseJournalLoad as LeaseJournalLoad,
+    NativeExecutableDurableLeaseOwnerId,
+    NativeExecutableDurableLeaseRegistryDecodeLimits,
+    NativeExecutableDurableLeaseTransition,
+    NativeExecutableDurableLeaseTransitionError as LeaseTransitionError,
+    NativeExecutableDurableLeaseTransitionRequest,
+};
 use execution_cache::{HostIsa, HostOperatingSystem};
 use execution_native::{
     AheadOfExecutionRegisterMaskedPreparationError,
@@ -124,7 +135,10 @@ use file_blob_pair_store::{
     NativeContinuationFileBlobPairRevision,
     NativeContinuationFileBlobPairStore,
 };
-use file_blob_store::NativeContinuationFileBlobStore;
+use file_blob_store::{
+    NativeContinuationFileBlobStore,
+    NativeContinuationFileBlobStoreError as FileBlobStoreError,
+};
 use file_coordination::NativeContinuationFileCoordination;
 use indexed_state::IndexedMachineState;
 use malbolge::{
@@ -188,7 +202,23 @@ use register_masked_aot_package_persistence::{
 
 const MULTI_STEP_SOURCE: &[u8] = b"(=%`qL";
 
+#[derive(Clone, Copy, Debug)]
+struct GuardedAotPackageLeaseContext<'context> {
+    bounds: AotPackageBounds,
+    coordination: &'context NativeContinuationFileCoordination,
+    lease_request: NativeExecutableDurableLeaseTransitionRequest,
+    programs: &'context [RegisterMaskedRegionEffectProgram],
+    revision: NativeContinuationFileBlobPairRevision,
+}
+
 type HandoffResult<T> = Result<T, String>;
+type BlobPersistenceError<StoreError> =
+    blob_persistence::NativeContinuationBlobPersistenceError<StoreError>;
+type AotPackageLeaseTransitionError =
+    package_lease::RegisterMaskedAotPackageLeaseTransitionError;
+type FileAotPackageLeaseTransition = NativeExecutableDurableLeaseTransition<
+    file_blob_store::NativeContinuationFileBlobDurabilityError,
+>;
 type AotPackageFileConditional =
     RegisterMaskedAotPackageConditionalDurablePersistence<
         NativeContinuationFileBlobPairRevision,
@@ -229,7 +259,7 @@ type ReducedGraph = VerifiedAheadOfExecutionRegisterMaskedReducedStateGraph;
 type ReducedGraphClaim =
     UntrustedAheadOfExecutionRegisterMaskedReducedStateGraph;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct AotPackageBounds {
     bundle: NonZeroUsize,
     graph: NonZeroUsize,
@@ -1521,6 +1551,92 @@ fn require_stale_aot_package_conflict(
     }
 }
 
+fn aot_package_lease_transition_request(
+    owner: u8,
+) -> HandoffResult<NativeExecutableDurableLeaseTransitionRequest> {
+    aot_package_lease_transition_request_with_limit(owner, 4)
+}
+
+fn aot_package_lease_transition_request_with_limit(
+    owner: u8,
+    maximum_owner_count: usize,
+) -> HandoffResult<NativeExecutableDurableLeaseTransitionRequest> {
+    let maximum_owners = NonZeroUsize::new(maximum_owner_count)
+        .ok_or_else(|| String::from("AOT package lease owner bound missing"))?;
+    let maximum_bytes = NonZeroUsize::new(4096)
+        .ok_or_else(|| String::from("AOT package lease byte bound missing"))?;
+    Ok(NativeExecutableDurableLeaseTransitionRequest::new(
+        NativeExecutableDurableLeaseOwnerId::new([owner; 16]),
+        NativeExecutableDurableLeaseRegistryDecodeLimits::new(maximum_owners),
+        maximum_bytes,
+    ))
+}
+
+fn acquire_guarded_aot_package_lease(
+    coordination: &NativeContinuationFileCoordination,
+    lease: &mut NativeContinuationFileBlobStore,
+    request: NativeExecutableDurableLeaseTransitionRequest,
+) -> HandoffResult<()> {
+    let outcome = package_lease::acquire_file_aot_package_durable_lease(
+        coordination,
+        lease,
+        request,
+    )
+    .map_err(|error| format!("guarded lease acquire: {error:?}"))?;
+    require_aot_package_lease_owners(&outcome, 1)
+}
+
+fn release_guarded_aot_package_lease(
+    coordination: &NativeContinuationFileCoordination,
+    lease: &mut NativeContinuationFileBlobStore,
+    request: NativeExecutableDurableLeaseTransitionRequest,
+) -> HandoffResult<()> {
+    let outcome = package_lease::release_file_aot_package_durable_lease(
+        coordination,
+        lease,
+        request,
+    )
+    .map_err(|error| format!("guarded lease release: {error:?}"))?;
+    require_aot_package_lease_owners(&outcome, 0)
+}
+
+fn require_aot_package_lease_owners(
+    outcome: &FileAotPackageLeaseTransition,
+    expected_owners: usize,
+) -> HandoffResult<()> {
+    if matches!(
+        outcome,
+        NativeExecutableDurableLeaseTransition::Durable { registry, .. }
+            if registry.len() == expected_owners
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("guarded package lease owner count drifted"))
+    }
+}
+
+fn reclaim_guarded_aot_package_from_lease(
+    package: &mut NativeContinuationFileBlobPairStore,
+    lease: &NativeContinuationFileBlobStore,
+    context: GuardedAotPackageLeaseContext<'_>,
+) -> HandoffResult<AotPackageFileReclamation> {
+    package_lease::reclaim_file_aot_package_from_lease_snapshot(
+        context.coordination,
+        package,
+        package_restore_request(context.programs, context.bounds),
+        |guard| {
+            package_lease::capture_file_aot_package_lease_snapshot(
+                lease,
+                guard,
+                context.revision,
+                context.lease_request,
+            )
+            .map(|snapshot| vec![snapshot])
+        },
+    )
+    .map_err(|error| format!("guarded AOT package reclaim: {error:?}"))
+}
+
 fn aot_package_generation_member(
     manifest: &Path,
     revision: NativeContinuationFileBlobPairRevision,
@@ -1628,6 +1744,153 @@ fn product_register_masked_aot_package_reclaim_rejects_corrupt_current()
 }
 
 #[test]
+fn product_register_masked_aot_package_lease_is_idempotent_under_guard()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_lease_idempotent")?;
+    let result = (|| -> HandoffResult<()> {
+        let coordination = NativeContinuationFileCoordination::new(
+            fixture.directory.join("package.lock"),
+        );
+        let mut lease = NativeContinuationFileBlobStore::with_coordination(
+            fixture.directory.join("lease.bin"),
+            coordination.clone(),
+        );
+        let request = aot_package_lease_transition_request(5)?;
+        let first = package_lease::acquire_file_aot_package_durable_lease(
+            &coordination,
+            &mut lease,
+            request,
+        )
+        .map_err(|error| format!("first guarded acquire: {error:?}"))?;
+        require_aot_package_lease_owners(&first, 1)?;
+        let duplicate = package_lease::acquire_file_aot_package_durable_lease(
+            &coordination,
+            &mut lease,
+            request,
+        )
+        .map_err(|error| format!("duplicate guarded acquire: {error:?}"))?;
+        let duplicate_ok = matches!(
+            &duplicate,
+            NativeExecutableDurableLeaseTransition::Unchanged {
+                current: Some(registry),
+            } if registry.len() == 1
+        );
+        release_guarded_aot_package_lease(&coordination, &mut lease, request)?;
+        let duplicate_release =
+            package_lease::release_file_aot_package_durable_lease(
+                &coordination,
+                &mut lease,
+                request,
+            )
+            .map_err(|error| format!("duplicate guarded release: {error:?}"))?;
+        let release_ok = matches!(
+            &duplicate_release,
+            NativeExecutableDurableLeaseTransition::Unchanged {
+                current: Some(registry),
+            } if registry.is_empty()
+        );
+        if duplicate_ok && release_ok {
+            Ok(())
+        } else {
+            Err(String::from("guarded package lease idempotence drifted"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_lease_capacity_preserves_registry()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_lease_capacity")?;
+    let result = (|| -> HandoffResult<()> {
+        let coordination = NativeContinuationFileCoordination::new(
+            fixture.directory.join("package.lock"),
+        );
+        let mut lease = NativeContinuationFileBlobStore::with_coordination(
+            fixture.directory.join("lease.bin"),
+            coordination.clone(),
+        );
+        let first = aot_package_lease_transition_request_with_limit(1, 1)?;
+        acquire_guarded_aot_package_lease(&coordination, &mut lease, first)?;
+        let second = aot_package_lease_transition_request_with_limit(2, 1)?;
+        let outcome = package_lease::acquire_file_aot_package_durable_lease(
+            &coordination,
+            &mut lease,
+            second,
+        );
+        let capacity = matches!(
+            outcome,
+            Err(AotPackageLeaseTransitionError::Lease(
+                LeaseTransitionError::Capacity(error),
+            )) if error.observed_owners() == 2
+        );
+        let restored = executable_durable_lease_journal::
+            restore_executable_durable_lease_journal(
+                &mut lease,
+                first.decode_limits(),
+                first.maximum_bytes(),
+            )
+            .map_err(|error| format!("capacity restore: {error:?}"))?;
+        let preserved = matches!(
+            &restored,
+            LeaseJournalLoad::Present { registry } if registry.len() == 1
+        );
+        if capacity && preserved {
+            Ok(())
+        } else {
+            Err(String::from("lease capacity failure changed registry"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
+fn product_register_masked_aot_package_lease_rejects_foreign_guard()
+-> HandoffResult<()> {
+    let fixture = reduced_graph_store_fixture("aot_package_foreign_guard")?;
+    let result = (|| -> HandoffResult<()> {
+        let expected = NativeContinuationFileCoordination::new(
+            fixture.directory.join("package.lock"),
+        );
+        let foreign = NativeContinuationFileCoordination::new(
+            fixture.directory.join("foreign.lock"),
+        );
+        let lease_path = fixture.directory.join("lease.bin");
+        let mut lease = NativeContinuationFileBlobStore::with_coordination(
+            lease_path.clone(),
+            foreign,
+        );
+        let outcome = package_lease::acquire_file_aot_package_durable_lease(
+            &expected,
+            &mut lease,
+            aot_package_lease_transition_request(11)?,
+        );
+        let mismatch = matches!(
+            outcome,
+            Err(AotPackageLeaseTransitionError::Lease(
+                LeaseTransitionError::Journal(LeaseJournalError::Blob(
+                    BlobPersistenceError::Store(
+                        FileBlobStoreError::CoordinationMismatch,
+                    ),
+                ),),
+            )),
+        );
+        if mismatch && !lease_path.exists() {
+            Ok(())
+        } else {
+            Err(String::from("foreign lease coordination mutated storage"))
+        }
+    })();
+    let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);
+    result?;
+    cleanup
+}
+
+#[test]
 fn product_register_masked_aot_package_reclaims_under_one_lease_guard()
 -> HandoffResult<()> {
     let fixture = reduced_graph_store_fixture("aot_package_guarded_lease")?;
@@ -1637,10 +1900,9 @@ fn product_register_masked_aot_package_reclaims_under_one_lease_guard()
         let coordination = NativeContinuationFileCoordination::new(
             fixture.directory.join("aot-package.lock"),
         );
-        let manifest = fixture.directory.join("aot-package.manifest");
         let mut package =
             NativeContinuationFileBlobPairStore::with_coordination(
-                manifest,
+                fixture.directory.join("aot-package.manifest"),
                 coordination.clone(),
             );
         let first = publish_aot_package_conditionally(
@@ -1653,32 +1915,39 @@ fn product_register_masked_aot_package_reclaims_under_one_lease_guard()
             Some(&first),
             package_persist_request(&claim, &programs, &aot, bounds),
         )?;
-        let preserved =
-            package_lease::reclaim_file_aot_package_from_lease_snapshot(
-                &coordination,
-                &mut package,
-                package_restore_request(&programs, bounds),
-                |guard| {
-                    if !coordination.matches_exclusive(guard) {
-                        return Err(String::from(
-                            "package lease guard mismatch",
-                        ));
-                    }
-                    Ok(vec![RegisterMaskedAotPackageLeaseSnapshot::new(
-                        first, 2,
-                    )])
-                },
-            )
-            .map_err(|error| format!("guarded leased reclaim: {error:?}"))?;
+        let lease_request = aot_package_lease_transition_request(7)?;
+        let mut lease = NativeContinuationFileBlobStore::with_coordination(
+            fixture.directory.join("aot-package.first.lease"),
+            coordination.clone(),
+        );
+        acquire_guarded_aot_package_lease(
+            &coordination,
+            &mut lease,
+            lease_request,
+        )?;
+        let reclaim_context = GuardedAotPackageLeaseContext {
+            bounds,
+            coordination: &coordination,
+            lease_request,
+            programs: &programs,
+            revision: first,
+        };
+        let preserved = reclaim_guarded_aot_package_from_lease(
+            &mut package,
+            &lease,
+            reclaim_context,
+        )?;
         require_aot_package_reclamation(preserved, second, 1, 0)?;
-        let reclaimed =
-            package_lease::reclaim_file_aot_package_from_lease_snapshot(
-                &coordination,
-                &mut package,
-                package_restore_request(&programs, bounds),
-                |_guard| Ok::<_, String>(vec![]),
-            )
-            .map_err(|error| format!("guarded released reclaim: {error:?}"))?;
+        release_guarded_aot_package_lease(
+            &coordination,
+            &mut lease,
+            lease_request,
+        )?;
+        let reclaimed = reclaim_guarded_aot_package_from_lease(
+            &mut package,
+            &lease,
+            reclaim_context,
+        )?;
         require_aot_package_reclamation(reclaimed, second, 0, 2)
     })();
     let cleanup = remove_reduced_graph_store_fixture(&fixture.directory);

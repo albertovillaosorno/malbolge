@@ -352,6 +352,20 @@ impl Default for NativeExecutableDurableLeaseRegistry {
 }
 
 impl NativeExecutableDurableLeaseTransitionRequest {
+    /// Returns the exact owner-decoding limits bound to this transition.
+    #[must_use]
+    pub(crate) const fn decode_limits(
+        self,
+    ) -> NativeExecutableDurableLeaseRegistryDecodeLimits {
+        self.decode_limits
+    }
+
+    /// Returns the positive journal-byte bound for this transition.
+    #[must_use]
+    pub(crate) const fn maximum_bytes(self) -> NonZeroUsize {
+        self.maximum_bytes
+    }
+
     /// Binds one caller-supplied owner to explicit decode and byte bounds.
     #[must_use]
     pub const fn new(
@@ -364,6 +378,12 @@ impl NativeExecutableDurableLeaseTransitionRequest {
             maximum_bytes,
             owner,
         }
+    }
+
+    /// Returns the exact opaque owner selected by this transition.
+    #[must_use]
+    pub(crate) const fn owner(self) -> NativeExecutableDurableLeaseOwnerId {
+        self.owner
     }
 }
 

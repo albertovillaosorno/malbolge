@@ -2539,10 +2539,13 @@ dispatch retains caller-owned execution authority and rechecks successor
 identity after each native turn.
 
 Native-retry orchestration beyond bounded process-local cached cycles and
-asynchronous/product scheduling remain open. Filesystem package cleanup now
-holds one shared coordination guard across current-package reverification,
-lease-snapshot capture, and reclamation. Durable lease acquisition/publication
-still needs to join that transaction, and temporal scheduling remains separate.
+asynchronous/product scheduling remain open. Filesystem package lease
+acquire/release now shares the cleanup coordinator and reuses its held guard for
+bounded journal load/CAS; cleanup holds the same guard across current-package
+reverification, lease-snapshot capture, and reclamation. Foreign coordination
+fails before lease mutation. Temporal retention scheduling and non-filesystem
+coordination remain separate.
+
 Concrete same-process native memory/runner integration and broader end-to-end
 performance policy also remain open.
 
