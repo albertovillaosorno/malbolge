@@ -1825,9 +1825,13 @@ and equal-revision policy divergence remains explicit non-mutating evidence.
 Deferred or conflicting durable binding has no committed state and therefore
 cannot mutate the local owner.
 
-Automatic asynchronous interval ownership and broader distributed aggregation
-remain outside this boundary; synchronous same-cycle count/latency publication
-is owned.
+A bounded process-local interval owner now retains multiple overlapping
+monotonic starts behind automatic one-based identities. It enforces explicit
+in-flight capacity before reading the clock, supports cancellation and
+out-of-order finish, and consumes only the selected interval on clock failure.
+Opaque clock starts never escape. Task dispatch/completion automation, persisted
+timing identity, and broader distributed aggregation remain outside this
+boundary; synchronous same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

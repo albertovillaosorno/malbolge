@@ -578,8 +578,12 @@ behavior.
   and equal-revision policy divergence remains explicit non-mutating evidence.
   Deferred and conflict bindings leave the local owner unchanged.
 
-  Automatic asynchronous interval ownership and broader distributed aggregation
-  remain open; synchronous same-cycle count/latency publication is now owned.
+  Bounded process-local overlapping latency intervals now have automatic
+  one-based identities, explicit capacity, cancellation, out-of-order finish,
+  and selected-interval clock-failure ownership without exposing opaque clock
+  starts. Task dispatch/completion automation, persisted timing identity, and
+  broader distributed aggregation remain open; synchronous same-cycle
+  count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

@@ -60,6 +60,8 @@ mod telemetry_latency_cycle;
 mod telemetry_latency_durable_merge;
 #[path = "cached_cycle/telemetry_latency_durable_merge_retry.rs"]
 mod telemetry_latency_durable_merge_retry;
+#[path = "cached_cycle/telemetry_latency_interval_owner.rs"]
+mod telemetry_latency_interval_owner;
 #[path = "cached_cycle/telemetry_latency_merge.rs"]
 mod telemetry_latency_merge;
 #[path = "cached_cycle/telemetry_latency_recommendation.rs"]
@@ -191,6 +193,12 @@ pub use telemetry_latency_durable_merge_retry::{
     NativeContinuationCachedRetryLatencyDurableMergeRetryStoreResult,
     merge_cached_retry_latency_histogram_durably_with_retries,
     merge_cached_retry_latency_with_retry_control,
+};
+pub use telemetry_latency_interval_owner::{
+    NativeContinuationCachedRetryLatencyIntervalBeginError,
+    NativeContinuationCachedRetryLatencyIntervalFinishError,
+    NativeContinuationCachedRetryLatencyIntervalId,
+    NativeContinuationCachedRetryLatencyIntervalOwner,
 };
 pub use telemetry_latency_merge::{
     NativeContinuationCachedRetryLatencyMergeError,

@@ -250,6 +250,9 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyHistogram,
     NativeContinuationCachedRetryLatencyHistogramError,
     NativeContinuationCachedRetryLatencyHistogramSnapshot,
+    NativeContinuationCachedRetryLatencyIntervalBeginError,
+    NativeContinuationCachedRetryLatencyIntervalFinishError,
+    NativeContinuationCachedRetryLatencyIntervalOwner,
     NativeContinuationCachedRetryLatencyMergeError,
     NativeContinuationCachedRetryLatencyNormalizedMergeError,
     NativeContinuationCachedRetryLatencyPolicyPublication,
@@ -1735,6 +1738,14 @@ type LatencyCoarseningError =
 type CommonLatencyCoarseningError =
     NativeContinuationCachedRetryLatencyCommonCoarseningError;
 type LatencyHistogramError = NativeContinuationCachedRetryLatencyHistogramError;
+type LatencyIntervalBeginError =
+    NativeContinuationCachedRetryLatencyIntervalBeginError;
+type LatencyIntervalFinishError =
+    NativeContinuationCachedRetryLatencyIntervalFinishError<
+        TestMonotonicClockError,
+    >;
+type LatencyIntervalOwner<Clock> =
+    NativeContinuationCachedRetryLatencyIntervalOwner<Clock>;
 type LatencyMergeError = NativeContinuationCachedRetryLatencyMergeError;
 type LatencySnapshotError = NativeContinuationCachedRetryLatencySnapshotError;
 type LatencyCodecError = NativeContinuationCachedRetryLatencyCodecError;
@@ -4281,6 +4292,13 @@ struct TestCachedRetryTelemetryBlobStore {
 }
 
 #[derive(Debug, Default)]
+struct TestIntervalClock {
+    fail_start: Option<usize>,
+    finishes: Vec<usize>,
+    starts: usize,
+}
+
+#[derive(Debug, Default)]
 struct TestMonotonicClock {
     elapsed_nanoseconds: u64,
     fail_finish: bool,
@@ -4428,6 +4446,30 @@ impl telemetry_pair_store_port::NativeContinuationDurableBlobPairStore
             Err(TestBlobPairDurabilityError::Confirm)
         } else {
             Ok(())
+        }
+    }
+}
+
+impl NativeContinuationMonotonicClock for TestIntervalClock {
+    type Error = TestMonotonicClockError;
+    type Start = usize;
+
+    fn begin(&mut self) -> Self::Start {
+        self.starts = self.starts.saturating_add(1);
+        self.starts
+    }
+
+    fn elapsed_nanoseconds(
+        &mut self,
+        start: Self::Start,
+    ) -> Result<u64, Self::Error> {
+        self.finishes.push(start);
+        if self.fail_start == Some(start) {
+            Err(TestMonotonicClockError::Finish)
+        } else {
+            u64::try_from(start)
+                .map(|value| value.saturating_mul(10))
+                .map_err(|_error| TestMonotonicClockError::Finish)
         }
     }
 }
@@ -95090,6 +95132,173 @@ fn cached_retry_measured_cycle_records_semantic_failure() -> Result<(), String>
         Err(String::from("measured semantic failure evidence drifted"))
     } else {
         Ok(())
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_cancels_without_finishing()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "interval cancellation capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let cancelled = owner.cancel_interval(first);
+    let duplicate = owner.cancel_interval(first);
+    let second = owner
+        .begin_interval()
+        .map_err(|error| format!("replacement interval begin: {error:?}"))?;
+    let second_cancelled = owner.cancel_interval(second);
+    if cancelled
+        && !duplicate
+        && second.value() == 2
+        && second_cancelled
+        && owner.clock().starts == 2
+        && owner.clock().finishes.is_empty()
+        && owner.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("interval cancellation ownership drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_capacity_precedes_clock_start()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "interval capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let error = owner.begin_interval().err().ok_or_else(|| {
+        String::from("interval capacity unexpectedly admitted")
+    })?;
+    let retained = owner.cancel_interval(first);
+    if error
+        == (LatencyIntervalBeginError::Capacity {
+            in_flight: 1,
+            maximum_in_flight: maximum,
+        })
+        && retained
+        && owner.clock().starts == 1
+        && owner.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("interval capacity evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_clock_failure_consumes_selected_only()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(2, "interval clock failure capacity")?;
+    let mut owner = LatencyIntervalOwner::new(
+        TestIntervalClock {
+            fail_start: Some(1),
+            ..TestIntervalClock::default()
+        },
+        maximum,
+    );
+    let failed = owner
+        .begin_interval()
+        .map_err(|error| format!("failing interval begin: {error:?}"))?;
+    let surviving = owner
+        .begin_interval()
+        .map_err(|error| format!("surviving interval begin: {error:?}"))?;
+    let error = owner.finish_interval(failed).err().ok_or_else(|| {
+        String::from("configured interval clock did not fail")
+    })?;
+    let in_flight_after_failure = owner.in_flight();
+    let sample = owner.finish_interval(surviving).map_err(|finish_error| {
+        format!("surviving interval finish: {finish_error:?}")
+    })?;
+    if error
+        == (LatencyIntervalFinishError::Clock {
+            interval: failed,
+            error: TestMonotonicClockError::Finish,
+        })
+        && in_flight_after_failure == 1
+        && owner.in_flight() == 0
+        && owner.clock().finishes == [1, 2]
+        && sample.nanoseconds() == 20
+    {
+        Ok(())
+    } else {
+        Err(String::from("interval clock-failure ownership drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_finishes_overlaps_out_of_order()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(2, "overlapping interval capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let second = owner
+        .begin_interval()
+        .map_err(|error| format!("second interval begin: {error:?}"))?;
+    let second_sample =
+        owner.finish_interval(second).map_err(|finish_error| {
+            format!("second interval finish: {finish_error:?}")
+        })?;
+    let first_sample = owner
+        .finish_interval(first)
+        .map_err(|error| format!("first interval finish: {error:?}"))?;
+    if first.value() == 1
+        && second.value() == 2
+        && second_sample.nanoseconds() == 20
+        && first_sample.nanoseconds() == 10
+        && owner.clock().finishes == [2, 1]
+        && owner.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("overlapping interval evidence drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(2, "unknown interval capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let second = owner
+        .begin_interval()
+        .map_err(|error| format!("second interval begin: {error:?}"))?;
+    let first_sample = owner
+        .finish_interval(first)
+        .map_err(|error| format!("first interval finish: {error:?}"))?;
+    let error = owner
+        .finish_interval(first)
+        .err()
+        .ok_or_else(|| String::from("completed interval finished twice"))?;
+    let in_flight_after_unknown = owner.in_flight();
+    let second_sample =
+        owner.finish_interval(second).map_err(|finish_error| {
+            format!("second interval finish: {finish_error:?}")
+        })?;
+    if first_sample.nanoseconds() == 10
+        && error == (LatencyIntervalFinishError::Unknown { interval: first })
+        && in_flight_after_unknown == 1
+        && second_sample.nanoseconds() == 20
+        && owner.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "unknown interval finish changed pending state",
+        ))
     }
 }
 

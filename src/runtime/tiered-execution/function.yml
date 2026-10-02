@@ -654,6 +654,12 @@ parts:
     language: rust
     responsibility: >-
       Coordinate durable AOT package leases with guarded generation reclaim.
+  - id: part-0120
+    path: composition/tier/cached_cycle/telemetry_latency_interval_owner.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Own bounded overlapping process-local latency intervals automatically.
 projects: []
 tests: []
 graph:
