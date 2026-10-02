@@ -49,6 +49,8 @@ pub mod blob_store;
 pub mod cached_cycle;
 #[path = "tier/cached_retry.rs"]
 pub mod cached_retry;
+#[path = "tier/dispatch_queue.rs"]
+pub mod continuation_dispatch_queue;
 #[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "tier/executable_cache_limits_activation.rs"]

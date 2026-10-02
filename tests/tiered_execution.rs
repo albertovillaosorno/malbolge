@@ -49,6 +49,8 @@ pub mod blob_store;
 pub mod cached_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/cached_retry.rs"]
 pub mod cached_retry;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
+pub mod continuation_dispatch_queue;
 #[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
@@ -360,6 +362,11 @@ use cached_cycle::{
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
+};
+use continuation_dispatch_queue::{
+    NativeContinuationDispatchCompletionError,
+    NativeContinuationDispatchEnqueueError, NativeContinuationDispatchId,
+    NativeContinuationDispatchQueue, NativeContinuationDispatchedHandoff,
 };
 use continuation_scheduler::{
     NativeContinuationScheduleDecision, NativeContinuationScheduleOutcome,
@@ -1746,6 +1753,14 @@ type LatencyIntervalFinishError =
     >;
 type LatencyIntervalOwner<Clock> =
     NativeContinuationCachedRetryLatencyIntervalOwner<Clock>;
+type ContinuationDispatchCompletionError =
+    NativeContinuationDispatchCompletionError<TestMonotonicClockError>;
+type ContinuationDispatchQueue =
+    NativeContinuationDispatchQueue<TestIntervalClock>;
+type ContinuationDispatchId = NativeContinuationDispatchId;
+type DispatchedHandoff = NativeContinuationDispatchedHandoff;
+type DispatchFixtureResult =
+    Result<(ContinuationDispatchId, DispatchedHandoff), String>;
 type LatencyMergeError = NativeContinuationCachedRetryLatencyMergeError;
 type LatencySnapshotError = NativeContinuationCachedRetryLatencySnapshotError;
 type LatencyCodecError = NativeContinuationCachedRetryLatencyCodecError;
@@ -95298,6 +95313,353 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
     } else {
         Err(String::from(
             "unknown interval finish changed pending state",
+        ))
+    }
+}
+
+fn dispatch_fixture(
+    queue: &mut ContinuationDispatchQueue,
+    fixture: NativeScheduleFixture,
+) -> DispatchFixtureResult {
+    let id = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("dispatch enqueue: {:?}", failure.error())
+    })?;
+    let work = queue
+        .dispatch_next()
+        .map_err(|error| format!("dispatch dequeue: {error:?}"))?
+        .ok_or_else(|| String::from("queued dispatch missing"))?;
+    Ok((id, work))
+}
+
+fn dispatched_handoff_yields_to_caller(
+    work: DispatchedHandoff,
+) -> Result<bool, String> {
+    let outcome = schedule_native_interpreter_handoff(
+        work.into_handoff(),
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|failure| failure.to_string())?;
+    Ok(matches!(
+        &outcome,
+        NativeContinuationScheduleOutcome::Suspended(suspension)
+            if suspension.reason()
+                == NativeContinuationScheduleStopReason::CallerYield
+    ))
+}
+
+#[test]
+fn continuation_dispatch_queue_capacity_returns_affine_handoff()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let rejected = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(1, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(1, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let first_id = queue
+        .enqueue(first.handoff)
+        .map_err(|failure| format!("first enqueue: {:?}", failure.error()))?;
+    let failure = queue
+        .enqueue(rejected.handoff)
+        .err()
+        .ok_or_else(|| String::from("full dispatch queue accepted handoff"))?;
+    let error = failure.error();
+    let recovered = failure.into_handoff();
+    let outcome = schedule_native_interpreter_handoff(
+        recovered,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|schedule_failure| schedule_failure.to_string())?;
+    let recovered_owner = matches!(
+        &outcome,
+        NativeContinuationScheduleOutcome::Suspended(suspension)
+            if suspension.reason()
+                == NativeContinuationScheduleStopReason::CallerYield
+    );
+    let cancelled = queue.cancel_pending(first_id).is_some();
+    if error
+        == (NativeContinuationDispatchEnqueueError::Capacity {
+            maximum_pending,
+            pending: 1,
+        })
+        && recovered_owner
+        && cancelled
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "dispatch enqueue capacity lost affine ownership",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_empty_and_cancel_preserve_affine_owner()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(1, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(1, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let empty_before = queue
+        .dispatch_next()
+        .map_err(|error| format!("empty dispatch: {error:?}"))?;
+    let id = queue
+        .enqueue(fixture.handoff)
+        .map_err(|failure| format!("enqueue: {:?}", failure.error()))?;
+    let recovered = queue
+        .cancel_pending(id)
+        .ok_or_else(|| String::from("pending cancellation lost handoff"))?;
+    let outcome = schedule_native_interpreter_handoff(
+        recovered,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let empty_after = queue
+        .dispatch_next()
+        .map_err(|error| format!("post-cancel dispatch: {error:?}"))?;
+    let recovered_owner = matches!(
+        &outcome,
+        NativeContinuationScheduleOutcome::Suspended(suspension)
+            if suspension.reason()
+                == NativeContinuationScheduleStopReason::CallerYield
+    );
+    if empty_before.is_none()
+        && empty_after.is_none()
+        && recovered_owner
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+        && queue.clock().finishes.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("empty/cancel dispatch ownership drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_inflight_capacity_preserves_fifo_pending()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(2, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(1, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let first_id = queue
+        .enqueue(first.handoff)
+        .map_err(|failure| format!("first enqueue: {:?}", failure.error()))?;
+    let second_id = queue
+        .enqueue(second.handoff)
+        .map_err(|failure| format!("second enqueue: {:?}", failure.error()))?;
+    let first_work = queue
+        .dispatch_next()
+        .map_err(|error| format!("first dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("first dispatch missing"))?;
+    let capacity = queue.dispatch_next().err().ok_or_else(|| {
+        String::from("in-flight capacity unexpectedly dispatched")
+    })?;
+    let pending_after_capacity = queue.pending();
+    let in_flight_after_capacity = queue.in_flight();
+    let first_sample = queue
+        .complete(first_id)
+        .map_err(|error| format!("first completion: {error:?}"))?;
+    let second_work = queue
+        .dispatch_next()
+        .map_err(|error| format!("second dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("second dispatch missing"))?;
+    let second_sample = queue
+        .complete(second_id)
+        .map_err(|error| format!("second completion: {error:?}"))?;
+    if first_work.id() == first_id
+        && second_work.id() == second_id
+        && capacity
+            == (LatencyIntervalBeginError::Capacity {
+                in_flight: 1,
+                maximum_in_flight,
+            })
+        && pending_after_capacity == 1
+        && in_flight_after_capacity == 1
+        && first_sample.nanoseconds() == 10
+        && second_sample.nanoseconds() == 20
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch in-flight backpressure drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_clock_failure_consumes_selected_only()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(2, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(2, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock {
+            fail_start: Some(1),
+            ..TestIntervalClock::default()
+        },
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let (first_id, _first_work) = dispatch_fixture(&mut queue, first)?;
+    let (second_id, _second_work) = dispatch_fixture(&mut queue, second)?;
+    let error = queue.complete(first_id).err().ok_or_else(|| {
+        String::from("configured dispatch clock did not fail")
+    })?;
+    let retained_after_failure = queue.in_flight();
+    let second_sample =
+        queue.complete(second_id).map_err(|completion_error| {
+            format!("second completion: {completion_error:?}")
+        })?;
+    if error
+        == (ContinuationDispatchCompletionError::Clock {
+            dispatch: first_id,
+            error: TestMonotonicClockError::Finish,
+        })
+        && retained_after_failure == 1
+        && second_sample.nanoseconds() == 20
+        && queue.clock().finishes == [1, 2]
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch clock failure changed other work"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_completes_out_of_order() -> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(2, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(2, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let (first_id, first_work) = dispatch_fixture(&mut queue, first)?;
+    let (second_id, second_work) = dispatch_fixture(&mut queue, second)?;
+    let first_valid = dispatched_handoff_yields_to_caller(first_work)?;
+    let second_valid = dispatched_handoff_yields_to_caller(second_work)?;
+    let second_sample = queue
+        .complete(second_id)
+        .map_err(|error| format!("second completion: {error:?}"))?;
+    let first_sample = queue
+        .complete(first_id)
+        .map_err(|error| format!("first completion: {error:?}"))?;
+    if first_valid
+        && second_valid
+        && first_id.value() == 1
+        && second_id.value() == 2
+        && second_sample.nanoseconds() == 20
+        && first_sample.nanoseconds() == 10
+        && queue.clock().finishes == [2, 1]
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("out-of-order dispatch completion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_unknown_completion_preserves_other_work()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum_pending = nonzero_test_limit(2, "dispatch pending capacity")?;
+    let maximum_in_flight = nonzero_test_limit(2, "dispatch active capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum_pending,
+        maximum_in_flight,
+    );
+    let first_id = queue
+        .enqueue(first.handoff)
+        .map_err(|failure| format!("first enqueue: {:?}", failure.error()))?;
+    let second_id = queue
+        .enqueue(second.handoff)
+        .map_err(|failure| format!("second enqueue: {:?}", failure.error()))?;
+    let _first_work = queue
+        .dispatch_next()
+        .map_err(|error| format!("first dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("first dispatch missing"))?;
+    let _second_work = queue
+        .dispatch_next()
+        .map_err(|error| format!("second dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("second dispatch missing"))?;
+    let first_sample = queue
+        .complete(first_id)
+        .map_err(|error| format!("first completion: {error:?}"))?;
+    let unknown = queue
+        .complete(first_id)
+        .err()
+        .ok_or_else(|| String::from("completed dispatch finished twice"))?;
+    let retained_after_unknown = queue.in_flight();
+    let second_sample = queue
+        .complete(second_id)
+        .map_err(|error| format!("second completion: {error:?}"))?;
+    if first_sample.nanoseconds() == 10
+        && unknown
+            == (ContinuationDispatchCompletionError::Unknown {
+                dispatch: first_id,
+            })
+        && retained_after_unknown == 1
+        && second_sample.nanoseconds() == 20
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "unknown dispatch completion changed other work",
         ))
     }
 }

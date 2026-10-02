@@ -581,9 +581,12 @@ behavior.
   Bounded process-local overlapping latency intervals now have automatic
   one-based identities, explicit capacity, cancellation, out-of-order finish,
   and selected-interval clock-failure ownership without exposing opaque clock
-  starts. Task dispatch/completion automation, persisted timing identity, and
-  broader distributed aggregation remain open; synchronous same-cycle
-  count/latency publication remains owned.
+  starts. A bounded affine-handoff queue now adds automatic work IDs,
+  recoverable enqueue rejection, FIFO dispatch, in-flight backpressure, and
+  out-of-order completion timing. Worker execution and durable queue/timing
+  identity remain open, as does broader distributed scheduling. Synchronous
+  same-cycle count/latency
+  publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -619,9 +622,11 @@ behavior.
   fallback. Runner/release failure exits immediately with semantic and cleanup
   owners intact. Seven cases cover zero/format fallback, repeated guards, later
   native completion, runner/cleanup failure, and hard routing rejection before
-  adapters. Cached execution is owned by `cached_retry.rs` and
-  `cached_cycle.rs`; adaptive telemetry, async queues, and broader product
+  adapters.
 
+  Cached execution is owned by `cached_retry.rs` and `cached_cycle.rs`;
+  process-local affine dispatch queueing is now bounded. Worker execution,
+  durable queue identity, distributed scheduling, and broader product
   orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory

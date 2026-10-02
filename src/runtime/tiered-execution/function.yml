@@ -660,6 +660,12 @@ parts:
     language: rust
     responsibility: >-
       Own bounded overlapping process-local latency intervals automatically.
+  - id: part-0121
+    path: composition/tier/dispatch_queue.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Queue affine handoffs and track bounded process-local dispatch completion.
 projects: []
 tests: []
 graph:

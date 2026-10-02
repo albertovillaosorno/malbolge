@@ -1829,9 +1829,14 @@ A bounded process-local interval owner now retains multiple overlapping
 monotonic starts behind automatic one-based identities. It enforces explicit
 in-flight capacity before reading the clock, supports cancellation and
 out-of-order finish, and consumes only the selected interval on clock failure.
-Opaque clock starts never escape. Task dispatch/completion automation, persisted
-timing identity, and broader distributed aggregation remain outside this
-boundary; synchronous same-cycle count/latency publication remains owned.
+Opaque clock starts never escape.
+
+A bounded affine-handoff dispatch queue now owns automatic one-based work IDs,
+recoverable enqueue rejection, FIFO handoff transfer, in-flight timing
+backpressure, and out-of-order completion by returned work identity. Queue or
+timing capacity fails before affine ownership moves. Worker execution, durable
+queue/timing identity, and distributed scheduling remain outside this boundary;
+synchronous same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
