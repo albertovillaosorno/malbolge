@@ -672,6 +672,12 @@ parts:
     language: rust
     responsibility: >-
       Execute one queued affine handoff with independent timing evidence.
+  - id: part-0123
+    path: composition/tier/dispatch_cycle.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Drain explicit synchronous worker decisions without losing item evidence.
 projects: []
 tests: []
 graph:

@@ -1840,6 +1840,13 @@ A synchronous process-local worker turn now composes FIFO dequeue, one explicit
 scheduler decision, and timing completion. Semantic success/failure and timing
 success/failure remain independent evidence, so timing failure cannot erase a
 scheduler disposition and scheduler failure still closes its timing interval.
+
+A bounded explicit-decision cycle now repeats that worker turn without choosing
+policy. It preserves every worked completion in FIFO order and stops as
+decision-exhausted, idle, or pre-dispatch blocked before another affine owner
+moves. Per-item semantic or timing failure remains item evidence and does not
+cancel later unrelated queued owners.
+
 Parallel or background worker lifecycle, durable queue/timing identity, and
 distributed scheduling remain outside this boundary; synchronous same-cycle
 count/latency publication remains owned.
