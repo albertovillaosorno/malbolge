@@ -55,6 +55,8 @@ pub mod continuation_dispatch_cycle;
 pub mod continuation_dispatch_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_migrate.rs"]
+pub mod continuation_dispatch_policy_migration;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_owner.rs"]
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
@@ -392,6 +394,12 @@ use continuation_dispatch_policy_codec::{
     NativeContinuationDispatchPolicyCodecError,
     decode_native_continuation_dispatch_policy_snapshot,
     encode_native_continuation_dispatch_policy_snapshot,
+};
+use continuation_dispatch_policy_migration::{
+    NativeContinuationDispatchPolicyMigration as DispatchPolicyMigration,
+    NativeContinuationDispatchPolicyMigrationCurrent as MigrationCurrent,
+    NativeContinuationDispatchPolicyMigrationError as DispatchMigrationError,
+    migrate_native_continuation_dispatch_policy_state_durably,
 };
 use continuation_dispatch_policy_owner::{
     NativeContinuationDispatchPolicyOwner,
@@ -95691,6 +95699,264 @@ fn continuation_dispatch_policy_state_codec_rejects_nested_policy()
     } else {
         Err(String::from("nested dispatch policy drift was accepted"))
     }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_upgrades_legacy_to_revision_zero()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "dispatch migration bytes")?;
+    let previous = dispatch_policy_fixture(5)?;
+    let legacy = encode_native_continuation_dispatch_policy_snapshot(
+        previous.snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(legacy),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("dispatch migration failed: {error:?}"))?;
+    let DispatchPolicyMigration::Durable {
+        bytes,
+        current,
+        previous: seen,
+    } = outcome
+    else {
+        return Err(String::from("legacy dispatch policy was not migrated"));
+    };
+    if bytes == 52
+        && seen == previous
+        && current.policy() == previous
+        && current.revision()
+            == NativeContinuationDispatchPolicyRevision::initial()
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch migration evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_reports_missing_without_mutation()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "missing dispatch migration")?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("missing dispatch migration failed: {error:?}"))?;
+    if matches!(outcome, DispatchPolicyMigration::Missing)
+        && store.compare_and_swap_calls == 0
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing dispatch migration mutated storage"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_preserves_active_state()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "active dispatch migration")?;
+    let state = dispatch_policy_state_fixture(7, 4)?;
+    let bytes = encode_native_continuation_dispatch_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("active dispatch migration failed: {error:?}"))?;
+    let DispatchPolicyMigration::AlreadyActive { state: observed } = outcome
+    else {
+        return Err(String::from("active dispatch state was rewritten"));
+    };
+    if observed == state
+        && store.blob.as_deref() == Some(bytes.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("active dispatch migration evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_retains_raced_active_state()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "raced dispatch migration")?;
+    let previous = dispatch_policy_fixture(3)?;
+    let legacy = encode_native_continuation_dispatch_policy_snapshot(
+        previous.snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    let raced = dispatch_policy_state_fixture(9, 8)?;
+    let raced_bytes = encode_native_continuation_dispatch_policy_state(raced)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(legacy),
+        blobs_before_compare: VecDeque::from([raced_bytes.clone()]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("raced dispatch migration failed: {error:?}"))?;
+    let DispatchPolicyMigration::Conflict { current, previous: seen } = outcome
+    else {
+        return Err(String::from("raced dispatch migration overwrote state"));
+    };
+    if seen == previous
+        && current == Some(MigrationCurrent::Active(raced))
+        && store.blob.as_deref() == Some(raced_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch migration conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_rejects_invalid_formats()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "invalid dispatch migration")?;
+    let mut corrupt = vec![0; 32];
+    corrupt
+        .get_mut(..8)
+        .ok_or_else(|| String::from("corrupt dispatch fixture magic missing"))?
+        .copy_from_slice(b"MBDPOL01");
+    let mut corrupt_store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(corrupt),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let corrupt_error =
+        migrate_native_continuation_dispatch_policy_state_durably(
+            &mut corrupt_store,
+            maximum_bytes,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("corrupt legacy dispatch policy migrated")
+        })?;
+    let mut unknown_store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(vec![0; 32]),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let unknown_error =
+        migrate_native_continuation_dispatch_policy_state_durably(
+            &mut unknown_store,
+            maximum_bytes,
+        )
+        .err()
+        .ok_or_else(|| String::from("unknown dispatch format migrated"))?;
+    if matches!(corrupt_error, DispatchMigrationError::PolicyCodec(_))
+        && unknown_error == DispatchMigrationError::UnknownFormat
+        && corrupt_store.compare_and_swap_calls == 0
+        && unknown_store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("invalid dispatch migration rejection drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_retains_durability_failure()
+-> Result<(), String> {
+    let maximum_bytes =
+        nonzero_test_limit(52, "dispatch migration durability")?;
+    let previous = dispatch_policy_fixture(6)?;
+    let legacy = encode_native_continuation_dispatch_policy_snapshot(
+        previous.snapshot(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(legacy),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("dispatch migration failed early: {error:?}"))?;
+    let DispatchPolicyMigration::Published {
+        bytes,
+        current,
+        durability_error,
+        previous: seen,
+    } = outcome
+    else {
+        return Err(String::from("dispatch migration durability lost commit"));
+    };
+    if bytes == 52
+        && seen == previous
+        && current.policy() == previous
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "dispatch migration durability evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_migration_file_store_roundtrips()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("dispatch-policy-migration")?;
+    let maximum_bytes = nonzero_test_limit(52, "file dispatch migration")?;
+    let previous = dispatch_policy_fixture(7)?;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let _published = persist_native_continuation_dispatch_policy_durably(
+        &mut store,
+        previous,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("legacy dispatch file publish failed: {error:?}")
+    })?;
+    let outcome = migrate_native_continuation_dispatch_policy_state_durably(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| format!("file dispatch migration failed: {error:?}"))?;
+    let restored = restore_native_continuation_dispatch_policy_state(
+        &mut store,
+        maximum_bytes,
+    )
+    .map_err(|error| {
+        format!("migrated dispatch state restore failed: {error:?}")
+    })?;
+    let NativeContinuationDispatchPolicyStatePersistenceLoad::Restored {
+        bytes,
+        state,
+    } = restored
+    else {
+        return Err(String::from("migrated file dispatch state disappeared"));
+    };
+    let valid = matches!(outcome, DispatchPolicyMigration::Durable { .. })
+        && bytes == 52
+        && state.policy() == previous
+        && state.revision()
+            == NativeContinuationDispatchPolicyRevision::initial();
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    valid.then_some(()).ok_or_else(|| {
+        String::from("file dispatch migration round-trip drifted")
+    })
 }
 
 #[test]

@@ -637,14 +637,22 @@ behavior.
   bytes. Missing state initializes revision zero only when still missing;
   matching state advances exactly once; stale state returns decoded
   current/expected/candidate evidence without mutation; revision exhaustion
-  fails before store mutation; and
-  post-commit durability failure remains committed `Published` evidence. File
-  initializers are serialized by the existing exclusive coordination guard.
+  fails before store mutation; and post-commit durability failure remains
+  committed `Published` evidence. File initializers are serialized by the
+  existing exclusive coordination guard.
 
-  Adaptive or mixed-decision policy, active-policy migration,
-  parallel/background worker lifecycle, durable queue/timing identity, and
-  distributed scheduling remain open. Synchronous same-cycle count/latency
-  publication remains owned.
+  One-way durable migration now recognizes the two owned canonical formats. A
+  missing publication is a no-op, existing `MBDPST01` state is preserved, and
+  canonical legacy `MBDPOL01` policy upgrades to revision-zero `MBDPST01` only
+  through exact-byte durable CAS. Concurrent replacement returns typed current
+  evidence without overwrite, unknown/corrupt formats fail closed, and
+  post-commit durability failure remains committed migration evidence.
+
+  Adaptive or mixed-decision policy, parallel/background worker lifecycle,
+  durable queue/timing identity, and distributed scheduling remain open. Any
+  future active-state frame revision will require an explicit new migration
+  contract rather than reinterpretation of revision one. Synchronous same-cycle
+  count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -687,10 +695,10 @@ behavior.
   fixed immutable synchronous dispatch policy, canonical dispatch-policy byte
   framing, typed bounded durable publication, process-local revisioned
   active-policy ownership, canonical active-state framing, and bounded durable
-  active-state persistence and durable conditional CAS are now owned. Adaptive
-  or mixed-decision orchestration, active-policy migration, parallel/background
-  worker lifecycle, durable queue identity, and distributed scheduling remain
-  open.
+  active-state persistence, durable conditional CAS, and canonical legacy-policy
+  migration are now owned. Adaptive or mixed-decision orchestration,
+  parallel/background worker lifecycle, durable queue identity, and distributed
+  scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

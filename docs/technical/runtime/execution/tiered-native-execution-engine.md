@@ -1893,10 +1893,19 @@ before any store mutation; and post-commit durability failure remains committed
 `Published` evidence. The filesystem adapter serializes competing initializers
 under its existing exclusive coordination guard.
 
-Adaptive or mixed-decision policy, active-policy migration, parallel/background
-worker lifecycle, durable queue/timing identity, and distributed scheduling
-remain outside this boundary. Synchronous same-cycle count/latency publication
-remains owned.
+One-way durable migration now recognizes only the two dispatch-policy formats
+owned by this contract. Missing storage is a no-op and existing `MBDPST01` state
+is preserved. Canonical legacy `MBDPOL01` policy upgrades to revision-zero
+`MBDPST01` through exact-byte durable CAS, so a concurrent publication becomes
+typed conflict evidence rather than overwrite. Unknown or corrupt formats fail
+closed, and a durability failure after migration commit remains committed
+`Published` evidence.
+
+Adaptive or mixed-decision policy, parallel/background worker lifecycle, durable
+queue/timing identity, and distributed scheduling remain outside this boundary.
+Any future active-state frame revision requires an explicit migration contract;
+revision one is never reinterpreted. Synchronous same-cycle count/latency
+publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

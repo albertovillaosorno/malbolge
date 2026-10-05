@@ -55,6 +55,8 @@ pub mod continuation_dispatch_cycle;
 pub mod continuation_dispatch_policy;
 #[path = "tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
+#[path = "tier/dispatch_migrate.rs"]
+pub mod continuation_dispatch_policy_migration;
 #[path = "tier/dispatch_owner.rs"]
 pub mod continuation_dispatch_policy_owner;
 #[path = "tier/dispatch_store.rs"]

@@ -715,6 +715,12 @@ parts:
     responsibility: >-
       Publish active dispatch policy through revisioned durable
       compare-and-swap.
+  - id: part-0130
+    path: composition/tier/dispatch_migrate.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Migrate canonical plain dispatch policy to revision-zero active state.
 projects: []
 tests: []
 graph:
