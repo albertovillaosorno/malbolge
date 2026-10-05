@@ -633,10 +633,18 @@ behavior.
   committed evidence. The filesystem adapter round-trips the exact 52-byte state
   durably.
 
-  Adaptive or mixed-decision policy, durable active-policy conditional CAS/
-  migration, parallel/background worker lifecycle, durable queue/timing
-  identity, and distributed scheduling remain open. Synchronous same-cycle
-  count/latency publication remains owned.
+  Durable active-state compare-and-swap now compares exact canonical state
+  bytes. Missing state initializes revision zero only when still missing;
+  matching state advances exactly once; stale state returns decoded
+  current/expected/candidate evidence without mutation; revision exhaustion
+  fails before store mutation; and
+  post-commit durability failure remains committed `Published` evidence. File
+  initializers are serialized by the existing exclusive coordination guard.
+
+  Adaptive or mixed-decision policy, active-policy migration,
+  parallel/background worker lifecycle, durable queue/timing identity, and
+  distributed scheduling remain open. Synchronous same-cycle count/latency
+  publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -679,8 +687,8 @@ behavior.
   fixed immutable synchronous dispatch policy, canonical dispatch-policy byte
   framing, typed bounded durable publication, process-local revisioned
   active-policy ownership, canonical active-state framing, and bounded durable
-  active-state persistence are now owned. Adaptive or mixed-decision
-  orchestration, durable active-policy conditional CAS, parallel/background
+  active-state persistence and durable conditional CAS are now owned. Adaptive
+  or mixed-decision orchestration, active-policy migration, parallel/background
   worker lifecycle, durable queue identity, and distributed scheduling remain
   open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every

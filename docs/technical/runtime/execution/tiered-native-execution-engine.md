@@ -1882,14 +1882,21 @@ Typed bounded active-state persistence now reuses the opaque blob application
 service under the same storage adapter contract without widening the plain
 policy-persistence error surface. Missing state remains explicit, while corrupt
 state fails codec validation, undersized limits fail before replacement, and
-durability
-confirmation failure after replacement remains committed publication evidence.
-The filesystem adapter round-trips the exact 52-byte state durably.
+durability confirmation failure after replacement remains committed publication
+evidence. The filesystem adapter round-trips the exact 52-byte state durably.
 
-Adaptive or mixed-decision policy, durable active-policy conditional CAS/
-migration, parallel/background worker lifecycle, durable queue/timing identity,
-and distributed scheduling remain outside this boundary. Synchronous same-cycle
-count/latency publication remains owned.
+Durable active-state compare-and-swap now compares exact canonical state bytes.
+Missing state initializes revision zero only while still absent; matching state
+advances exactly one revision; stale state returns exact decoded
+current/expected/candidate evidence without mutation; revision exhaustion fails
+before any store mutation; and post-commit durability failure remains committed
+`Published` evidence. The filesystem adapter serializes competing initializers
+under its existing exclusive coordination guard.
+
+Adaptive or mixed-decision policy, active-policy migration, parallel/background
+worker lifecycle, durable queue/timing identity, and distributed scheduling
+remain outside this boundary. Synchronous same-cycle count/latency publication
+remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

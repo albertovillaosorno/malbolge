@@ -708,6 +708,13 @@ parts:
     language: rust
     responsibility: >-
       Encode revisioned active dispatch-policy state as canonical bytes.
+  - id: part-0129
+    path: composition/tier/dispatch_cas.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish active dispatch policy through revisioned durable
+      compare-and-swap.
 projects: []
 tests: []
 graph:

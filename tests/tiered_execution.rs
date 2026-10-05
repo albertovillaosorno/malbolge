@@ -59,6 +59,8 @@ pub mod continuation_dispatch_policy_codec;
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cas.rs"]
+pub mod continuation_dispatch_policy_state_cas;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_state.rs"]
 pub mod continuation_dispatch_policy_state_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
@@ -409,6 +411,11 @@ use continuation_dispatch_policy_persistence::{
     persist_native_continuation_dispatch_policy_state_durably,
     restore_native_continuation_dispatch_policy,
     restore_native_continuation_dispatch_policy_state,
+};
+use continuation_dispatch_policy_state_cas::{
+    NativeContinuationDispatchPolicyStateCas as DispatchPolicyStateCas,
+    NativeContinuationDispatchPolicyStateCasError as DispatchStateCasError,
+    compare_and_swap_native_continuation_dispatch_policy_state_durably,
 };
 use continuation_dispatch_policy_state_codec::{
     NativeContinuationDispatchPolicyStateCodecError,
@@ -95687,6 +95694,269 @@ fn continuation_dispatch_policy_state_codec_rejects_nested_policy()
 }
 
 #[test]
+fn continuation_dispatch_policy_state_cas_initializes_revision_zero()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "dispatch CAS init bytes")?;
+    let candidate = dispatch_policy_fixture(4)?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome =
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            None,
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| {
+            format!("dispatch CAS initialization failed: {error:?}")
+        })?;
+    let DispatchPolicyStateCas::Durable { bytes, current, previous } = outcome
+    else {
+        return Err(String::from("dispatch CAS initialization did not commit"));
+    };
+    let stored = store.blob.as_deref().ok_or_else(|| {
+        String::from("dispatch CAS initialization stored nothing")
+    })?;
+    let decoded = decode_native_continuation_dispatch_policy_state(stored)
+        .map_err(|error| error.to_string())?;
+    if bytes == 52
+        && previous.is_none()
+        && current.policy() == candidate
+        && current.revision()
+            == NativeContinuationDispatchPolicyRevision::initial()
+        && decoded == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch CAS initialization evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_cas_advances_matching_revision()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "dispatch CAS update bytes")?;
+    let expected = dispatch_policy_state_fixture(7, 2)?;
+    let candidate = dispatch_policy_fixture(6)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("dispatch CAS update failed: {error:?}"))?;
+    let DispatchPolicyStateCas::Durable { current, previous, .. } = outcome
+    else {
+        return Err(String::from("matching dispatch CAS did not commit"));
+    };
+    if previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 8
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch CAS revision advance drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_cas_retains_exact_conflict()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "dispatch CAS conflict bytes")?;
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let candidate = dispatch_policy_fixture(9)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("dispatch CAS conflict failed: {error:?}"))?;
+    let DispatchPolicyStateCas::Conflict {
+        candidate: rejected,
+        current,
+        expected: seen,
+    } = outcome
+    else {
+        return Err(String::from("stale dispatch CAS committed"));
+    };
+    if rejected == candidate
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch CAS conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_cas_rejects_revision_exhaustion()
+-> Result<(), String> {
+    let maximum_bytes = nonzero_test_limit(52, "dispatch CAS exhausted bytes")?;
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let candidate = dispatch_policy_fixture(8)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted dispatch CAS advanced"))?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if error == expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.replace_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("exhausted dispatch CAS evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_cas_retains_durability_failure()
+-> Result<(), String> {
+    let maximum_bytes =
+        nonzero_test_limit(52, "dispatch CAS durability bytes")?;
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let candidate = dispatch_policy_fixture(6)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            Some(expected),
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| {
+            format!("dispatch CAS durability failed early: {error:?}")
+        })?;
+    let DispatchPolicyStateCas::Published {
+        bytes,
+        current,
+        durability_error,
+        previous,
+    } = outcome
+    else {
+        return Err(String::from(
+            "dispatch CAS durability failure lost commit",
+        ));
+    };
+    if bytes == 52
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && current.policy() == candidate
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch CAS durability evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_file_cas_serializes_initializers()
+-> Result<(), String> {
+    let fixture = file_blob_store_fixture("dispatch-policy-cas-race")?;
+    let maximum_bytes = nonzero_test_limit(52, "file dispatch CAS bytes")?;
+    let first_policy = dispatch_policy_fixture(3)?;
+    let second_policy = dispatch_policy_fixture(7)?;
+    let barrier = Arc::new(Barrier::new(3));
+    let first_barrier = Arc::clone(&barrier);
+    let first_path = fixture.destination.clone();
+    let first = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(first_path);
+        let _wait = first_barrier.wait();
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            None,
+            first_policy,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("first dispatch initializer: {error:?}"))
+    });
+    let second_barrier = Arc::clone(&barrier);
+    let second_path = fixture.destination.clone();
+    let second = thread::spawn(move || {
+        let mut store = NativeContinuationFileBlobStore::new(second_path);
+        let _wait = second_barrier.wait();
+        compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            &mut store,
+            None,
+            second_policy,
+            maximum_bytes,
+        )
+        .map_err(|error| format!("second dispatch initializer: {error:?}"))
+    });
+    let _wait = barrier.wait();
+    let first_outcome = first
+        .join()
+        .map_err(|_panic| String::from("first dispatch CAS panic"))??;
+    let second_outcome = second
+        .join()
+        .map_err(|_panic| String::from("second dispatch CAS panic"))??;
+    let valid = match (first_outcome, second_outcome) {
+        (
+            DispatchPolicyStateCas::Durable { current, .. }
+            | DispatchPolicyStateCas::Published { current, .. },
+            DispatchPolicyStateCas::Conflict {
+                current: Some(observed), ..
+            },
+        ) => current == observed && current.policy() == first_policy,
+        (
+            DispatchPolicyStateCas::Conflict {
+                current: Some(observed), ..
+            },
+            DispatchPolicyStateCas::Durable { current, .. }
+            | DispatchPolicyStateCas::Published { current, .. },
+        ) => current == observed && current.policy() == second_policy,
+        _ => false,
+    };
+    remove_file_blob_store_fixture(&fixture.directory)?;
+    valid.then_some(()).ok_or_else(|| {
+        String::from("dispatch initializers were not serialized")
+    })
+}
+
+#[test]
 fn continuation_dispatch_policy_state_persistence_roundtrips_state()
 -> Result<(), String> {
     let maximum_bytes = nonzero_test_limit(52, "dispatch state bytes")?;
@@ -97038,16 +97308,21 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     }
 }
 
+fn dispatch_policy_fixture(
+    maximum_turns: usize,
+) -> Result<NativeContinuationDispatchPolicy, String> {
+    Ok(NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(maximum_turns, "dispatch policy fixture turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    ))
+}
+
 fn dispatch_policy_state_fixture(
     revision: u64,
     maximum_turns: usize,
 ) -> Result<NativeContinuationDispatchPolicyState, String> {
-    let policy = NativeContinuationDispatchPolicy::new(
-        nonzero_test_limit(maximum_turns, "dispatch state fixture turns")?,
-        NativeContinuationDispatchPolicyDecision::YieldCaller,
-    );
     Ok(NativeContinuationDispatchPolicyState::new(
-        policy,
+        dispatch_policy_fixture(maximum_turns)?,
         NativeContinuationDispatchPolicyRevision::from_value(revision),
     ))
 }

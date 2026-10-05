@@ -59,6 +59,8 @@ pub mod continuation_dispatch_policy_codec;
 pub mod continuation_dispatch_policy_owner;
 #[path = "tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "tier/dispatch_cas.rs"]
+pub mod continuation_dispatch_policy_state_cas;
 #[path = "tier/dispatch_state.rs"]
 pub mod continuation_dispatch_policy_state_codec;
 #[path = "tier/dispatch_queue.rs"]
