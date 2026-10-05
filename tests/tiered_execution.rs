@@ -61,6 +61,8 @@ pub mod continuation_dispatch_policy_migration;
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_seq.rs"]
+pub mod continuation_dispatch_policy_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cas.rs"]
 pub mod continuation_dispatch_policy_state_cas;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_state.rs"]
@@ -419,6 +421,11 @@ use continuation_dispatch_policy_persistence::{
     persist_native_continuation_dispatch_policy_state_durably,
     restore_native_continuation_dispatch_policy,
     restore_native_continuation_dispatch_policy_state,
+};
+use continuation_dispatch_policy_sequence::{
+    NativeContinuationDispatchPolicySequence,
+    NativeContinuationDispatchPolicySequenceError,
+    execute_native_continuation_dispatch_policy_sequence,
 };
 use continuation_dispatch_policy_state_cas::{
     NativeContinuationDispatchPolicyStateCas as DispatchPolicyStateCas,
@@ -96832,6 +96839,89 @@ fn continuation_dispatch_policy_codec_rejects_length_drift()
         }
     }
     Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_sequence_rejects_empty() -> Result<(), String> {
+    let error = NativeContinuationDispatchPolicySequence::new(Vec::new())
+        .err()
+        .ok_or_else(|| {
+            String::from("empty dispatch policy sequence accepted")
+        })?;
+    if error == NativeContinuationDispatchPolicySequenceError::Empty {
+        Ok(())
+    } else {
+        Err(String::from(
+            "empty dispatch policy sequence rejection drifted",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_sequence_preserves_exact_order()
+-> Result<(), String> {
+    let decisions = vec![
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+        NativeContinuationDispatchPolicyDecision::Interpret {
+            step_budget: nonzero_test_limit(3, "sequence interpreter slice")?,
+        },
+        NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+    ];
+    let policy =
+        NativeContinuationDispatchPolicySequence::new(decisions.clone())
+            .map_err(|error| {
+                format!("dispatch sequence construction: {error:?}")
+            })?;
+    if policy.length().get() == 3 && policy.decisions() == decisions.as_slice()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy sequence order drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_sequence_executes_mixed_fifo_decisions()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(2, "dispatch sequence capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let first_id = enqueue_dispatch_fixture(&mut queue, first)?;
+    let second_id = enqueue_dispatch_fixture(&mut queue, second)?;
+    let policy = NativeContinuationDispatchPolicySequence::new(vec![
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+        NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+    ])
+    .map_err(|error| format!("dispatch sequence construction: {error:?}"))?;
+    let cycle = execute_native_continuation_dispatch_policy_sequence(
+        &mut queue, &policy,
+    );
+    let (first_completion, second_completion) =
+        dispatch_cycle_pair(cycle.completions())?;
+    if cycle.stop()
+        == NativeContinuationDispatchWorkerCycleStop::DecisionsExhausted
+        && first_completion.dispatch() == first_id
+        && second_completion.dispatch() == second_id
+        && worker_schedule_reason(first_completion)
+            == Some(NativeContinuationScheduleStopReason::CallerYield)
+        && worker_schedule_reason(second_completion)
+            == Some(NativeContinuationScheduleStopReason::NativeRetry)
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed dispatch policy sequence drifted"))
+    }
 }
 
 #[test]

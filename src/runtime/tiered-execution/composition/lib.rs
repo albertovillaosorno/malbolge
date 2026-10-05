@@ -61,6 +61,8 @@ pub mod continuation_dispatch_policy_migration;
 pub mod continuation_dispatch_policy_owner;
 #[path = "tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "tier/dispatch_seq.rs"]
+pub mod continuation_dispatch_policy_sequence;
 #[path = "tier/dispatch_cas.rs"]
 pub mod continuation_dispatch_policy_state_cas;
 #[path = "tier/dispatch_state.rs"]

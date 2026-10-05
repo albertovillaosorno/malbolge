@@ -1901,7 +1901,12 @@ typed conflict evidence rather than overwrite. Unknown or corrupt formats fail
 closed, and a durability failure after migration commit remains committed
 `Published` evidence.
 
-Adaptive or mixed-decision policy, parallel/background worker lifecycle, durable
+Immutable mixed-decision policy sequences now own one explicit non-empty
+ordered heterogeneous decision list and replay it through the existing bounded
+cycle without telemetry-driven adaptation. Empty sequences are rejected rather
+than inventing a default decision.
+
+Adaptive policy selection, parallel/background worker lifecycle, durable
 queue/timing identity, and distributed scheduling remain outside this boundary.
 Any future active-state frame revision requires an explicit migration contract;
 revision one is never reinterpreted. Synchronous same-cycle count/latency

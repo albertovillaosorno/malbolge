@@ -721,6 +721,12 @@ parts:
     language: rust
     responsibility: >-
       Migrate canonical plain dispatch policy to revision-zero active state.
+  - id: part-0131
+    path: composition/tier/dispatch_seq.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Execute one immutable ordered heterogeneous dispatch-policy sequence.
 projects: []
 tests: []
 graph:

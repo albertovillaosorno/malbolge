@@ -648,8 +648,12 @@ behavior.
   evidence without overwrite, unknown/corrupt formats fail closed, and
   post-commit durability failure remains committed migration evidence.
 
-  Adaptive or mixed-decision policy, parallel/background worker lifecycle,
-  durable queue/timing identity, and distributed scheduling remain open. Any
+  Immutable mixed-decision policy sequences now own one explicit non-empty
+  ordered heterogeneous decision list and replay it through the existing bounded
+  cycle without telemetry-driven adaptation. Empty sequences fail closed.
+
+  Adaptive policy selection, parallel/background worker lifecycle, durable
+  queue/timing identity, and distributed scheduling remain open. Any
   future active-state frame revision will require an explicit new migration
   contract rather than reinterpretation of revision one. Synchronous same-cycle
   count/latency publication remains owned.
@@ -696,9 +700,9 @@ behavior.
   framing, typed bounded durable publication, process-local revisioned
   active-policy ownership, canonical active-state framing, and bounded durable
   active-state persistence, durable conditional CAS, and canonical legacy-policy
-  migration are now owned. Adaptive or mixed-decision orchestration,
-  parallel/background worker lifecycle, durable queue identity, and distributed
-  scheduling remain open.
+  migration and immutable mixed-decision policy sequences are now owned.
+  Adaptive orchestration, parallel/background worker lifecycle, durable queue
+  identity, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
