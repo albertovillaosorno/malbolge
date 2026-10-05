@@ -59,6 +59,8 @@ pub mod continuation_dispatch_policy_codec;
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_state.rs"]
+pub mod continuation_dispatch_policy_state_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
@@ -402,6 +404,11 @@ use continuation_dispatch_policy_persistence::{
     NativeContinuationDispatchPolicyPersistenceLoad,
     persist_native_continuation_dispatch_policy_durably,
     restore_native_continuation_dispatch_policy,
+};
+use continuation_dispatch_policy_state_codec::{
+    NativeContinuationDispatchPolicyStateCodecError,
+    decode_native_continuation_dispatch_policy_state,
+    encode_native_continuation_dispatch_policy_state,
 };
 use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
@@ -95567,6 +95574,114 @@ fn continuation_dispatch_policy_owner_rejects_revision_exhaustion()
 }
 
 #[test]
+fn continuation_dispatch_policy_state_codec_roundtrips_exact_bytes()
+-> Result<(), String> {
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(5, "dispatch state turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let state = NativeContinuationDispatchPolicyState::new(
+        policy,
+        NativeContinuationDispatchPolicyRevision::from_value(9),
+    );
+    let bytes = encode_native_continuation_dispatch_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    let expected = [
+        b'M', b'B', b'D', b'P', b'S', b'T', b'0', b'1', 1, 0, 0, 0, 9, 0, 0, 0,
+        0, 0, 0, 0, b'M', b'B', b'D', b'P', b'O', b'L', b'0', b'1', 1, 0, 0, 0,
+        2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let decoded = decode_native_continuation_dispatch_policy_state(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes == expected && decoded == state {
+        Ok(())
+    } else {
+        Err(String::from("dispatch policy state bytes drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_state_codec_rejects_outer_framing()
+-> Result<(), String> {
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "dispatch state turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let state = NativeContinuationDispatchPolicyState::new(
+        policy,
+        NativeContinuationDispatchPolicyRevision::from_value(3),
+    );
+    let bytes = encode_native_continuation_dispatch_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    let mut magic = bytes.clone();
+    set_dispatch_policy_state_byte(&mut magic, 0, b'N')?;
+    if decode_native_continuation_dispatch_policy_state(&magic)
+        != Err(NativeContinuationDispatchPolicyStateCodecError::Magic)
+    {
+        return Err(String::from("dispatch state magic drift was accepted"));
+    }
+    let mut version = bytes.clone();
+    set_dispatch_policy_state_byte(&mut version, 8, 2)?;
+    if decode_native_continuation_dispatch_policy_state(&version)
+        != Err(NativeContinuationDispatchPolicyStateCodecError::Version {
+            observed: 2,
+        })
+    {
+        return Err(String::from("dispatch state revision drift was accepted"));
+    }
+    let mut reserved = bytes.clone();
+    set_dispatch_policy_state_byte(&mut reserved, 10, 1)?;
+    if decode_native_continuation_dispatch_policy_state(&reserved)
+        != Err(NativeContinuationDispatchPolicyStateCodecError::Reserved {
+            observed: 1,
+        })
+    {
+        return Err(String::from("dispatch state reserved drift was accepted"));
+    }
+    let short = bytes
+        .get(..51)
+        .ok_or_else(|| String::from("dispatch state short fixture missing"))?;
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for drifted in [short, trailing.as_slice()] {
+        let Err(NativeContinuationDispatchPolicyStateCodecError::Length {
+            ..
+        }) = decode_native_continuation_dispatch_policy_state(drifted)
+        else {
+            return Err(String::from(
+                "dispatch state length drift was accepted",
+            ));
+        };
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_state_codec_rejects_nested_policy()
+-> Result<(), String> {
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "dispatch state turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let state = NativeContinuationDispatchPolicyState::new(
+        policy,
+        NativeContinuationDispatchPolicyRevision::from_value(3),
+    );
+    let mut bytes = encode_native_continuation_dispatch_policy_state(state)
+        .map_err(|error| error.to_string())?;
+    set_dispatch_policy_state_byte(&mut bytes, 20, b'N')?;
+    if decode_native_continuation_dispatch_policy_state(&bytes)
+        == Err(NativeContinuationDispatchPolicyStateCodecError::Policy(
+            NativeContinuationDispatchPolicyCodecError::Magic,
+        ))
+    {
+        Ok(())
+    } else {
+        Err(String::from("nested dispatch policy drift was accepted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_persistence_roundtrips_policy()
 -> Result<(), String> {
     let maximum_bytes = nonzero_test_limit(32, "dispatch policy bytes")?;
@@ -96726,6 +96841,18 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     } else {
         Err(String::from("worker semantic-failure evidence drifted"))
     }
+}
+
+fn set_dispatch_policy_state_byte(
+    bytes: &mut [u8],
+    index: usize,
+    value: u8,
+) -> Result<(), String> {
+    let slot = bytes
+        .get_mut(index)
+        .ok_or_else(|| format!("dispatch state byte {index} missing"))?;
+    *slot = value;
+    Ok(())
 }
 
 fn set_dispatch_policy_codec_byte(

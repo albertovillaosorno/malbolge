@@ -702,6 +702,12 @@ parts:
     language: rust
     responsibility: >-
       Own process-local active dispatch policy with revision-guarded updates.
+  - id: part-0128
+    path: composition/tier/dispatch_state.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Encode revisioned active dispatch-policy state as canonical bytes.
 projects: []
 tests: []
 graph:

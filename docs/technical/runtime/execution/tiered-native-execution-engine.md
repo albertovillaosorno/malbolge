@@ -1872,7 +1872,13 @@ stale revision returns exact candidate/current/expected conflict evidence, while
 are optimistic-concurrency evidence only and carry no time, priority, storage
 generation, or policy-quality meaning.
 
-Adaptive or mixed-decision policy, durable active-policy state framing/CAS/
+Revision-one active-policy state transport now uses one fixed 52-byte
+little-endian `MBDPST01` frame containing the exact `u64` active revision plus a
+nested canonical 32-byte `MBDPOL01` policy frame. Outer magic, frame revision,
+reserved bits, length, and nested policy framing all fail closed before active
+state reconstruction.
+
+Adaptive or mixed-decision policy, durable active-policy state persistence/CAS/
 migration, parallel/background worker lifecycle, durable queue/timing identity,
 and distributed scheduling remain outside this boundary. Synchronous same-cycle
 count/latency publication remains owned.
