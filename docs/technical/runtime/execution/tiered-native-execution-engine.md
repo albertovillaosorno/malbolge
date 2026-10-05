@@ -1906,11 +1906,20 @@ ordered heterogeneous decision list and replay it through the existing bounded
 cycle without telemetry-driven adaptation. Empty sequences are rejected rather
 than inventing a default decision.
 
-Adaptive policy selection, parallel/background worker lifecycle, durable
-queue/timing identity, and distributed scheduling remain outside this boundary.
-Any future active-state frame revision requires an explicit migration contract;
-revision one is never reinterpreted. Synchronous same-cycle count/latency
-publication remains owned.
+Count-assessment adaptive dispatch selection now consumes one validated
+cached-retry telemetry assessment and an explicit caller-supplied meets/misses
+dispatch-policy table. Insufficient evidence defers; threshold-meeting and
+threshold-missing evidence select exactly the corresponding supplied policy
+while
+retaining the assessment telemetry and violation evidence. This selector neither
+assesses telemetry nor publishes active state.
+
+Latency or multi-evidence adaptive precedence, automatic adaptive-policy
+publication, parallel/background worker lifecycle, durable queue/timing
+identity,
+and distributed scheduling remain outside this boundary. Any future active-state
+frame revision requires an explicit migration contract; revision one is never
+reinterpreted. Synchronous same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

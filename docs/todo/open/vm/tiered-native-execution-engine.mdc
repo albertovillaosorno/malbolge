@@ -652,11 +652,20 @@ behavior.
   ordered heterogeneous decision list and replay it through the existing bounded
   cycle without telemetry-driven adaptation. Empty sequences fail closed.
 
-  Adaptive policy selection, parallel/background worker lifecycle, durable
-  queue/timing identity, and distributed scheduling remain open. Any
-  future active-state frame revision will require an explicit new migration
-  contract rather than reinterpretation of revision one. Synchronous same-cycle
-  count/latency publication remains owned.
+  Count-assessment adaptive dispatch selection now consumes one validated
+  cached-retry telemetry assessment plus caller-supplied meets/misses dispatch
+  policies. Insufficient evidence defers without policy selection; ready
+  evidence
+  selects exactly one supplied policy while retaining telemetry and violation
+  evidence. It does not assess telemetry or publish active state.
+
+  Latency or multi-evidence adaptive precedence, automatic adaptive-policy
+  publication, parallel/background worker lifecycle, durable queue/timing
+  identity, and distributed scheduling remain open. Any future active-state
+  frame
+  revision will require an explicit new migration contract rather than
+  reinterpretation of revision one. Synchronous same-cycle count/latency
+  publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -700,8 +709,10 @@ behavior.
   framing, typed bounded durable publication, process-local revisioned
   active-policy ownership, canonical active-state framing, and bounded durable
   active-state persistence, durable conditional CAS, and canonical legacy-policy
-  migration and immutable mixed-decision policy sequences are now owned.
-  Adaptive orchestration, parallel/background worker lifecycle, durable queue
+  migration, immutable mixed-decision policy sequences, and count-assessment
+  adaptive dispatch selection are now owned. Latency/multi-evidence adaptive
+  precedence and publication, parallel/background worker lifecycle, durable
+  queue
   identity, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory

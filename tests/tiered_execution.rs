@@ -53,6 +53,8 @@ pub mod cached_retry;
 pub mod continuation_dispatch_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_policy.rs"]
 pub mod continuation_dispatch_policy;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_adapt.rs"]
+pub mod continuation_dispatch_policy_adaptation;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_migrate.rs"]
@@ -391,6 +393,11 @@ use continuation_dispatch_cycle::{
 use continuation_dispatch_policy::{
     NativeContinuationDispatchPolicy, NativeContinuationDispatchPolicyDecision,
     execute_native_continuation_dispatch_policy,
+};
+use continuation_dispatch_policy_adaptation::{
+    NativeContinuationDispatchPolicyAdaptation,
+    NativeContinuationDispatchPolicyAdaptationSet,
+    adapt_native_continuation_dispatch_policy,
 };
 use continuation_dispatch_policy_codec::{
     NativeContinuationDispatchPolicyCodecError,
@@ -96842,6 +96849,107 @@ fn continuation_dispatch_policy_codec_rejects_length_drift()
 }
 
 #[test]
+fn continuation_dispatch_policy_adaptation_defers_insufficient_evidence()
+-> Result<(), String> {
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let required = nonzero_test_limit(2, "dispatch adaptation attempts")?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                required, 0, 0,
+            ),
+        );
+    let adaptation = adapt_native_continuation_dispatch_policy(
+        assess_cached_retry_telemetry(telemetry, thresholds),
+        dispatch_policy_adaptation_set()?,
+    );
+    let NativeContinuationDispatchPolicyAdaptation::Deferred {
+        observed_attempts,
+        required_attempts,
+    } = adaptation
+    else {
+        return Err(String::from(
+            "insufficient dispatch evidence selected policy",
+        ));
+    };
+    if observed_attempts == 1
+        && required_attempts == required
+        && adaptation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "dispatch adaptation deferral evidence drifted",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_selects_meets_policy()
+-> Result<(), String> {
+    let telemetry = dispatch_policy_adaptation_telemetry()?;
+    let thresholds = dispatch_policy_adaptation_thresholds(2)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let adaptation = adapt_native_continuation_dispatch_policy(
+        assess_cached_retry_telemetry(telemetry, thresholds),
+        policies,
+    );
+    let NativeContinuationDispatchPolicyAdaptation::Meets {
+        policy,
+        telemetry: observed,
+    } = adaptation
+    else {
+        return Err(String::from("meeting dispatch evidence did not select"));
+    };
+    if policy == policies.meets()
+        && adaptation.policy() == Some(policies.meets())
+        && observed == telemetry
+    {
+        Ok(())
+    } else {
+        Err(String::from("meeting dispatch adaptation drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_selects_misses_policy()
+-> Result<(), String> {
+    let telemetry = dispatch_policy_adaptation_telemetry()?;
+    let thresholds = dispatch_policy_adaptation_thresholds(3)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let adaptation = adapt_native_continuation_dispatch_policy(
+        assess_cached_retry_telemetry(telemetry, thresholds),
+        policies,
+    );
+    let NativeContinuationDispatchPolicyAdaptation::Misses {
+        policy,
+        telemetry: observed,
+        violations,
+    } = adaptation
+    else {
+        return Err(String::from("missing dispatch evidence did not select"));
+    };
+    if policy == policies.misses()
+        && adaptation.policy() == Some(policies.misses())
+        && observed == telemetry
+        && violations.contains(TelemetryAssessmentSignal::Hits)
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing dispatch adaptation drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_sequence_rejects_empty() -> Result<(), String> {
     let error = NativeContinuationDispatchPolicySequence::new(Vec::new())
         .err()
@@ -97662,6 +97770,57 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     } else {
         Err(String::from("worker semantic-failure evidence drifted"))
     }
+}
+
+fn dispatch_policy_adaptation_telemetry()
+-> Result<NativeContinuationCachedRetryTelemetry, String> {
+    summarize_cached_retry_attempts(&[
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            3,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+    ])
+    .map_err(|error| error.to_string())
+}
+
+fn dispatch_policy_adaptation_set()
+-> Result<NativeContinuationDispatchPolicyAdaptationSet, String> {
+    Ok(NativeContinuationDispatchPolicyAdaptationSet::new(
+        NativeContinuationDispatchPolicy::new(
+            nonzero_test_limit(3, "dispatch adaptation meets turns")?,
+            NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+        ),
+        NativeContinuationDispatchPolicy::new(
+            nonzero_test_limit(1, "dispatch adaptation misses turns")?,
+            NativeContinuationDispatchPolicyDecision::YieldCaller,
+        ),
+    ))
+}
+
+fn dispatch_policy_adaptation_thresholds(
+    minimum_hits: usize,
+) -> Result<NativeContinuationCachedRetryTelemetryAssessmentThresholds, String>
+{
+    Ok(
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                nonzero_test_limit(2, "dispatch adaptation attempts")?,
+                5,
+                minimum_hits,
+            ),
+        ),
+    )
 }
 
 fn dispatch_policy_fixture(

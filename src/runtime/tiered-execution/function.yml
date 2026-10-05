@@ -727,6 +727,12 @@ parts:
     language: rust
     responsibility: >-
       Execute one immutable ordered heterogeneous dispatch-policy sequence.
+  - id: part-0132
+    path: composition/tier/dispatch_adapt.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Select caller-configured dispatch policy from validated retry telemetry.
 projects: []
 tests: []
 graph:
