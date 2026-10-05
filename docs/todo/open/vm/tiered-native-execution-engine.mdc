@@ -626,8 +626,15 @@ behavior.
   magic/version/reserved/length drift and nested policy corruption fail closed
   before active state is reconstructed.
 
-  Adaptive or mixed-decision policy, durable active-policy state persistence/
-  CAS/migration, parallel/background worker lifecycle, durable queue/timing
+  Typed bounded active-state persistence now reuses the existing opaque blob
+  service without changing plain-policy persistence errors. Missing state stays
+  explicit, corrupt state fails before reconstruction, undersized limits fail
+  before store mutation, and post-publication durability failure remains
+  committed evidence. The filesystem adapter round-trips the exact 52-byte state
+  durably.
+
+  Adaptive or mixed-decision policy, durable active-policy conditional CAS/
+  migration, parallel/background worker lifecycle, durable queue/timing
   identity, and distributed scheduling remain open. Synchronous same-cycle
   count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
@@ -671,10 +678,11 @@ behavior.
   process-local affine dispatch queueing, finite explicit-decision cycles,
   fixed immutable synchronous dispatch policy, canonical dispatch-policy byte
   framing, typed bounded durable publication, process-local revisioned
-  active-policy ownership, and canonical active-state framing are now owned.
-  Adaptive or mixed-decision orchestration, durable active-policy state
-  persistence/CAS, parallel/background worker lifecycle, durable queue identity,
-  and distributed scheduling remain open.
+  active-policy ownership, canonical active-state framing, and bounded durable
+  active-state persistence are now owned. Adaptive or mixed-decision
+  orchestration, durable active-policy conditional CAS, parallel/background
+  worker lifecycle, durable queue identity, and distributed scheduling remain
+  open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

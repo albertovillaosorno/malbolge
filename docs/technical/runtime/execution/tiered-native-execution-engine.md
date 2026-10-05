@@ -1878,7 +1878,15 @@ nested canonical 32-byte `MBDPOL01` policy frame. Outer magic, frame revision,
 reserved bits, length, and nested policy framing all fail closed before active
 state reconstruction.
 
-Adaptive or mixed-decision policy, durable active-policy state persistence/CAS/
+Typed bounded active-state persistence now reuses the opaque blob application
+service under the same storage adapter contract without widening the plain
+policy-persistence error surface. Missing state remains explicit, while corrupt
+state fails codec validation, undersized limits fail before replacement, and
+durability
+confirmation failure after replacement remains committed publication evidence.
+The filesystem adapter round-trips the exact 52-byte state durably.
+
+Adaptive or mixed-decision policy, durable active-policy conditional CAS/
 migration, parallel/background worker lifecycle, durable queue/timing identity,
 and distributed scheduling remain outside this boundary. Synchronous same-cycle
 count/latency publication remains owned.

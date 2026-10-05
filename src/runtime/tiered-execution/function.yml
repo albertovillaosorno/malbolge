@@ -695,7 +695,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Bind canonical synchronous dispatch policy to bounded blob persistence.
+      Persist canonical dispatch policy and active state through bounded blobs.
   - id: part-0127
     path: composition/tier/dispatch_owner.rs
     kind: composition
