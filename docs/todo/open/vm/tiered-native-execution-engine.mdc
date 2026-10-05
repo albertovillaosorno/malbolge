@@ -672,11 +672,18 @@ behavior.
   advance, exact conflict, committed durability failure, and typed CAS failure
   while retaining the adaptation that selected the candidate policy.
 
-  Latency or multi-evidence adaptive precedence, parallel/background worker
-  lifecycle, durable queue/timing identity, and distributed scheduling remain
-  open. Any future active-state frame revision will require an explicit new
-  migration contract rather than reinterpretation of revision one. Synchronous
-  same-cycle count/latency publication remains owned.
+  Latency-driven dispatch adaptation now maps one validated latency assessment
+  through the same caller-supplied meets/misses policy table. Conservative
+  count-plus-latency arbitration grants policy authority only when both ready
+  adaptations select one identical dispatch policy; insufficient evidence
+  defers and ready disagreement conflicts without implicit signal precedence.
+
+  Caller-selected precedence, additional adaptive evidence classes,
+  arbitration-aware publication, parallel/background worker lifecycle, durable
+  queue/timing identity, and distributed scheduling remain open. Any future
+  active-state frame revision will require an explicit new migration contract
+  rather than reinterpretation of revision one. Synchronous same-cycle
+  count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -722,10 +729,10 @@ behavior.
   active-state persistence, durable conditional CAS, and canonical legacy-policy
   migration, immutable mixed-decision policy sequences, and count-assessment
   adaptive dispatch selection plus process-local and durable adaptive
-  publication
-  are now owned. Latency/multi-evidence adaptive precedence, parallel/background
-  worker lifecycle, durable queue identity, and distributed scheduling remain
-  open.
+  publication, latency adaptation, and agreement-only count-plus-latency
+  arbitration are now owned. Caller-selected adaptive precedence, additional
+  evidence classes, arbitration-aware publication, parallel/background worker
+  lifecycle, durable queue identity, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

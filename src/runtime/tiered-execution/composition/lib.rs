@@ -63,6 +63,8 @@ pub mod continuation_dispatch_policy_adaptation_publication;
 pub mod continuation_dispatch_policy_codec;
 #[path = "tier/dispatch_migrate.rs"]
 pub mod continuation_dispatch_policy_migration;
+#[path = "tier/dispatch_mix.rs"]
+pub mod continuation_dispatch_policy_mixed_evidence;
 #[path = "tier/dispatch_owner.rs"]
 pub mod continuation_dispatch_policy_owner;
 #[path = "tier/dispatch_store.rs"]

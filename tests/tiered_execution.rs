@@ -63,6 +63,8 @@ pub mod continuation_dispatch_policy_adaptation_durable_publication;
 pub mod continuation_dispatch_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_migrate.rs"]
 pub mod continuation_dispatch_policy_migration;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_mix.rs"]
+pub mod continuation_dispatch_policy_mixed_evidence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_owner.rs"]
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
@@ -416,6 +418,7 @@ use continuation_dispatch_policy_migration::{
     NativeContinuationDispatchPolicyMigrationError as DispatchMigrationError,
     migrate_native_continuation_dispatch_policy_state_durably,
 };
+use continuation_dispatch_policy_mixed_evidence as dispatch_mix;
 use continuation_dispatch_policy_owner::{
     NativeContinuationDispatchPolicyOwner,
     NativeContinuationDispatchPolicyOwnerError,
@@ -1851,6 +1854,11 @@ type ContinuationDispatchCompletionError =
 type ContinuationDispatchQueue =
     NativeContinuationDispatchQueue<TestIntervalClock>;
 type ContinuationDispatchId = NativeContinuationDispatchId;
+type DispatchAdaptationArbitration =
+    dispatch_mix::NativeContinuationDispatchPolicyAdaptationArbitration;
+type DispatchLatencyAdaptation =
+    dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
+
 type DispatchedHandoff = NativeContinuationDispatchedHandoff;
 type DispatchFixtureResult =
     Result<(ContinuationDispatchId, DispatchedHandoff), String>;
@@ -96855,6 +96863,167 @@ fn continuation_dispatch_policy_codec_rejects_length_drift()
 }
 
 #[test]
+fn continuation_dispatch_policy_latency_adaptation_defers_insufficient()
+-> Result<(), String> {
+    let required =
+        nonzero_test_limit(2, "dispatch latency adaptation samples")?;
+    let assessment =
+        NativeContinuationCachedRetryLatencyAssessment::Insufficient {
+            observed_samples: 1,
+            required_samples: required,
+        };
+    let adaptation =
+        dispatch_mix::adapt_native_continuation_dispatch_policy_from_latency(
+            assessment,
+            dispatch_policy_adaptation_set()?,
+        );
+    let DispatchLatencyAdaptation::Deferred {
+        observed_samples,
+        required_samples,
+    } = adaptation
+    else {
+        return Err(String::from("insufficient latency selected policy"));
+    };
+    if observed_samples == 1
+        && required_samples == required
+        && adaptation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch latency deferral evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_latency_adaptation_selects_meets_policy()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_latency_adaptation(15)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchLatencyAdaptation::Meets { evidence, policy } = adaptation
+    else {
+        return Err(String::from("meeting latency did not select policy"));
+    };
+    if policy == policies.meets()
+        && adaptation.policy() == Some(policies.meets())
+        && evidence.samples() == 2
+        && evidence.total_nanoseconds() == 30
+    {
+        Ok(())
+    } else {
+        Err(String::from("meeting latency dispatch adaptation drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_latency_adaptation_selects_misses_policy()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_latency_adaptation(14)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchLatencyAdaptation::Misses {
+        evidence,
+        policy,
+        violations,
+    } = adaptation
+    else {
+        return Err(String::from("missing latency did not select policy"));
+    };
+    if policy == policies.misses()
+        && adaptation.policy() == Some(policies.misses())
+        && evidence.samples() == 2
+        && violations.contains(LatencyAssessmentSignal::AverageNanoseconds)
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing latency dispatch adaptation drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_mixed_adaptation_defers_missing_signal()
+-> Result<(), String> {
+    let count = dispatch_policy_deferred_adaptation()?;
+    let latency = dispatch_policy_latency_adaptation(15)?;
+    let arbitration =
+        dispatch_mix::arbitrate_native_continuation_dispatch_policy_adaptations(
+            count, latency,
+        );
+    let DispatchAdaptationArbitration::Deferred {
+        count: observed_count,
+        latency: observed_latency,
+    } = arbitration
+    else {
+        return Err(String::from("mixed dispatch adaptation did not defer"));
+    };
+    if observed_count == count
+        && observed_latency == latency
+        && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed dispatch deferral evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_mixed_adaptation_agrees_on_exact_policy()
+-> Result<(), String> {
+    let count = dispatch_policy_ready_adaptation(2)?;
+    let latency = dispatch_policy_latency_adaptation(15)?;
+    let arbitration =
+        dispatch_mix::arbitrate_native_continuation_dispatch_policy_adaptations(
+            count, latency,
+        );
+    let DispatchAdaptationArbitration::Agreed {
+        count: observed_count,
+        latency: observed_latency,
+        policy,
+    } = arbitration
+    else {
+        return Err(String::from(
+            "matching dispatch adaptations did not agree",
+        ));
+    };
+    if observed_count == count
+        && observed_latency == latency
+        && arbitration.policy() == Some(policy)
+        && policy == dispatch_policy_adaptation_set()?.meets()
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed dispatch agreement evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_mixed_adaptation_rejects_disagreement()
+-> Result<(), String> {
+    let count = dispatch_policy_ready_adaptation(2)?;
+    let latency = dispatch_policy_latency_adaptation(14)?;
+    let arbitration =
+        dispatch_mix::arbitrate_native_continuation_dispatch_policy_adaptations(
+            count, latency,
+        );
+    let DispatchAdaptationArbitration::Conflict {
+        count: observed_count,
+        count_policy,
+        latency: observed_latency,
+        latency_policy,
+    } = arbitration
+    else {
+        return Err(String::from("conflicting dispatch adaptations agreed"));
+    };
+    if observed_count == count
+        && observed_latency == latency
+        && count_policy != latency_policy
+        && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed dispatch conflict evidence drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_adaptation_durable_defers_without_store_cas()
 -> Result<(), String> {
     use ad::NativeContinuationDispatchPolicyAdaptationDurablePublication::*;
@@ -98139,6 +98308,26 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     } else {
         Err(String::from("worker semantic-failure evidence drifted"))
     }
+}
+
+fn dispatch_policy_latency_adaptation(
+    maximum_average_nanoseconds: u64,
+) -> Result<DispatchLatencyAdaptation, String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    record_cached_retry_latencies(&mut histogram, &[10, 20])?;
+    let thresholds =
+        NativeContinuationCachedRetryLatencyAssessmentThresholds::new(
+            nonzero_test_limit(2, "dispatch latency adaptation samples")?,
+            maximum_average_nanoseconds,
+            20,
+            0,
+        );
+    Ok(
+        dispatch_mix::adapt_native_continuation_dispatch_policy_from_latency(
+            assess_cached_retry_latency(&histogram, thresholds),
+            dispatch_policy_adaptation_set()?,
+        ),
+    )
 }
 
 fn dispatch_policy_deferred_adaptation()
