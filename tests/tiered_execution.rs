@@ -55,6 +55,8 @@ pub mod continuation_dispatch_cycle;
 pub mod continuation_dispatch_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_owner.rs"]
+pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
@@ -386,6 +388,13 @@ use continuation_dispatch_policy_codec::{
     NativeContinuationDispatchPolicyCodecError,
     decode_native_continuation_dispatch_policy_snapshot,
     encode_native_continuation_dispatch_policy_snapshot,
+};
+use continuation_dispatch_policy_owner::{
+    NativeContinuationDispatchPolicyOwner,
+    NativeContinuationDispatchPolicyOwnerError,
+    NativeContinuationDispatchPolicyOwnerUpdate,
+    NativeContinuationDispatchPolicyRevision,
+    NativeContinuationDispatchPolicyState,
 };
 use continuation_dispatch_policy_persistence::{
     NativeContinuationDispatchPolicyDurablePersistence,
@@ -95414,6 +95423,145 @@ fn cached_retry_latency_interval_owner_unknown_finish_preserves_pending()
     } else {
         Err(String::from(
             "unknown interval finish changed pending state",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_owner_starts_with_exact_initial_state()
+-> Result<(), String> {
+    let policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let owner = NativeContinuationDispatchPolicyOwner::new(policy);
+    let state = owner.state();
+    if state.policy() == policy
+        && state.revision()
+            == NativeContinuationDispatchPolicyRevision::initial()
+        && state.revision().value() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("active dispatch policy initial state drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_owner_publishes_matching_revision()
+-> Result<(), String> {
+    let initial = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "initial dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let candidate = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(4, "candidate dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    );
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let update = owner
+        .compare_and_swap(owner.state().revision(), candidate)
+        .map_err(|error| {
+            format!("matching dispatch policy update: {error:?}")
+        })?;
+    let NativeContinuationDispatchPolicyOwnerUpdate::Published {
+        current,
+        previous,
+    } = update
+    else {
+        return Err(String::from("matching dispatch policy update conflicted"));
+    };
+    if previous.policy() == initial
+        && previous.revision().value() == 0
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("active dispatch policy publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_owner_rejects_stale_revision_without_mutation()
+-> Result<(), String> {
+    let initial = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "initial dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let first = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(3, "first dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldNativeRetry,
+    );
+    let stale_candidate = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(7, "stale dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    );
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let initial_revision = owner.state().revision();
+    let first_update = owner
+        .compare_and_swap(initial_revision, first)
+        .map_err(|error| format!("first dispatch policy update: {error:?}"))?;
+    let NativeContinuationDispatchPolicyOwnerUpdate::Published {
+        current, ..
+    } = first_update
+    else {
+        return Err(String::from("first dispatch policy update conflicted"));
+    };
+    let conflict = owner
+        .compare_and_swap(initial_revision, stale_candidate)
+        .map_err(|error| format!("stale dispatch policy update: {error:?}"))?;
+    let NativeContinuationDispatchPolicyOwnerUpdate::Conflict {
+        candidate,
+        current: observed,
+        expected,
+    } = conflict
+    else {
+        return Err(String::from("stale dispatch policy update was published"));
+    };
+    if candidate == stale_candidate
+        && expected == initial_revision
+        && observed == current
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("active dispatch policy conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_owner_rejects_revision_exhaustion()
+-> Result<(), String> {
+    let current_policy = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(2, "exhausted dispatch owner turns")?,
+        NativeContinuationDispatchPolicyDecision::YieldCaller,
+    );
+    let candidate = NativeContinuationDispatchPolicy::new(
+        nonzero_test_limit(9, "exhausted candidate dispatch turns")?,
+        NativeContinuationDispatchPolicyDecision::CompleteInterpreter,
+    );
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state =
+        NativeContinuationDispatchPolicyState::new(current_policy, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let error = owner
+        .compare_and_swap(revision, candidate)
+        .err()
+        .ok_or_else(|| String::from("exhausted dispatch revision advanced"))?;
+    if error
+        == (NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            current: state,
+            candidate,
+        })
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "dispatch revision exhaustion evidence drifted",
         ))
     }
 }

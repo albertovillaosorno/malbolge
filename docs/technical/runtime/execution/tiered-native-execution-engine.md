@@ -1865,7 +1865,14 @@ store replacement, and a durability-confirmation failure after replacement is
 returned as committed `Published` evidence. The filesystem blob adapter provides
 one durable canonical round-trip without gaining policy authority.
 
-Adaptive or mixed-decision policy, revisioned active-policy ownership/CAS/
+A process-local active-policy owner now starts at revision zero and accepts only
+matching-revision replacement. Publication advances the revision exactly once; a
+stale revision returns exact candidate/current/expected conflict evidence, while
+`u64` exhaustion retains current state and candidate without mutation. Revisions
+are optimistic-concurrency evidence only and carry no time, priority, storage
+generation, or policy-quality meaning.
+
+Adaptive or mixed-decision policy, durable active-policy state framing/CAS/
 migration, parallel/background worker lifecycle, durable queue/timing identity,
 and distributed scheduling remain outside this boundary. Synchronous same-cycle
 count/latency publication remains owned.
