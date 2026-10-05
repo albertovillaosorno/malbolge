@@ -57,6 +57,8 @@ pub mod continuation_dispatch_policy;
 pub mod continuation_dispatch_policy_adapt_publication;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_adapt.rs"]
 pub mod continuation_dispatch_policy_adaptation;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_durable.rs"]
+pub mod continuation_dispatch_policy_adaptation_durable_publication;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_migrate.rs"]
@@ -402,6 +404,7 @@ use continuation_dispatch_policy_adaptation::{
     NativeContinuationDispatchPolicyAdaptationSet,
     adapt_native_continuation_dispatch_policy,
 };
+use continuation_dispatch_policy_adaptation_durable_publication as ad;
 use continuation_dispatch_policy_codec::{
     NativeContinuationDispatchPolicyCodecError,
     decode_native_continuation_dispatch_policy_snapshot,
@@ -96849,6 +96852,225 @@ fn continuation_dispatch_policy_codec_rejects_length_drift()
         }
     }
     Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_durable_defers_without_store_cas()
+-> Result<(), String> {
+    use ad::NativeContinuationDispatchPolicyAdaptationDurablePublication::*;
+
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let adaptation = dispatch_policy_deferred_adaptation()?;
+    let outcome =
+        ad::publish_native_continuation_dispatch_policy_adaptation_durably(
+            &mut store,
+            Some(expected),
+            adaptation,
+            nonzero_test_limit(52, "adaptive durable defer bytes")?,
+        )
+        .map_err(|error| {
+            format!("adaptive durable deferral failed: {error:?}")
+        })?;
+    let Deferred {
+        adaptation: observed,
+        expected: seen,
+    } = outcome
+    else {
+        return Err(String::from("deferred adaptation touched durable state"));
+    };
+    if observed == adaptation
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable adaptation deferral drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_durable_initializes_revision_zero()
+-> Result<(), String> {
+    use ad::NativeContinuationDispatchPolicyAdaptationDurablePublication::*;
+
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let candidate = adaptation
+        .policy()
+        .ok_or_else(|| String::from("ready durable adaptation deferred"))?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let outcome =
+        ad::publish_native_continuation_dispatch_policy_adaptation_durably(
+            &mut store,
+            None,
+            adaptation,
+            nonzero_test_limit(52, "adaptive durable init bytes")?,
+        )
+        .map_err(|error| format!("adaptive durable init failed: {error:?}"))?;
+    let Durable {
+        adaptation: observed,
+        bytes,
+        current,
+        previous,
+    } = outcome
+    else {
+        return Err(String::from("adaptive durable init did not commit"));
+    };
+    if observed == adaptation
+        && bytes == 52
+        && previous.is_none()
+        && current.policy() == candidate
+        && current.revision()
+            == NativeContinuationDispatchPolicyRevision::initial()
+    {
+        Ok(())
+    } else {
+        Err(String::from("adaptive durable init evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_durable_retains_exact_conflict()
+-> Result<(), String> {
+    use ad::NativeContinuationDispatchPolicyAdaptationDurablePublication::*;
+
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let outcome =
+        ad::publish_native_continuation_dispatch_policy_adaptation_durably(
+            &mut store,
+            Some(expected),
+            adaptation,
+            nonzero_test_limit(52, "adaptive durable conflict bytes")?,
+        )
+        .map_err(|error| {
+            format!("adaptive durable conflict failed: {error:?}")
+        })?;
+    let Conflict {
+        adaptation: observed,
+        current,
+        expected: seen,
+    } = outcome
+    else {
+        return Err(String::from(
+            "stale adaptive durable publication committed",
+        ));
+    };
+    if observed == adaptation
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("adaptive durable conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_durable_retains_sync_failure()
+-> Result<(), String> {
+    use ad::NativeContinuationDispatchPolicyAdaptationDurablePublication::*;
+
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let candidate = adaptation
+        .policy()
+        .ok_or_else(|| String::from("ready durable adaptation deferred"))?;
+    let outcome =
+        ad::publish_native_continuation_dispatch_policy_adaptation_durably(
+            &mut store,
+            Some(expected),
+            adaptation,
+            nonzero_test_limit(52, "adaptive durable sync bytes")?,
+        )
+        .map_err(|error| {
+            format!("adaptive durable sync failed early: {error:?}")
+        })?;
+    let Published {
+        adaptation: observed,
+        current,
+        durability_error,
+        previous,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("adaptive durability failure lost commit"));
+    };
+    if observed == adaptation
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("adaptive durable sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let candidate = adaptation
+        .policy()
+        .ok_or_else(|| String::from("ready durable adaptation deferred"))?;
+    let failure =
+        ad::publish_native_continuation_dispatch_policy_adaptation_durably(
+            &mut store,
+            Some(expected),
+            adaptation,
+            nonzero_test_limit(52, "adaptive durable exhausted bytes")?,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted adaptive durable CAS advanced")
+        })?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.adaptation() == adaptation
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("adaptive durable exhaustion evidence drifted"))
+    }
 }
 
 #[test]

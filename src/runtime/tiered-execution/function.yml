@@ -739,6 +739,12 @@ parts:
     language: rust
     responsibility: >-
       Apply adaptive dispatch selection through process-local revisioned owner.
+  - id: part-0134
+    path: composition/tier/dispatch_durable.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish adaptive dispatch selection through durable active-state CAS.
 projects: []
 tests: []
 graph:

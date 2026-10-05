@@ -1921,12 +1921,17 @@ matches;
 stale conflicts and revision exhaustion retain complete adaptation plus owner
 evidence without mutation.
 
-Latency or multi-evidence adaptive precedence, durable adaptive-policy
-publication, parallel/background worker lifecycle, durable queue/timing
-identity,
-and distributed scheduling remain outside this boundary. Any future active-state
-frame revision requires an explicit migration contract; revision one is never
-reinterpreted. Synchronous same-cycle count/latency publication remains owned.
+Durable adaptive publication now binds one exact adaptation to the existing
+active-state durable CAS. Deferred evidence performs no storage operation. Ready
+evidence preserves revision-zero initialization, single-step revision advance,
+exact conflict, committed durability failure, and typed CAS failure while
+retaining the adaptation that selected the candidate policy.
+
+Latency or multi-evidence adaptive precedence, parallel/background worker
+lifecycle, durable queue/timing identity, and distributed scheduling remain
+outside this boundary. Any future active-state frame revision requires an
+explicit migration contract; revision one is never reinterpreted. Synchronous
+same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
