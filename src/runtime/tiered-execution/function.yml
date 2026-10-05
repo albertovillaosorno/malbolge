@@ -757,6 +757,12 @@ parts:
     language: rust
     responsibility: >-
       Publish agreed dispatch arbitration locally and durably.
+  - id: part-0137
+    path: composition/tier/dispatch_select.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply caller-selected precedence to mixed dispatch-policy evidence.
 projects: []
 tests: []
 graph:

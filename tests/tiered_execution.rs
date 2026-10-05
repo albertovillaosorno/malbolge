@@ -71,6 +71,8 @@ pub mod continuation_dispatch_policy_mixed_evidence;
 pub mod continuation_dispatch_policy_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_select.rs"]
+pub mod continuation_dispatch_policy_precedence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_seq.rs"]
 pub mod continuation_dispatch_policy_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cas.rs"]
@@ -441,6 +443,7 @@ use continuation_dispatch_policy_persistence::{
     restore_native_continuation_dispatch_policy,
     restore_native_continuation_dispatch_policy_state,
 };
+use continuation_dispatch_policy_precedence as select;
 use continuation_dispatch_policy_sequence::{
     NativeContinuationDispatchPolicySequence,
     NativeContinuationDispatchPolicySequenceError,
@@ -1867,6 +1870,9 @@ type DispatchArbitrationDurablePublication =
     >;
 type DispatchLatencyAdaptation =
     dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
+type DispatchPrecedence = select::NativeContinuationDispatchPolicyPrecedence;
+type DispatchPrecedenceSelection =
+    select::NativeContinuationDispatchPolicyPrecedenceSelection;
 
 type DispatchedHandoff = NativeContinuationDispatchedHandoff;
 type DispatchFixtureResult =
@@ -97030,6 +97036,161 @@ fn continuation_dispatch_policy_mixed_adaptation_rejects_disagreement()
     } else {
         Err(String::from("mixed dispatch conflict evidence drifted"))
     }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_defaults_to_agreement_only()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_mixed_conflict()?;
+    let precedence = DispatchPrecedence::default();
+    let selection =
+        select::select_native_continuation_dispatch_policy_precedence(
+            &arbitration,
+            precedence,
+        );
+    let DispatchPrecedenceSelection::Withheld { arbitration: observed } =
+        selection
+    else {
+        return Err(String::from("default precedence resolved disagreement"));
+    };
+    if precedence == DispatchPrecedence::AgreementOnly
+        && observed == arbitration
+        && selection.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("agreement-only precedence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_selects_count_on_conflict()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_mixed_conflict()?;
+    let DispatchAdaptationArbitration::Conflict { count_policy, .. } =
+        arbitration
+    else {
+        return Err(String::from("count precedence fixture did not conflict"));
+    };
+    let selection =
+        select::select_native_continuation_dispatch_policy_precedence(
+            &arbitration,
+            DispatchPrecedence::Count,
+        );
+    let DispatchPrecedenceSelection::Selected {
+        arbitration: observed,
+        policy,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("count precedence did not select"));
+    };
+    if observed == arbitration
+        && policy == count_policy
+        && precedence == DispatchPrecedence::Count
+        && selection.policy() == Some(count_policy)
+    {
+        Ok(())
+    } else {
+        Err(String::from("count precedence selection drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_selects_latency_on_conflict()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_mixed_conflict()?;
+    let DispatchAdaptationArbitration::Conflict { latency_policy, .. } =
+        arbitration
+    else {
+        return Err(String::from(
+            "latency precedence fixture did not conflict",
+        ));
+    };
+    let selection =
+        select::select_native_continuation_dispatch_policy_precedence(
+            &arbitration,
+            DispatchPrecedence::Latency,
+        );
+    let DispatchPrecedenceSelection::Selected {
+        arbitration: observed,
+        policy,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("latency precedence did not select"));
+    };
+    if observed == arbitration
+        && policy == latency_policy
+        && precedence == DispatchPrecedence::Latency
+        && selection.policy() == Some(latency_policy)
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency precedence selection drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_preserves_existing_agreement()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_mixed_agreement()?;
+    let agreed = arbitration
+        .policy()
+        .ok_or_else(|| String::from("agreement fixture lacked policy"))?;
+    for precedence in [
+        DispatchPrecedence::AgreementOnly,
+        DispatchPrecedence::Count,
+        DispatchPrecedence::Latency,
+    ] {
+        let selection =
+            select::select_native_continuation_dispatch_policy_precedence(
+                &arbitration,
+                precedence,
+            );
+        let DispatchPrecedenceSelection::Agreed {
+            arbitration: observed,
+            policy,
+        } = selection
+        else {
+            return Err(String::from("precedence changed existing agreement"));
+        };
+        if observed != arbitration
+            || policy != agreed
+            || selection.policy() != Some(agreed)
+        {
+            return Err(String::from("agreed precedence evidence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_preserves_deferred_evidence()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_mixed_deferred()?;
+    for precedence in [
+        DispatchPrecedence::AgreementOnly,
+        DispatchPrecedence::Count,
+        DispatchPrecedence::Latency,
+    ] {
+        let selection =
+            select::select_native_continuation_dispatch_policy_precedence(
+                &arbitration,
+                precedence,
+            );
+        let DispatchPrecedenceSelection::Deferred { arbitration: observed } =
+            selection
+        else {
+            return Err(String::from(
+                "precedence overrode insufficient evidence",
+            ));
+        };
+        if observed != arbitration || selection.policy().is_some() {
+            return Err(String::from("deferred precedence evidence drifted"));
+        }
+    }
+    Ok(())
 }
 
 #[test]

@@ -1939,8 +1939,14 @@ durable active-state CAS. Deferred or disagreeing evidence is withheld without
 mutation or storage work. Agreed evidence retains exact owner/CAS conflict,
 commit, committed durability failure, and revision-exhaustion evidence.
 
-Caller-selected precedence, additional adaptive evidence classes,
-parallel/background worker lifecycle, durable queue/timing identity, and
+Caller-selected precedence now applies one explicit immutable mode after
+completed count-plus-latency arbitration. Agreement-only remains the default.
+Explicit count or latency precedence resolves ready disagreement only; existing
+agreement is invariant and insufficient evidence always remains deferred.
+
+Publication of precedence-selected disagreement, additional adaptive evidence
+classes, parallel/background worker lifecycle, durable queue/timing identity,
+and
 distributed scheduling remain outside this boundary. Any future active-state
 frame revision requires an explicit migration contract; revision one is never
 reinterpreted. Synchronous same-cycle count/latency publication remains owned.

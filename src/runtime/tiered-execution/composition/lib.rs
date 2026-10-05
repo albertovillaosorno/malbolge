@@ -71,6 +71,8 @@ pub mod continuation_dispatch_policy_mixed_evidence;
 pub mod continuation_dispatch_policy_owner;
 #[path = "tier/dispatch_store.rs"]
 pub mod continuation_dispatch_policy_persistence;
+#[path = "tier/dispatch_select.rs"]
+pub mod continuation_dispatch_policy_precedence;
 #[path = "tier/dispatch_seq.rs"]
 pub mod continuation_dispatch_policy_sequence;
 #[path = "tier/dispatch_cas.rs"]

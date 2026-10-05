@@ -684,9 +684,15 @@ behavior.
   mutation or storage work. Agreed evidence retains exact owner/CAS conflict,
   commit, committed durability failure, and revision-exhaustion evidence.
 
-  Caller-selected precedence, additional adaptive evidence classes,
-  parallel/background worker lifecycle, durable queue/timing identity, and
-  distributed scheduling remain open. Any future active-state frame revision
+  Caller-selected precedence now applies one explicit immutable mode after
+  completed count-plus-latency arbitration. Agreement-only remains the default;
+  explicit count or latency precedence resolves ready disagreement only.
+  Existing
+  agreement is invariant and insufficient evidence always remains deferred.
+
+  Publication of precedence-selected disagreement, additional adaptive evidence
+  classes, parallel/background worker lifecycle, durable queue/timing identity,
+  and distributed scheduling remain open. Any future active-state frame revision
   will require an explicit new migration contract rather than reinterpretation
   of revision one. Synchronous same-cycle count/latency publication remains
   owned.
@@ -736,8 +742,9 @@ behavior.
   migration, immutable mixed-decision policy sequences, and count-assessment
   adaptive dispatch selection plus process-local and durable adaptive
   publication, latency adaptation, agreement-only count-plus-latency
-  arbitration, and agreement-only local/durable arbitration publication are now
-  owned. Caller-selected adaptive precedence, additional evidence classes,
+  arbitration, agreement-only local/durable arbitration publication, and
+  caller-selected count/latency precedence are now owned. Publication of
+  precedence-selected disagreement, additional evidence classes,
   parallel/background worker lifecycle, durable queue identity, and distributed
   scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
