@@ -678,12 +678,18 @@ behavior.
   adaptations select one identical dispatch policy; insufficient evidence
   defers and ready disagreement conflicts without implicit signal precedence.
 
+  Agreement-only arbitration publication now applies exact mixed-evidence
+  authority through both the process-local revisioned owner and the existing
+  durable active-state CAS. Deferred or disagreeing evidence is withheld without
+  mutation or storage work. Agreed evidence retains exact owner/CAS conflict,
+  commit, committed durability failure, and revision-exhaustion evidence.
+
   Caller-selected precedence, additional adaptive evidence classes,
-  arbitration-aware publication, parallel/background worker lifecycle, durable
-  queue/timing identity, and distributed scheduling remain open. Any future
-  active-state frame revision will require an explicit new migration contract
-  rather than reinterpretation of revision one. Synchronous same-cycle
-  count/latency publication remains owned.
+  parallel/background worker lifecycle, durable queue/timing identity, and
+  distributed scheduling remain open. Any future active-state frame revision
+  will require an explicit new migration contract rather than reinterpretation
+  of revision one. Synchronous same-cycle count/latency publication remains
+  owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -729,10 +735,11 @@ behavior.
   active-state persistence, durable conditional CAS, and canonical legacy-policy
   migration, immutable mixed-decision policy sequences, and count-assessment
   adaptive dispatch selection plus process-local and durable adaptive
-  publication, latency adaptation, and agreement-only count-plus-latency
-  arbitration are now owned. Caller-selected adaptive precedence, additional
-  evidence classes, arbitration-aware publication, parallel/background worker
-  lifecycle, durable queue identity, and distributed scheduling remain open.
+  publication, latency adaptation, agreement-only count-plus-latency
+  arbitration, and agreement-only local/durable arbitration publication are now
+  owned. Caller-selected adaptive precedence, additional evidence classes,
+  parallel/background worker lifecycle, durable queue identity, and distributed
+  scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

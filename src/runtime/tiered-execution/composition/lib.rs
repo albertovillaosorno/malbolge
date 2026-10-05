@@ -59,6 +59,8 @@ pub mod continuation_dispatch_policy_adaptation;
 pub mod continuation_dispatch_policy_adaptation_durable_publication;
 #[path = "tier/dispatch_apply.rs"]
 pub mod continuation_dispatch_policy_adaptation_publication;
+#[path = "tier/dispatch_auth.rs"]
+pub mod continuation_dispatch_policy_arbitration_publication;
 #[path = "tier/dispatch_codec.rs"]
 pub mod continuation_dispatch_policy_codec;
 #[path = "tier/dispatch_migrate.rs"]

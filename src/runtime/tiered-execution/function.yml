@@ -751,6 +751,12 @@ parts:
     language: rust
     responsibility: >-
       Adapt latency evidence and arbitrate count-plus-latency dispatch policy.
+  - id: part-0136
+    path: composition/tier/dispatch_auth.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish agreed dispatch arbitration locally and durably.
 projects: []
 tests: []
 graph:

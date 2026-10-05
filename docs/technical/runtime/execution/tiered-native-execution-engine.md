@@ -1933,12 +1933,17 @@ count-plus-latency arbitration grants policy authority only when both ready
 adaptations select the identical dispatch policy. Insufficient evidence defers
 and ready disagreement conflicts; neither signal has implicit precedence.
 
+Agreement-only arbitration publication now applies exact mixed-evidence
+authority through both the process-local revisioned owner and the existing
+durable active-state CAS. Deferred or disagreeing evidence is withheld without
+mutation or storage work. Agreed evidence retains exact owner/CAS conflict,
+commit, committed durability failure, and revision-exhaustion evidence.
+
 Caller-selected precedence, additional adaptive evidence classes,
-arbitration-aware publication, parallel/background worker lifecycle, durable
-queue/timing identity, and distributed scheduling remain outside this boundary.
-Any future active-state frame revision requires an explicit migration contract;
-revision one is never reinterpreted. Synchronous same-cycle count/latency
-publication remains owned.
+parallel/background worker lifecycle, durable queue/timing identity, and
+distributed scheduling remain outside this boundary. Any future active-state
+frame revision requires an explicit migration contract; revision one is never
+reinterpreted. Synchronous same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
