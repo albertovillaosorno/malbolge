@@ -53,6 +53,8 @@ pub mod cached_retry;
 pub mod continuation_dispatch_cycle;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_policy.rs"]
 pub mod continuation_dispatch_policy;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_apply.rs"]
+pub mod continuation_dispatch_policy_adapt_publication;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_adapt.rs"]
 pub mod continuation_dispatch_policy_adaptation;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_codec.rs"]
@@ -394,6 +396,7 @@ use continuation_dispatch_policy::{
     NativeContinuationDispatchPolicy, NativeContinuationDispatchPolicyDecision,
     execute_native_continuation_dispatch_policy,
 };
+use continuation_dispatch_policy_adapt_publication as adapt_pub;
 use continuation_dispatch_policy_adaptation::{
     NativeContinuationDispatchPolicyAdaptation,
     NativeContinuationDispatchPolicyAdaptationSet,
@@ -96849,6 +96852,150 @@ fn continuation_dispatch_policy_codec_rejects_length_drift()
 }
 
 #[test]
+fn continuation_dispatch_policy_adaptation_publication_defers_without_mutation()
+-> Result<(), String> {
+    use adapt_pub::NativeContinuationDispatchPolicyAdaptationPublication::*;
+
+    let initial = dispatch_policy_fixture(2)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let adaptation = dispatch_policy_deferred_adaptation()?;
+    let before = owner.state();
+    let publication =
+        adapt_pub::publish_native_continuation_dispatch_policy_adaptation(
+            &mut owner, expected, adaptation,
+        )
+        .map_err(|error| {
+            format!("deferred adaptation publication: {error:?}")
+        })?;
+    let Deferred {
+        adaptation: observed,
+        current,
+    } = publication
+    else {
+        return Err(String::from("deferred adaptation mutated owner"));
+    };
+    if observed == adaptation && current == before && owner.state() == before {
+        Ok(())
+    } else {
+        Err(String::from("deferred adaptation publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_publication_advances_matching_owner()
+-> Result<(), String> {
+    use adapt_pub::NativeContinuationDispatchPolicyAdaptationPublication::*;
+
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let candidate = adaptation.policy().ok_or_else(|| {
+        String::from("ready adaptation unexpectedly deferred")
+    })?;
+    let publication =
+        adapt_pub::publish_native_continuation_dispatch_policy_adaptation(
+            &mut owner, expected, adaptation,
+        )
+        .map_err(|error| {
+            format!("matching adaptation publication: {error:?}")
+        })?;
+    let Published {
+        adaptation: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("matching adaptation did not publish"));
+    };
+    if observed == adaptation
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("matching adaptation publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_publication_retains_stale_conflict()
+-> Result<(), String> {
+    use adapt_pub::NativeContinuationDispatchPolicyAdaptationPublication::*;
+
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let stale = owner.state().revision();
+    let first = dispatch_policy_fixture(4)?;
+    let _published = owner
+        .compare_and_swap(stale, first)
+        .map_err(|error| format!("setup dispatch owner advance: {error:?}"))?;
+    let before = owner.state();
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let publication =
+        adapt_pub::publish_native_continuation_dispatch_policy_adaptation(
+            &mut owner, stale, adaptation,
+        )
+        .map_err(|error| format!("stale adaptation publication: {error:?}"))?;
+    let Conflict {
+        adaptation: observed,
+        current,
+        expected,
+    } = publication
+    else {
+        return Err(String::from("stale adaptation unexpectedly published"));
+    };
+    if observed == adaptation
+        && current == before
+        && expected == stale
+        && owner.state() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale adaptation conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_adaptation_publication_retains_exhaustion()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let adaptation = dispatch_policy_ready_adaptation(2)?;
+    let candidate = adaptation.policy().ok_or_else(|| {
+        String::from("ready adaptation unexpectedly deferred")
+    })?;
+    let failure =
+        adapt_pub::publish_native_continuation_dispatch_policy_adaptation(
+            &mut owner, revision, adaptation,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted adaptation publication advanced")
+        })?;
+    let NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+        current,
+        candidate: observed_candidate,
+    } = failure.error();
+    if failure.adaptation() == adaptation
+        && current == state
+        && observed_candidate == candidate
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("adaptation exhaustion evidence drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_adaptation_defers_insufficient_evidence()
 -> Result<(), String> {
     let telemetry = cached_retry_window_telemetry(
@@ -97770,6 +97917,44 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     } else {
         Err(String::from("worker semantic-failure evidence drifted"))
     }
+}
+
+fn dispatch_policy_deferred_adaptation()
+-> Result<NativeContinuationDispatchPolicyAdaptation, String> {
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                nonzero_test_limit(2, "dispatch publication attempts")?,
+                0,
+                0,
+            ),
+        );
+    Ok(adapt_native_continuation_dispatch_policy(
+        assess_cached_retry_telemetry(telemetry, thresholds),
+        dispatch_policy_adaptation_set()?,
+    ))
+}
+
+fn dispatch_policy_ready_adaptation(
+    minimum_hits: usize,
+) -> Result<NativeContinuationDispatchPolicyAdaptation, String> {
+    Ok(adapt_native_continuation_dispatch_policy(
+        assess_cached_retry_telemetry(
+            dispatch_policy_adaptation_telemetry()?,
+            dispatch_policy_adaptation_thresholds(minimum_hits)?,
+        ),
+        dispatch_policy_adaptation_set()?,
+    ))
 }
 
 fn dispatch_policy_adaptation_telemetry()

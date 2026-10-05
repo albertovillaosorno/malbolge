@@ -733,6 +733,12 @@ parts:
     language: rust
     responsibility: >-
       Select caller-configured dispatch policy from validated retry telemetry.
+  - id: part-0133
+    path: composition/tier/dispatch_apply.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply adaptive dispatch selection through process-local revisioned owner.
 projects: []
 tests: []
 graph:

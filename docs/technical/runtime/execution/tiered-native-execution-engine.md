@@ -1911,10 +1911,17 @@ cached-retry telemetry assessment and an explicit caller-supplied meets/misses
 dispatch-policy table. Insufficient evidence defers; threshold-meeting and
 threshold-missing evidence select exactly the corresponding supplied policy
 while
-retaining the assessment telemetry and violation evidence. This selector neither
+retaining assessment telemetry and violation evidence. This selector neither
 assesses telemetry nor publishes active state.
 
-Latency or multi-evidence adaptive precedence, automatic adaptive-policy
+Process-local adaptive publication now applies one exact adaptation through the
+existing revisioned owner. Deferred evidence returns the unchanged active state.
+Ready evidence publishes only when the caller-supplied expected revision
+matches;
+stale conflicts and revision exhaustion retain complete adaptation plus owner
+evidence without mutation.
+
+Latency or multi-evidence adaptive precedence, durable adaptive-policy
 publication, parallel/background worker lifecycle, durable queue/timing
 identity,
 and distributed scheduling remain outside this boundary. Any future active-state

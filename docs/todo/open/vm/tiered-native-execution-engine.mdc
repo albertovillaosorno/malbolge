@@ -659,11 +659,17 @@ behavior.
   selects exactly one supplied policy while retaining telemetry and violation
   evidence. It does not assess telemetry or publish active state.
 
-  Latency or multi-evidence adaptive precedence, automatic adaptive-policy
+  Process-local adaptive publication now applies one exact adaptation through
+  the
+  existing revisioned owner. Deferred evidence returns unchanged state; ready
+  evidence publishes only at the caller-supplied expected revision. Stale
+  conflict and revision exhaustion retain complete adaptation plus owner
+  evidence without mutation.
+
+  Latency or multi-evidence adaptive precedence, durable adaptive-policy
   publication, parallel/background worker lifecycle, durable queue/timing
   identity, and distributed scheduling remain open. Any future active-state
-  frame
-  revision will require an explicit new migration contract rather than
+  frame revision will require an explicit new migration contract rather than
   reinterpretation of revision one. Synchronous same-cycle count/latency
   publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
@@ -710,10 +716,10 @@ behavior.
   active-policy ownership, canonical active-state framing, and bounded durable
   active-state persistence, durable conditional CAS, and canonical legacy-policy
   migration, immutable mixed-decision policy sequences, and count-assessment
-  adaptive dispatch selection are now owned. Latency/multi-evidence adaptive
-  precedence and publication, parallel/background worker lifecycle, durable
-  queue
-  identity, and distributed scheduling remain open.
+  adaptive dispatch selection and process-local adaptive publication are now
+  owned. Latency/multi-evidence adaptive precedence, durable adaptive
+  publication, parallel/background worker lifecycle, durable queue identity, and
+  distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
