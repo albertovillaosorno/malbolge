@@ -15,8 +15,9 @@
 //   - Persist affine handoffs, clock starts, latency samples, queue capacities,
 //     choose storage paths, spawn workers, or infer distributed scheduling.
 // - Allows:
-//   - Inputs: optional expected combined state, explicit reservation kind,
-//     positive byte bound, and one conditional durable store.
+//   - Inputs: optional expected combined state, read-only local queue
+//     watermarks, explicit reservation kind, positive byte bound, and one
+//     conditional durable store.
 //   - Outputs: restored combined state, exact conflict state, committed next
 //     state, committed sync failure, or typed codec/storage/exhaustion failure.
 //   - Side effects: one delegated conditional durable blob publication.
@@ -51,6 +52,7 @@ use crate::blob_store::{
     NativeContinuationConditionalBlobStore as ConditionalBlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
+use crate::monotonic_clock::NativeContinuationMonotonicClock;
 use crate::{cached_cycle as cycle, continuation_dispatch_queue as queue};
 
 const CODEC_LEN: usize = 24;
@@ -70,6 +72,30 @@ pub enum NativeContinuationDispatchReservationKind {
     Identity,
     /// Reserve exactly the next latency timing identity.
     Timing,
+}
+
+/// Immutable inputs for one queue-synchronized durable reservation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchReservationRequest {
+    expected: Option<ReservationState>,
+    maximum_bytes: NonZeroUsize,
+    reservation: NativeContinuationDispatchReservationKind,
+}
+
+impl NativeContinuationDispatchReservationRequest {
+    /// Constructs one exact checked reservation request.
+    #[must_use]
+    pub const fn new(
+        expected: Option<ReservationState>,
+        reservation: NativeContinuationDispatchReservationKind,
+        maximum_bytes: NonZeroUsize,
+    ) -> Self {
+        Self {
+            expected,
+            maximum_bytes,
+            reservation,
+        }
+    }
 }
 
 /// Canonical combined reservation-state framing failure.
@@ -125,6 +151,15 @@ pub enum NativeContinuationDispatchReservationStateCasError<StoreError> {
     Blob(NativeContinuationBlobPersistenceError<StoreError>),
     /// Current durable bytes failed canonical combined-state framing.
     Codec(NativeContinuationDispatchReservationStateCodecError),
+    /// Process-local queue watermarks do not match the durable state expected
+    /// for this reservation.
+    LocalStateMismatch {
+        /// Exact process-local queue watermarks observed before storage
+        /// access.
+        local: ReservationState,
+        /// Caller-supplied expected durable state, or missing state.
+        expected: Option<ReservationState>,
+    },
     /// Selected watermark cannot advance beyond `u64::MAX`.
     WatermarkExhausted {
         /// Exact reservation kind whose identity space is exhausted.
@@ -261,13 +296,52 @@ where
     }
 }
 
+/// Advances exactly one selected watermark only while local queue watermarks
+/// are synchronized with the caller's durable-state expectation.
+///
+/// This guard prevents a caller from publishing a second reservation after a
+/// prior durable reservation has not yet been bound to the reconstructed local
+/// queue. It does not persist or inspect affine handoff ownership.
+///
+/// # Errors
+///
+/// Returns local/durable watermark drift before any store access, or delegates
+/// selected-watermark exhaustion, framing, byte-limit, and storage failures to
+/// the durable reservation operation.
+pub fn reserve_native_continuation_dispatch_if_synchronized_durably<
+    Clock,
+    Store,
+>(
+    store: &mut Store,
+    local_queue: &queue::NativeContinuationDispatchQueue<Clock>,
+    request: NativeContinuationDispatchReservationRequest,
+) -> NativeContinuationDispatchReservationStateCasStoreResult<Store>
+where
+    Clock: NativeContinuationMonotonicClock,
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let local = local_queue.watermarks();
+    if local != request.expected.unwrap_or_else(zero_state) {
+        return Err(CasError::LocalStateMismatch {
+            local,
+            expected: request.expected,
+        });
+    }
+    reserve_native_continuation_dispatch_identity_durably(
+        store,
+        request.expected,
+        request.reservation,
+        request.maximum_bytes,
+    )
+}
+
 /// Advances exactly one selected watermark in combined durable queue state.
 ///
 /// # Errors
 ///
 /// Returns selected-watermark exhaustion, framing rejection, byte-limit
 /// failure, or outbound store failure before a typed outcome can be returned.
-pub fn reserve_native_continuation_dispatch_identity_durably<Store>(
+fn reserve_native_continuation_dispatch_identity_durably<Store>(
     store: &mut Store,
     expected: Option<ReservationState>,
     reservation: NativeContinuationDispatchReservationKind,

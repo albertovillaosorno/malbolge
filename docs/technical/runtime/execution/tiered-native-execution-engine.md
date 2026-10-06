@@ -1978,6 +1978,13 @@ conflict returns the complete current pair; selected exhaustion fails before
 storage and post-commit durability failure remains committed evidence. This
 boundary does not serialize affine handoffs, clock starts, or latency samples.
 
+Queue-synchronized reservation now compares the reconstructed process-local
+dispatch/timing watermarks with the caller's exact durable-state expectation
+before storage access. Drift fails with both states intact, preventing another
+durable reservation from running ahead of a reservation that has not yet been
+bound locally. Affine handoff ownership and clock starts remain outside durable
+state.
+
 Durable affine queue contents, additional adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside
 this boundary. Any future active-state frame revision requires an explicit

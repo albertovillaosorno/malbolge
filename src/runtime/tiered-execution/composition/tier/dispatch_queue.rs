@@ -561,4 +561,15 @@ where
     pub const fn timing_identity_watermark(&self) -> TimingWatermark {
         self.latency.identity_watermark()
     }
+
+    /// Returns both exact identity watermarks currently bound to this queue.
+    #[must_use]
+    pub const fn watermarks(
+        &self,
+    ) -> NativeContinuationDispatchQueueWatermarks {
+        NativeContinuationDispatchQueueWatermarks::new(
+            self.identity_watermark(),
+            self.timing_identity_watermark(),
+        )
+    }
 }
