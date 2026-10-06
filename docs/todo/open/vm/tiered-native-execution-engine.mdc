@@ -685,8 +685,11 @@ behavior.
 
   Agreement-only three-signal arbitration preserves existing count/latency
   conflict and deferral, and authorizes only when ready productivity selects the
-  same policy as an existing count-plus-latency agreement. Productivity does not
-  participate in explicit precedence, so it has no implicit override.
+  same policy as an existing count-plus-latency agreement. Agreement-only stays
+  the three-signal default; explicit count, latency, or productivity precedence
+  may resolve ready conflict, but productivity has no implicit override.
+  Three-signal deferral remains non-overridable, and productivity precedence is
+  unavailable when productivity itself is deferred.
 
   Agreement-only publication now accepts both count-plus-latency agreement and
   the stricter productivity-gated three-signal agreement through the same
@@ -695,18 +698,21 @@ behavior.
   agreement retains exact owner/CAS conflict, commit, durability failure, and
   revision-exhaustion evidence.
 
-  Caller-selected precedence now applies one explicit immutable mode after
-  completed count-plus-latency arbitration. Agreement-only remains the default;
-  explicit count or latency precedence resolves ready disagreement only.
-  Existing
-  agreement is invariant and insufficient evidence always remains deferred.
+  Caller-selected precedence now applies explicit immutable modes after
+  completed two- or three-signal arbitration. Two-signal selection retains
+  count/latency
+  precedence; three-signal selection adds productivity precedence while
+  preserving existing agreement and global deferral. A mixed conflict may still
+  select ready count/latency when productivity is deferred, but productivity
+  precedence returns unavailable instead of fabricating policy evidence.
 
-  Precedence-selected publication now applies the exact completed selection
-  through both the process-local revisioned owner and the durable active-state
-  CAS. Deferred or agreement-only-withheld selections perform no mutation or
-  storage work. Selected count/latency authority retains exact owner/CAS
-  conflict, commit, committed durability failure, and revision-exhaustion
-  evidence.
+  Precedence-selected publication now applies exact two- or three-signal
+  selection through both the process-local revisioned owner and durable active-
+  state CAS. Deferred, unavailable, or agreement-only-withheld selection
+  performs no mutation or storage work. Selected count/latency/productivity
+  authority
+  retains exact owner/CAS conflict, commit, committed durability failure, and
+  revision-exhaustion evidence.
 
   Durable dispatch identity watermarking now owns one canonical fixed frame and
   exact-next conditional durable CAS. Missing state advances to watermark one;

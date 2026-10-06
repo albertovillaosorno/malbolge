@@ -9,14 +9,14 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Process-local and durable publication of one exact precedence-selected
-//     dispatch-policy authority result.
+//   - Process-local and durable publication of exact two- or three-signal
+//     precedence-selected dispatch-policy authority.
 // - Must-Not:
 //   - Assess telemetry, arbitrate signals, choose precedence, reinterpret
 //     selection evidence, bypass revision ownership, or replace durable CAS.
 // - Allows:
-//   - Inputs: one exact precedence selection plus local expected revision or
-//     durable expected state and byte bound.
+//   - Inputs: one exact two- or three-signal precedence selection plus local
+//     expected revision or durable expected state and byte bound.
 //   - Outputs: withheld evidence, exact owner/CAS conflict or commit, and typed
 //     failure retaining the selection.
 //   - Side effects: local owner mutation or durable CAS only when selection
@@ -37,6 +37,9 @@
 //
 
 //! Publication of exact caller-selected dispatch-policy precedence evidence.
+//!
+//! Three-signal selection reuses the same owner and durable CAS without adding
+//! persistence framing or precedence inference.
 
 use std::num::NonZeroUsize;
 
@@ -58,6 +61,94 @@ type OwnerError = owner::NativeContinuationDispatchPolicyOwnerError;
 type OwnerUpdate = owner::NativeContinuationDispatchPolicyOwnerUpdate;
 type Selection =
     precedence::NativeContinuationDispatchPolicyPrecedenceSelection;
+type ThreeSignalSelection =
+    precedence::NativeContinuationDispatchPolicyThreeSignalPrecedenceSelection;
+
+/// Failure before one process-local three-signal precedence publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchPolicyThreeSignalFailure {
+    error: OwnerError,
+    selection: ThreeSignalSelection,
+}
+
+/// Exact process-local publication for one three-signal precedence selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyThreeSignalPublication {
+    /// Selected policy encountered stale process-local revision evidence.
+    Conflict {
+        /// Exact three-signal precedence selection whose policy was rejected.
+        selection: ThreeSignalSelection,
+        /// Exact current active process-local state.
+        current: DispatchState,
+        /// Caller-supplied stale expected revision.
+        expected: DispatchRevision,
+    },
+    /// Selected policy replaced the active process-local state.
+    Published {
+        /// Exact three-signal precedence selection authorizing publication.
+        selection: ThreeSignalSelection,
+        /// Exact active state after publication.
+        current: DispatchState,
+        /// Exact active state before publication.
+        previous: DispatchState,
+    },
+    /// Selection exposed no policy authority; owner was not mutated.
+    Withheld {
+        /// Exact deferred, unavailable, or withheld selection evidence.
+        selection: ThreeSignalSelection,
+        /// Exact unchanged active process-local state.
+        current: DispatchState,
+    },
+}
+
+/// Failure before one durable three-signal precedence publication.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchPolicyThreeSignalDurableFailure<StoreError>
+{
+    error: cas::NativeContinuationDispatchPolicyStateCasError<StoreError>,
+    selection: ThreeSignalSelection,
+}
+
+/// Exact durable publication for one three-signal precedence selection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyThreeSignalDurablePublication<
+    DurabilityError,
+> {
+    /// Policy authority attempted the existing typed durable active-state CAS.
+    Ready {
+        /// Exact three-signal precedence selection authorizing the CAS
+        /// attempt.
+        selection: ThreeSignalSelection,
+        /// Exact durable/conflict evidence from the existing CAS.
+        publication:
+            cas::NativeContinuationDispatchPolicyStateCas<DurabilityError>,
+    },
+    /// Selection exposed no policy authority; storage was not touched.
+    Withheld {
+        /// Exact deferred, unavailable, or withheld selection evidence.
+        selection: ThreeSignalSelection,
+        /// Caller-supplied expected state retained without validation.
+        expected: Option<DispatchState>,
+    },
+}
+
+type ThreeSignalDurablePublication<DurabilityError> =
+    NativeContinuationDispatchPolicyThreeSignalDurablePublication<
+        DurabilityError,
+    >;
+
+/// Durable three-signal precedence result specialized to one store.
+pub type NativeContinuationDispatchPolicyThreeSignalDurableStoreResult<Store> =
+    Result<
+        ThreeSignalDurablePublication<
+            <Store as DurableBlobStore>::DurabilityError,
+        >,
+        Box<
+            NativeContinuationDispatchPolicyThreeSignalDurableFailure<
+                <Store as BlobStore>::Error,
+            >,
+        >,
+    >;
 
 /// Failure before one process-local precedence publication produced an outcome.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -141,6 +232,38 @@ pub type NativeContinuationDispatchPolicyPrecedenceDurableStoreResult<Store> =
             >,
         >,
     >;
+
+impl NativeContinuationDispatchPolicyThreeSignalFailure {
+    /// Returns exact process-local owner rejection evidence.
+    #[must_use]
+    pub const fn error(&self) -> OwnerError {
+        self.error
+    }
+
+    /// Returns the exact selection whose policy was not published.
+    #[must_use]
+    pub const fn selection(&self) -> ThreeSignalSelection {
+        self.selection
+    }
+}
+
+impl<StoreError>
+    NativeContinuationDispatchPolicyThreeSignalDurableFailure<StoreError>
+{
+    /// Returns exact typed durable active-state CAS failure evidence.
+    #[must_use]
+    pub const fn error(
+        &self,
+    ) -> &cas::NativeContinuationDispatchPolicyStateCasError<StoreError> {
+        &self.error
+    }
+
+    /// Returns the exact selection whose policy was not published.
+    #[must_use]
+    pub const fn selection(&self) -> ThreeSignalSelection {
+        self.selection
+    }
+}
 
 impl NativeContinuationDispatchPolicyPrecedenceFailure {
     /// Returns exact process-local owner rejection evidence.
@@ -261,6 +384,101 @@ where
             })
         })?;
     Ok(DurablePublication::Ready {
+        selection: evidence,
+        publication,
+    })
+}
+/// Publishes one three-signal precedence selection through revision ownership.
+///
+/// # Errors
+///
+/// Returns revision exhaustion while retaining the complete selection evidence.
+pub fn publish_native_continuation_dispatch_policy_three_signal_choice(
+    owner: &mut DispatchOwner,
+    expected: DispatchRevision,
+    selection: &ThreeSignalSelection,
+) -> Result<
+    NativeContinuationDispatchPolicyThreeSignalPublication,
+    Box<NativeContinuationDispatchPolicyThreeSignalFailure>,
+> {
+    let evidence = *selection;
+    let Some(candidate) = evidence.policy() else {
+        return Ok(
+            NativeContinuationDispatchPolicyThreeSignalPublication::Withheld {
+                selection: evidence,
+                current: owner.state(),
+            },
+        );
+    };
+    let update =
+        owner
+            .compare_and_swap(expected, candidate)
+            .map_err(|error| {
+                Box::new(NativeContinuationDispatchPolicyThreeSignalFailure {
+                    error,
+                    selection: evidence,
+                })
+            })?;
+    Ok(match update {
+        OwnerUpdate::Conflict {
+            current,
+            expected: observed_expected,
+            ..
+        } => NativeContinuationDispatchPolicyThreeSignalPublication::Conflict {
+            selection: evidence,
+            current,
+            expected: observed_expected,
+        },
+        OwnerUpdate::Published { current, previous } => {
+            NativeContinuationDispatchPolicyThreeSignalPublication::Published {
+                selection: evidence,
+                current,
+                previous,
+            }
+        },
+    })
+}
+
+/// Publishes one three-signal precedence selection through durable state CAS.
+///
+/// # Errors
+///
+/// Returns typed CAS failure only for selected policy authority while retaining
+/// the complete selection. Evidence without policy performs no storage work.
+pub fn publish_native_continuation_dispatch_policy_three_signal_choice_durably<
+    Store,
+>(
+    store: &mut Store,
+    expected: Option<DispatchState>,
+    selection: &ThreeSignalSelection,
+    maximum_bytes: NonZeroUsize,
+) -> NativeContinuationDispatchPolicyThreeSignalDurableStoreResult<Store>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let evidence = *selection;
+    let Some(candidate) = evidence.policy() else {
+        return Ok(ThreeSignalDurablePublication::Withheld {
+            selection: evidence,
+            expected,
+        });
+    };
+    let publication =
+        cas::compare_and_swap_native_continuation_dispatch_policy_state_durably(
+            store,
+            expected,
+            candidate,
+            maximum_bytes,
+        )
+        .map_err(|error| {
+            Box::new(
+                NativeContinuationDispatchPolicyThreeSignalDurableFailure {
+                    error,
+                    selection: evidence,
+                },
+            )
+        })?;
+    Ok(ThreeSignalDurablePublication::Ready {
         selection: evidence,
         publication,
     })

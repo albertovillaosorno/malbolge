@@ -1905,6 +1905,10 @@ type DispatchProductivityMiss =
     dispatch_mix::NativeContinuationDispatchPolicyProductivityMiss;
 type DispatchThreeSignalArbitration =
     dispatch_mix::NativeContinuationDispatchPolicyThreeSignalArbitration;
+type DispatchThreeSignalPrecedence =
+    select::NativeContinuationDispatchPolicyThreeSignalPrecedence;
+type DispatchThreeSignalPrecedenceSelection =
+    select::NativeContinuationDispatchPolicyThreeSignalPrecedenceSelection;
 type DispatchPrecedence = select::NativeContinuationDispatchPolicyPrecedence;
 type DispatchPrecedenceSelection =
     select::NativeContinuationDispatchPolicyPrecedenceSelection;
@@ -1913,6 +1917,16 @@ type DispatchPrecedencePublication =
 type DispatchPrecedenceDurablePublication =
     choice::NativeContinuationDispatchPolicyPrecedenceDurablePublication<
         TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchThreeSignalChoicePublication =
+    choice::NativeContinuationDispatchPolicyThreeSignalPublication;
+type DispatchThreeSignalChoiceDurablePublication =
+    choice::NativeContinuationDispatchPolicyThreeSignalDurablePublication<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchThreeSignalChoiceDurableStoreResult =
+    choice::NativeContinuationDispatchPolicyThreeSignalDurableStoreResult<
+        TestCachedRetryTelemetryBlobStore,
     >;
 
 type DispatchedHandoff = NativeContinuationDispatchedHandoff;
@@ -97423,6 +97437,591 @@ fn continuation_dispatch_policy_mixed_adaptation_rejects_disagreement()
 }
 
 #[test]
+fn continuation_dispatch_policy_three_signal_precedence_defaults_to_agreement()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_three_signal_conflict()?;
+    let precedence = DispatchThreeSignalPrecedence::default();
+    let selection = select::
+        select_native_continuation_dispatch_policy_three_signal_precedence(
+            &arbitration,
+            precedence,
+        );
+    let DispatchThreeSignalPrecedenceSelection::Withheld {
+        arbitration: observed,
+    } = selection
+    else {
+        return Err(String::from("default three-signal precedence resolved"));
+    };
+    if precedence == DispatchThreeSignalPrecedence::AgreementOnly
+        && observed == arbitration
+        && selection.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal default precedence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_precedence_preserves_agreement()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let agreed = arbitration
+        .policy()
+        .ok_or_else(|| String::from("three-signal agreement lacked policy"))?;
+    for precedence in [
+        DispatchThreeSignalPrecedence::AgreementOnly,
+        DispatchThreeSignalPrecedence::Count,
+        DispatchThreeSignalPrecedence::Latency,
+        DispatchThreeSignalPrecedence::Productivity,
+    ] {
+        let selection = select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                precedence,
+            );
+        let DispatchThreeSignalPrecedenceSelection::Agreed {
+            arbitration: observed,
+            policy,
+        } = selection
+        else {
+            return Err(String::from(
+                "three-signal precedence changed agreement",
+            ));
+        };
+        if observed != arbitration
+            || policy != agreed
+            || selection.policy() != Some(agreed)
+        {
+            return Err(String::from(
+                "three-signal agreement evidence drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_precedence_preserves_deferral()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_three_signal_deferred()?;
+    for precedence in [
+        DispatchThreeSignalPrecedence::AgreementOnly,
+        DispatchThreeSignalPrecedence::Count,
+        DispatchThreeSignalPrecedence::Latency,
+        DispatchThreeSignalPrecedence::Productivity,
+    ] {
+        let selection = select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                precedence,
+            );
+        let DispatchThreeSignalPrecedenceSelection::Deferred {
+            arbitration: observed,
+        } = selection
+        else {
+            return Err(String::from(
+                "three-signal precedence bypassed deferral",
+            ));
+        };
+        if observed != arbitration || selection.policy().is_some() {
+            return Err(String::from("three-signal deferral evidence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_precedence_selects_productivity()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_three_signal_conflict()?;
+    let DispatchThreeSignalArbitration::Conflict { productivity, .. } =
+        arbitration
+    else {
+        return Err(String::from(
+            "productivity precedence fixture did not conflict",
+        ));
+    };
+    let expected = productivity.policy().ok_or_else(|| {
+        String::from("productivity precedence fixture deferred")
+    })?;
+    let selection = select::
+        select_native_continuation_dispatch_policy_three_signal_precedence(
+            &arbitration,
+            DispatchThreeSignalPrecedence::Productivity,
+        );
+    let DispatchThreeSignalPrecedenceSelection::Selected {
+        arbitration: observed,
+        policy,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("productivity precedence did not select"));
+    };
+    if observed == arbitration
+        && policy == expected
+        && precedence == DispatchThreeSignalPrecedence::Productivity
+        && selection.policy() == Some(expected)
+    {
+        Ok(())
+    } else {
+        Err(String::from("productivity precedence evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_precedence_selects_mixed_signals()
+-> Result<(), String> {
+    let arbitration =
+        dispatch_policy_three_signal_mixed_conflict_with_productivity_gap()?;
+    let DispatchThreeSignalArbitration::Conflict { mixed, .. } = arbitration
+    else {
+        return Err(String::from("mixed precedence fixture did not conflict"));
+    };
+    let DispatchAdaptationArbitration::Conflict {
+        count_policy,
+        latency_policy,
+        ..
+    } = mixed
+    else {
+        return Err(String::from("mixed precedence fixture lost conflict"));
+    };
+    for (precedence, expected) in [
+        (DispatchThreeSignalPrecedence::Count, count_policy),
+        (DispatchThreeSignalPrecedence::Latency, latency_policy),
+    ] {
+        let selection = select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                precedence,
+            );
+        let DispatchThreeSignalPrecedenceSelection::Selected {
+            arbitration: observed,
+            policy,
+            precedence: observed_precedence,
+        } = selection
+        else {
+            return Err(String::from("ready mixed precedence did not select"));
+        };
+        if observed != arbitration
+            || policy != expected
+            || observed_precedence != precedence
+            || selection.policy() != Some(expected)
+        {
+            return Err(String::from("mixed three-signal precedence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_precedence_rejects_missing_signal()
+-> Result<(), String> {
+    let arbitration =
+        dispatch_policy_three_signal_mixed_conflict_with_productivity_gap()?;
+    let selection = select::
+        select_native_continuation_dispatch_policy_three_signal_precedence(
+            &arbitration,
+            DispatchThreeSignalPrecedence::Productivity,
+        );
+    let DispatchThreeSignalPrecedenceSelection::Unavailable {
+        arbitration: observed,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("missing productivity precedence selected"));
+    };
+    if observed == arbitration
+        && precedence == DispatchThreeSignalPrecedence::Productivity
+        && selection.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing productivity precedence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_withholds_without_policy()
+-> Result<(), String> {
+    let selections = [
+        dispatch_policy_three_signal_precedence_conflict_selection(
+            DispatchThreeSignalPrecedence::AgreementOnly,
+        )?,
+        dispatch_policy_three_signal_precedence_deferred_selection()?,
+        dispatch_policy_three_signal_precedence_unavailable_selection()?,
+    ];
+    for selection in selections {
+        let initial = dispatch_policy_fixture(2)?;
+        let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+        let expected = owner.state().revision();
+        let before = owner.state();
+        let publication = choice::
+            publish_native_continuation_dispatch_policy_three_signal_choice(
+                &mut owner,
+                expected,
+                &selection,
+            )
+            .map_err(|error| {
+                format!("three-signal choice withholding: {error:?}")
+            })?;
+        let DispatchThreeSignalChoicePublication::Withheld {
+            selection: observed,
+            current,
+        } = publication
+        else {
+            return Err(String::from("three-signal choice mutated owner"));
+        };
+        if observed != selection || current != before || owner.state() != before
+        {
+            return Err(String::from(
+                "three-signal choice withholding drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_publishes_productivity()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("productivity choice lacked policy"))?;
+    let publication = choice::
+        publish_native_continuation_dispatch_policy_three_signal_choice(
+            &mut owner,
+            expected,
+            &selection,
+        )
+        .map_err(|error| format!("three-signal choice publish: {error:?}"))?;
+    let DispatchThreeSignalChoicePublication::Published {
+        selection: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("productivity choice did not publish"));
+    };
+    if observed == selection
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal choice publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_retains_stale_owner()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let stale = owner.state().revision();
+    let _published = owner
+        .compare_and_swap(stale, dispatch_policy_fixture(4)?)
+        .map_err(|error| {
+            format!("setup three-signal choice owner: {error:?}")
+        })?;
+    let before = owner.state();
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let publication = choice::
+        publish_native_continuation_dispatch_policy_three_signal_choice(
+            &mut owner,
+            stale,
+            &selection,
+        )
+        .map_err(|error| format!("stale three-signal choice: {error:?}"))?;
+    let DispatchThreeSignalChoicePublication::Conflict {
+        selection: observed,
+        current,
+        expected,
+    } = publication
+    else {
+        return Err(String::from("stale three-signal choice advanced"));
+    };
+    if observed == selection
+        && current == before
+        && expected == stale
+        && owner.state() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal choice stale evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_retains_exhaustion()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("productivity choice lacked policy"))?;
+    let failure = choice::
+        publish_native_continuation_dispatch_policy_three_signal_choice(
+            &mut owner,
+            revision,
+            &selection,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted three-signal choice advanced"))?;
+    let expected_error =
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        };
+    if failure.selection() == selection
+        && failure.error() == expected_error
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal choice exhaustion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_durable_withholds()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let selections = [
+        dispatch_policy_three_signal_precedence_conflict_selection(
+            DispatchThreeSignalPrecedence::AgreementOnly,
+        )?,
+        dispatch_policy_three_signal_precedence_deferred_selection()?,
+        dispatch_policy_three_signal_precedence_unavailable_selection()?,
+    ];
+    for selection in selections {
+        let mut store = TestCachedRetryTelemetryBlobStore {
+            blob: Some(original.clone()),
+            ..TestCachedRetryTelemetryBlobStore::default()
+        };
+        let publication = publish_dispatch_three_signal_choice_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "three-signal choice withheld bytes")?,
+        )
+        .map_err(|error| {
+            format!("three-signal choice withholding: {error:?}")
+        })?;
+        let DispatchThreeSignalChoiceDurablePublication::Withheld {
+            selection: observed,
+            expected: seen,
+        } = publication
+        else {
+            return Err(String::from("three-signal choice touched store"));
+        };
+        if observed != selection
+            || seen != Some(expected)
+            || store.blob.as_deref() != Some(original.as_slice())
+            || store.compare_and_swap_calls != 0
+        {
+            return Err(String::from("durable choice withholding drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_durable_publishes()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("productivity choice lacked policy"))?;
+    let publication = publish_dispatch_three_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "three-signal choice durable bytes")?,
+    )
+    .map_err(|error| format!("three-signal choice durable: {error:?}"))?;
+    let DispatchThreeSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication: DispatchPolicyStateCas::Durable { current, previous, .. },
+    } = publication
+    else {
+        return Err(String::from("three-signal choice was not durable"));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable three-signal choice drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_durable_retains_conflict()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let publication = publish_dispatch_three_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "three-signal choice conflict bytes")?,
+    )
+    .map_err(|error| format!("three-signal choice conflict: {error:?}"))?;
+    let DispatchThreeSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Conflict {
+                current, expected: seen, ..
+            },
+    } = publication
+    else {
+        return Err(String::from("stale three-signal choice committed"));
+    };
+    if observed == selection
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable choice conflict evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_durable_retains_sync()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let publication = publish_dispatch_three_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "three-signal choice sync bytes")?,
+    )
+    .map_err(|error| format!("three-signal choice sync: {error:?}"))?;
+    let DispatchThreeSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Published {
+                current,
+                durability_error,
+                previous,
+                ..
+            },
+    } = publication
+    else {
+        return Err(String::from("three-signal choice sync lost commit"));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal choice sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_choice_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_three_signal_precedence_conflict_selection(
+        DispatchThreeSignalPrecedence::Productivity,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("productivity choice lacked policy"))?;
+    let failure = publish_dispatch_three_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "three-signal choice exhausted bytes")?,
+    )
+    .err()
+    .ok_or_else(|| {
+        String::from("exhausted three-signal choice CAS advanced")
+    })?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.selection() == selection
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable choice exhaustion evidence drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_precedence_defaults_to_agreement_only()
 -> Result<(), String> {
     let arbitration = dispatch_policy_mixed_conflict()?;
@@ -100230,6 +100829,71 @@ fn dispatch_policy_three_signal_deferred()
                 dispatch_policy_productivity_adaptation(3, 5, 2)?,
             ),
     )
+}
+
+fn dispatch_policy_three_signal_mixed_conflict_with_productivity_gap()
+-> Result<DispatchThreeSignalArbitration, String> {
+    let mixed = dispatch_policy_mixed_conflict()?;
+    Ok(
+        dispatch_mix::
+            arbitrate_native_continuation_dispatch_policy_three_signals(
+                &mixed,
+                dispatch_policy_productivity_adaptation(3, 5, 2)?,
+            ),
+    )
+}
+
+fn dispatch_policy_three_signal_precedence_conflict_selection(
+    precedence: DispatchThreeSignalPrecedence,
+) -> Result<DispatchThreeSignalPrecedenceSelection, String> {
+    let arbitration = dispatch_policy_three_signal_conflict()?;
+    Ok(
+        select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                precedence,
+            ),
+    )
+}
+
+fn dispatch_policy_three_signal_precedence_deferred_selection()
+-> Result<DispatchThreeSignalPrecedenceSelection, String> {
+    let arbitration = dispatch_policy_three_signal_deferred()?;
+    Ok(
+        select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                DispatchThreeSignalPrecedence::Count,
+            ),
+    )
+}
+
+fn dispatch_policy_three_signal_precedence_unavailable_selection()
+-> Result<DispatchThreeSignalPrecedenceSelection, String> {
+    let arbitration =
+        dispatch_policy_three_signal_mixed_conflict_with_productivity_gap()?;
+    Ok(
+        select::
+            select_native_continuation_dispatch_policy_three_signal_precedence(
+                &arbitration,
+                DispatchThreeSignalPrecedence::Productivity,
+            ),
+    )
+}
+
+fn publish_dispatch_three_signal_choice_durably(
+    store: &mut TestCachedRetryTelemetryBlobStore,
+    expected: Option<NativeContinuationDispatchPolicyState>,
+    selection: &DispatchThreeSignalPrecedenceSelection,
+    maximum_bytes: NonZeroUsize,
+) -> DispatchThreeSignalChoiceDurableStoreResult {
+    choice::
+        publish_native_continuation_dispatch_policy_three_signal_choice_durably(
+            store,
+            expected,
+            selection,
+            maximum_bytes,
+        )
 }
 
 fn dispatch_policy_precedence_conflict_selection(
