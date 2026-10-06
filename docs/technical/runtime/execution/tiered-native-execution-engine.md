@@ -1933,6 +1933,19 @@ count-plus-latency arbitration grants policy authority only when both ready
 adaptations select the identical dispatch policy. Insufficient evidence defers
 and ready disagreement conflicts; neither signal has implicit precedence.
 
+Semantic-productivity adaptation now derives a third evidence class from the
+existing exact count telemetry without adding storage state. A positive attempt
+gate precedes an exact rational minimum of committed native steps per attempt;
+comparison uses cross multiplication and arithmetic failure selects the
+caller-configured misses policy rather than inventing evidence.
+
+Three-signal arbitration layers productivity over the existing count-plus-
+latency result. Existing count/latency conflict remains conflict even when
+productivity is deferred, existing deferral remains deferred, and an agreed
+two-signal policy gains authority only when ready productivity selects that same
+policy. Explicit precedence and publication remain on the reviewed two-signal
+path; productivity has no implicit override.
+
 Agreement-only arbitration publication now applies exact mixed-evidence
 authority through both the process-local revisioned owner and the existing
 durable active-state CAS. Deferred or disagreeing evidence is withheld without

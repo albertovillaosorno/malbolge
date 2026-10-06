@@ -9,42 +9,44 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Pure latency-driven dispatch adaptation and conservative count-plus-
-//     latency adaptation arbitration.
+//   - Pure latency/productivity dispatch adaptation plus conservative count,
+//     latency, and productivity agreement-only arbitration.
 // - Must-Not:
 //   - Assess telemetry, infer thresholds, assign signal precedence, publish
 //     policy, execute dispatch, persist state, or mutate evidence.
 // - Allows:
-//   - Inputs: one validated latency assessment plus explicit policy table, or
-//     one count adaptation plus one latency adaptation.
-//   - Outputs: deferred/ready latency adaptation and deferred/agreed/conflict
-//     arbitration evidence.
+//   - Inputs: validated latency or exact productivity evidence plus explicit
+//     policy table, and existing count-plus-latency arbitration evidence.
+//   - Outputs: deferred/ready adaptations and exact two-/three-signal
+//     deferred/agreed/conflict evidence.
 //   - Side effects: none.
 // - Split-When:
-//   - Additional evidence classes or caller-selected precedence gains
-//     authority.
+//   - Evidence beyond semantic productivity, weighted arbitration, or
+//     productivity-specific precedence gains authority.
 // - Merge-When:
 //   - Product orchestration owns assessment through policy publication
 //     atomically.
 // - Summary:
-//   - Adds latency policy selection and agreement-only multi-signal authority.
+//   - Adds latency/productivity selection and conservative multi-signal
+//     authority.
 // - Description:
-//   - Both ready signals must select one identical dispatch policy to
-//     authorize.
+//   - Every ready signal in an arbitration must select one identical policy.
 // - Usage:
-//   - Adapt independently assessed count and latency evidence, then arbitrate.
+//   - Adapt count/latency first, then optionally require productivity
+//     agreement.
 // - Defaults:
 //   - No signal has implicit precedence and disagreement yields no policy.
 //
 
-//! Conservative count-plus-latency dispatch-policy adaptation arbitration.
+//! Conservative count/latency/productivity dispatch-policy arbitration.
 
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroU128, NonZeroUsize};
 
 use crate::cached_cycle::{
     NativeContinuationCachedRetryLatencyAssessment,
     NativeContinuationCachedRetryLatencyAssessmentEvidence,
     NativeContinuationCachedRetryLatencyAssessmentViolations,
+    NativeContinuationCachedRetryTelemetry,
 };
 use crate::{
     continuation_dispatch_policy as dispatch_policy,
@@ -56,6 +58,79 @@ type CountAdaptation =
 type DispatchPolicy = dispatch_policy::NativeContinuationDispatchPolicy;
 type PolicySet =
     count_adaptation::NativeContinuationDispatchPolicyAdaptationSet;
+
+/// Caller-owned semantic-productivity threshold for one telemetry cohort.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchPolicyProductivityThreshold {
+    minimum_steps_denominator: NonZeroU64,
+    minimum_steps_numerator: NonZeroU64,
+    required_attempts: NonZeroUsize,
+}
+
+/// Why ready semantic-productivity evidence selected the misses policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyProductivityMiss {
+    /// Exact rational comparison overflowed `u128` and failed closed.
+    ArithmeticOverflow,
+    /// Committed semantic steps per attempt missed the caller minimum.
+    BelowMinimumStepsPerAttempt,
+}
+
+/// Exact semantic-productivity dispatch-policy adaptation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyProductivityAdaptation {
+    /// Positive attempt gate was not reached, so adaptation deferred.
+    Deferred {
+        /// Attempts represented by the supplied telemetry.
+        observed_attempts: usize,
+        /// Positive caller-required attempt count.
+        required_attempts: NonZeroUsize,
+    },
+    /// Ready productivity met the exact caller ratio.
+    Meets {
+        /// Exact caller-configured dispatch policy.
+        policy: DispatchPolicy,
+        /// Exact telemetry whose productivity met the minimum.
+        telemetry: NativeContinuationCachedRetryTelemetry,
+    },
+    /// Ready productivity failed to prove the exact caller ratio.
+    Misses {
+        /// Stable reason productivity did not authorize the meets policy.
+        reason: NativeContinuationDispatchPolicyProductivityMiss,
+        /// Exact caller-configured dispatch policy.
+        policy: DispatchPolicy,
+        /// Exact telemetry whose productivity failed closed.
+        telemetry: NativeContinuationCachedRetryTelemetry,
+    },
+}
+
+/// Agreement-only authority across count, latency, and productivity signals.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyThreeSignalArbitration {
+    /// All three ready evidence classes selected the identical policy.
+    Agreed {
+        /// Existing exact count-plus-latency arbitration.
+        mixed: NativeContinuationDispatchPolicyAdaptationArbitration,
+        /// Exact productivity adaptation participating in agreement.
+        productivity: NativeContinuationDispatchPolicyProductivityAdaptation,
+        /// Exact policy selected independently by every ready signal.
+        policy: DispatchPolicy,
+    },
+    /// Every signal was ready but at least two selected different policies.
+    Conflict {
+        /// Existing exact count-plus-latency arbitration.
+        mixed: NativeContinuationDispatchPolicyAdaptationArbitration,
+        /// Exact ready productivity adaptation.
+        productivity: NativeContinuationDispatchPolicyProductivityAdaptation,
+    },
+    /// At least one evidence class lacked sufficient evidence.
+    Deferred {
+        /// Existing exact count-plus-latency arbitration.
+        mixed: NativeContinuationDispatchPolicyAdaptationArbitration,
+        /// Exact productivity adaptation, ready or deferred.
+        productivity: NativeContinuationDispatchPolicyProductivityAdaptation,
+    },
+}
 
 /// Exact result of one latency-driven dispatch-policy adaptation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -117,6 +192,64 @@ pub enum NativeContinuationDispatchPolicyAdaptationArbitration {
     },
 }
 
+impl NativeContinuationDispatchPolicyProductivityAdaptation {
+    /// Returns the exact selected policy once productivity evidence is ready.
+    #[must_use]
+    pub const fn policy(self) -> Option<DispatchPolicy> {
+        match self {
+            Self::Deferred { .. } => None,
+            Self::Meets { policy, .. } | Self::Misses { policy, .. } => {
+                Some(policy)
+            },
+        }
+    }
+}
+
+impl NativeContinuationDispatchPolicyProductivityThreshold {
+    /// Returns the exact minimum steps-per-attempt denominator.
+    #[must_use]
+    pub const fn minimum_steps_denominator(self) -> NonZeroU64 {
+        self.minimum_steps_denominator
+    }
+
+    /// Returns the exact minimum steps-per-attempt numerator.
+    #[must_use]
+    pub const fn minimum_steps_numerator(self) -> NonZeroU64 {
+        self.minimum_steps_numerator
+    }
+
+    /// Constructs one exact positive semantic-productivity threshold.
+    #[must_use]
+    pub const fn new(
+        required_attempts: NonZeroUsize,
+        minimum_steps_numerator: NonZeroU64,
+        minimum_steps_denominator: NonZeroU64,
+    ) -> Self {
+        Self {
+            minimum_steps_denominator,
+            minimum_steps_numerator,
+            required_attempts,
+        }
+    }
+
+    /// Returns the positive attempt gate for productivity assessment.
+    #[must_use]
+    pub const fn required_attempts(self) -> NonZeroUsize {
+        self.required_attempts
+    }
+}
+
+impl NativeContinuationDispatchPolicyThreeSignalArbitration {
+    /// Returns policy authority only when all three ready signals agree.
+    #[must_use]
+    pub const fn policy(self) -> Option<DispatchPolicy> {
+        match self {
+            Self::Agreed { policy, .. } => Some(policy),
+            Self::Conflict { .. } | Self::Deferred { .. } => None,
+        }
+    }
+}
+
 impl NativeContinuationDispatchPolicyAdaptationArbitration {
     /// Returns policy authority only when both ready adaptations exactly agree.
     #[must_use]
@@ -138,6 +271,114 @@ impl NativeContinuationDispatchPolicyLatencyAdaptation {
                 Some(policy)
             },
         }
+    }
+}
+
+/// Maps exact semantic productivity to caller-configured dispatch policy.
+#[must_use]
+pub fn adapt_native_continuation_dispatch_policy_from_productivity(
+    telemetry: NativeContinuationCachedRetryTelemetry,
+    threshold: NativeContinuationDispatchPolicyProductivityThreshold,
+    policies: PolicySet,
+) -> NativeContinuationDispatchPolicyProductivityAdaptation {
+    if telemetry.attempts() < threshold.required_attempts.get() {
+        return NativeContinuationDispatchPolicyProductivityAdaptation::
+            Deferred {
+                observed_attempts: telemetry.attempts(),
+                required_attempts: threshold.required_attempts,
+            };
+    }
+    let Ok(steps) = u128::try_from(telemetry.completed_steps()) else {
+        return NativeContinuationDispatchPolicyProductivityAdaptation::Misses {
+            reason: NativeContinuationDispatchPolicyProductivityMiss::
+                ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Ok(attempts) = u128::try_from(telemetry.attempts()) else {
+        return NativeContinuationDispatchPolicyProductivityAdaptation::Misses {
+            reason: NativeContinuationDispatchPolicyProductivityMiss::
+                ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Some(weighted_steps) = steps.checked_mul(
+        NonZeroU128::from(threshold.minimum_steps_denominator).get(),
+    ) else {
+        return NativeContinuationDispatchPolicyProductivityAdaptation::Misses {
+            reason: NativeContinuationDispatchPolicyProductivityMiss::
+                ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Some(required_steps) = attempts.checked_mul(
+        NonZeroU128::from(threshold.minimum_steps_numerator).get(),
+    ) else {
+        return NativeContinuationDispatchPolicyProductivityAdaptation::Misses {
+            reason: NativeContinuationDispatchPolicyProductivityMiss::
+                ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    if weighted_steps >= required_steps {
+        NativeContinuationDispatchPolicyProductivityAdaptation::Meets {
+            policy: policies.meets(),
+            telemetry,
+        }
+    } else {
+        NativeContinuationDispatchPolicyProductivityAdaptation::Misses {
+            reason: NativeContinuationDispatchPolicyProductivityMiss::
+                BelowMinimumStepsPerAttempt,
+            policy: policies.misses(),
+            telemetry,
+        }
+    }
+}
+
+/// Extends count-plus-latency arbitration with productivity agreement only.
+#[must_use]
+pub fn arbitrate_native_continuation_dispatch_policy_three_signals(
+    mixed: &NativeContinuationDispatchPolicyAdaptationArbitration,
+    productivity: NativeContinuationDispatchPolicyProductivityAdaptation,
+) -> NativeContinuationDispatchPolicyThreeSignalArbitration {
+    use NativeContinuationDispatchPolicyAdaptationArbitration as Mixed;
+    use NativeContinuationDispatchPolicyThreeSignalArbitration as ThreeSignal;
+
+    let mixed_evidence = *mixed;
+    match mixed_evidence {
+        Mixed::Conflict { .. } => ThreeSignal::Conflict {
+            mixed: mixed_evidence,
+            productivity,
+        },
+        Mixed::Deferred { .. } => ThreeSignal::Deferred {
+            mixed: mixed_evidence,
+            productivity,
+        },
+        Mixed::Agreed { policy: mixed_policy, .. } => {
+            match productivity.policy() {
+                None => ThreeSignal::Deferred {
+                    mixed: mixed_evidence,
+                    productivity,
+                },
+                Some(productivity_policy)
+                    if productivity_policy == mixed_policy =>
+                {
+                    ThreeSignal::Agreed {
+                        mixed: mixed_evidence,
+                        productivity,
+                        policy: mixed_policy,
+                    }
+                },
+                Some(_) => ThreeSignal::Conflict {
+                    mixed: mixed_evidence,
+                    productivity,
+                },
+            }
+        },
     }
 }
 

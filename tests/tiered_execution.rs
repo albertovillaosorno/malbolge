@@ -1889,6 +1889,12 @@ type DispatchArbitrationDurablePublication =
     >;
 type DispatchLatencyAdaptation =
     dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
+type DispatchProductivityAdaptation =
+    dispatch_mix::NativeContinuationDispatchPolicyProductivityAdaptation;
+type DispatchProductivityMiss =
+    dispatch_mix::NativeContinuationDispatchPolicyProductivityMiss;
+type DispatchThreeSignalArbitration =
+    dispatch_mix::NativeContinuationDispatchPolicyThreeSignalArbitration;
 type DispatchPrecedence = select::NativeContinuationDispatchPolicyPrecedence;
 type DispatchPrecedenceSelection =
     select::NativeContinuationDispatchPolicyPrecedenceSelection;
@@ -97125,6 +97131,203 @@ fn continuation_dispatch_policy_latency_adaptation_selects_misses_policy()
 }
 
 #[test]
+fn continuation_dispatch_policy_productivity_adaptation_defers_attempt_gate()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_productivity_adaptation(3, 5, 2)?;
+    let DispatchProductivityAdaptation::Deferred {
+        observed_attempts,
+        required_attempts,
+    } = adaptation
+    else {
+        return Err(String::from("productivity attempt gate selected policy"));
+    };
+    if observed_attempts == 2
+        && required_attempts.get() == 3
+        && adaptation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("productivity deferral evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_productivity_adaptation_meets_exact_ratio()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_productivity_adaptation(2, 5, 2)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchProductivityAdaptation::Meets { policy, telemetry } =
+        adaptation
+    else {
+        return Err(String::from("exact productivity ratio missed"));
+    };
+    if policy == policies.meets()
+        && adaptation.policy() == Some(policies.meets())
+        && telemetry.attempts() == 2
+        && telemetry.completed_steps() == 5
+    {
+        Ok(())
+    } else {
+        Err(String::from("productivity exact-ratio evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_productivity_adaptation_rejects_weak_ratio()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_productivity_adaptation(2, 8, 3)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchProductivityAdaptation::Misses {
+        policy,
+        reason,
+        telemetry,
+    } = adaptation
+    else {
+        return Err(String::from("weak productivity ratio met"));
+    };
+    if policy == policies.misses()
+        && adaptation.policy() == Some(policies.misses())
+        && reason == DispatchProductivityMiss::BelowMinimumStepsPerAttempt
+        && telemetry.attempts() == 2
+        && telemetry.completed_steps() == 5
+    {
+        Ok(())
+    } else {
+        Err(String::from("productivity miss evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_agrees_exact_policy()
+-> Result<(), String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    let productivity = dispatch_policy_productivity_adaptation(2, 5, 2)?;
+    let arbitration = dispatch_mix::
+        arbitrate_native_continuation_dispatch_policy_three_signals(
+            &mixed,
+            productivity,
+        );
+    let DispatchThreeSignalArbitration::Agreed {
+        mixed: observed_mixed,
+        productivity: observed_productivity,
+        policy,
+    } = arbitration
+    else {
+        return Err(String::from("three ready signals did not agree"));
+    };
+    if observed_mixed == mixed
+        && observed_productivity == productivity
+        && policy == dispatch_policy_adaptation_set()?.meets()
+        && arbitration.policy() == Some(policy)
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal agreement evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_rejects_productivity_disagreement()
+-> Result<(), String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    let productivity = dispatch_policy_productivity_adaptation(2, 8, 3)?;
+    let arbitration = dispatch_mix::
+        arbitrate_native_continuation_dispatch_policy_three_signals(
+            &mixed,
+            productivity,
+        );
+    let DispatchThreeSignalArbitration::Conflict {
+        mixed: observed_mixed,
+        productivity: observed_productivity,
+    } = arbitration
+    else {
+        return Err(String::from(
+            "productivity disagreement authorized policy",
+        ));
+    };
+    if observed_mixed == mixed
+        && observed_productivity == productivity
+        && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal productivity conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_preserves_mixed_conflict()
+-> Result<(), String> {
+    let mixed = dispatch_policy_mixed_conflict()?;
+    let productivity = dispatch_policy_productivity_adaptation(2, 5, 2)?;
+    let arbitration = dispatch_mix::
+        arbitrate_native_continuation_dispatch_policy_three_signals(
+            &mixed,
+            productivity,
+        );
+    if matches!(
+        arbitration,
+        DispatchThreeSignalArbitration::Conflict {
+            mixed: observed_mixed,
+            productivity: observed_productivity,
+        } if observed_mixed == mixed && observed_productivity == productivity
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal arbitration hid mixed conflict"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_preserves_conflict_when_deferred()
+-> Result<(), String> {
+    let mixed = dispatch_policy_mixed_conflict()?;
+    let productivity = dispatch_policy_productivity_adaptation(3, 5, 2)?;
+    let arbitration = dispatch_mix::
+        arbitrate_native_continuation_dispatch_policy_three_signals(
+            &mixed,
+            productivity,
+        );
+    if matches!(
+        arbitration,
+        DispatchThreeSignalArbitration::Conflict {
+            mixed: observed_mixed,
+            productivity: observed_productivity,
+        } if observed_mixed == mixed && observed_productivity == productivity
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("deferred productivity hid mixed conflict"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_defers_productivity_gap()
+-> Result<(), String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    let productivity = dispatch_policy_productivity_adaptation(3, 5, 2)?;
+    let arbitration = dispatch_mix::
+        arbitrate_native_continuation_dispatch_policy_three_signals(
+            &mixed,
+            productivity,
+        );
+    if matches!(
+        arbitration,
+        DispatchThreeSignalArbitration::Deferred {
+            mixed: observed_mixed,
+            productivity: observed_productivity,
+        } if observed_mixed == mixed && observed_productivity == productivity
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal productivity gap did not defer"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_mixed_adaptation_defers_missing_signal()
 -> Result<(), String> {
     let count = dispatch_policy_deferred_adaptation()?;
@@ -99653,6 +99856,37 @@ fn dispatch_policy_latency_adaptation(
             assess_cached_retry_latency(&histogram, thresholds),
             dispatch_policy_adaptation_set()?,
         ),
+    )
+}
+
+fn dispatch_policy_productivity_adaptation(
+    required_attempts: usize,
+    minimum_steps_numerator: u64,
+    minimum_steps_denominator: u64,
+) -> Result<DispatchProductivityAdaptation, String> {
+    let threshold =
+        dispatch_mix::
+            NativeContinuationDispatchPolicyProductivityThreshold::new(
+            nonzero_test_limit(
+                required_attempts,
+                "dispatch productivity attempts",
+            )?,
+            NonZeroU64::new(minimum_steps_numerator).ok_or_else(|| {
+                String::from("dispatch productivity numerator must be positive")
+            })?,
+            NonZeroU64::new(minimum_steps_denominator).ok_or_else(|| {
+                String::from(
+                    "dispatch productivity denominator must be positive",
+                )
+            })?,
+        );
+    Ok(
+        dispatch_mix::
+            adapt_native_continuation_dispatch_policy_from_productivity(
+                dispatch_policy_adaptation_telemetry()?,
+                threshold,
+                dispatch_policy_adaptation_set()?,
+            ),
     )
 }
 
