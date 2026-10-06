@@ -697,8 +697,6 @@ behavior.
   evidence; agreement remains invariant and global deferral remains
   non-overridable. Missing selected-signal evidence returns unavailable.
 
-  Four-signal publication remains open.
-
   Agreement-only three-signal arbitration preserves existing count/latency
   conflict and deferral, and authorizes only when ready productivity selects the
   same policy as an existing count-plus-latency agreement. Agreement-only stays
@@ -707,28 +705,26 @@ behavior.
   Three-signal deferral remains non-overridable, and productivity precedence is
   unavailable when productivity itself is deferred.
 
-  Agreement-only publication now accepts both count-plus-latency agreement and
-  the stricter productivity-gated three-signal agreement through the same
+  Agreement-only publication now accepts count-plus-latency, productivity-gated
+  three-signal, and cache-reuse-gated four-signal agreement through the same
   process-local revisioned owner and durable active-state CAS. No storage frame
-  changes: deferred/conflicting evidence performs no mutation or CAS, while
-  agreement retains exact owner/CAS conflict, commit, durability failure, and
-  revision-exhaustion evidence.
+  changes: deferred/conflicting evidence performs no mutation or CAS. Agreement
+  retains exact owner/CAS conflict, commit, durability failure, and revision-
+  exhaustion evidence.
 
   Caller-selected precedence now applies explicit immutable modes after
-  completed two- or three-signal arbitration. Two-signal selection retains
-  count/latency
-  precedence; three-signal selection adds productivity precedence while
-  preserving existing agreement and global deferral. A mixed conflict may still
-  select ready count/latency when productivity is deferred, but productivity
-  precedence returns unavailable instead of fabricating policy evidence.
+  completed
+  two-, three-, or four-signal arbitration. Three-signal selection adds
+  productivity precedence and four-signal selection adds cache-reuse precedence
+  while preserving agreement and global deferral. Missing selected-signal
+  evidence returns unavailable rather than falling back to another signal.
 
-  Precedence-selected publication now applies exact two- or three-signal
+  Precedence-selected publication now applies exact two-, three-, or four-signal
   selection through both the process-local revisioned owner and durable active-
   state CAS. Deferred, unavailable, or agreement-only-withheld selection
-  performs no mutation or storage work. Selected count/latency/productivity
-  authority
-  retains exact owner/CAS conflict, commit, committed durability failure, and
-  revision-exhaustion evidence.
+  performs no mutation or storage work. Selected count/latency/productivity/
+  cache-reuse authority retains exact owner/CAS conflict, commit, committed
+  durability failure, and revision-exhaustion evidence.
 
   Durable dispatch identity watermarking now owns one canonical fixed frame and
   exact-next conditional durable CAS. Missing state advances to watermark one;
@@ -751,12 +747,13 @@ behavior.
   state nor queue reconstruction persists clock starts or in-flight work.
 
   Durable queue contents/orchestration, further adaptive evidence beyond cache
-  reuse, four-signal publication, parallel/background worker lifecycle, and
-  distributed scheduling remain open.
+  reuse, parallel/background worker lifecycle, and distributed scheduling remain
+  open.
   Any future active-state frame revision
   will require an explicit new migration contract rather than reinterpretation
   of revision one.
-  Synchronous same-cycle count/latency/productivity publication remains owned.
+  Synchronous same-cycle count/latency/productivity/cache-reuse publication
+  remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -841,8 +838,8 @@ behavior.
   not crash recovery and does not make queue contents durable.
 
   It does not serialize affine handoffs or clock starts. Durable affine queue
-  contents, adaptive evidence beyond cache reuse, four-signal publication,
-  parallel/background worker lifecycle, and distributed scheduling remain open.
+  contents, adaptive evidence beyond cache reuse, parallel/background worker
+  lifecycle, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

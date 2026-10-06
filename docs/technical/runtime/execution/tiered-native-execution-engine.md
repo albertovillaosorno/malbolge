@@ -1955,8 +1955,6 @@ or cache-reuse selection only across conflicting ready evidence; agreement stays
 invariant and global deferral remains non-overridable. A selected signal without
 ready evidence returns unavailable.
 
-Four-signal publication remains open.
-
 Three-signal arbitration layers productivity over the existing count-plus-
 latency result. Existing count/latency conflict remains conflict even when
 productivity is deferred, existing deferral remains deferred, and an agreed
@@ -1967,27 +1965,27 @@ productivity has no implicit override. A deferred three-signal arbitration is
 never precedence-selected, and productivity precedence is unavailable when the
 productivity signal itself is deferred.
 
-Agreement-only arbitration publication now accepts either the established
-count-plus-latency agreement or the stricter three-signal productivity-gated
-agreement. Both paths reuse the same process-local revisioned owner and durable
-active-state CAS without changing storage framing. Deferred or disagreeing
-evidence is withheld without mutation or storage work. Agreed evidence retains
-exact owner/CAS conflict, commit, committed durability failure, and revision-
-exhaustion evidence.
+Agreement-only arbitration publication now accepts count-plus-latency, three-
+signal productivity-gated, and four-signal cache-reuse-gated agreement. Every
+path reuses the same process-local revisioned owner and durable active-state CAS
+without changing storage framing. Deferred or disagreeing evidence is withheld
+without mutation or storage work. Agreed evidence retains exact owner/CAS
+conflict, commit, committed durability failure, and revision-exhaustion
+evidence.
 
 Caller-selected precedence now applies explicit immutable modes after completed
-two- or three-signal arbitration. Agreement-only remains the default. Two-signal
-selection retains count/latency precedence; three-signal selection adds explicit
-productivity precedence while preserving agreement and global deferral. On a
-ready mixed conflict with deferred productivity, count/latency remain selectable
-but productivity precedence returns unavailable rather than inventing evidence.
+two-, three-, or four-signal arbitration. Agreement-only remains the default.
+Three-signal selection adds productivity precedence and four-signal selection
+adds cache-reuse precedence while preserving agreement and global deferral. A
+selected signal without ready evidence returns unavailable rather than falling
+back to another signal.
 
-Precedence-selected publication now applies exact two- or three-signal selection
-through both the process-local revisioned owner and the durable active-state
-CAS. Deferred, unavailable, or agreement-only-withheld selections perform no
-mutation or storage work. Selected count/latency/productivity authority retains
-exact owner/CAS conflict, commit, committed durability failure, and revision-
-exhaustion evidence.
+Precedence-selected publication now applies exact two-, three-, or four-signal
+selection through both the process-local revisioned owner and durable active-
+state CAS. Deferred, unavailable, or agreement-only-withheld selection performs
+no mutation or storage work. Selected count/latency/productivity/cache-reuse
+authority retains exact owner/CAS conflict, commit, committed durability
+failure, and revision-exhaustion evidence.
 
 Durable dispatch identity watermarking now owns one canonical fixed frame and
 exact-next conditional durable CAS. Missing state advances to watermark one;
@@ -2055,7 +2053,7 @@ Durable affine queue contents, further adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside
 this boundary. Any future active-state frame revision requires an explicit
 migration contract; revision one is never reinterpreted. Synchronous same-cycle
-count/latency/productivity publication remains owned.
+count/latency/productivity/cache-reuse publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

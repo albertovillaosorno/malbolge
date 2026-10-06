@@ -1887,6 +1887,16 @@ type DispatchArbitrationDurablePublication =
     auth::NativeContinuationDispatchPolicyArbitrationDurablePublication<
         TestCachedRetryTelemetryBlobDurabilityError,
     >;
+type DispatchFourSignalPublication =
+    auth::NativeContinuationDispatchPolicyFourSignalPublication;
+type DispatchFourSignalDurablePublication =
+    auth::NativeContinuationDispatchPolicyFourSignalDurablePublication<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchFourSignalDurableStoreResult =
+    auth::NativeContinuationDispatchPolicyFourSignalDurableStoreResult<
+        TestCachedRetryTelemetryBlobStore,
+    >;
 type DispatchThreeSignalPublication =
     auth::NativeContinuationDispatchPolicyThreeSignalPublication;
 type DispatchThreeSignalDurablePublication =
@@ -1927,6 +1937,16 @@ type DispatchPrecedencePublication =
 type DispatchPrecedenceDurablePublication =
     choice::NativeContinuationDispatchPolicyPrecedenceDurablePublication<
         TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchFourSignalChoicePublication =
+    choice::NativeContinuationDispatchPolicyFourSignalPublication;
+type DispatchFourSignalChoiceDurablePublication =
+    choice::NativeContinuationDispatchPolicyFourSignalDurablePublication<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchFourSignalChoiceDurableStoreResult =
+    choice::NativeContinuationDispatchPolicyFourSignalDurableStoreResult<
+        TestCachedRetryTelemetryBlobStore,
     >;
 type DispatchThreeSignalChoicePublication =
     choice::NativeContinuationDispatchPolicyThreeSignalPublication;
@@ -97358,6 +97378,692 @@ fn continuation_dispatch_policy_four_signal_precedence_rejects_missing_reuse()
 }
 
 #[test]
+fn continuation_dispatch_policy_four_signal_publication_withholds()
+-> Result<(), String> {
+    for arbitration in [
+        dispatch_policy_four_signal_reuse_conflict()?,
+        dispatch_policy_four_signal_deferred()?,
+    ] {
+        let initial = dispatch_policy_fixture(2)?;
+        let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+        let expected = owner.state().revision();
+        let before = owner.state();
+        let publication =
+            auth::publish_native_continuation_dispatch_policy_four_signal(
+                &mut owner,
+                expected,
+                &arbitration,
+            )
+            .map_err(|error| format!("four-signal withholding: {error:?}"))?;
+        let DispatchFourSignalPublication::Withheld {
+            arbitration: observed,
+            current,
+        } = publication
+        else {
+            return Err(String::from("four-signal withholding mutated owner"));
+        };
+        if observed != arbitration
+            || current != before
+            || owner.state() != before
+        {
+            return Err(String::from(
+                "four-signal withholding evidence drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_publication_publishes_agreement()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("four-signal agreement lacked policy"))?;
+    let publication =
+        auth::publish_native_continuation_dispatch_policy_four_signal(
+            &mut owner,
+            expected,
+            &arbitration,
+        )
+        .map_err(|error| format!("four-signal publish: {error:?}"))?;
+    let DispatchFourSignalPublication::Published {
+        arbitration: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("four-signal agreement did not publish"));
+    };
+    if observed == arbitration
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal publication evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_publication_retains_exhaustion()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("four-signal agreement lacked policy"))?;
+    let failure =
+        auth::publish_native_continuation_dispatch_policy_four_signal(
+            &mut owner,
+            revision,
+            &arbitration,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted four-signal owner advanced"))?;
+    let expected_error =
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        };
+    if failure.arbitration() == arbitration
+        && failure.error() == expected_error
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal exhaustion evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_durable_withholds_without_cas()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    for arbitration in [
+        dispatch_policy_four_signal_reuse_conflict()?,
+        dispatch_policy_four_signal_deferred()?,
+    ] {
+        let mut store = TestCachedRetryTelemetryBlobStore {
+            blob: Some(original.clone()),
+            ..TestCachedRetryTelemetryBlobStore::default()
+        };
+        let publication = publish_dispatch_four_signal_durably(
+            &mut store,
+            Some(expected),
+            &arbitration,
+            nonzero_test_limit(52, "four-signal durable withheld bytes")?,
+        )
+        .map_err(|error| {
+            format!("four-signal durable withholding: {error:?}")
+        })?;
+        let DispatchFourSignalDurablePublication::Withheld {
+            arbitration: observed,
+            expected: seen,
+        } = publication
+        else {
+            return Err(String::from("four-signal withholding touched store"));
+        };
+        if observed != arbitration
+            || seen != Some(expected)
+            || store.blob.as_deref() != Some(original.as_slice())
+            || store.compare_and_swap_calls != 0
+        {
+            return Err(String::from(
+                "four-signal durable withholding drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_durable_publishes_agreement()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("four-signal agreement lacked policy"))?;
+    let publication = publish_dispatch_four_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "four-signal durable publish bytes")?,
+    )
+    .map_err(|error| format!("four-signal durable publish: {error:?}"))?;
+    let DispatchFourSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication: DispatchPolicyStateCas::Durable { current, previous, .. },
+    } = publication
+    else {
+        return Err(String::from("four-signal agreement was not durable"));
+    };
+    if observed == arbitration
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal durable publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_durable_retains_conflict()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let publication = publish_dispatch_four_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "four-signal durable conflict bytes")?,
+    )
+    .map_err(|error| format!("four-signal durable conflict: {error:?}"))?;
+    let DispatchFourSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication:
+            DispatchPolicyStateCas::Conflict {
+                current, expected: seen, ..
+            },
+    } = publication
+    else {
+        return Err(String::from("stale four-signal durable CAS committed"));
+    };
+    if observed == arbitration
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal durable conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_durable_retains_sync_failure()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let publication = publish_dispatch_four_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "four-signal durable sync bytes")?,
+    )
+    .map_err(|error| format!("four-signal durable sync: {error:?}"))?;
+    let DispatchFourSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication:
+            DispatchPolicyStateCas::Published {
+                current,
+                durability_error,
+                previous,
+                ..
+            },
+    } = publication
+    else {
+        return Err(String::from("four-signal sync failure lost commit"));
+    };
+    if observed == arbitration
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal sync-failure evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("four-signal agreement lacked policy"))?;
+    let failure = publish_dispatch_four_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "four-signal durable exhausted bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("exhausted four-signal CAS advanced"))?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.arbitration() == arbitration
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal durable exhaustion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_publication_withholds()
+-> Result<(), String> {
+    let conflict = dispatch_policy_four_signal_reuse_conflict()?;
+    let deferred = dispatch_policy_four_signal_deferred()?;
+    let unavailable =
+        dispatch_policy_four_signal_prior_conflict_with_reuse_gap()?;
+    let selections = [
+        dispatch_policy_four_signal_precedence_selection(
+            &conflict,
+            DispatchFourSignalPrecedence::AgreementOnly,
+        ),
+        dispatch_policy_four_signal_precedence_selection(
+            &deferred,
+            DispatchFourSignalPrecedence::Count,
+        ),
+        dispatch_policy_four_signal_precedence_selection(
+            &unavailable,
+            DispatchFourSignalPrecedence::CacheReuse,
+        ),
+    ];
+    for selection in selections {
+        let initial = dispatch_policy_fixture(2)?;
+        let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+        let expected = owner.state().revision();
+        let before = owner.state();
+        let publication = choice::
+            publish_native_continuation_dispatch_policy_four_signal_choice(
+                &mut owner,
+                expected,
+                &selection,
+            )
+            .map_err(|error| format!("choice withheld: {error:?}"))?;
+        let DispatchFourSignalChoicePublication::Withheld {
+            selection: observed,
+            current,
+        } = publication
+        else {
+            return Err(String::from("four-signal choice mutated owner"));
+        };
+        if observed != selection || current != before || owner.state() != before
+        {
+            return Err(String::from("four-signal choice withholding drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_publishes_cache_reuse()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("cache-reuse choice lacked policy"))?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_four_signal_choice(
+            &mut owner, expected, &selection,
+        )
+        .map_err(|error| format!("four-signal choice publish: {error:?}"))?;
+    let DispatchFourSignalChoicePublication::Published {
+        selection: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("cache-reuse choice did not publish"));
+    };
+    if observed == selection
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal choice publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_retains_exhaustion()
+-> Result<(), String> {
+    use continuation_dispatch_policy_precedence_publication as cp;
+
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("cache-reuse choice lacked policy"))?;
+    let failure =
+        cp::publish_native_continuation_dispatch_policy_four_signal_choice(
+            &mut owner, revision, &selection,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted four-signal choice advanced"))?;
+    let expected_error =
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        };
+    if failure.selection() == selection
+        && failure.error() == expected_error
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal choice exhaustion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_durable_withholds()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let conflict = dispatch_policy_four_signal_reuse_conflict()?;
+    let deferred = dispatch_policy_four_signal_deferred()?;
+    let unavailable =
+        dispatch_policy_four_signal_prior_conflict_with_reuse_gap()?;
+    let selections = [
+        dispatch_policy_four_signal_precedence_selection(
+            &conflict,
+            DispatchFourSignalPrecedence::AgreementOnly,
+        ),
+        dispatch_policy_four_signal_precedence_selection(
+            &deferred,
+            DispatchFourSignalPrecedence::Count,
+        ),
+        dispatch_policy_four_signal_precedence_selection(
+            &unavailable,
+            DispatchFourSignalPrecedence::CacheReuse,
+        ),
+    ];
+    for selection in selections {
+        let mut store = TestCachedRetryTelemetryBlobStore {
+            blob: Some(original.clone()),
+            ..TestCachedRetryTelemetryBlobStore::default()
+        };
+        let publication = publish_dispatch_four_signal_choice_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "four-signal choice withheld bytes")?,
+        )
+        .map_err(|error| format!("choice withheld: {error:?}"))?;
+        let DispatchFourSignalChoiceDurablePublication::Withheld {
+            selection: observed,
+            expected: seen,
+        } = publication
+        else {
+            return Err(String::from("four-signal choice touched store"));
+        };
+        if observed != selection
+            || seen != Some(expected)
+            || store.blob.as_deref() != Some(original.as_slice())
+            || store.compare_and_swap_calls != 0
+        {
+            return Err(String::from(
+                "durable four-signal choice withholding drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_durable_publishes()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("cache-reuse choice lacked policy"))?;
+    let publication = publish_dispatch_four_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "four-signal choice durable bytes")?,
+    )
+    .map_err(|error| format!("four-signal choice durable: {error:?}"))?;
+    let DispatchFourSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication: DispatchPolicyStateCas::Durable { current, previous, .. },
+    } = publication
+    else {
+        return Err(String::from("four-signal choice was not durable"));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable four-signal choice drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_durable_retains_conflict()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let publication = publish_dispatch_four_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "four-signal choice conflict bytes")?,
+    )
+    .map_err(|error| format!("four-signal choice conflict: {error:?}"))?;
+    let DispatchFourSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Conflict {
+                current, expected: seen, ..
+            },
+    } = publication
+    else {
+        return Err(String::from("stale four-signal choice committed"));
+    };
+    if observed == selection
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable four-signal choice conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_durable_retains_sync()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let publication = publish_dispatch_four_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "four-signal choice sync bytes")?,
+    )
+    .map_err(|error| format!("four-signal choice sync: {error:?}"))?;
+    let DispatchFourSignalChoiceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Published {
+                current,
+                durability_error,
+                previous,
+                ..
+            },
+    } = publication
+    else {
+        return Err(String::from("four-signal choice sync lost commit"));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal choice sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_choice_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("cache-reuse choice lacked policy"))?;
+    let failure = publish_dispatch_four_signal_choice_durably(
+        &mut store,
+        Some(expected),
+        &selection,
+        nonzero_test_limit(52, "four-signal choice exhausted bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("exhausted four-signal choice CAS advanced"))?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.selection() == selection
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable four-signal choice exhaustion drifted",
+        ))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_cache_reuse_defers_attempt_gate()
 -> Result<(), String> {
     let adaptation = dispatch_policy_cache_reuse_adaptation(3, 1, 1)?;
@@ -101178,6 +101884,36 @@ fn publish_dispatch_three_signal_durably(
         store,
         expected,
         arbitration,
+        maximum_bytes,
+    )
+}
+
+fn publish_dispatch_four_signal_durably(
+    store: &mut TestCachedRetryTelemetryBlobStore,
+    expected: Option<NativeContinuationDispatchPolicyState>,
+    arbitration: &DispatchFourSignalArbitration,
+    maximum_bytes: NonZeroUsize,
+) -> DispatchFourSignalDurableStoreResult {
+    auth::publish_native_continuation_dispatch_policy_four_signal_durably(
+        store,
+        expected,
+        arbitration,
+        maximum_bytes,
+    )
+}
+
+fn publish_dispatch_four_signal_choice_durably(
+    store: &mut TestCachedRetryTelemetryBlobStore,
+    expected: Option<NativeContinuationDispatchPolicyState>,
+    selection: &DispatchFourSignalPrecedenceSelection,
+    maximum_bytes: NonZeroUsize,
+) -> DispatchFourSignalChoiceDurableStoreResult {
+    use continuation_dispatch_policy_precedence_publication as cp;
+
+    cp::publish_native_continuation_dispatch_policy_four_signal_choice_durably(
+        store,
+        expected,
+        selection,
         maximum_bytes,
     )
 }
