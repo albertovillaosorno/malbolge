@@ -16,13 +16,13 @@
 //     choose storage paths, spawn workers, or infer distributed scheduling.
 // - Allows:
 //   - Inputs: optional expected combined state, local queue watermarks or one
-//     exclusively borrowed queue plus affine handoff, explicit reservation
-//     kind, positive byte bound, and one conditional durable store.
+//     exclusively borrowed queue, optional affine enqueue owner, explicit
+//     reservation kind, positive byte bound, and one conditional durable store.
 //   - Outputs: restored combined state, exact conflict state, committed next
-//     state, bound dispatch identity, committed sync failure, or typed
-//     queue/codec/storage/exhaustion failure.
+//     state, bound dispatch identity or timed FIFO handoff, committed sync
+//     failure, or typed queue/codec/storage/exhaustion failure.
 //   - Side effects: one delegated conditional durable blob publication and, for
-//     composed identity enqueue, one process-local queue admission after
+//     composed paths, one process-local enqueue or timing dispatch after
 //     commit.
 // - Split-When:
 //   - Affine queue contents, multi-item transactions, or distributed consensus
@@ -34,10 +34,10 @@
 //   - Coordinates dispatch and timing reservations in one canonical CAS frame.
 // - Description:
 //   - Each transition advances exactly one selected watermark by one; composed
-//     identity enqueue preflights local admission before durable publication.
+//     enqueue and timing dispatch preflight local admission before publication.
 // - Usage:
-//   - Restore state, reserve timing explicitly, or durably reserve and enqueue
-//     one dispatch identity through the composed boundary.
+//   - Restore state, reserve explicitly, or durably bind one identity enqueue
+//     or one timing dispatch through the composed boundary.
 // - Defaults:
 //   - Missing durable state represents dispatch zero and timing zero.
 //
@@ -93,6 +93,73 @@ pub struct NativeContinuationDispatchReservationRequest {
 pub struct NativeContinuationDispatchDurableEnqueueRequest {
     expected: Option<ReservationState>,
     maximum_bytes: NonZeroUsize,
+}
+
+/// Inputs for one durable timing reservation plus local FIFO dispatch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchDurableTimingRequest {
+    expected: Option<ReservationState>,
+    maximum_bytes: NonZeroUsize,
+}
+
+/// Why durable timing dispatch cannot begin before storage access.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableTimingPreflightError {
+    /// The configured in-flight timing bound is already full.
+    Capacity {
+        /// Exact number of dispatches awaiting completion.
+        in_flight: usize,
+        /// Positive configured concurrent dispatch bound.
+        maximum_in_flight: NonZeroUsize,
+    },
+    /// No pending affine handoff exists to bind to a timing reservation.
+    Idle,
+}
+
+/// Why a committed timing reservation unexpectedly failed local binding.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableTimingBindFailure {
+    /// Exact interval-begin failure returned by the local queue.
+    Begin(cycle::NativeContinuationCachedRetryLatencyIntervalBeginError),
+    /// The queue reported no pending handoff after successful preflight.
+    MissingPending,
+}
+
+/// Result of durably reserving and binding one dispatch timing identity.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableTiming<DurabilityError> {
+    /// Durable timing committed and the oldest affine owner was dispatched.
+    Bound {
+        /// Exact caller-owned dispatched handoff.
+        dispatch: Box<queue::NativeContinuationDispatchedHandoff>,
+        /// Exact durable commit or committed durability-failure evidence.
+        reservation:
+            NativeContinuationDispatchReservationStateCas<DurabilityError>,
+    },
+    /// Durable timing committed but local binding unexpectedly failed.
+    CommittedUnbound {
+        /// Exact non-mutating local binding failure.
+        failure: NativeContinuationDispatchDurableTimingBindFailure,
+        /// Exact durable commit evidence that must be rebound locally.
+        reservation:
+            NativeContinuationDispatchReservationStateCas<DurabilityError>,
+    },
+    /// Durable state changed concurrently; local queue is unchanged.
+    Conflict {
+        /// Exact current durable state observed by the conditional store.
+        current: Option<ReservationState>,
+        /// Caller-supplied expected durable state.
+        expected: Option<ReservationState>,
+    },
+}
+
+/// Why durable reserve-and-dispatch failed before a durable outcome existed.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableTimingError<StoreError> {
+    /// Local queue cannot dispatch one timing reservation yet.
+    Queue(NativeContinuationDispatchDurableTimingPreflightError),
+    /// Durable timing reservation failed before commit/conflict evidence.
+    Reservation(NativeContinuationDispatchReservationStateCasError<StoreError>),
 }
 
 /// Result of durably reserving and immediately binding one dispatch identity.
@@ -151,6 +218,17 @@ pub enum NativeContinuationDispatchDurableEnqueueError<StoreError> {
 
 impl NativeContinuationDispatchDurableEnqueueRequest {
     /// Constructs one exact durable identity enqueue request.
+    #[must_use]
+    pub const fn new(
+        expected: Option<ReservationState>,
+        maximum_bytes: NonZeroUsize,
+    ) -> Self {
+        Self { expected, maximum_bytes }
+    }
+}
+
+impl NativeContinuationDispatchDurableTimingRequest {
+    /// Constructs one exact durable timing dispatch request.
     #[must_use]
     pub const fn new(
         expected: Option<ReservationState>,
@@ -280,6 +358,14 @@ pub type NativeContinuationDispatchDurableEnqueueStoreResult<Store> = Result<
         <Store as DurableBlobStore>::DurabilityError,
     >,
     NativeContinuationDispatchDurableEnqueueError<<Store as BlobStore>::Error>,
+>;
+
+/// Typed durable timing dispatch result specialized to one durable store.
+pub type NativeContinuationDispatchDurableTimingStoreResult<Store> = Result<
+    NativeContinuationDispatchDurableTiming<
+        <Store as DurableBlobStore>::DurabilityError,
+    >,
+    NativeContinuationDispatchDurableTimingError<<Store as BlobStore>::Error>,
 >;
 
 /// Typed combined-state CAS result specialized to one durable store.
@@ -568,6 +654,118 @@ where
                 reservation,
             }
         },
+    }
+}
+
+fn preflight_durable_timing_dispatch<Clock, StoreError>(
+    local_queue: &queue::NativeContinuationDispatchQueue<Clock>,
+    request: NativeContinuationDispatchDurableTimingRequest,
+) -> Result<
+    ReservationState,
+    NativeContinuationDispatchDurableTimingError<StoreError>,
+>
+where
+    Clock: NativeContinuationMonotonicClock,
+{
+    let local = local_queue.watermarks();
+    let base = request.expected.unwrap_or_else(zero_state);
+    if local != base {
+        return Err(NativeContinuationDispatchDurableTimingError::Reservation(
+            CasError::LocalStateMismatch {
+                local,
+                expected: request.expected,
+            },
+        ));
+    }
+    let current =
+        advance_state(base, NativeContinuationDispatchReservationKind::Timing)
+            .ok_or(
+                NativeContinuationDispatchDurableTimingError::Reservation(
+                    CasError::WatermarkExhausted {
+                        reservation:
+                            NativeContinuationDispatchReservationKind::Timing,
+                    },
+                ),
+            )?;
+    if local_queue.pending() == 0 {
+        return Err(NativeContinuationDispatchDurableTimingError::Queue(
+            NativeContinuationDispatchDurableTimingPreflightError::Idle,
+        ));
+    }
+    if local_queue.in_flight() >= local_queue.maximum_in_flight().get() {
+        return Err(NativeContinuationDispatchDurableTimingError::Queue(
+            NativeContinuationDispatchDurableTimingPreflightError::Capacity {
+                in_flight: local_queue.in_flight(),
+                maximum_in_flight: local_queue.maximum_in_flight(),
+            },
+        ));
+    }
+    Ok(current)
+}
+
+/// Durably reserves the next timing identity and dispatches the FIFO owner.
+///
+/// Local synchronization, pending ownership, and in-flight capacity are checked
+/// before storage access. After commit, exclusive mutable queue ownership keeps
+/// those facts stable while the exact reserved timing identity starts and the
+/// oldest affine handoff transfers to the caller. This does not persist the
+/// handoff or its monotonic clock start.
+///
+/// # Errors
+///
+/// Returns local synchronization, timing exhaustion, idle/capacity preflight,
+/// codec, byte-limit, or storage failure before a durable outcome exists.
+pub fn reserve_and_dispatch_native_continuation_timing_durably<Clock, Store>(
+    store: &mut Store,
+    local_queue: &mut queue::NativeContinuationDispatchQueue<Clock>,
+    request: NativeContinuationDispatchDurableTimingRequest,
+) -> NativeContinuationDispatchDurableTimingStoreResult<Store>
+where
+    Clock: NativeContinuationMonotonicClock,
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let current = preflight_durable_timing_dispatch(local_queue, request)?;
+    let reservation = reserve_native_continuation_dispatch_identity_durably(
+        store,
+        request.expected,
+        NativeContinuationDispatchReservationKind::Timing,
+        request.maximum_bytes,
+    )
+    .map_err(NativeContinuationDispatchDurableTimingError::Reservation)?;
+    if let NativeContinuationDispatchReservationStateCas::Conflict {
+        current: durable_current,
+        expected: durable_expected,
+    } = reservation
+    {
+        return Ok(NativeContinuationDispatchDurableTiming::Conflict {
+            current: durable_current,
+            expected: durable_expected,
+        });
+    }
+    match local_queue.dispatch_next_reserved_timing(current.timing()) {
+        Ok(Some(dispatch)) => {
+            Ok(NativeContinuationDispatchDurableTiming::Bound {
+                dispatch: Box::new(dispatch),
+                reservation,
+            })
+        },
+        Ok(None) => Ok(
+            NativeContinuationDispatchDurableTiming::CommittedUnbound {
+                failure:
+                    NativeContinuationDispatchDurableTimingBindFailure::
+                        MissingPending,
+                reservation,
+            },
+        ),
+        Err(error) => Ok(
+            NativeContinuationDispatchDurableTiming::CommittedUnbound {
+                failure:
+                    NativeContinuationDispatchDurableTimingBindFailure::Begin(
+                        error,
+                    ),
+                reservation,
+            },
+        ),
     }
 }
 

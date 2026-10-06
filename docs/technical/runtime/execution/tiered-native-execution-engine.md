@@ -1993,6 +1993,15 @@ reservation/enqueue gap inside one process but is not crash-atomic persistence
 of affine queue contents. Handoff ownership and clock starts remain outside
 durable state.
 
+Durable timing dispatch applies the same synchronization to the dequeue side.
+It requires one pending owner and free in-flight timing capacity before CAS,
+then commits the next timing watermark and immediately starts that reserved
+interval
+while transferring the oldest affine handoff. Conflict and pre-commit failure
+leave the queue untouched, while post-publication durability failure still binds
+locally because publication committed. This closes the caller-visible timing
+reservation/dispatch gap without persisting handoffs or monotonic clock starts.
+
 Durable affine queue contents, additional adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside
 this boundary. Any future active-state frame revision requires an explicit

@@ -787,6 +787,15 @@ behavior.
   handoff without local mutation. This narrows the in-process reservation/bind
   gap but does not claim crash-atomic storage plus process-memory publication.
 
+  Durable timing dispatch now preflights pending ownership and in-flight
+  capacity before CAS, then binds any committed timing watermark by starting the
+  exact
+  reserved interval and transferring the FIFO owner under the same mutable queue
+  borrow. Conflict and pre-commit failure leave local ownership unchanged, while
+  post-publication durability failure still binds the committed timing identity.
+  This remains process-local coordination rather than durable affine contents or
+  clock-start persistence.
+
   It does not serialize affine handoffs or clock starts. Durable affine queue
   contents, additional evidence classes, parallel/background worker lifecycle,
   and distributed scheduling remain open.
