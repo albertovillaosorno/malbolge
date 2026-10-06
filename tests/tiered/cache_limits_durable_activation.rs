@@ -44,10 +44,13 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryAttempt, summarize_cached_retry_attempts,
 };
 use crate::executable_cache_limits_recommendation::{
+    NativeExecutableCacheLimitsPressureThreshold,
     NativeExecutableCacheLimitsRecommendation,
     NativeExecutableCacheLimitsRecommendationSet,
     NativeExecutableCacheLimitsReuseThreshold,
+    NativeExecutableCacheLimitsTwoSignalRequest,
     recommend_native_executable_cache_limits_from_reuse,
+    recommend_native_executable_cache_limits_from_reuse_and_pressure,
 };
 use crate::execution_native::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
@@ -190,6 +193,42 @@ impl NativeExecutableMemoryAdapter for NoOpAdapter {
     }
 }
 
+fn agreed_recommendation(
+    current: NativeExecutableSequenceCacheLimits,
+    candidate: NativeExecutableSequenceCacheLimits,
+) -> Result<NativeExecutableCacheLimitsRecommendation, String> {
+    let telemetry = summarize_cached_retry_attempts(&[
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            3,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+    ])
+    .map_err(|error| error.to_string())?;
+    let one = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test agreement ratio missing"))?;
+    let candidates = NativeExecutableCacheLimitsRecommendationSet::new(
+        candidate,
+        limits(1)?,
+    );
+    let request = NativeExecutableCacheLimitsTwoSignalRequest::new(
+        NativeExecutableCacheLimitsReuseThreshold::new(positive(2)?, one, one),
+        candidates,
+        NativeExecutableCacheLimitsPressureThreshold::new(positive(2)?, 0, 0),
+        candidates,
+    );
+    recommend_native_executable_cache_limits_from_reuse_and_pressure(
+        telemetry, current, &request,
+    )
+    .recommendation()
+    .ok_or_else(|| String::from("test cache signals did not agree"))
+}
+
 fn activation_request(
     expected: Option<NativeExecutableSequenceCacheLimits>,
     candidate: NativeExecutableSequenceCacheLimits,
@@ -263,6 +302,48 @@ fn recommended_request(
             positive(40)?,
         ),
     )
+}
+
+#[test]
+fn recommended_agreement_activates_combined_evidence() -> Result<(), String> {
+    let current = limits(2)?;
+    let candidate = limits(3)?;
+    let recommendation = agreed_recommendation(current, candidate)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Ready {
+            activation:
+                NativeExecutableSequenceCacheLimitsDurableActivation::
+                    Reconfigured {
+                        publication:
+                            NativeExecutableSequenceCacheLimitsCas::Durable {
+                                current: published,
+                                previous: None,
+                                ..
+                            },
+                        ..
+                    },
+            recommendation: observed,
+        } if published == candidate && observed == recommendation
+    ) && cache.limits() == candidate
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("agreed recommendation did not activate"))
+    }
 }
 
 #[test]

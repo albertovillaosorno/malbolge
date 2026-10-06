@@ -166,6 +166,11 @@ impl NativeContinuationCachedRetryTelemetry {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) const fn from_test_counts(counts: [usize; 6]) -> Self {
+        Self::from_counts(counts)
+    }
+
     /// Returns exact active-cache hits.
     #[must_use]
     pub const fn hits(self) -> usize {
