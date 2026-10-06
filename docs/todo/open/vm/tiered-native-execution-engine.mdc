@@ -692,8 +692,12 @@ behavior.
   Agreement-only four-signal arbitration layers reuse over existing count/
   latency/productivity evidence. Prior conflict stays conflict, prior deferral
   stays deferred, and three-signal agreement authorizes only when ready reuse
-  selects the same policy. Cache reuse does not participate in precedence or
-  publication yet.
+  selects the same policy. Four-signal precedence now permits explicit count,
+  latency, productivity, or cache-reuse selection only across conflicting ready
+  evidence; agreement remains invariant and global deferral remains
+  non-overridable. Missing selected-signal evidence returns unavailable.
+
+  Four-signal publication remains open.
 
   Agreement-only three-signal arbitration preserves existing count/latency
   conflict and deferral, and authorizes only when ready productivity selects the
@@ -747,8 +751,8 @@ behavior.
   state nor queue reconstruction persists clock starts or in-flight work.
 
   Durable queue contents/orchestration, further adaptive evidence beyond cache
-  reuse, four-signal precedence/publication, parallel/background worker
-  lifecycle, and distributed scheduling remain open.
+  reuse, four-signal publication, parallel/background worker lifecycle, and
+  distributed scheduling remain open.
   Any future active-state frame revision
   will require an explicit new migration contract rather than reinterpretation
   of revision one.
@@ -837,9 +841,8 @@ behavior.
   not crash recovery and does not make queue contents durable.
 
   It does not serialize affine handoffs or clock starts. Durable affine queue
-  contents, adaptive evidence beyond cache reuse, four-signal precedence/
-  publication, parallel/background worker lifecycle, and distributed scheduling
-  remain open.
+  contents, adaptive evidence beyond cache reuse, four-signal publication,
+  parallel/background worker lifecycle, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

@@ -1949,7 +1949,13 @@ Four-signal arbitration layers cache reuse over the existing count/latency/
 productivity result. Prior conflict remains conflict even if reuse is deferred,
 prior deferral remains deferred even if reuse is ready, and existing three-
 signal agreement gains authority only when ready reuse selects the identical
-policy. Cache reuse has no precedence or publication authority yet.
+policy. Four-signal precedence now permits explicit count, latency,
+productivity,
+or cache-reuse selection only across conflicting ready evidence; agreement stays
+invariant and global deferral remains non-overridable. A selected signal without
+ready evidence returns unavailable.
+
+Four-signal publication remains open.
 
 Three-signal arbitration layers productivity over the existing count-plus-
 latency result. Existing count/latency conflict remains conflict even when

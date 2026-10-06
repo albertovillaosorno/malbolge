@@ -1903,6 +1903,10 @@ type DispatchCacheReuseMiss =
     dispatch_mix::NativeContinuationDispatchPolicyCacheReuseMiss;
 type DispatchFourSignalArbitration =
     dispatch_mix::NativeContinuationDispatchPolicyFourSignalArbitration;
+type DispatchFourSignalPrecedence =
+    select::NativeContinuationDispatchPolicyFourSignalPrecedence;
+type DispatchFourSignalPrecedenceSelection =
+    select::NativeContinuationDispatchPolicyFourSignalPrecedenceSelection;
 type DispatchLatencyAdaptation =
     dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
 type DispatchProductivityAdaptation =
@@ -97161,6 +97165,199 @@ fn continuation_dispatch_policy_latency_adaptation_selects_misses_policy()
 }
 
 #[test]
+fn continuation_dispatch_policy_four_signal_precedence_defaults_to_agreement()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let precedence = DispatchFourSignalPrecedence::default();
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        precedence,
+    );
+    let DispatchFourSignalPrecedenceSelection::Withheld {
+        arbitration: observed,
+    } = selection
+    else {
+        return Err(String::from("default four-signal precedence resolved"));
+    };
+    if precedence == DispatchFourSignalPrecedence::AgreementOnly
+        && observed == arbitration
+        && selection.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal default precedence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_precedence_preserves_agreement()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_four_signal_agreement()?;
+    let agreed = arbitration
+        .policy()
+        .ok_or_else(|| String::from("four-signal agreement lacked policy"))?;
+    for precedence in [
+        DispatchFourSignalPrecedence::AgreementOnly,
+        DispatchFourSignalPrecedence::Count,
+        DispatchFourSignalPrecedence::Latency,
+        DispatchFourSignalPrecedence::Productivity,
+        DispatchFourSignalPrecedence::CacheReuse,
+    ] {
+        let selection = dispatch_policy_four_signal_precedence_selection(
+            &arbitration,
+            precedence,
+        );
+        let DispatchFourSignalPrecedenceSelection::Agreed {
+            arbitration: observed,
+            policy,
+        } = selection
+        else {
+            return Err(String::from(
+                "four-signal precedence changed agreement",
+            ));
+        };
+        if observed != arbitration
+            || policy != agreed
+            || selection.policy() != Some(agreed)
+        {
+            return Err(String::from("four-signal agreement evidence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_precedence_preserves_deferral()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_four_signal_deferred()?;
+    for precedence in [
+        DispatchFourSignalPrecedence::AgreementOnly,
+        DispatchFourSignalPrecedence::Count,
+        DispatchFourSignalPrecedence::Latency,
+        DispatchFourSignalPrecedence::Productivity,
+        DispatchFourSignalPrecedence::CacheReuse,
+    ] {
+        let selection = dispatch_policy_four_signal_precedence_selection(
+            &arbitration,
+            precedence,
+        );
+        let DispatchFourSignalPrecedenceSelection::Deferred {
+            arbitration: observed,
+        } = selection
+        else {
+            return Err(String::from(
+                "four-signal precedence bypassed deferral",
+            ));
+        };
+        if observed != arbitration || selection.policy().is_some() {
+            return Err(String::from("four-signal deferral evidence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_precedence_selects_cache_reuse()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let DispatchFourSignalArbitration::Conflict { cache_reuse, .. } =
+        arbitration
+    else {
+        return Err(String::from("reuse precedence fixture did not conflict"));
+    };
+    let expected = cache_reuse
+        .policy()
+        .ok_or_else(|| String::from("reuse precedence fixture deferred"))?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let DispatchFourSignalPrecedenceSelection::Selected {
+        arbitration: observed,
+        policy,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("cache reuse precedence did not select"));
+    };
+    if observed == arbitration
+        && policy == expected
+        && precedence == DispatchFourSignalPrecedence::CacheReuse
+        && selection.policy() == Some(expected)
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse precedence evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_precedence_selects_lower_signals()
+-> Result<(), String> {
+    let arbitration = dispatch_policy_four_signal_reuse_conflict()?;
+    let DispatchFourSignalArbitration::Conflict { three_signal, .. } =
+        arbitration
+    else {
+        return Err(String::from("lower precedence fixture did not conflict"));
+    };
+    let agreed = three_signal.policy().ok_or_else(|| {
+        String::from("lower precedence fixture lost agreement")
+    })?;
+    for precedence in [
+        DispatchFourSignalPrecedence::Count,
+        DispatchFourSignalPrecedence::Latency,
+        DispatchFourSignalPrecedence::Productivity,
+    ] {
+        let selection = dispatch_policy_four_signal_precedence_selection(
+            &arbitration,
+            precedence,
+        );
+        let DispatchFourSignalPrecedenceSelection::Selected {
+            arbitration: observed,
+            policy,
+            precedence: observed_precedence,
+        } = selection
+        else {
+            return Err(String::from("ready lower precedence did not select"));
+        };
+        if observed != arbitration
+            || policy != agreed
+            || observed_precedence != precedence
+            || selection.policy() != Some(agreed)
+        {
+            return Err(String::from("lower four-signal precedence drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_precedence_rejects_missing_reuse()
+-> Result<(), String> {
+    let arbitration =
+        dispatch_policy_four_signal_prior_conflict_with_reuse_gap()?;
+    let selection = dispatch_policy_four_signal_precedence_selection(
+        &arbitration,
+        DispatchFourSignalPrecedence::CacheReuse,
+    );
+    let DispatchFourSignalPrecedenceSelection::Unavailable {
+        arbitration: observed,
+        precedence,
+    } = selection
+    else {
+        return Err(String::from("missing cache reuse precedence selected"));
+    };
+    if observed == arbitration
+        && precedence == DispatchFourSignalPrecedence::CacheReuse
+        && selection.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing cache reuse precedence drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_cache_reuse_defers_attempt_gate()
 -> Result<(), String> {
     let adaptation = dispatch_policy_cache_reuse_adaptation(3, 1, 1)?;
@@ -100982,6 +101179,52 @@ fn publish_dispatch_three_signal_durably(
         expected,
         arbitration,
         maximum_bytes,
+    )
+}
+
+fn dispatch_policy_four_signal_agreement()
+-> Result<DispatchFourSignalArbitration, String> {
+    let three_signal = dispatch_policy_three_signal_agreement()?;
+    Ok(dispatch_policy_four_signal_arbitration(
+        &three_signal,
+        dispatch_policy_cache_reuse_adaptation(2, 1, 1)?,
+    ))
+}
+
+fn dispatch_policy_four_signal_reuse_conflict()
+-> Result<DispatchFourSignalArbitration, String> {
+    let three_signal = dispatch_policy_three_signal_agreement()?;
+    Ok(dispatch_policy_four_signal_arbitration(
+        &three_signal,
+        dispatch_policy_cache_reuse_adaptation(2, 3, 2)?,
+    ))
+}
+
+fn dispatch_policy_four_signal_prior_conflict_with_reuse_gap()
+-> Result<DispatchFourSignalArbitration, String> {
+    let three_signal = dispatch_policy_three_signal_conflict()?;
+    Ok(dispatch_policy_four_signal_arbitration(
+        &three_signal,
+        dispatch_policy_cache_reuse_adaptation(3, 1, 1)?,
+    ))
+}
+
+fn dispatch_policy_four_signal_deferred()
+-> Result<DispatchFourSignalArbitration, String> {
+    let three_signal = dispatch_policy_three_signal_deferred()?;
+    Ok(dispatch_policy_four_signal_arbitration(
+        &three_signal,
+        dispatch_policy_cache_reuse_adaptation(2, 1, 1)?,
+    ))
+}
+
+const fn dispatch_policy_four_signal_precedence_selection(
+    arbitration: &DispatchFourSignalArbitration,
+    precedence: DispatchFourSignalPrecedence,
+) -> DispatchFourSignalPrecedenceSelection {
+    select::select_native_continuation_dispatch_policy_four_signal_precedence(
+        arbitration,
+        precedence,
     )
 }
 
