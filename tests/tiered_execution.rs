@@ -73,6 +73,8 @@ pub mod continuation_dispatch_policy_owner;
 pub mod continuation_dispatch_policy_persistence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_select.rs"]
 pub mod continuation_dispatch_policy_precedence;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_choice.rs"]
+pub mod continuation_dispatch_policy_precedence_publication;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_seq.rs"]
 pub mod continuation_dispatch_policy_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cas.rs"]
@@ -444,6 +446,7 @@ use continuation_dispatch_policy_persistence::{
     restore_native_continuation_dispatch_policy_state,
 };
 use continuation_dispatch_policy_precedence as select;
+use continuation_dispatch_policy_precedence_publication as choice;
 use continuation_dispatch_policy_sequence::{
     NativeContinuationDispatchPolicySequence,
     NativeContinuationDispatchPolicySequenceError,
@@ -1873,6 +1876,12 @@ type DispatchLatencyAdaptation =
 type DispatchPrecedence = select::NativeContinuationDispatchPolicyPrecedence;
 type DispatchPrecedenceSelection =
     select::NativeContinuationDispatchPolicyPrecedenceSelection;
+type DispatchPrecedencePublication =
+    choice::NativeContinuationDispatchPolicyPrecedencePublication;
+type DispatchPrecedenceDurablePublication =
+    choice::NativeContinuationDispatchPolicyPrecedenceDurablePublication<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
 
 type DispatchedHandoff = NativeContinuationDispatchedHandoff;
 type DispatchFixtureResult =
@@ -97194,6 +97203,402 @@ fn continuation_dispatch_policy_precedence_preserves_deferred_evidence()
 }
 
 #[test]
+fn continuation_dispatch_policy_precedence_publication_withholds_deferred()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(2)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let before = owner.state();
+    let selection = dispatch_policy_precedence_deferred_selection()?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence(
+            &mut owner, expected, &selection,
+        )
+        .map_err(|error| {
+            format!("deferred precedence publication: {error:?}")
+        })?;
+    let DispatchPrecedencePublication::Withheld {
+        selection: observed,
+        current,
+    } = publication
+    else {
+        return Err(String::from("deferred precedence mutated owner"));
+    };
+    if observed == selection && current == before && owner.state() == before {
+        Ok(())
+    } else {
+        Err(String::from("deferred precedence publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_publication_withholds_conflict()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(2)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let before = owner.state();
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::AgreementOnly,
+    )?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence(
+            &mut owner, expected, &selection,
+        )
+        .map_err(|error| {
+            format!("withheld precedence publication: {error:?}")
+        })?;
+    let DispatchPrecedencePublication::Withheld {
+        selection: observed,
+        current,
+    } = publication
+    else {
+        return Err(String::from("withheld precedence mutated owner"));
+    };
+    if observed == selection && current == before && owner.state() == before {
+        Ok(())
+    } else {
+        Err(String::from("withheld precedence evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_publication_publishes_count()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Count,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("count precedence lacked policy"))?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence(
+            &mut owner, expected, &selection,
+        )
+        .map_err(|error| format!("count precedence publication: {error:?}"))?;
+    let DispatchPrecedencePublication::Published {
+        selection: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("count precedence did not publish"));
+    };
+    if observed == selection
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("count precedence publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_publication_retains_stale_owner()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let stale = owner.state().revision();
+    let _published = owner
+        .compare_and_swap(stale, dispatch_policy_fixture(4)?)
+        .map_err(|error| {
+            format!("setup precedence owner advance: {error:?}")
+        })?;
+    let before = owner.state();
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Latency,
+    )?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence(
+            &mut owner, stale, &selection,
+        )
+        .map_err(|error| format!("stale precedence publication: {error:?}"))?;
+    let DispatchPrecedencePublication::Conflict {
+        selection: observed,
+        current,
+        expected,
+    } = publication
+    else {
+        return Err(String::from("stale precedence unexpectedly published"));
+    };
+    if observed == selection
+        && current == before
+        && expected == stale
+        && owner.state() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale precedence owner evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_publication_retains_exhaustion()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Count,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("count precedence lacked policy"))?;
+    let failure =
+        choice::publish_native_continuation_dispatch_policy_precedence(
+            &mut owner, revision, &selection,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted precedence publication advanced")
+        })?;
+    let expected_error =
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        };
+    if failure.selection() == selection
+        && failure.error() == expected_error
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence exhaustion evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_durable_withholds_without_cas()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::AgreementOnly,
+    )?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "precedence durable withheld bytes")?,
+        )
+        .map_err(|error| {
+            format!("precedence durable withholding: {error:?}")
+        })?;
+    let DispatchPrecedenceDurablePublication::Withheld {
+        selection: observed,
+        expected: seen,
+    } = publication
+    else {
+        return Err(String::from("withheld precedence touched durable state"));
+    };
+    if observed == selection
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence durable withholding drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_durable_publishes_selected_latency()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Latency,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("latency precedence lacked policy"))?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "precedence durable publish bytes")?,
+        )
+        .map_err(|error| format!("precedence durable publish: {error:?}"))?;
+    let DispatchPrecedenceDurablePublication::Ready {
+        selection: observed,
+        publication: DispatchPolicyStateCas::Durable { current, previous, .. },
+    } = publication
+    else {
+        return Err(String::from(
+            "selected precedence did not publish durably",
+        ));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence durable publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_durable_retains_exact_conflict()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Count,
+    )?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "precedence durable conflict bytes")?,
+        )
+        .map_err(|error| format!("precedence durable conflict: {error:?}"))?;
+    let DispatchPrecedenceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Conflict {
+                current, expected: seen, ..
+            },
+    } = publication
+    else {
+        return Err(String::from("stale precedence durable CAS committed"));
+    };
+    if observed == selection
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence durable conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_durable_retains_sync_failure()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Count,
+    )?;
+    let publication =
+        choice::publish_native_continuation_dispatch_policy_precedence_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "precedence durable sync bytes")?,
+        )
+        .map_err(|error| format!("precedence durable sync: {error:?}"))?;
+    let DispatchPrecedenceDurablePublication::Ready {
+        selection: observed,
+        publication:
+            DispatchPolicyStateCas::Published {
+                current,
+                durability_error,
+                previous,
+                ..
+            },
+    } = publication
+    else {
+        return Err(String::from("precedence sync failure lost commit"));
+    };
+    if observed == selection
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence sync failure evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_precedence_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let selection = dispatch_policy_precedence_conflict_selection(
+        DispatchPrecedence::Latency,
+    )?;
+    let candidate = selection
+        .policy()
+        .ok_or_else(|| String::from("latency precedence lacked policy"))?;
+    let failure =
+        choice::publish_native_continuation_dispatch_policy_precedence_durably(
+            &mut store,
+            Some(expected),
+            &selection,
+            nonzero_test_limit(52, "precedence durable exhausted bytes")?,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted precedence durable CAS advanced")
+        })?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.selection() == selection
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence durable exhaustion drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_arbitration_publication_withholds_deferred()
 -> Result<(), String> {
     let initial = dispatch_policy_fixture(2)?;
@@ -98895,6 +99300,29 @@ fn dispatch_policy_mixed_deferred()
         dispatch_mix::arbitrate_native_continuation_dispatch_policy_adaptations(
             dispatch_policy_deferred_adaptation()?,
             dispatch_policy_latency_adaptation(15)?,
+        ),
+    )
+}
+
+fn dispatch_policy_precedence_conflict_selection(
+    precedence: DispatchPrecedence,
+) -> Result<DispatchPrecedenceSelection, String> {
+    let arbitration = dispatch_policy_mixed_conflict()?;
+    Ok(
+        select::select_native_continuation_dispatch_policy_precedence(
+            &arbitration,
+            precedence,
+        ),
+    )
+}
+
+fn dispatch_policy_precedence_deferred_selection()
+-> Result<DispatchPrecedenceSelection, String> {
+    let arbitration = dispatch_policy_mixed_deferred()?;
+    Ok(
+        select::select_native_continuation_dispatch_policy_precedence(
+            &arbitration,
+            DispatchPrecedence::Count,
         ),
     )
 }

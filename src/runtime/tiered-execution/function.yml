@@ -763,6 +763,12 @@ parts:
     language: rust
     responsibility: >-
       Apply caller-selected precedence to mixed dispatch-policy evidence.
+  - id: part-0138
+    path: composition/tier/dispatch_choice.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Publish precedence-selected dispatch policy locally and durably.
 projects: []
 tests: []
 graph:

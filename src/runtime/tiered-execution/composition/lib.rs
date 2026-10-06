@@ -73,6 +73,8 @@ pub mod continuation_dispatch_policy_owner;
 pub mod continuation_dispatch_policy_persistence;
 #[path = "tier/dispatch_select.rs"]
 pub mod continuation_dispatch_policy_precedence;
+#[path = "tier/dispatch_choice.rs"]
+pub mod continuation_dispatch_policy_precedence_publication;
 #[path = "tier/dispatch_seq.rs"]
 pub mod continuation_dispatch_policy_sequence;
 #[path = "tier/dispatch_cas.rs"]
