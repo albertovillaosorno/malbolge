@@ -16,14 +16,13 @@
 //     choose storage paths, spawn workers, or infer distributed scheduling.
 // - Allows:
 //   - Inputs: optional expected combined state, local queue watermarks or one
-//     exclusively borrowed queue, optional affine enqueue owner, explicit
-//     reservation kind, positive byte bound, and one conditional durable store.
+//     exclusively borrowed queue, optional affine enqueue owner, committed
+//     transition evidence, positive byte bound, and one conditional store.
 //   - Outputs: restored combined state, exact conflict state, committed next
-//     state, bound dispatch identity or timed FIFO handoff, committed sync
-//     failure, or typed queue/codec/storage/exhaustion failure.
+//     state/evidence, bound or rebound dispatch identity or timed FIFO handoff,
+//     committed sync failure, or typed queue/codec/storage/exhaustion failure.
 //   - Side effects: one delegated conditional durable blob publication and, for
-//     composed paths, one process-local enqueue or timing dispatch after
-//     commit.
+//     composed/rebind paths, one process-local enqueue or timing dispatch.
 // - Split-When:
 //   - Affine queue contents, multi-item transactions, or distributed consensus
 //     gains authority.
@@ -33,11 +32,11 @@
 // - Summary:
 //   - Coordinates dispatch and timing reservations in one canonical CAS frame.
 // - Description:
-//   - Each transition advances exactly one selected watermark by one; composed
-//     enqueue and timing dispatch preflight local admission before publication.
+//   - Each transition advances one selected watermark; committed outcomes mint
+//     exact transition evidence for fail-closed same-process rebind.
 // - Usage:
-//   - Restore state, reserve explicitly, or durably bind one identity enqueue
-//     or one timing dispatch through the composed boundary.
+//   - Restore state, reserve/bind durably, or rebind retained affine ownership
+//     from committed transition evidence without new store access.
 // - Defaults:
 //   - Missing durable state represents dispatch zero and timing zero.
 //
@@ -78,6 +77,61 @@ pub enum NativeContinuationDispatchReservationKind {
     Identity,
     /// Reserve exactly the next latency timing identity.
     Timing,
+}
+
+/// Exact one-step transition proven committed by durable CAS evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchCommittedReservation {
+    current: ReservationState,
+    previous: Option<ReservationState>,
+}
+
+/// Why one retained handoff could not rebind a committed identity locally.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchCommittedIdentityRecoveryError {
+    /// Local queue watermarks no longer match the committed transition base.
+    LocalStateMismatch {
+        /// Exact process-local queue watermarks observed before mutation.
+        local: ReservationState,
+        /// Exact prior durable state supplied for recovery.
+        previous: Option<ReservationState>,
+        /// Exact affine handoff retained by the failed recovery.
+        handoff: Box<NativeInterpreterHandoff>,
+    },
+    /// Exact local enqueue rejected the already-validated committed identity.
+    Queue(Box<queue::NativeContinuationDispatchEnqueueFailure>),
+    /// Supplied current state is not one identity step after prior state.
+    TransitionMismatch {
+        /// Exact caller-supplied committed current state.
+        current: ReservationState,
+        /// Exact caller-supplied prior durable state.
+        previous: Option<ReservationState>,
+        /// Exact affine handoff retained by the failed recovery.
+        handoff: Box<NativeInterpreterHandoff>,
+    },
+}
+
+/// Why one committed timing identity could not rebind local FIFO dispatch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchCommittedTimingRecoveryError {
+    /// No pending affine owner exists to bind to the committed timing identity.
+    Idle,
+    /// Local queue watermarks no longer match the committed transition base.
+    LocalStateMismatch {
+        /// Exact process-local queue watermarks observed before mutation.
+        local: ReservationState,
+        /// Exact prior durable state supplied for recovery.
+        previous: Option<ReservationState>,
+    },
+    /// Local interval start rejected the already-validated timing identity.
+    Queue(cycle::NativeContinuationCachedRetryLatencyIntervalBeginError),
+    /// Supplied current state is not one timing step after prior state.
+    TransitionMismatch {
+        /// Exact caller-supplied committed current state.
+        current: ReservationState,
+        /// Exact caller-supplied prior durable state.
+        previous: Option<ReservationState>,
+    },
 }
 
 /// Immutable inputs for one queue-synchronized durable reservation.
@@ -137,6 +191,9 @@ pub enum NativeContinuationDispatchDurableTiming<DurabilityError> {
             NativeContinuationDispatchReservationStateCas<DurabilityError>,
     },
     /// Durable timing committed but local binding unexpectedly failed.
+    ///
+    /// The committed transition can be rebound while the pending owner remains
+    /// process-local and unchanged.
     CommittedUnbound {
         /// Exact non-mutating local binding failure.
         failure: NativeContinuationDispatchDurableTimingBindFailure,
@@ -176,8 +233,8 @@ pub enum NativeContinuationDispatchDurableEnqueue<DurabilityError> {
     /// Durable reservation committed but local binding unexpectedly failed.
     ///
     /// This is fail-closed recovery evidence: the retained handoff may be
-    /// retried with the committed reservation while synchronization prevents a
-    /// later reservation from advancing past it.
+    /// retried through committed identity rebind while synchronization prevents
+    /// a later reservation from advancing past it.
     CommittedUnbound {
         /// Exact local enqueue failure retaining affine handoff ownership.
         failure: Box<queue::NativeContinuationDispatchEnqueueFailure>,
@@ -214,6 +271,41 @@ pub enum NativeContinuationDispatchDurableEnqueueError<StoreError> {
         /// Exact affine handoff never transferred to the queue.
         handoff: Box<NativeInterpreterHandoff>,
     },
+}
+
+impl NativeContinuationDispatchCommittedReservation {
+    /// Returns the exact state committed by the durable transition.
+    #[must_use]
+    pub const fn current(self) -> ReservationState {
+        self.current
+    }
+
+    /// Returns the exact prior durable state, or missing initial state.
+    #[must_use]
+    pub const fn previous(self) -> Option<ReservationState> {
+        self.previous
+    }
+}
+
+impl<DurabilityError>
+    NativeContinuationDispatchReservationStateCas<DurabilityError>
+{
+    /// Extracts exact committed transition evidence when publication occurred.
+    #[must_use]
+    pub const fn committed_transition(
+        &self,
+    ) -> Option<NativeContinuationDispatchCommittedReservation> {
+        match self {
+            Self::Conflict { .. } => None,
+            Self::Durable { current, previous, .. }
+            | Self::Published { current, previous, .. } => {
+                Some(NativeContinuationDispatchCommittedReservation {
+                    current: *current,
+                    previous: *previous,
+                })
+            },
+        }
+    }
 }
 
 impl NativeContinuationDispatchDurableEnqueueRequest {
@@ -511,6 +603,112 @@ where
         request.reservation,
         request.maximum_bytes,
     )
+}
+
+/// Rebinds one retained affine handoff to an already-committed identity.
+///
+/// This is same-process recovery only: callers must still own the affine
+/// handoff and exact committed previous/current reservation evidence. No store
+/// access occurs. The transition and local base are validated before enqueue.
+///
+/// # Errors
+///
+/// Returns local-state drift, malformed transition evidence, or exact queue
+/// rejection while retaining affine ownership.
+pub fn rebind_committed_native_continuation_dispatch_identity<Clock>(
+    local_queue: &mut queue::NativeContinuationDispatchQueue<Clock>,
+    handoff: NativeInterpreterHandoff,
+    committed: NativeContinuationDispatchCommittedReservation,
+) -> Result<
+    queue::NativeContinuationDispatchId,
+    NativeContinuationDispatchCommittedIdentityRecoveryError,
+>
+where
+    Clock: NativeContinuationMonotonicClock,
+{
+    let previous = committed.previous();
+    let current = committed.current();
+    let local = local_queue.watermarks();
+    let base = previous.unwrap_or_else(zero_state);
+    if local != base {
+        return Err(
+            NativeContinuationDispatchCommittedIdentityRecoveryError::
+                LocalStateMismatch {
+                    local,
+                    previous,
+                    handoff: Box::new(handoff),
+                },
+        );
+    }
+    if advance_state(base, NativeContinuationDispatchReservationKind::Identity)
+        != Some(current)
+    {
+        return Err(
+            NativeContinuationDispatchCommittedIdentityRecoveryError::
+                TransitionMismatch {
+                    current,
+                    previous,
+                    handoff: Box::new(handoff),
+                },
+        );
+    }
+    local_queue
+        .enqueue_reserved(handoff, current.identity())
+        .map_err(
+            NativeContinuationDispatchCommittedIdentityRecoveryError::Queue,
+        )
+}
+
+/// Rebinds one already-committed timing identity to local FIFO dispatch.
+///
+/// This is same-process recovery only: the pending affine owner and exact
+/// committed previous/current reservation evidence must still exist locally. No
+/// store access occurs. The transition and local base are validated before the
+/// monotonic clock is observed or pending ownership moves.
+///
+/// # Errors
+///
+/// Returns local-state drift, malformed transition evidence, idle ownership, or
+/// exact interval-begin rejection without consuming the pending owner.
+pub fn rebind_committed_native_continuation_dispatch_timing<Clock>(
+    local_queue: &mut queue::NativeContinuationDispatchQueue<Clock>,
+    committed: NativeContinuationDispatchCommittedReservation,
+) -> Result<
+    queue::NativeContinuationDispatchedHandoff,
+    NativeContinuationDispatchCommittedTimingRecoveryError,
+>
+where
+    Clock: NativeContinuationMonotonicClock,
+{
+    let previous = committed.previous();
+    let current = committed.current();
+    let local = local_queue.watermarks();
+    let base = previous.unwrap_or_else(zero_state);
+    if local != base {
+        return Err(
+            NativeContinuationDispatchCommittedTimingRecoveryError::
+                LocalStateMismatch { local, previous },
+        );
+    }
+    if advance_state(base, NativeContinuationDispatchReservationKind::Timing)
+        != Some(current)
+    {
+        return Err(
+            NativeContinuationDispatchCommittedTimingRecoveryError::
+                TransitionMismatch { current, previous },
+        );
+    }
+    match local_queue.dispatch_next_reserved_timing(current.timing()) {
+        Ok(Some(dispatch)) => Ok(dispatch),
+        Ok(None) => {
+            Err(NativeContinuationDispatchCommittedTimingRecoveryError::Idle)
+        },
+        Err(error) => Err(
+            NativeContinuationDispatchCommittedTimingRecoveryError::Queue(
+                error,
+            ),
+        ),
+    }
 }
 
 fn preflight_durable_identity_enqueue<Clock, StoreError>(

@@ -789,12 +789,22 @@ behavior.
 
   Durable timing dispatch now preflights pending ownership and in-flight
   capacity before CAS, then binds any committed timing watermark by starting the
-  exact
-  reserved interval and transferring the FIFO owner under the same mutable queue
-  borrow. Conflict and pre-commit failure leave local ownership unchanged, while
+  exact reserved interval and transferring the FIFO owner under the same mutable
+  queue borrow. Conflict and pre-commit failure leave local ownership unchanged,
+  while
   post-publication durability failure still binds the committed timing identity.
   This remains process-local coordination rather than durable affine contents or
   clock-start persistence.
+
+  Committed durable identity/timing outcomes now mint opaque one-step transition
+  evidence for same-process rebind. Conflict cannot mint recovery evidence, and
+  rebind validates the exact transition plus local base before queue mutation.
+  Identity failures retain the affine owner; timing failures preserve pending
+  ownership and do not observe the clock on drift or malformed evidence.
+
+  This covers fail-closed `CommittedUnbound` recovery without another store
+  mutation, but only while the original affine owner remains in-process. It is
+  not crash recovery and does not make queue contents durable.
 
   It does not serialize affine handoffs or clock starts. Durable affine queue
   contents, additional evidence classes, parallel/background worker lifecycle,

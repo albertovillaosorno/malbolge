@@ -1996,11 +1996,22 @@ durable state.
 Durable timing dispatch applies the same synchronization to the dequeue side.
 It requires one pending owner and free in-flight timing capacity before CAS,
 then commits the next timing watermark and immediately starts that reserved
-interval
-while transferring the oldest affine handoff. Conflict and pre-commit failure
-leave the queue untouched, while post-publication durability failure still binds
+interval while transferring the oldest affine handoff. Conflict and pre-commit
+failure leave the queue untouched, while post-publication durability failure
+still binds
 locally because publication committed. This closes the caller-visible timing
 reservation/dispatch gap without persisting handoffs or monotonic clock starts.
+
+Committed durable outcomes now expose an opaque one-step transition token for
+same-process rebind. Conflict outcomes cannot produce that token, and rebind
+revalidates both the transition shape and the local pre-transition watermark
+before enqueue or timing dispatch. Identity recovery retains the supplied affine
+handoff on failure; timing recovery leaves pending ownership and the monotonic
+clock untouched on drift, idle state, malformed evidence, or timing capacity.
+
+This recovery closes the fail-closed `CommittedUnbound` path without another
+store mutation. It requires the original affine owner to remain process-local,
+so it is not crash recovery and does not make queue contents durable.
 
 Durable affine queue contents, additional adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside

@@ -1875,6 +1875,10 @@ type ContinuationDispatchCompletionError =
 type ContinuationDispatchQueue =
     NativeContinuationDispatchQueue<TestIntervalClock>;
 type ContinuationDispatchId = NativeContinuationDispatchId;
+type DispatchCommittedIdentityRecoveryError =
+    dr::NativeContinuationDispatchCommittedIdentityRecoveryError;
+type DispatchCommittedTimingRecoveryError =
+    dr::NativeContinuationDispatchCommittedTimingRecoveryError;
 type DispatchAdaptationArbitration =
     dispatch_mix::NativeContinuationDispatchPolicyAdaptationArbitration;
 type DispatchArbitrationPublication =
@@ -99458,6 +99462,22 @@ fn dispatch_queue_at_reservation_state(
     )
 }
 
+fn committed_dispatch_transition(
+    previous: Option<NativeContinuationDispatchQueueWatermarks>,
+    current: NativeContinuationDispatchQueueWatermarks,
+) -> Result<dr::NativeContinuationDispatchCommittedReservation, String> {
+    let evidence = dr::NativeContinuationDispatchReservationStateCas::<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >::Durable {
+        bytes: 24,
+        current,
+        previous,
+    };
+    evidence.committed_transition().ok_or_else(|| {
+        String::from("durable fixture lacked committed transition")
+    })
+}
+
 fn durable_checked_dispatch_reservation(
     store: &mut TestCachedRetryTelemetryBlobStore,
     queue: &ContinuationDispatchQueue,
@@ -100298,6 +100318,365 @@ fn continuation_dispatch_reservation_state_cas_advances_selected_watermark()
     } else {
         Err(String::from("selected reservation transition drifted"))
     }
+}
+
+#[test]
+fn continuation_dispatch_committed_identity_recovery_binds_exact_owner()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current = dispatch_reservation_state_fixture(1, 0);
+    let maximum = nonzero_test_limit(1, "identity recovery capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let dispatch = dr::rebind_committed_native_continuation_dispatch_identity(
+        &mut queue,
+        fixture.handoff,
+        committed_dispatch_transition(None, current)?,
+    )
+    .map_err(|error| format!("identity recovery: {error:?}"))?;
+    if dispatch.value() == 1
+        && queue.pending() == 1
+        && queue.in_flight() == 0
+        && queue.watermarks() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed identity recovery binding drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_identity_recovery_rejects_transition()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current = dispatch_reservation_state_fixture(2, 0);
+    let maximum = nonzero_test_limit(1, "identity recovery mismatch capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let error = dr::rebind_committed_native_continuation_dispatch_identity(
+        &mut queue,
+        fixture.handoff,
+        committed_dispatch_transition(None, current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("invalid committed identity rebound"))?;
+    let DispatchCommittedIdentityRecoveryError::TransitionMismatch {
+        current: seen,
+        previous,
+        handoff,
+    } = error
+    else {
+        return Err(String::from("identity recovery returned wrong error"));
+    };
+    if seen == current
+        && previous.is_none()
+        && handoff_yields_to_caller(*handoff)?
+        && queue.pending() == 0
+        && queue.watermarks() == dispatch_reservation_state_fixture(0, 0)
+    {
+        Ok(())
+    } else {
+        Err(String::from("identity recovery mismatch changed ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_identity_recovery_preserves_capacity()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "identity recovery full capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let _first = queue.enqueue(first.handoff).map_err(|failure| {
+        format!("identity recovery first enqueue: {:?}", failure.error())
+    })?;
+    let previous = queue.watermarks();
+    let current = dispatch_reservation_state_fixture(2, 0);
+    let error = dr::rebind_committed_native_continuation_dispatch_identity(
+        &mut queue,
+        second.handoff,
+        committed_dispatch_transition(Some(previous), current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("full identity recovery rebound"))?;
+    let DispatchCommittedIdentityRecoveryError::Queue(failure) = error else {
+        return Err(String::from(
+            "full identity recovery returned wrong error",
+        ));
+    };
+    let enqueue_error = failure.error();
+    let owner_valid = handoff_yields_to_caller(failure.into_handoff())?;
+    if owner_valid
+        && matches!(
+            enqueue_error,
+            NativeContinuationDispatchEnqueueError::Capacity { .. }
+        )
+        && queue.pending() == 1
+        && queue.watermarks() == previous
+    {
+        Ok(())
+    } else {
+        Err(String::from("identity recovery capacity changed ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_identity_recovery_rejects_local_drift()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let local = dispatch_reservation_state_fixture(1, 0);
+    let current = dispatch_reservation_state_fixture(1, 0);
+    let maximum = nonzero_test_limit(1, "identity recovery drift capacity")?;
+    let mut queue =
+        ContinuationDispatchQueue::from_identity_and_timing_watermarks(
+            TestIntervalClock::default(),
+            maximum,
+            maximum,
+            local,
+        );
+    let error = dr::rebind_committed_native_continuation_dispatch_identity(
+        &mut queue,
+        fixture.handoff,
+        committed_dispatch_transition(None, current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("drifted local identity rebound"))?;
+    let DispatchCommittedIdentityRecoveryError::LocalStateMismatch {
+        local: seen,
+        previous,
+        handoff,
+    } = error
+    else {
+        return Err(String::from(
+            "identity drift returned wrong recovery error",
+        ));
+    };
+    if seen == local
+        && previous.is_none()
+        && handoff_yields_to_caller(*handoff)?
+        && queue.pending() == 0
+        && queue.watermarks() == local
+    {
+        Ok(())
+    } else {
+        Err(String::from("identity recovery drift changed ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_timing_recovery_dispatches_fifo_owner()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "timing recovery capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let dispatch = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("timing recovery enqueue: {:?}", failure.error())
+    })?;
+    let previous = queue.watermarks();
+    let current = dispatch_reservation_state_fixture(1, 1);
+    let work = dr::rebind_committed_native_continuation_dispatch_timing(
+        &mut queue,
+        committed_dispatch_transition(Some(previous), current)?,
+    )
+    .map_err(|error| format!("timing recovery: {error:?}"))?;
+    if work.id() == dispatch
+        && queue.pending() == 0
+        && queue.in_flight() == 1
+        && queue.clock().starts == 1
+        && queue.watermarks() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("committed timing recovery binding drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_timing_recovery_rejects_local_drift()
+-> Result<(), String> {
+    let local = dispatch_reservation_state_fixture(1, 0);
+    let current = dispatch_reservation_state_fixture(0, 1);
+    let maximum = nonzero_test_limit(1, "timing recovery drift capacity")?;
+    let mut queue =
+        ContinuationDispatchQueue::from_identity_and_timing_watermarks(
+            TestIntervalClock::default(),
+            maximum,
+            maximum,
+            local,
+        );
+    let error = dr::rebind_committed_native_continuation_dispatch_timing(
+        &mut queue,
+        committed_dispatch_transition(None, current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("drifted timing recovery rebound"))?;
+    if error
+        == (DispatchCommittedTimingRecoveryError::LocalStateMismatch {
+            local,
+            previous: None,
+        })
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+        && queue.watermarks() == local
+    {
+        Ok(())
+    } else {
+        Err(String::from("timing recovery local drift changed state"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_timing_recovery_rejects_transition()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "timing recovery mismatch capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let _dispatch = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("timing recovery mismatch enqueue: {:?}", failure.error())
+    })?;
+    let previous = queue.watermarks();
+    let current = dispatch_reservation_state_fixture(1, 2);
+    let error = dr::rebind_committed_native_continuation_dispatch_timing(
+        &mut queue,
+        committed_dispatch_transition(Some(previous), current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("invalid committed timing rebound"))?;
+    if error
+        == (DispatchCommittedTimingRecoveryError::TransitionMismatch {
+            current,
+            previous: Some(previous),
+        })
+        && queue.pending() == 1
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+        && queue.watermarks() == previous
+    {
+        Ok(())
+    } else {
+        Err(String::from("timing recovery mismatch changed ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_timing_recovery_rejects_idle()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "timing recovery idle capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let current = dispatch_reservation_state_fixture(0, 1);
+    let error = dr::rebind_committed_native_continuation_dispatch_timing(
+        &mut queue,
+        committed_dispatch_transition(None, current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("idle committed timing rebound"))?;
+    if error == DispatchCommittedTimingRecoveryError::Idle
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+        && queue.clock().starts == 0
+        && queue.watermarks() == dispatch_reservation_state_fixture(0, 0)
+    {
+        Ok(())
+    } else {
+        Err(String::from("timing recovery idle changed queue"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_timing_recovery_preserves_capacity()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "timing recovery pending")?,
+        nonzero_test_limit(1, "timing recovery active")?,
+    );
+    let _first = queue.enqueue(first.handoff).map_err(|failure| {
+        format!("timing recovery first enqueue: {:?}", failure.error())
+    })?;
+    let _first_work = queue
+        .dispatch_next()
+        .map_err(|error| format!("timing recovery first dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("timing recovery first dispatch idle"))?;
+    let _second = queue.enqueue(second.handoff).map_err(|failure| {
+        format!("timing recovery second enqueue: {:?}", failure.error())
+    })?;
+    let previous = queue.watermarks();
+    let current = dispatch_reservation_state_fixture(2, 2);
+    let error = dr::rebind_committed_native_continuation_dispatch_timing(
+        &mut queue,
+        committed_dispatch_transition(Some(previous), current)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("full timing recovery dispatched"))?;
+    if matches!(
+        error,
+        DispatchCommittedTimingRecoveryError::Queue(
+            LatencyIntervalBeginError::Capacity { .. }
+        )
+    ) && queue.pending() == 1
+        && queue.in_flight() == 1
+        && queue.clock().starts == 1
+        && queue.watermarks() == previous
+    {
+        Ok(())
+    } else {
+        Err(String::from("timing recovery capacity changed ownership"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_committed_recovery_excludes_conflict_evidence() {
+    let current = dispatch_reservation_state_fixture(1, 0);
+    let evidence = dr::NativeContinuationDispatchReservationStateCas::<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >::Conflict {
+        current: Some(current),
+        expected: None,
+    };
+    assert_eq!(evidence.committed_transition(), None);
 }
 
 #[test]
