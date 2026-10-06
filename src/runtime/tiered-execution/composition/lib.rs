@@ -85,6 +85,8 @@ pub mod continuation_dispatch_policy_state_cas;
 pub mod continuation_dispatch_policy_state_codec;
 #[path = "tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
+#[path = "tier/dispatch_reserve.rs"]
+pub mod continuation_dispatch_queue_reservation;
 #[path = "tier/dispatch_time.rs"]
 pub mod continuation_dispatch_timing_watermark;
 #[path = "tier/dispatch_worker.rs"]

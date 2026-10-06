@@ -772,10 +772,13 @@ behavior.
   arbitration, agreement-only local/durable arbitration publication,
   caller-selected count/latency precedence, local/durable publication of
   precedence selections, exact-next durable dispatch identity watermarking, and
-  exact-next reservation-to-enqueue binding and durable reserved timing
-  identity are now owned. Durable queue contents/orchestration, additional
-  evidence classes,
-  parallel/background worker lifecycle, and distributed scheduling remain open.
+  exact-next reservation-to-enqueue binding, durable reserved timing identity,
+  and one canonical combined dispatch/timing reservation-state CAS are now
+  owned. The combined state restores both watermarks for an empty local queue
+  and advances exactly one caller-selected watermark per conditional transition.
+  It does not serialize affine handoffs or clock starts. Durable affine queue
+  contents, additional evidence classes, parallel/background worker lifecycle,
+  and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

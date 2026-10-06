@@ -781,6 +781,12 @@ parts:
     language: rust
     responsibility: >-
       Persist exact-next dispatch timing watermark through durable CAS.
+  - id: part-0141
+    path: composition/tier/dispatch_reserve.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Coordinate dispatch and timing reservation watermarks in one durable CAS.
 projects: []
 tests: []
 graph:

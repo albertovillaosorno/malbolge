@@ -1971,11 +1971,18 @@ before
 moving pending affine ownership. No clock start, latency sample, in-flight work,
 or queue contents are persisted by this timing identity boundary.
 
-Durable queue contents/orchestration, additional adaptive evidence classes,
+Combined durable queue reservation state now frames the dispatch and timing
+watermarks together and restores both for empty local queue reconstruction. One
+conditional transition advances exactly one caller-selected watermark while
+conflict returns the complete current pair; selected exhaustion fails before
+storage and post-commit durability failure remains committed evidence. This
+boundary does not serialize affine handoffs, clock starts, or latency samples.
+
+Durable affine queue contents, additional adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside
-this boundary. Any future active-state frame revision
-requires an explicit migration contract; revision one is never reinterpreted.
-Synchronous same-cycle count/latency publication remains owned.
+this boundary. Any future active-state frame revision requires an explicit
+migration contract; revision one is never reinterpreted. Synchronous same-cycle
+count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

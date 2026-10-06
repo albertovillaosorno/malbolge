@@ -85,6 +85,8 @@ pub mod continuation_dispatch_policy_state_cas;
 pub mod continuation_dispatch_policy_state_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_reserve.rs"]
+pub mod continuation_dispatch_queue_reservation;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_time.rs"]
 pub mod continuation_dispatch_timing_watermark;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
@@ -475,6 +477,7 @@ use continuation_dispatch_queue::{
     NativeContinuationDispatchQueue, NativeContinuationDispatchQueueWatermarks,
     NativeContinuationDispatchedHandoff,
 };
+use continuation_dispatch_queue_reservation as dr;
 use continuation_dispatch_timing_watermark as tm;
 use continuation_dispatch_worker::{
     NativeContinuationDispatchWorkerCompletion,
@@ -99415,6 +99418,18 @@ fn continuation_dispatch_worker_retains_failure_and_finishes_latency()
     }
 }
 
+const fn dispatch_reservation_state_fixture(
+    identity: u64,
+    timing: u64,
+) -> NativeContinuationDispatchQueueWatermarks {
+    NativeContinuationDispatchQueueWatermarks::new(
+        NativeContinuationDispatchIdentityWatermark::from_value(identity),
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(
+            timing,
+        ),
+    )
+}
+
 fn dispatch_policy_mixed_agreement()
 -> Result<DispatchAdaptationArbitration, String> {
     Ok(
@@ -100013,6 +100028,248 @@ fn continuation_dispatch_queue_reconstructs_identity_watermark()
         Ok(())
     } else {
         Err(String::from("dispatch watermark reconstruction drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_codec_round_trips()
+-> Result<(), String> {
+    let state = NativeContinuationDispatchQueueWatermarks::new(
+        NativeContinuationDispatchIdentityWatermark::from_value(42),
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(7),
+    );
+    let bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(state);
+    let restored =
+        dr::decode_native_continuation_dispatch_reservation_state(&bytes)
+            .map_err(|error| format!("reservation state decode: {error:?}"))?;
+    let mut invalid = bytes;
+    let Some(first) = invalid.first_mut() else {
+        return Err(String::from("reservation frame unexpectedly empty"));
+    };
+    *first = b'X';
+    let short = bytes
+        .get(..23)
+        .ok_or_else(|| String::from("reservation frame unexpectedly short"))?;
+    if restored == state
+        && dr::decode_native_continuation_dispatch_reservation_state(&invalid)
+            .is_err()
+        && dr::decode_native_continuation_dispatch_reservation_state(short)
+            .is_err()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch reservation codec drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_restores_queue_watermarks()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchReservationStateLoad::*;
+
+    let state = NativeContinuationDispatchQueueWatermarks::new(
+        NativeContinuationDispatchIdentityWatermark::from_value(9),
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(4),
+    );
+    let bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(state);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let restored = dr::restore_native_continuation_dispatch_reservation_state(
+        &mut store,
+        nonzero_test_limit(24, "dispatch reservation restore bytes")?,
+    )
+    .map_err(|error| format!("reservation state restore: {error:?}"))?;
+    let Restored(observed) = restored else {
+        return Err(String::from("reservation state unexpectedly missing"));
+    };
+    let queue = ContinuationDispatchQueue::from_identity_and_timing_watermarks(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "reservation pending capacity")?,
+        nonzero_test_limit(2, "reservation active capacity")?,
+        observed,
+    );
+    let identity_matches = queue.identity_watermark() == state.identity();
+    let timing_matches = queue.timing_identity_watermark() == state.timing();
+    if observed == state
+        && identity_matches
+        && timing_matches
+        && queue.pending() == 0
+        && queue.in_flight() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("reservation restore reconstruction drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_cas_advances_selected_watermark()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchReservationKind as Kind;
+    use dr::NativeContinuationDispatchReservationStateCas::Durable;
+
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let maximum = nonzero_test_limit(24, "dispatch reservation bytes")?;
+    let first = dr::reserve_native_continuation_dispatch_identity_durably(
+        &mut store,
+        None,
+        Kind::Identity,
+        maximum,
+    )
+    .map_err(|error| format!("reservation identity CAS: {error:?}"))?;
+    let Durable {
+        current: identity,
+        previous,
+        bytes,
+    } = first
+    else {
+        return Err(String::from("identity reservation did not commit"));
+    };
+    let second = dr::reserve_native_continuation_dispatch_identity_durably(
+        &mut store,
+        Some(identity),
+        Kind::Timing,
+        maximum,
+    )
+    .map_err(|error| format!("reservation timing CAS: {error:?}"))?;
+    let Durable {
+        current: timing,
+        previous: timing_previous,
+        bytes: timing_bytes,
+    } = second
+    else {
+        return Err(String::from("timing reservation did not commit"));
+    };
+    if identity.identity().value() == 1
+        && identity.timing().value() == 0
+        && previous.is_none()
+        && bytes == 24
+        && timing.identity().value() == 1
+        && timing.timing().value() == 1
+        && timing_previous == Some(identity)
+        && timing_bytes == 24
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("selected reservation transition drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_cas_retains_exact_conflict()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchReservationKind as Kind;
+    use dr::NativeContinuationDispatchReservationStateCas::Conflict;
+
+    let expected = dispatch_reservation_state_fixture(3, 4);
+    let actual = dispatch_reservation_state_fixture(7, 9);
+    let actual_bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(actual);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = dr::reserve_native_continuation_dispatch_identity_durably(
+        &mut store,
+        Some(expected),
+        Kind::Identity,
+        nonzero_test_limit(24, "dispatch reservation conflict bytes")?,
+    )
+    .map_err(|error| format!("reservation conflict CAS: {error:?}"))?;
+    let Conflict { current, expected: seen } = outcome else {
+        return Err(String::from("stale reservation unexpectedly committed"));
+    };
+    if current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch reservation conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_cas_retains_sync_failure()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchReservationKind as Kind;
+    use dr::NativeContinuationDispatchReservationStateCas::Published;
+
+    let expected = dispatch_reservation_state_fixture(4, 2);
+    let expected_bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome = dr::reserve_native_continuation_dispatch_identity_durably(
+        &mut store,
+        Some(expected),
+        Kind::Timing,
+        nonzero_test_limit(24, "dispatch reservation sync bytes")?,
+    )
+    .map_err(|error| format!("reservation sync CAS: {error:?}"))?;
+    let Published {
+        current,
+        durability_error,
+        previous,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("reservation sync failure lost commit"));
+    };
+    if current.identity().value() == 4
+        && current.timing().value() == 3
+        && previous == Some(expected)
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("reservation sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_reservation_state_cas_rejects_selected_exhaustion()
+-> Result<(), String> {
+    use dr::{
+        NativeContinuationDispatchReservationKind as Kind,
+        NativeContinuationDispatchReservationStateCasError as ReserveError,
+    };
+
+    let expected = dispatch_reservation_state_fixture(4, u64::MAX);
+    let expected_bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error = dr::reserve_native_continuation_dispatch_identity_durably(
+        &mut store,
+        Some(expected),
+        Kind::Timing,
+        nonzero_test_limit(24, "dispatch reservation exhausted bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("exhausted reservation advanced"))?;
+    if error
+        == (ReserveError::WatermarkExhausted {
+            reservation: Kind::Timing,
+        })
+        && store.blob.as_deref() == Some(expected_bytes.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch reservation exhaustion drifted"))
     }
 }
 
