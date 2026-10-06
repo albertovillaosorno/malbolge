@@ -1887,6 +1887,16 @@ type DispatchArbitrationDurablePublication =
     auth::NativeContinuationDispatchPolicyArbitrationDurablePublication<
         TestCachedRetryTelemetryBlobDurabilityError,
     >;
+type DispatchThreeSignalPublication =
+    auth::NativeContinuationDispatchPolicyThreeSignalPublication;
+type DispatchThreeSignalDurablePublication =
+    auth::NativeContinuationDispatchPolicyThreeSignalDurablePublication<
+        TestCachedRetryTelemetryBlobDurabilityError,
+    >;
+type DispatchThreeSignalDurableStoreResult =
+    auth::NativeContinuationDispatchPolicyThreeSignalDurableStoreResult<
+        TestCachedRetryTelemetryBlobStore,
+    >;
 type DispatchLatencyAdaptation =
     dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
 type DispatchProductivityAdaptation =
@@ -97964,6 +97974,362 @@ fn continuation_dispatch_policy_precedence_durable_retains_exhaustion()
 }
 
 #[test]
+fn continuation_dispatch_policy_three_signal_publication_withholds()
+-> Result<(), String> {
+    for arbitration in [
+        dispatch_policy_three_signal_conflict()?,
+        dispatch_policy_three_signal_deferred()?,
+    ] {
+        let initial = dispatch_policy_fixture(2)?;
+        let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+        let expected = owner.state().revision();
+        let before = owner.state();
+        let publication =
+            auth::publish_native_continuation_dispatch_policy_three_signal(
+                &mut owner,
+                expected,
+                &arbitration,
+            )
+            .map_err(|error| format!("three-signal withholding: {error:?}"))?;
+        let DispatchThreeSignalPublication::Withheld {
+            arbitration: observed,
+            current,
+        } = publication
+        else {
+            return Err(String::from("three-signal withholding mutated owner"));
+        };
+        if observed != arbitration
+            || current != before
+            || owner.state() != before
+        {
+            return Err(String::from(
+                "three-signal withholding evidence drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_publication_publishes_agreement()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let expected = owner.state().revision();
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("three-signal agreement lacked policy"))?;
+    let publication =
+        auth::publish_native_continuation_dispatch_policy_three_signal(
+            &mut owner,
+            expected,
+            &arbitration,
+        )
+        .map_err(|error| format!("three-signal publish: {error:?}"))?;
+    let DispatchThreeSignalPublication::Published {
+        arbitration: observed,
+        current,
+        previous,
+    } = publication
+    else {
+        return Err(String::from("three-signal agreement did not publish"));
+    };
+    if observed == arbitration
+        && previous.policy() == initial
+        && previous.revision() == expected
+        && current.policy() == candidate
+        && current.revision().value() == 1
+        && owner.state() == current
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal publication evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_publication_retains_stale_owner()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let mut owner = NativeContinuationDispatchPolicyOwner::new(initial);
+    let stale = owner.state().revision();
+    let _published = owner
+        .compare_and_swap(stale, dispatch_policy_fixture(4)?)
+        .map_err(|error| format!("setup three-signal owner: {error:?}"))?;
+    let before = owner.state();
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let publication =
+        auth::publish_native_continuation_dispatch_policy_three_signal(
+            &mut owner,
+            stale,
+            &arbitration,
+        )
+        .map_err(|error| format!("stale three-signal publish: {error:?}"))?;
+    let DispatchThreeSignalPublication::Conflict {
+        arbitration: observed,
+        current,
+        expected,
+    } = publication
+    else {
+        return Err(String::from("stale three-signal publication advanced"));
+    };
+    if observed == arbitration
+        && current == before
+        && expected == stale
+        && owner.state() == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal stale-owner evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_publication_retains_exhaustion()
+-> Result<(), String> {
+    let initial = dispatch_policy_fixture(1)?;
+    let revision =
+        NativeContinuationDispatchPolicyRevision::from_value(u64::MAX);
+    let state = NativeContinuationDispatchPolicyState::new(initial, revision);
+    let mut owner = NativeContinuationDispatchPolicyOwner::from_state(state);
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("three-signal agreement lacked policy"))?;
+    let failure =
+        auth::publish_native_continuation_dispatch_policy_three_signal(
+            &mut owner,
+            revision,
+            &arbitration,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted three-signal owner advanced"))?;
+    let expected_error =
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: state,
+        };
+    if failure.arbitration() == arbitration
+        && failure.error() == expected_error
+        && owner.state() == state
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal exhaustion evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_durable_withholds_without_cas()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    for arbitration in [
+        dispatch_policy_three_signal_conflict()?,
+        dispatch_policy_three_signal_deferred()?,
+    ] {
+        let mut store = TestCachedRetryTelemetryBlobStore {
+            blob: Some(original.clone()),
+            ..TestCachedRetryTelemetryBlobStore::default()
+        };
+        let publication = publish_dispatch_three_signal_durably(
+            &mut store,
+            Some(expected),
+            &arbitration,
+            nonzero_test_limit(52, "three-signal durable withheld bytes")?,
+        )
+        .map_err(|error| {
+            format!("three-signal durable withholding: {error:?}")
+        })?;
+        let DispatchThreeSignalDurablePublication::Withheld {
+            arbitration: observed,
+            expected: seen,
+        } = publication
+        else {
+            return Err(String::from("three-signal withholding touched store"));
+        };
+        if observed != arbitration
+            || seen != Some(expected)
+            || store.blob.as_deref() != Some(original.as_slice())
+            || store.compare_and_swap_calls != 0
+        {
+            return Err(String::from(
+                "three-signal durable withholding drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_durable_publishes_agreement()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("three-signal agreement lacked policy"))?;
+    let publication = publish_dispatch_three_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "three-signal durable publish bytes")?,
+    )
+    .map_err(|error| format!("three-signal durable publish: {error:?}"))?;
+    let DispatchThreeSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication: DispatchPolicyStateCas::Durable { current, previous, .. },
+    } = publication
+    else {
+        return Err(String::from("three-signal agreement was not durable"));
+    };
+    if observed == arbitration
+        && previous == Some(expected)
+        && current.policy() == candidate
+        && current.revision().value() == 5
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal durable publication drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_durable_retains_exact_conflict()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(3, 2)?;
+    let actual = dispatch_policy_state_fixture(4, 5)?;
+    let actual_bytes = encode_native_continuation_dispatch_policy_state(actual)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let publication = publish_dispatch_three_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "three-signal durable conflict bytes")?,
+    )
+    .map_err(|error| format!("three-signal durable conflict: {error:?}"))?;
+    let DispatchThreeSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication:
+            DispatchPolicyStateCas::Conflict {
+                current, expected: seen, ..
+            },
+    } = publication
+    else {
+        return Err(String::from("stale three-signal durable CAS committed"));
+    };
+    if observed == arbitration
+        && current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal durable conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_durable_retains_exhaustion()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(u64::MAX, 2)?;
+    let original = encode_native_continuation_dispatch_policy_state(expected)
+        .map_err(|error| error.to_string())?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(original.clone()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let candidate = arbitration
+        .policy()
+        .ok_or_else(|| String::from("three-signal agreement lacked policy"))?;
+    let failure = publish_dispatch_three_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "three-signal durable exhausted bytes")?,
+    )
+    .err()
+    .ok_or_else(|| String::from("exhausted three-signal CAS advanced"))?;
+    let expected_error = DispatchStateCasError::Owner(
+        NativeContinuationDispatchPolicyOwnerError::RevisionExhausted {
+            candidate,
+            current: expected,
+        },
+    );
+    if failure.arbitration() == arbitration
+        && failure.error() == &expected_error
+        && store.blob.as_deref() == Some(original.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal durable exhaustion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_three_signal_durable_retains_sync_failure()
+-> Result<(), String> {
+    let expected = dispatch_policy_state_fixture(4, 2)?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(
+            encode_native_continuation_dispatch_policy_state(expected)
+                .map_err(|error| error.to_string())?,
+        ),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let arbitration = dispatch_policy_three_signal_agreement()?;
+    let publication = publish_dispatch_three_signal_durably(
+        &mut store,
+        Some(expected),
+        &arbitration,
+        nonzero_test_limit(52, "three-signal durable sync bytes")?,
+    )
+    .map_err(|error| format!("three-signal durable sync: {error:?}"))?;
+    let DispatchThreeSignalDurablePublication::Ready {
+        arbitration: observed,
+        publication:
+            DispatchPolicyStateCas::Published {
+                current,
+                durability_error,
+                previous,
+                ..
+            },
+    } = publication
+    else {
+        return Err(String::from("three-signal sync failure lost commit"));
+    };
+    if observed == arbitration
+        && previous == Some(expected)
+        && current.revision().value() == 5
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("three-signal sync-failure evidence drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_arbitration_publication_withholds_deferred()
 -> Result<(), String> {
     let initial = dispatch_policy_fixture(2)?;
@@ -99813,6 +100179,56 @@ fn dispatch_policy_mixed_deferred()
             dispatch_policy_deferred_adaptation()?,
             dispatch_policy_latency_adaptation(15)?,
         ),
+    )
+}
+
+fn publish_dispatch_three_signal_durably(
+    store: &mut TestCachedRetryTelemetryBlobStore,
+    expected: Option<NativeContinuationDispatchPolicyState>,
+    arbitration: &DispatchThreeSignalArbitration,
+    maximum_bytes: NonZeroUsize,
+) -> DispatchThreeSignalDurableStoreResult {
+    auth::publish_native_continuation_dispatch_policy_three_signal_durably(
+        store,
+        expected,
+        arbitration,
+        maximum_bytes,
+    )
+}
+
+fn dispatch_policy_three_signal_agreement()
+-> Result<DispatchThreeSignalArbitration, String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    Ok(
+        dispatch_mix::
+            arbitrate_native_continuation_dispatch_policy_three_signals(
+                &mixed,
+                dispatch_policy_productivity_adaptation(2, 5, 2)?,
+            ),
+    )
+}
+
+fn dispatch_policy_three_signal_conflict()
+-> Result<DispatchThreeSignalArbitration, String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    Ok(
+        dispatch_mix::
+            arbitrate_native_continuation_dispatch_policy_three_signals(
+                &mixed,
+                dispatch_policy_productivity_adaptation(2, 8, 3)?,
+            ),
+    )
+}
+
+fn dispatch_policy_three_signal_deferred()
+-> Result<DispatchThreeSignalArbitration, String> {
+    let mixed = dispatch_policy_mixed_agreement()?;
+    Ok(
+        dispatch_mix::
+            arbitrate_native_continuation_dispatch_policy_three_signals(
+                &mixed,
+                dispatch_policy_productivity_adaptation(3, 5, 2)?,
+            ),
     )
 }
 

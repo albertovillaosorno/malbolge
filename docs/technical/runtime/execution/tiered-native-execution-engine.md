@@ -1943,14 +1943,16 @@ Three-signal arbitration layers productivity over the existing count-plus-
 latency result. Existing count/latency conflict remains conflict even when
 productivity is deferred, existing deferral remains deferred, and an agreed
 two-signal policy gains authority only when ready productivity selects that same
-policy. Explicit precedence and publication remain on the reviewed two-signal
-path; productivity has no implicit override.
+policy. Explicit precedence remains on the reviewed two-signal path;
+productivity has no implicit override.
 
-Agreement-only arbitration publication now applies exact mixed-evidence
-authority through both the process-local revisioned owner and the existing
-durable active-state CAS. Deferred or disagreeing evidence is withheld without
-mutation or storage work. Agreed evidence retains exact owner/CAS conflict,
-commit, committed durability failure, and revision-exhaustion evidence.
+Agreement-only arbitration publication now accepts either the established
+count-plus-latency agreement or the stricter three-signal productivity-gated
+agreement. Both paths reuse the same process-local revisioned owner and durable
+active-state CAS without changing storage framing. Deferred or disagreeing
+evidence is withheld without mutation or storage work. Agreed evidence retains
+exact owner/CAS conflict, commit, committed durability failure, and revision-
+exhaustion evidence.
 
 Caller-selected precedence now applies one explicit immutable mode after
 completed count-plus-latency arbitration. Agreement-only remains the default.
@@ -2026,11 +2028,11 @@ This recovery closes the fail-closed `CommittedUnbound` path without another
 store mutation. It requires the original affine owner to remain process-local,
 so it is not crash recovery and does not make queue contents durable.
 
-Durable affine queue contents, additional adaptive evidence classes,
+Durable affine queue contents, further adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside
 this boundary. Any future active-state frame revision requires an explicit
 migration contract; revision one is never reinterpreted. Synchronous same-cycle
-count/latency publication remains owned.
+count/latency/productivity publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
