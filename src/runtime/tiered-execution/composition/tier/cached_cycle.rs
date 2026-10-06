@@ -199,6 +199,7 @@ pub use telemetry_latency_interval_owner::{
     NativeContinuationCachedRetryLatencyIntervalFinishError,
     NativeContinuationCachedRetryLatencyIntervalId,
     NativeContinuationCachedRetryLatencyIntervalOwner,
+    NativeContinuationCachedRetryLatencyIntervalWatermark,
 };
 pub use telemetry_latency_merge::{
     NativeContinuationCachedRetryLatencyMergeError,

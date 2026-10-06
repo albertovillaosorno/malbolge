@@ -1964,9 +1964,16 @@ watermark and affine handoff unchanged so that exact reservation can be retried;
 success advances the queue watermark to the reserved identity. Durable watermark
 state still does not persist affine work ownership.
 
-Durable timing identity, durable queue contents/orchestration, additional
-adaptive evidence classes, parallel/background worker lifecycle, and distributed
-scheduling remain outside this boundary. Any future active-state frame revision
+Durable timing identity now owns a canonical exact-next timing watermark CAS.
+The interval owner reconstructs from a verified watermark and begins only the
+exact next caller-reserved timing identity; dispatch binds that reservation
+before
+moving pending affine ownership. No clock start, latency sample, in-flight work,
+or queue contents are persisted by this timing identity boundary.
+
+Durable queue contents/orchestration, additional adaptive evidence classes,
+parallel/background worker lifecycle, and distributed scheduling remain outside
+this boundary. Any future active-state frame revision
 requires an explicit migration contract; revision one is never reinterpreted.
 Synchronous same-cycle count/latency publication remains owned.
 

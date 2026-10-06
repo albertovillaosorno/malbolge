@@ -85,6 +85,8 @@ pub mod continuation_dispatch_policy_state_cas;
 pub mod continuation_dispatch_policy_state_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_queue.rs"]
 pub mod continuation_dispatch_queue;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_time.rs"]
+pub mod continuation_dispatch_timing_watermark;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_worker.rs"]
 pub mod continuation_dispatch_worker;
 #[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
@@ -291,6 +293,7 @@ use cached_cycle::{
     NativeContinuationCachedRetryLatencyIntervalBeginError,
     NativeContinuationCachedRetryLatencyIntervalFinishError,
     NativeContinuationCachedRetryLatencyIntervalOwner,
+    NativeContinuationCachedRetryLatencyIntervalWatermark,
     NativeContinuationCachedRetryLatencyMergeError,
     NativeContinuationCachedRetryLatencyNormalizedMergeError,
     NativeContinuationCachedRetryLatencyPolicyPublication,
@@ -469,8 +472,10 @@ use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
     NativeContinuationDispatchEnqueueError, NativeContinuationDispatchId,
     NativeContinuationDispatchIdentityWatermark,
-    NativeContinuationDispatchQueue, NativeContinuationDispatchedHandoff,
+    NativeContinuationDispatchQueue, NativeContinuationDispatchQueueWatermarks,
+    NativeContinuationDispatchedHandoff,
 };
+use continuation_dispatch_timing_watermark as tm;
 use continuation_dispatch_worker::{
     NativeContinuationDispatchWorkerCompletion,
     NativeContinuationDispatchWorkerSemantic,
@@ -95344,6 +95349,138 @@ fn cached_retry_measured_cycle_records_semantic_failure() -> Result<(), String>
 }
 
 #[test]
+fn cached_retry_latency_interval_owner_resumes_after_watermark()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(2, "interval resume capacity")?;
+    let watermark =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(7);
+    let mut owner = LatencyIntervalOwner::from_identity_watermark(
+        TestIntervalClock::default(),
+        maximum,
+        watermark,
+    );
+    let interval = owner
+        .begin_interval()
+        .map_err(|error| format!("resumed interval begin: {error:?}"))?;
+    if interval.value() == 8
+        && owner.identity_watermark().value() == 8
+        && owner.clock().starts == 1
+        && owner.in_flight() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("resumed interval watermark drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_accepts_exact_reservation()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(2, "interval reservation capacity")?;
+    let mut owner = LatencyIntervalOwner::from_identity_watermark(
+        TestIntervalClock::default(),
+        maximum,
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(4),
+    );
+    let reserved =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(5);
+    let interval = owner
+        .begin_reserved_interval(reserved)
+        .map_err(|error| format!("reserved interval begin: {error:?}"))?;
+    if interval.value() == 5
+        && owner.identity_watermark() == reserved
+        && owner.clock().starts == 1
+        && owner.in_flight() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved interval identity drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_rejects_stale_reservation_first()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "interval stale reservation capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let reserved =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(1);
+    let error = owner
+        .begin_reserved_interval(reserved)
+        .err()
+        .ok_or_else(|| String::from("stale interval reservation admitted"))?;
+    let expected =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(2);
+    if error
+        == (LatencyIntervalBeginError::ReservationMismatch {
+            expected,
+            reserved,
+        })
+        && owner.identity_watermark().value() == 1
+        && owner.clock().starts == 1
+        && owner.in_flight() == 1
+        && owner.cancel_interval(first)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "stale interval reservation precedence drifted",
+        ))
+    }
+}
+
+#[test]
+fn cached_retry_latency_interval_owner_capacity_preserves_valid_reservation()
+-> Result<(), String> {
+    let maximum = nonzero_test_limit(1, "interval retry reservation capacity")?;
+    let mut owner =
+        LatencyIntervalOwner::new(TestIntervalClock::default(), maximum);
+    let first = owner
+        .begin_interval()
+        .map_err(|error| format!("first interval begin: {error:?}"))?;
+    let reserved =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(2);
+    let error =
+        owner
+            .begin_reserved_interval(reserved)
+            .err()
+            .ok_or_else(|| {
+                String::from("full interval owner admitted reservation")
+            })?;
+    if error
+        != (LatencyIntervalBeginError::Capacity {
+            in_flight: 1,
+            maximum_in_flight: maximum,
+        })
+        || owner.identity_watermark().value() != 1
+        || owner.clock().starts != 1
+        || !owner.cancel_interval(first)
+    {
+        return Err(String::from(
+            "valid interval reservation changed on capacity",
+        ));
+    }
+    let retried =
+        owner
+            .begin_reserved_interval(reserved)
+            .map_err(|retry_error| {
+                format!("retried interval reservation: {retry_error:?}")
+            })?;
+    if retried.value() == 2
+        && owner.identity_watermark() == reserved
+        && owner.clock().starts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("interval reservation retry drifted"))
+    }
+}
+
+#[test]
 fn cached_retry_latency_interval_owner_cancels_without_finishing()
 -> Result<(), String> {
     let maximum = nonzero_test_limit(1, "interval cancellation capacity")?;
@@ -99580,6 +99717,124 @@ fn dispatched_handoff_yields_to_caller(
 }
 
 #[test]
+fn continuation_dispatch_queue_reconstructs_timing_watermark()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let dispatch = NativeContinuationDispatchIdentityWatermark::from_value(41);
+    let timing =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(7);
+    let mut queue =
+        ContinuationDispatchQueue::from_identity_and_timing_watermarks(
+            TestIntervalClock::default(),
+            nonzero_test_limit(2, "timing watermark pending")?,
+            nonzero_test_limit(2, "timing watermark active")?,
+            NativeContinuationDispatchQueueWatermarks::new(dispatch, timing),
+        );
+    let id = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("timing watermark enqueue: {:?}", failure.error())
+    })?;
+    let work = queue
+        .dispatch_next()
+        .map_err(|error| format!("timing watermark dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("timing watermark dispatch missing"))?;
+    if id.value() == 42
+        && work.id() == id
+        && queue.identity_watermark().value() == 42
+        && queue.timing_identity_watermark().value() == 8
+        && queue.clock().starts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing reconstruction drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_accepts_reserved_timing_identity()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "reserved timing pending")?,
+        nonzero_test_limit(2, "reserved timing active")?,
+    );
+    let id = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("reserved timing enqueue: {:?}", failure.error())
+    })?;
+    let reserved =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(1);
+    let work = queue
+        .dispatch_next_reserved_timing(reserved)
+        .map_err(|error| format!("reserved timing dispatch: {error:?}"))?
+        .ok_or_else(|| String::from("reserved timing dispatch missing"))?;
+    if work.id() == id
+        && queue.timing_identity_watermark() == reserved
+        && queue.pending() == 0
+        && queue.in_flight() == 1
+        && queue.clock().starts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved dispatch timing drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_timing_mismatch_preserves_pending()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "timing mismatch pending")?,
+        nonzero_test_limit(2, "timing mismatch active")?,
+    );
+    let id = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("timing mismatch enqueue: {:?}", failure.error())
+    })?;
+    let reserved =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(2);
+    let error = queue
+        .dispatch_next_reserved_timing(reserved)
+        .err()
+        .ok_or_else(|| String::from("timing mismatch dispatched work"))?;
+    let expected =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(1);
+    if error
+        != (LatencyIntervalBeginError::ReservationMismatch {
+            expected,
+            reserved,
+        })
+        || queue.pending() != 1
+        || queue.in_flight() != 0
+        || queue.timing_identity_watermark().value() != 0
+        || queue.clock().starts != 0
+    {
+        return Err(String::from("timing mismatch changed queue ownership"));
+    }
+    let work = queue
+        .dispatch_next_reserved_timing(expected)
+        .map_err(|retry_error| {
+            format!("timing reservation retry: {retry_error:?}")
+        })?
+        .ok_or_else(|| String::from("timing reservation retry missing"))?;
+    if work.id() == id
+        && queue.pending() == 0
+        && queue.in_flight() == 1
+        && queue.timing_identity_watermark() == expected
+    {
+        Ok(())
+    } else {
+        Err(String::from("timing reservation retry drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_queue_enqueues_exact_reserved_identity()
 -> Result<(), String> {
     let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
@@ -99943,6 +100198,199 @@ fn continuation_dispatch_identity_watermark_cas_rejects_exhaustion()
         Ok(())
     } else {
         Err(String::from("dispatch watermark exhaustion drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_timing_watermark_codec_round_trips()
+-> Result<(), String> {
+    let watermark =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(42);
+    let bytes =
+        tm::encode_native_continuation_dispatch_timing_watermark(watermark);
+    let restored =
+        tm::decode_native_continuation_dispatch_timing_watermark(&bytes)
+            .map_err(|error| format!("timing watermark decode: {error:?}"))?;
+    let mut invalid = bytes;
+    let Some(first) = invalid.first_mut() else {
+        return Err(String::from("timing watermark frame unexpectedly empty"));
+    };
+    *first = b'X';
+    let short = bytes.get(..15).ok_or_else(|| {
+        String::from("timing watermark frame unexpectedly short")
+    })?;
+    if restored == watermark
+        && tm::decode_native_continuation_dispatch_timing_watermark(&invalid)
+            .is_err()
+        && tm::decode_native_continuation_dispatch_timing_watermark(short)
+            .is_err()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing watermark codec drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_timing_watermark_cas_initializes_and_advances()
+-> Result<(), String> {
+    use tm::NativeContinuationDispatchTimingWatermarkCas::*;
+
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let maximum = nonzero_test_limit(16, "dispatch timing watermark bytes")?;
+    let first =
+        tm::advance_native_continuation_dispatch_timing_watermark_durably(
+            &mut store, None, maximum,
+        )
+        .map_err(|error| format!("timing watermark initial CAS: {error:?}"))?;
+    let Durable {
+        current: one,
+        previous,
+        bytes,
+    } = first
+    else {
+        return Err(String::from(
+            "timing watermark initial CAS did not commit",
+        ));
+    };
+    let second =
+        tm::advance_native_continuation_dispatch_timing_watermark_durably(
+            &mut store,
+            Some(one),
+            maximum,
+        )
+        .map_err(|error| format!("timing watermark second CAS: {error:?}"))?;
+    let Durable {
+        current: two,
+        previous: second_previous,
+        bytes: second_bytes,
+    } = second
+    else {
+        return Err(String::from("timing watermark second CAS did not commit"));
+    };
+    if one.value() == 1
+        && previous.is_none()
+        && bytes == 16
+        && two.value() == 2
+        && second_previous == Some(one)
+        && second_bytes == 16
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing watermark advance drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_timing_watermark_cas_retains_exact_conflict()
+-> Result<(), String> {
+    use tm::NativeContinuationDispatchTimingWatermarkCas::*;
+
+    let expected =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(3);
+    let actual =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(7);
+    let actual_bytes =
+        tm::encode_native_continuation_dispatch_timing_watermark(actual);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        tm::advance_native_continuation_dispatch_timing_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch timing conflict bytes")?,
+        )
+        .map_err(|error| format!("timing watermark conflict CAS: {error:?}"))?;
+    let Conflict { current, expected: seen } = outcome else {
+        return Err(String::from(
+            "stale timing watermark unexpectedly committed",
+        ));
+    };
+    if current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing watermark conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_timing_watermark_cas_retains_sync_failure()
+-> Result<(), String> {
+    use tm::NativeContinuationDispatchTimingWatermarkCas::*;
+
+    let expected =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(4);
+    let expected_bytes =
+        tm::encode_native_continuation_dispatch_timing_watermark(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        tm::advance_native_continuation_dispatch_timing_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch timing sync bytes")?,
+        )
+        .map_err(|error| format!("timing watermark sync CAS: {error:?}"))?;
+    let Published {
+        current,
+        durability_error,
+        previous,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("timing watermark sync failure lost commit"));
+    };
+    if current.value() == 5
+        && previous == Some(expected)
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_timing_watermark_cas_rejects_exhaustion()
+-> Result<(), String> {
+    use tm::NativeContinuationDispatchTimingWatermarkCasError::*;
+
+    let expected =
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(
+            u64::MAX,
+        );
+    let expected_bytes =
+        tm::encode_native_continuation_dispatch_timing_watermark(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        tm::advance_native_continuation_dispatch_timing_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch timing exhausted bytes")?,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted timing watermark advanced"))?;
+    if error == IdentityExhausted
+        && store.blob.as_deref() == Some(expected_bytes.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch timing watermark exhaustion drifted"))
     }
 }
 

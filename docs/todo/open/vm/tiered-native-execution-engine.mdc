@@ -711,9 +711,15 @@ behavior.
   to the reserved identity. Durable watermark state does not persist affine work
   ownership.
 
-  Durable timing identity, durable queue contents/orchestration, additional
-  adaptive evidence classes, parallel/background worker lifecycle, and
-  distributed scheduling remain open. Any future active-state frame revision
+  Durable timing identity now owns a canonical exact-next timing watermark CAS.
+  The interval owner reconstructs from a verified watermark and begins only the
+  exact next caller-reserved timing identity; the dispatch queue binds that
+  reservation before moving pending affine ownership. Neither durable timing
+  state nor queue reconstruction persists clock starts or in-flight work.
+
+  Durable queue contents/orchestration, additional adaptive evidence classes,
+  parallel/background worker lifecycle, and distributed scheduling remain open.
+  Any future active-state frame revision
   will require an explicit new migration contract rather than reinterpretation
   of revision one.
   Synchronous same-cycle count/latency publication remains owned.
@@ -766,8 +772,9 @@ behavior.
   arbitration, agreement-only local/durable arbitration publication,
   caller-selected count/latency precedence, local/durable publication of
   precedence selections, exact-next durable dispatch identity watermarking, and
-  exact-next reservation-to-enqueue binding are now owned. Durable timing
-  identity, durable queue contents/orchestration, additional evidence classes,
+  exact-next reservation-to-enqueue binding and durable reserved timing
+  identity are now owned. Durable queue contents/orchestration, additional
+  evidence classes,
   parallel/background worker lifecycle, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory

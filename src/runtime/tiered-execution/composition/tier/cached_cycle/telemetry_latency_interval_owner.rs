@@ -10,18 +10,18 @@
 // Boundary-Contract:
 // - Owns:
 //   - Bounded process-local ownership of overlapping cached-retry latency
-//     intervals.
+//     intervals, including restart watermark and exact reserved identity begin.
 // - Must-Not:
 //   - Execute work, spawn tasks, persist clock state, expose start tokens,
 //     infer completion order, or correlate clocks across processes.
 // - Allows:
 //   - Inputs: one monotonic clock and a positive in-flight interval bound.
-//   - Outputs: automatic interval IDs, explicit latency samples, cancellation,
-//     or typed capacity/identity/clock failure evidence.
+//   - Outputs: automatic or exact-reserved interval IDs, identity watermark,
+//     explicit latency samples, cancellation, or typed failure evidence.
 //   - Side effects: delegated monotonic begin/finish observations and bounded
 //     process-local allocation only.
 // - Split-When:
-//   - Durable timing identity, task execution, or distributed ordering gains
+//   - Task execution, durable clock-start state, or distributed ordering gains
 //     authority.
 // - Merge-When:
 //   - Product async orchestration owns the complete interval lifecycle.
@@ -49,6 +49,11 @@ use crate::monotonic_clock::NativeContinuationMonotonicClock;
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NativeContinuationCachedRetryLatencyIntervalId(u64);
 
+/// Last process-local latency interval identity allocated before
+/// reconstruction.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct NativeContinuationCachedRetryLatencyIntervalWatermark(u64);
+
 /// Why one automatic latency interval could not begin without mutation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationCachedRetryLatencyIntervalBeginError {
@@ -61,6 +66,13 @@ pub enum NativeContinuationCachedRetryLatencyIntervalBeginError {
     },
     /// The one-based process-local interval identity space is exhausted.
     IdentityExhausted,
+    /// Caller-supplied reservation was not the exact next interval identity.
+    ReservationMismatch {
+        /// Exact next identity required by current owner state.
+        expected: NativeContinuationCachedRetryLatencyIntervalWatermark,
+        /// Exact caller-supplied reserved durable interval identity.
+        reserved: NativeContinuationCachedRetryLatencyIntervalWatermark,
+    },
 }
 
 /// Why one owned latency interval could not finish successfully.
@@ -106,6 +118,20 @@ where
     pending: Vec<PendingLatencyInterval<Clock::Start>>,
 }
 
+impl NativeContinuationCachedRetryLatencyIntervalWatermark {
+    /// Constructs one explicit latency interval identity watermark.
+    #[must_use]
+    pub const fn from_value(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the exact last allocated latency interval identity.
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+}
+
 impl NativeContinuationCachedRetryLatencyIntervalId {
     /// Returns the exact one-based process-local interval identity.
     #[must_use]
@@ -131,6 +157,26 @@ impl<Clock> NativeContinuationCachedRetryLatencyIntervalOwner<Clock>
 where
     Clock: NativeContinuationMonotonicClock,
 {
+    fn begin_exact_interval(
+        &mut self,
+        next_identity: u64,
+    ) -> Result<
+        NativeContinuationCachedRetryLatencyIntervalId,
+        NativeContinuationCachedRetryLatencyIntervalBeginError,
+    > {
+        if self.pending.len() >= self.maximum_in_flight.get() {
+            return Err(IntervalBeginError::Capacity {
+                in_flight: self.pending.len(),
+                maximum_in_flight: self.maximum_in_flight,
+            });
+        }
+        let id = NativeContinuationCachedRetryLatencyIntervalId(next_identity);
+        let start = self.clock.begin();
+        self.pending.push(PendingLatencyInterval { id, start });
+        self.next_identity = next_identity;
+        Ok(id)
+    }
+
     /// Begins one automatically identified latency interval.
     ///
     /// Capacity and identity exhaustion are checked before the monotonic clock
@@ -145,21 +191,46 @@ where
         NativeContinuationCachedRetryLatencyIntervalId,
         NativeContinuationCachedRetryLatencyIntervalBeginError,
     > {
-        if self.pending.len() >= self.maximum_in_flight.get() {
-            return Err(IntervalBeginError::Capacity {
-                in_flight: self.pending.len(),
-                maximum_in_flight: self.maximum_in_flight,
-            });
-        }
         let next_identity = self
             .next_identity
             .checked_add(1)
             .ok_or(IntervalBeginError::IdentityExhausted)?;
-        let id = NativeContinuationCachedRetryLatencyIntervalId(next_identity);
-        let start = self.clock.begin();
-        self.pending.push(PendingLatencyInterval { id, start });
-        self.next_identity = next_identity;
-        Ok(id)
+        self.begin_exact_interval(next_identity)
+    }
+
+    /// Begins one interval under the exact next caller-reserved identity.
+    ///
+    /// Reservation identity is validated before capacity and before observing
+    /// the clock so stale/skipped durable reservations are never confused with
+    /// retryable local backpressure. A valid reservation rejected by capacity
+    /// leaves both watermark and clock unchanged for exact retry.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity exhaustion, reservation mismatch, or capacity without
+    /// reading the clock or mutating owner state.
+    pub fn begin_reserved_interval(
+        &mut self,
+        reserved: NativeContinuationCachedRetryLatencyIntervalWatermark,
+    ) -> Result<
+        NativeContinuationCachedRetryLatencyIntervalId,
+        NativeContinuationCachedRetryLatencyIntervalBeginError,
+    > {
+        let next_identity = self
+            .next_identity
+            .checked_add(1)
+            .ok_or(IntervalBeginError::IdentityExhausted)?;
+        let expected =
+            NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(
+                next_identity,
+            );
+        if reserved != expected {
+            return Err(IntervalBeginError::ReservationMismatch {
+                expected,
+                reserved,
+            });
+        }
+        self.begin_exact_interval(next_identity)
     }
 
     /// Cancels one exact pending interval without finishing its clock sample.
@@ -214,6 +285,33 @@ where
             .map_err(|error| IntervalFinishError::Clock { interval, error })
     }
 
+    /// Constructs an empty owner after one verified interval identity
+    /// watermark.
+    #[must_use]
+    pub const fn from_identity_watermark(
+        clock: Clock,
+        maximum_in_flight: NonZeroUsize,
+        watermark: NativeContinuationCachedRetryLatencyIntervalWatermark,
+    ) -> Self {
+        Self {
+            clock,
+            maximum_in_flight,
+            next_identity: watermark.value(),
+            pending: Vec::new(),
+        }
+    }
+
+    /// Returns the last process-local interval identity allocated by this
+    /// owner.
+    #[must_use]
+    pub const fn identity_watermark(
+        &self,
+    ) -> NativeContinuationCachedRetryLatencyIntervalWatermark {
+        NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(
+            self.next_identity,
+        )
+    }
+
     /// Returns the exact number of currently retained unfinished intervals.
     #[must_use]
     pub const fn in_flight(&self) -> usize {
@@ -229,11 +327,12 @@ where
     /// Constructs an empty automatic interval owner around one monotonic clock.
     #[must_use]
     pub const fn new(clock: Clock, maximum_in_flight: NonZeroUsize) -> Self {
-        Self {
+        Self::from_identity_watermark(
             clock,
             maximum_in_flight,
-            next_identity: 0,
-            pending: Vec::new(),
-        }
+            NativeContinuationCachedRetryLatencyIntervalWatermark::from_value(
+                0,
+            ),
+        )
     }
 }

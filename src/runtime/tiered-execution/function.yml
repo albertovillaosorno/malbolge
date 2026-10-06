@@ -659,13 +659,13 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Own bounded overlapping process-local latency intervals automatically.
+      Own bounded latency intervals with resumable reserved timing identity.
   - id: part-0121
     path: composition/tier/dispatch_queue.rs
     kind: composition
     language: rust
     responsibility: >-
-      Queue affine handoffs, bind reserved IDs, and track dispatch completion.
+      Queue affine handoffs and bind reserved work/timing identities.
   - id: part-0122
     path: composition/tier/dispatch_worker.rs
     kind: composition
@@ -775,6 +775,12 @@ parts:
     language: rust
     responsibility: >-
       Persist exact-next dispatch identity watermark through durable CAS.
+  - id: part-0140
+    path: composition/tier/dispatch_time.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist exact-next dispatch timing watermark through durable CAS.
 projects: []
 tests: []
 graph:

@@ -11,20 +11,19 @@
 // - Owns:
 //   - Bounded process-local queue ownership for affine interpreter handoffs and
 //     their dispatch-to-completion latency tracking, including exact-next
-//     admission under a caller-reserved durable identity.
+//     dispatch and timing reservation binding.
 // - Must-Not:
 //   - Spawn workers, execute handoffs, persist queue state, infer completion
 //     order, or correlate work identities across processes.
 // - Allows:
 //   - Inputs: affine handoffs, one monotonic clock, and positive
 //     pending/in-flight bounds.
-//   - Outputs: automatic or exact-reserved work IDs, FIFO dispatched owners,
-//     recovered pending cancellation, latency samples, or typed capacity/
-//     identity/completion error.
+//   - Outputs: automatic or exact-reserved work/timing IDs, FIFO dispatched
+//     owners, recovered cancellation, latency samples, or typed failure.
 //   - Side effects: bounded process-local allocation and delegated monotonic
 //     observations only.
 // - Split-When:
-//   - Worker execution, durable queue identity, or distributed scheduling gains
+//   - Worker execution, durable queue contents, or distributed scheduling gains
 //     authority.
 // - Merge-When:
 //   - One product coordinator owns queueing, dispatch, execution, and
@@ -54,6 +53,7 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryLatencyIntervalFinishError,
     NativeContinuationCachedRetryLatencyIntervalId,
     NativeContinuationCachedRetryLatencyIntervalOwner,
+    NativeContinuationCachedRetryLatencyIntervalWatermark as TimingWatermark,
     NativeContinuationCachedRetryLatencySample,
 };
 use crate::interpreter_handoff::NativeInterpreterHandoff;
@@ -66,6 +66,13 @@ pub struct NativeContinuationDispatchId(u64);
 /// Last process-local dispatch identity allocated before queue reconstruction.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NativeContinuationDispatchIdentityWatermark(u64);
+
+/// Verified identity watermarks needed to reconstruct an empty dispatch queue.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchQueueWatermarks {
+    identity: NativeContinuationDispatchIdentityWatermark,
+    timing: TimingWatermark,
+}
 
 /// Why one affine handoff could not enter the pending queue.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -195,6 +202,29 @@ impl NativeContinuationDispatchIdentityWatermark {
     }
 }
 
+impl NativeContinuationDispatchQueueWatermarks {
+    /// Returns the verified dispatch identity watermark.
+    #[must_use]
+    pub const fn identity(self) -> NativeContinuationDispatchIdentityWatermark {
+        self.identity
+    }
+
+    /// Constructs exact dispatch/timing watermark reconstruction evidence.
+    #[must_use]
+    pub const fn new(
+        identity: NativeContinuationDispatchIdentityWatermark,
+        timing: TimingWatermark,
+    ) -> Self {
+        Self { identity, timing }
+    }
+
+    /// Returns the verified timing identity watermark.
+    #[must_use]
+    pub const fn timing(self) -> TimingWatermark {
+        self.timing
+    }
+}
+
 impl NativeContinuationDispatchId {
     /// Returns the exact one-based process-local dispatch identity.
     #[must_use]
@@ -295,6 +325,24 @@ where
         )
     }
 
+    fn dispatch_after_interval(
+        &mut self,
+        interval: NativeContinuationCachedRetryLatencyIntervalId,
+    ) -> Option<NativeContinuationDispatchedHandoff> {
+        let Some(pending) = self.pending.pop_front() else {
+            let _cancelled = self.latency.cancel_interval(interval);
+            return None;
+        };
+        self.in_flight.push(InFlightDispatch {
+            dispatch: pending.id,
+            interval,
+        });
+        Some(NativeContinuationDispatchedHandoff {
+            handoff: pending.handoff,
+            id: pending.id,
+        })
+    }
+
     /// Dispatches the oldest pending affine owner and begins its latency
     /// interval.
     ///
@@ -310,18 +358,27 @@ where
             return Ok(None);
         }
         let interval = self.latency.begin_interval()?;
-        let Some(pending) = self.pending.pop_front() else {
-            let _cancelled = self.latency.cancel_interval(interval);
+        Ok(self.dispatch_after_interval(interval))
+    }
+
+    /// Dispatches the oldest pending handoff under one reserved timing
+    /// identity.
+    ///
+    /// Timing reservation is validated before pending ownership moves, so
+    /// mismatch, capacity, or timing exhaustion leaves FIFO queue state intact.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact interval-begin failure without removing a pending handoff.
+    pub fn dispatch_next_reserved_timing(
+        &mut self,
+        reserved: TimingWatermark,
+    ) -> NativeContinuationDispatchResult {
+        if self.pending.is_empty() {
             return Ok(None);
-        };
-        self.in_flight.push(InFlightDispatch {
-            dispatch: pending.id,
-            interval,
-        });
-        Ok(Some(NativeContinuationDispatchedHandoff {
-            handoff: pending.handoff,
-            id: pending.id,
-        }))
+        }
+        let interval = self.latency.begin_reserved_interval(reserved)?;
+        Ok(self.dispatch_after_interval(interval))
     }
 
     /// Enqueues one affine handoff under a new one-based process-local work ID.
@@ -408,6 +465,28 @@ where
         Ok(id)
     }
 
+    /// Constructs an empty queue after verified dispatch and timing watermarks.
+    #[must_use]
+    pub const fn from_identity_and_timing_watermarks(
+        clock: Clock,
+        maximum_pending: NonZeroUsize,
+        maximum_in_flight: NonZeroUsize,
+        watermarks: NativeContinuationDispatchQueueWatermarks,
+    ) -> Self {
+        Self {
+            in_flight: Vec::new(),
+            latency: NativeContinuationCachedRetryLatencyIntervalOwner::
+                from_identity_watermark(
+                    clock,
+                    maximum_in_flight,
+                    watermarks.timing(),
+                ),
+            maximum_pending,
+            next_identity: watermarks.identity().value(),
+            pending: VecDeque::new(),
+        }
+    }
+
     /// Constructs an empty queue after one verified identity watermark.
     #[must_use]
     pub const fn from_identity_watermark(
@@ -416,16 +495,15 @@ where
         maximum_in_flight: NonZeroUsize,
         watermark: NativeContinuationDispatchIdentityWatermark,
     ) -> Self {
-        Self {
-            in_flight: Vec::new(),
-            latency: NativeContinuationCachedRetryLatencyIntervalOwner::new(
-                clock,
-                maximum_in_flight,
-            ),
+        Self::from_identity_and_timing_watermarks(
+            clock,
             maximum_pending,
-            next_identity: watermark.value(),
-            pending: VecDeque::new(),
-        }
+            maximum_in_flight,
+            NativeContinuationDispatchQueueWatermarks::new(
+                watermark,
+                TimingWatermark::from_value(0),
+            ),
+        )
     }
 
     /// Returns the last process-local dispatch identity allocated by this
@@ -476,5 +554,11 @@ where
     #[must_use]
     pub fn pending(&self) -> usize {
         self.pending.len()
+    }
+
+    /// Returns the last latency timing identity allocated by this queue.
+    #[must_use]
+    pub const fn timing_identity_watermark(&self) -> TimingWatermark {
+        self.latency.identity_watermark()
     }
 }
