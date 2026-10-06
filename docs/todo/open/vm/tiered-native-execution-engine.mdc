@@ -872,9 +872,15 @@ behavior.
   Exact cached-retry telemetry plus a caller-owned hit-per-attempt threshold
   selects only caller-supplied meets/misses limit candidates. Insufficient
   attempts defer; ready evidence returns `Retain` for the active limits or
-  `Reconfigure` with one exact replacement. The recommender performs no cache,
-  adapter, or storage mutation; callers must explicitly route replacement limits
-  through existing CAS/activation or `reconfigure_limits()` authority.
+  `Reconfigure` with one exact replacement. The recommender itself performs no
+  cache, adapter, or storage mutation.
+
+  Explicit recommendation activation now validates the live limits used by the
+  recommendation before storage work. Deferred/retained evidence performs no
+  CAS; exact replacement delegates caller-owned durable expectation plus the
+  recommended candidate to the existing durable publication/live activation
+  transaction. Conflict leaves live limits unchanged and prepublication failure
+  retains the complete recommendation. Automatic triggering remains open.
 
   `reconfigure_limits()` publishes expansion or already-satisfied requests
   without adapter operations. Shrink requests release oldest entries until
@@ -909,7 +915,7 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, broader adaptive cache signals/automatic
-  activation, and async/product scheduling remain out.
+  triggering, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy

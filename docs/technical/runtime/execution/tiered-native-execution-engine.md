@@ -2161,10 +2161,18 @@ uses cross multiplication and arithmetic failure fails closed to the misses
 candidate.
 
 The recommendation layer performs no cache, adapter, or storage mutation. A
-`Reconfigure` result becomes active only if a caller explicitly routes its exact
-limits through the existing cache-limit CAS/activation or live
-`reconfigure_limits()` boundary. This keeps adaptive policy separate from FIFO
-eviction, lease retirement, cleanup retry, and durable publication authority.
+caller may now explicitly route one completed recommendation through the
+existing
+durable publication plus live activation transaction. Deferred and retained
+recommendations perform no CAS; a reconfiguration first verifies that live
+limits still match the recommendation snapshot, then uses the caller's exact
+durable expectation. Durable conflict leaves live limits untouched, while typed
+prepublication failure retains the complete recommendation.
+
+This explicit bridge does not make activation automatic. FIFO eviction, lease
+retirement, cleanup retry, durable conflict handling, and committed durability
+semantics remain owned by the existing activation and cache reconfiguration
+boundaries.
 
 `reconfigure_limits()` stages weighted-limit publication against current usage.
 

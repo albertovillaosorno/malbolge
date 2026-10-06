@@ -32,16 +32,28 @@
 
 //! Root-tree regression coverage for durable cache-limit activation.
 
+use std::num::NonZeroU64;
+
 use super::*;
 use crate::blob_persistence::NativeContinuationBlobPersistenceError;
 use crate::blob_store::{
     NativeContinuationBlobConditionalPublication,
     NativeContinuationBlobConditionalPublicationResult,
 };
+use crate::cached_cycle::{
+    NativeContinuationCachedRetryAttempt, summarize_cached_retry_attempts,
+};
+use crate::executable_cache_limits_recommendation::{
+    NativeExecutableCacheLimitsRecommendation,
+    NativeExecutableCacheLimitsRecommendationSet,
+    NativeExecutableCacheLimitsReuseThreshold,
+    recommend_native_executable_cache_limits_from_reuse,
+};
 use crate::execution_native::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
-    NativeInstructionSyncReport, NativeInstructionSyncRequest,
+    NativeExecutableSequenceLeaseCacheDisposition, NativeInstructionSyncReport,
+    NativeInstructionSyncRequest,
     encode_native_executable_sequence_cache_limits,
 };
 
@@ -63,6 +75,7 @@ enum StoreError {
 #[derive(Debug, Default)]
 struct MemoryStore {
     bytes: Option<Vec<u8>>,
+    compare_and_swap_calls: usize,
     fail_durability: bool,
     fail_store: bool,
 }
@@ -103,6 +116,8 @@ impl ConditionalBlobStore for MemoryStore {
         replacement: &[u8],
         _maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error> {
+        self.compare_and_swap_calls =
+            self.compare_and_swap_calls.saturating_add(1);
         if self.fail_store {
             return Err(StoreError::Failed);
         }
@@ -200,6 +215,320 @@ fn limits(
 fn positive(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value)
         .ok_or_else(|| String::from("test positive value missing"))
+}
+
+fn recommendation(
+    current: NativeExecutableSequenceCacheLimits,
+    meets: NativeExecutableSequenceCacheLimits,
+    misses: NativeExecutableSequenceCacheLimits,
+    required_attempts: usize,
+) -> Result<NativeExecutableCacheLimitsRecommendation, String> {
+    let telemetry = summarize_cached_retry_attempts(&[
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            3,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+    ])
+    .map_err(|error| error.to_string())?;
+    let numerator = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test reuse numerator missing"))?;
+    let denominator = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test reuse denominator missing"))?;
+    Ok(recommend_native_executable_cache_limits_from_reuse(
+        telemetry,
+        current,
+        NativeExecutableCacheLimitsReuseThreshold::new(
+            positive(required_attempts)?,
+            numerator,
+            denominator,
+        ),
+        NativeExecutableCacheLimitsRecommendationSet::new(meets, misses),
+    ))
+}
+
+fn recommended_request(
+    expected: Option<NativeExecutableSequenceCacheLimits>,
+    recommendation: NativeExecutableCacheLimitsRecommendation,
+) -> Result<NativeExecutableCacheLimitsRecommendedActivationRequest, String> {
+    Ok(
+        NativeExecutableCacheLimitsRecommendedActivationRequest::new(
+            expected,
+            recommendation,
+            positive(40)?,
+        ),
+    )
+}
+
+#[test]
+fn recommended_deferred_skips_store_and_cache() -> Result<(), String> {
+    let current = limits(2)?;
+    let recommendation = recommendation(current, limits(3)?, limits(1)?, 3)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Deferred {
+            recommendation: observed,
+        } if observed == recommendation
+    ) && cache.limits() == current
+        && store.compare_and_swap_calls == 0
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("deferred recommendation performed activation"))
+    }
+}
+
+#[test]
+fn recommended_retain_skips_store_and_cache() -> Result<(), String> {
+    let current = limits(2)?;
+    let recommendation = recommendation(current, current, limits(1)?, 2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Retained {
+            current: observed,
+            recommendation: observed_recommendation,
+        } if observed == current && observed_recommendation == recommendation
+    ) && cache.limits() == current
+        && store.compare_and_swap_calls == 0
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("retained recommendation performed activation"))
+    }
+}
+
+#[test]
+fn recommended_local_drift_rejects_before_store() -> Result<(), String> {
+    let expected_live = limits(2)?;
+    let actual_live = limits(4)?;
+    let recommendation =
+        recommendation(expected_live, limits(3)?, limits(1)?, 2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(actual_live);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::LocalStateMismatch {
+            current,
+            expected,
+            recommendation: observed,
+        } if current == actual_live
+            && expected == expected_live
+            && observed == recommendation
+    ) && cache.limits() == actual_live
+        && store.compare_and_swap_calls == 0
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("stale recommendation reached storage"))
+    }
+}
+
+#[test]
+fn recommended_initial_commit_reconfigures_cache() -> Result<(), String> {
+    let current = limits(2)?;
+    let candidate = limits(3)?;
+    let recommendation = recommendation(current, candidate, limits(1)?, 2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Ready {
+            activation:
+                NativeExecutableSequenceCacheLimitsDurableActivation::
+                    Reconfigured {
+                        publication:
+                            NativeExecutableSequenceCacheLimitsCas::Durable {
+                                current: published,
+                                previous: None,
+                                ..
+                            },
+                        ..
+                    },
+            recommendation: observed,
+        } if published == candidate && observed == recommendation
+    ) && cache.limits() == candidate
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("recommended initial commit did not activate"))
+    }
+}
+
+#[test]
+fn recommended_durable_conflict_preserves_live_cache() -> Result<(), String> {
+    let current = limits(2)?;
+    let durable = limits(4)?;
+    let candidate = limits(3)?;
+    let recommendation = recommendation(current, candidate, limits(1)?, 2)?;
+    let mut store = MemoryStore {
+        bytes: Some(
+            encode_native_executable_sequence_cache_limits(durable)
+                .map_err(|error| format!("{error:?}"))?,
+        ),
+        ..MemoryStore::default()
+    };
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(Some(current), recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Ready {
+            activation:
+                NativeExecutableSequenceCacheLimitsDurableActivation::Conflict {
+                    publication:
+                        NativeExecutableSequenceCacheLimitsCas::Conflict {
+                            current: Some(observed),
+                            expected: Some(expected),
+                            ..
+                        },
+                },
+            recommendation: observed_recommendation,
+        } if observed == durable
+            && expected == current
+            && observed_recommendation == recommendation
+    ) && cache.limits() == current
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("recommended CAS conflict changed live cache"))
+    }
+}
+
+#[test]
+fn recommended_prepublication_failure_retains_evidence() -> Result<(), String> {
+    let current = limits(2)?;
+    let recommendation = recommendation(current, limits(3)?, limits(1)?, 2)?;
+    let mut store = MemoryStore {
+        fail_store: true,
+        ..MemoryStore::default()
+    };
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let failure =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .err()
+        .ok_or_else(|| {
+            String::from("recommendation store failure disappeared")
+        })?;
+    if failure.recommendation() == recommendation
+        && matches!(
+            failure.error(),
+            NativeExecutableSequenceCacheLimitsCasError::Blob(_)
+        )
+        && cache.limits() == current
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("recommendation failure evidence drifted"))
+    }
+}
+
+#[test]
+fn recommended_initial_commit_reconfigures_lease_cache() -> Result<(), String> {
+    let current = limits(2)?;
+    let candidate = limits(3)?;
+    let recommendation = recommendation(current, candidate, limits(1)?, 2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_lease_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Ready {
+            activation:
+                NativeExecutableSequenceCacheLimitsDurableActivation::
+                    Reconfigured {
+                        publication:
+                            NativeExecutableSequenceCacheLimitsCas::Durable {
+                                current: published,
+                                previous: None,
+                                ..
+                            },
+                        ..
+                    },
+            recommendation: observed,
+        } if published == candidate && observed == recommendation
+    ) && cache.limits() == candidate
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("recommended lease commit did not activate"))
+    }
 }
 
 #[test]
