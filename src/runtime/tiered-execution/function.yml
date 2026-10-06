@@ -769,6 +769,12 @@ parts:
     language: rust
     responsibility: >-
       Publish precedence-selected dispatch policy locally and durably.
+  - id: part-0139
+    path: composition/tier/dispatch_mark.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist exact-next dispatch identity watermark through durable CAS.
 projects: []
 tests: []
 graph:

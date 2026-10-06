@@ -1951,11 +1951,17 @@ Deferred or agreement-only-withheld selections perform no mutation or storage
 work. Selected count/latency authority retains exact owner/CAS conflict, commit,
 committed durability failure, and revision-exhaustion evidence.
 
-Additional adaptive evidence classes, parallel/background worker lifecycle,
-durable queue/timing identity, and distributed scheduling remain outside this
-boundary. Any future active-state frame revision requires an explicit migration
-contract; revision one is never reinterpreted. Synchronous same-cycle
-count/latency publication remains owned.
+Durable dispatch identity watermarking now owns one canonical fixed frame and
+exact-next conditional durable CAS. Missing state advances to watermark one;
+present state advances by exactly one, conflicts decode exact current state,
+exhaustion fails before storage, and an empty process-local queue can resume
+allocation after one verified watermark without restoring affine work.
+
+Reservation-to-enqueue binding, durable timing identity, additional adaptive
+evidence classes, parallel/background worker lifecycle, and distributed
+scheduling remain outside this boundary. Any future active-state frame revision
+requires an explicit migration contract; revision one is never reinterpreted.
+Synchronous same-cycle count/latency publication remains owned.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

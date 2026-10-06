@@ -51,6 +51,8 @@ pub mod cached_cycle;
 pub mod cached_retry;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_cycle.rs"]
 pub mod continuation_dispatch_cycle;
+#[path = "../src/runtime/tiered-execution/composition/tier/dispatch_mark.rs"]
+pub mod continuation_dispatch_identity_watermark;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_policy.rs"]
 pub mod continuation_dispatch_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/dispatch_apply.rs"]
@@ -402,6 +404,7 @@ use continuation_dispatch_cycle::{
     NativeContinuationDispatchWorkerCycleStop,
     execute_native_continuation_dispatch_cycle,
 };
+use continuation_dispatch_identity_watermark as dispatch_mark;
 use continuation_dispatch_policy::{
     NativeContinuationDispatchPolicy, NativeContinuationDispatchPolicyDecision,
     execute_native_continuation_dispatch_policy,
@@ -465,6 +468,7 @@ use continuation_dispatch_policy_state_codec::{
 use continuation_dispatch_queue::{
     NativeContinuationDispatchCompletionError,
     NativeContinuationDispatchEnqueueError, NativeContinuationDispatchId,
+    NativeContinuationDispatchIdentityWatermark,
     NativeContinuationDispatchQueue, NativeContinuationDispatchedHandoff,
 };
 use continuation_dispatch_worker::{
@@ -99573,6 +99577,217 @@ fn dispatched_handoff_yields_to_caller(
     work: DispatchedHandoff,
 ) -> Result<bool, String> {
     handoff_yields_to_caller(work.into_handoff())
+}
+
+#[test]
+fn continuation_dispatch_queue_reconstructs_identity_watermark()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let watermark = NativeContinuationDispatchIdentityWatermark::from_value(41);
+    let mut queue = ContinuationDispatchQueue::from_identity_watermark(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "dispatch watermark pending")?,
+        nonzero_test_limit(2, "dispatch watermark active")?,
+        watermark,
+    );
+    let id = queue.enqueue(fixture.handoff).map_err(|failure| {
+        format!("watermark enqueue: {:?}", failure.error())
+    })?;
+    if id.value() == 42
+        && queue.identity_watermark().value() == 42
+        && queue.pending() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark reconstruction drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_identity_watermark_codec_round_trips()
+-> Result<(), String> {
+    let watermark = NativeContinuationDispatchIdentityWatermark::from_value(42);
+    let bytes =
+        dispatch_mark::encode_native_continuation_dispatch_watermark(watermark);
+    let restored =
+        dispatch_mark::decode_native_continuation_dispatch_watermark(&bytes)
+            .map_err(|error| format!("watermark decode: {error:?}"))?;
+    let mut invalid = bytes;
+    let Some(first) = invalid.first_mut() else {
+        return Err(String::from("watermark frame unexpectedly empty"));
+    };
+    *first = b'X';
+    let short = bytes
+        .get(..15)
+        .ok_or_else(|| String::from("watermark frame unexpectedly short"))?;
+    if restored == watermark
+        && dispatch_mark::decode_native_continuation_dispatch_watermark(
+            &invalid,
+        )
+        .is_err()
+        && dispatch_mark::decode_native_continuation_dispatch_watermark(short)
+            .is_err()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark codec drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_identity_watermark_cas_initializes_and_advances()
+-> Result<(), String> {
+    use dispatch_mark::NativeContinuationDispatchIdentityWatermarkCas::*;
+
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let maximum = nonzero_test_limit(16, "dispatch watermark bytes")?;
+    let first =
+        dispatch_mark::advance_native_continuation_dispatch_watermark_durably(
+            &mut store, None, maximum,
+        )
+        .map_err(|error| format!("watermark initial CAS: {error:?}"))?;
+    let Durable {
+        current: one,
+        previous,
+        bytes,
+    } = first
+    else {
+        return Err(String::from("watermark initial CAS did not commit"));
+    };
+    let second =
+        dispatch_mark::advance_native_continuation_dispatch_watermark_durably(
+            &mut store,
+            Some(one),
+            maximum,
+        )
+        .map_err(|error| format!("watermark second CAS: {error:?}"))?;
+    let Durable {
+        current: two,
+        previous: second_previous,
+        bytes: second_bytes,
+    } = second
+    else {
+        return Err(String::from("watermark second CAS did not commit"));
+    };
+    if one.value() == 1
+        && previous.is_none()
+        && bytes == 16
+        && two.value() == 2
+        && second_previous == Some(one)
+        && second_bytes == 16
+        && store.compare_and_swap_calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark advance drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_identity_watermark_cas_retains_exact_conflict()
+-> Result<(), String> {
+    use dispatch_mark::NativeContinuationDispatchIdentityWatermarkCas::*;
+
+    let expected = NativeContinuationDispatchIdentityWatermark::from_value(3);
+    let actual = NativeContinuationDispatchIdentityWatermark::from_value(7);
+    let actual_bytes =
+        dispatch_mark::encode_native_continuation_dispatch_watermark(actual);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        dispatch_mark::advance_native_continuation_dispatch_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch watermark conflict bytes")?,
+        )
+        .map_err(|error| format!("watermark conflict CAS: {error:?}"))?;
+    let Conflict { current, expected: seen } = outcome else {
+        return Err(String::from("stale watermark unexpectedly committed"));
+    };
+    if current == Some(actual)
+        && seen == Some(expected)
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_identity_watermark_cas_retains_sync_failure()
+-> Result<(), String> {
+    use dispatch_mark::NativeContinuationDispatchIdentityWatermarkCas::*;
+
+    let expected = NativeContinuationDispatchIdentityWatermark::from_value(4);
+    let expected_bytes =
+        dispatch_mark::encode_native_continuation_dispatch_watermark(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let outcome =
+        dispatch_mark::advance_native_continuation_dispatch_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch watermark sync bytes")?,
+        )
+        .map_err(|error| format!("watermark sync CAS: {error:?}"))?;
+    let Published {
+        current,
+        durability_error,
+        previous,
+        ..
+    } = outcome
+    else {
+        return Err(String::from("watermark sync failure lost commit"));
+    };
+    if current.value() == 5
+        && previous == Some(expected)
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark sync evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_identity_watermark_cas_rejects_exhaustion()
+-> Result<(), String> {
+    use dispatch_mark::NativeContinuationDispatchIdentityWatermarkCasError::*;
+
+    let expected =
+        NativeContinuationDispatchIdentityWatermark::from_value(u64::MAX);
+    let expected_bytes =
+        dispatch_mark::encode_native_continuation_dispatch_watermark(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let error =
+        dispatch_mark::advance_native_continuation_dispatch_watermark_durably(
+            &mut store,
+            Some(expected),
+            nonzero_test_limit(16, "dispatch watermark exhausted bytes")?,
+        )
+        .err()
+        .ok_or_else(|| String::from("exhausted watermark advanced"))?;
+    if error == IdentityExhausted
+        && store.blob.as_deref() == Some(expected_bytes.as_slice())
+        && store.compare_and_swap_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("dispatch watermark exhaustion drifted"))
+    }
 }
 
 #[test]

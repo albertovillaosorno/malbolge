@@ -62,6 +62,10 @@ use crate::monotonic_clock::NativeContinuationMonotonicClock;
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NativeContinuationDispatchId(u64);
 
+/// Last process-local dispatch identity allocated before queue reconstruction.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct NativeContinuationDispatchIdentityWatermark(u64);
+
 /// Why one affine handoff could not enter the pending queue.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationDispatchEnqueueError {
@@ -166,6 +170,20 @@ impl NativeContinuationDispatchEnqueueFailure {
     #[must_use]
     pub fn into_handoff(self) -> NativeInterpreterHandoff {
         self.handoff
+    }
+}
+
+impl NativeContinuationDispatchIdentityWatermark {
+    /// Constructs one explicit dispatch identity watermark.
+    #[must_use]
+    pub const fn from_value(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the exact last allocated process-local dispatch identity.
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
     }
 }
 
@@ -330,6 +348,37 @@ where
         Ok(id)
     }
 
+    /// Constructs an empty queue after one verified identity watermark.
+    #[must_use]
+    pub const fn from_identity_watermark(
+        clock: Clock,
+        maximum_pending: NonZeroUsize,
+        maximum_in_flight: NonZeroUsize,
+        watermark: NativeContinuationDispatchIdentityWatermark,
+    ) -> Self {
+        Self {
+            in_flight: Vec::new(),
+            latency: NativeContinuationCachedRetryLatencyIntervalOwner::new(
+                clock,
+                maximum_in_flight,
+            ),
+            maximum_pending,
+            next_identity: watermark.value(),
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// Returns the last process-local dispatch identity allocated by this
+    /// queue.
+    #[must_use]
+    pub const fn identity_watermark(
+        &self,
+    ) -> NativeContinuationDispatchIdentityWatermark {
+        NativeContinuationDispatchIdentityWatermark::from_value(
+            self.next_identity,
+        )
+    }
+
     /// Returns the exact number of dispatches awaiting caller completion.
     #[must_use]
     pub const fn in_flight(&self) -> usize {
@@ -355,16 +404,12 @@ where
         maximum_pending: NonZeroUsize,
         maximum_in_flight: NonZeroUsize,
     ) -> Self {
-        Self {
-            in_flight: Vec::new(),
-            latency: NativeContinuationCachedRetryLatencyIntervalOwner::new(
-                clock,
-                maximum_in_flight,
-            ),
+        Self::from_identity_watermark(
+            clock,
             maximum_pending,
-            next_identity: 0,
-            pending: VecDeque::new(),
-        }
+            maximum_in_flight,
+            NativeContinuationDispatchIdentityWatermark::from_value(0),
+        )
     }
 
     /// Returns the exact number of affine handoffs awaiting dispatch.
