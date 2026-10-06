@@ -21,8 +21,8 @@
 //     failure, or typed framing/storage/exhaustion failure.
 //   - Side effects: one delegated conditional durable blob publication.
 // - Split-When:
-//   - Reservation-to-enqueue binding or distributed identity allocation gains
-//     authority.
+//   - Distributed identity allocation or atomic durable queue orchestration
+//     gains authority.
 // - Merge-When:
 //   - Durable queue orchestration owns identity reservation and enqueue
 //     atomically.

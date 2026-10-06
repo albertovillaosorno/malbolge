@@ -703,10 +703,19 @@ behavior.
   exhaustion fails before storage, and an empty process-local queue can resume
   allocation after one verified watermark without restoring affine work.
 
-  Reservation-to-enqueue binding, durable timing identity, additional adaptive
-  evidence classes, parallel/background worker lifecycle, and distributed
-  scheduling remain open. Any future active-state frame revision will require an
-  explicit new migration contract rather than reinterpretation of revision one.
+  Reservation-to-enqueue binding now accepts exactly the next caller-reserved
+  watermark as the queue identity without allocating a second ID. Stale or
+  skipped reservations fail before local capacity is considered; capacity keeps
+  both queue watermark and affine handoff unchanged so the same valid
+  reservation can be retried. Successful admission advances the queue watermark
+  to the reserved identity. Durable watermark state does not persist affine work
+  ownership.
+
+  Durable timing identity, durable queue contents/orchestration, additional
+  adaptive evidence classes, parallel/background worker lifecycle, and
+  distributed scheduling remain open. Any future active-state frame revision
+  will require an explicit new migration contract rather than reinterpretation
+  of revision one.
   Synchronous same-cycle count/latency publication remains owned.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
@@ -756,10 +765,10 @@ behavior.
   publication, latency adaptation, agreement-only count-plus-latency
   arbitration, agreement-only local/durable arbitration publication,
   caller-selected count/latency precedence, local/durable publication of
-  precedence selections, and exact-next durable dispatch identity watermarking
-  are now owned. Reservation-to-enqueue binding, durable timing identity,
-  additional evidence classes, parallel/background worker lifecycle, and
-  distributed scheduling remain open.
+  precedence selections, exact-next durable dispatch identity watermarking, and
+  exact-next reservation-to-enqueue binding are now owned. Durable timing
+  identity, durable queue contents/orchestration, additional evidence classes,
+  parallel/background worker lifecycle, and distributed scheduling remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

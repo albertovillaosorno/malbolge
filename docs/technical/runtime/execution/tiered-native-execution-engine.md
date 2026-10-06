@@ -1957,8 +1957,15 @@ present state advances by exactly one, conflicts decode exact current state,
 exhaustion fails before storage, and an empty process-local queue can resume
 allocation after one verified watermark without restoring affine work.
 
-Reservation-to-enqueue binding, durable timing identity, additional adaptive
-evidence classes, parallel/background worker lifecycle, and distributed
+Reservation-to-enqueue binding now accepts exactly the next caller-reserved
+watermark as the queue identity without allocating a second ID. Stale or skipped
+reservations fail before local capacity is considered. Capacity leaves the queue
+watermark and affine handoff unchanged so that exact reservation can be retried;
+success advances the queue watermark to the reserved identity. Durable watermark
+state still does not persist affine work ownership.
+
+Durable timing identity, durable queue contents/orchestration, additional
+adaptive evidence classes, parallel/background worker lifecycle, and distributed
 scheduling remain outside this boundary. Any future active-state frame revision
 requires an explicit migration contract; revision one is never reinterpreted.
 Synchronous same-cycle count/latency publication remains owned.

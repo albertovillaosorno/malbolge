@@ -10,16 +10,17 @@
 // Boundary-Contract:
 // - Owns:
 //   - Bounded process-local queue ownership for affine interpreter handoffs and
-//     their dispatch-to-completion latency tracking.
+//     their dispatch-to-completion latency tracking, including exact-next
+//     admission under a caller-reserved durable identity.
 // - Must-Not:
 //   - Spawn workers, execute handoffs, persist queue state, infer completion
 //     order, or correlate work identities across processes.
 // - Allows:
 //   - Inputs: affine handoffs, one monotonic clock, and positive
 //     pending/in-flight bounds.
-//   - Outputs: automatic work IDs, FIFO dispatched owners, recovered pending
-//     cancellation, latency samples, or typed capacity/identity/completion
-//     error.
+//   - Outputs: automatic or exact-reserved work IDs, FIFO dispatched owners,
+//     recovered pending cancellation, latency samples, or typed capacity/
+//     identity/completion error.
 //   - Side effects: bounded process-local allocation and delegated monotonic
 //     observations only.
 // - Split-When:
@@ -78,6 +79,13 @@ pub enum NativeContinuationDispatchEnqueueError {
     },
     /// The one-based process-local work identity space is exhausted.
     IdentityExhausted,
+    /// Caller-supplied reservation was not the exact next queue identity.
+    ReservationMismatch {
+        /// Exact next identity required by current queue state.
+        expected: NativeContinuationDispatchIdentityWatermark,
+        /// Exact caller-supplied reserved durable identity.
+        reserved: NativeContinuationDispatchIdentityWatermark,
+    },
 }
 
 /// Recoverable failed enqueue retaining the exact affine handoff owner.
@@ -342,6 +350,58 @@ where
                 handoff,
             }));
         };
+        let id = NativeContinuationDispatchId(next_identity);
+        self.pending.push_back(PendingDispatch { handoff, id });
+        self.next_identity = next_identity;
+        Ok(id)
+    }
+
+    /// Enqueues one affine handoff under one exact pre-reserved identity.
+    ///
+    /// Reservation identity is validated before capacity so stale or skipped
+    /// durable reservations never masquerade as retryable local backpressure.
+    /// A valid reservation rejected by capacity leaves both queue watermark and
+    /// affine handoff unchanged so the same reservation can be retried.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity exhaustion, reservation mismatch, or capacity while
+    /// retaining the exact handoff in the failure owner.
+    pub fn enqueue_reserved(
+        &mut self,
+        handoff: NativeInterpreterHandoff,
+        reserved: NativeContinuationDispatchIdentityWatermark,
+    ) -> NativeContinuationDispatchEnqueueResult {
+        let Some(next_identity) = self.next_identity.checked_add(1) else {
+            return Err(Box::new(NativeContinuationDispatchEnqueueFailure {
+                error:
+                    NativeContinuationDispatchEnqueueError::IdentityExhausted,
+                handoff,
+            }));
+        };
+        let expected = NativeContinuationDispatchIdentityWatermark::from_value(
+            next_identity,
+        );
+        if reserved != expected {
+            let error =
+                NativeContinuationDispatchEnqueueError::ReservationMismatch {
+                    expected,
+                    reserved,
+                };
+            return Err(Box::new(NativeContinuationDispatchEnqueueFailure {
+                error,
+                handoff,
+            }));
+        }
+        if self.pending.len() >= self.maximum_pending.get() {
+            return Err(Box::new(NativeContinuationDispatchEnqueueFailure {
+                error: NativeContinuationDispatchEnqueueError::Capacity {
+                    maximum_pending: self.maximum_pending,
+                    pending: self.pending.len(),
+                },
+                handoff,
+            }));
+        }
         let id = NativeContinuationDispatchId(next_identity);
         self.pending.push_back(PendingDispatch { handoff, id });
         self.next_identity = next_identity;

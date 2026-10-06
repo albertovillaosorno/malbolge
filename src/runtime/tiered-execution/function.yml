@@ -665,7 +665,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Queue affine handoffs and track bounded process-local dispatch completion.
+      Queue affine handoffs, bind reserved IDs, and track dispatch completion.
   - id: part-0122
     path: composition/tier/dispatch_worker.rs
     kind: composition

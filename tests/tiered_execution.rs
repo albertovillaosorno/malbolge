@@ -99580,6 +99580,162 @@ fn dispatched_handoff_yields_to_caller(
 }
 
 #[test]
+fn continuation_dispatch_queue_enqueues_exact_reserved_identity()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current = NativeContinuationDispatchIdentityWatermark::from_value(41);
+    let reserved = NativeContinuationDispatchIdentityWatermark::from_value(42);
+    let mut queue = ContinuationDispatchQueue::from_identity_watermark(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "reserved dispatch pending")?,
+        nonzero_test_limit(2, "reserved dispatch active")?,
+        current,
+    );
+    let id = queue.enqueue_reserved(fixture.handoff, reserved).map_err(
+        |failure| format!("reserved enqueue: {:?}", failure.error()),
+    )?;
+    if id.value() == reserved.value()
+        && queue.identity_watermark() == reserved
+        && queue.pending() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved dispatch admission drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_rejects_non_next_reservation()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current = NativeContinuationDispatchIdentityWatermark::from_value(41);
+    let expected = NativeContinuationDispatchIdentityWatermark::from_value(42);
+    let stale = NativeContinuationDispatchIdentityWatermark::from_value(41);
+    let skipped = NativeContinuationDispatchIdentityWatermark::from_value(43);
+    let mut queue = ContinuationDispatchQueue::from_identity_watermark(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "reserved mismatch pending")?,
+        nonzero_test_limit(2, "reserved mismatch active")?,
+        current,
+    );
+    let stale_failure = queue
+        .enqueue_reserved(fixture.handoff, stale)
+        .err()
+        .ok_or_else(|| String::from("stale reservation entered queue"))?;
+    let stale_error = stale_failure.error();
+    let stale_handoff = stale_failure.into_handoff();
+    let skipped_failure = queue
+        .enqueue_reserved(stale_handoff, skipped)
+        .err()
+        .ok_or_else(|| String::from("skipped reservation entered queue"))?;
+    let skipped_error = skipped_failure.error();
+    let skipped_handoff = skipped_failure.into_handoff();
+    let owner_valid = handoff_yields_to_caller(skipped_handoff)?;
+    if stale_error
+        == (NativeContinuationDispatchEnqueueError::ReservationMismatch {
+            expected,
+            reserved: stale,
+        })
+        && skipped_error
+            == (NativeContinuationDispatchEnqueueError::ReservationMismatch {
+                expected,
+                reserved: skipped,
+            })
+        && owner_valid
+        && queue.identity_watermark() == current
+        && queue.pending() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved dispatch mismatch drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_retries_reserved_identity_after_capacity()
+-> Result<(), String> {
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let reserved_fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current = NativeContinuationDispatchIdentityWatermark::from_value(40);
+    let reserved = NativeContinuationDispatchIdentityWatermark::from_value(42);
+    let mut queue = ContinuationDispatchQueue::from_identity_watermark(
+        TestIntervalClock::default(),
+        nonzero_test_limit(1, "reserved retry pending")?,
+        nonzero_test_limit(1, "reserved retry active")?,
+        current,
+    );
+    let first_id = queue.enqueue(first.handoff).map_err(|failure| {
+        format!("reserved retry setup: {:?}", failure.error())
+    })?;
+    let failure = queue
+        .enqueue_reserved(reserved_fixture.handoff, reserved)
+        .err()
+        .ok_or_else(|| String::from("full queue accepted reserved handoff"))?;
+    let error = failure.error();
+    let recovered = failure.into_handoff();
+    let unchanged = queue.identity_watermark().value() == 41;
+    let _cancelled = queue.cancel_pending(first_id).ok_or_else(|| {
+        String::from("reserved retry setup cancellation failed")
+    })?;
+    let id = queue
+        .enqueue_reserved(recovered, reserved)
+        .map_err(|retry| format!("reserved retry: {:?}", retry.error()))?;
+    if matches!(
+        error,
+        NativeContinuationDispatchEnqueueError::Capacity { .. }
+    ) && unchanged
+        && id.value() == 42
+        && queue.identity_watermark() == reserved
+        && queue.pending() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved dispatch capacity retry drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_queue_reserved_identity_rejects_exhaustion()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let current =
+        NativeContinuationDispatchIdentityWatermark::from_value(u64::MAX);
+    let mut queue = ContinuationDispatchQueue::from_identity_watermark(
+        TestIntervalClock::default(),
+        nonzero_test_limit(1, "reserved exhausted pending")?,
+        nonzero_test_limit(1, "reserved exhausted active")?,
+        current,
+    );
+    let failure = queue
+        .enqueue_reserved(fixture.handoff, current)
+        .err()
+        .ok_or_else(|| {
+            String::from("exhausted reserved identity entered queue")
+        })?;
+    let error = failure.error();
+    let recovered = failure.into_handoff();
+    if error == NativeContinuationDispatchEnqueueError::IdentityExhausted
+        && handoff_yields_to_caller(recovered)?
+        && queue.identity_watermark() == current
+        && queue.pending() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("reserved dispatch exhaustion drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_queue_reconstructs_identity_watermark()
 -> Result<(), String> {
     let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
