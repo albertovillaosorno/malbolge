@@ -100201,6 +100201,265 @@ fn continuation_dispatch_reservation_state_cas_advances_selected_watermark()
 }
 
 #[test]
+fn continuation_dispatch_durable_enqueue_binds_committed_identity()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchDurableEnqueue::Bound;
+    use dr::NativeContinuationDispatchReservationStateCas::Durable;
+
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let maximum = nonzero_test_limit(24, "durable enqueue bytes")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(2, "durable enqueue pending")?,
+        nonzero_test_limit(2, "durable enqueue active")?,
+    );
+    let outcome =
+        dr::reserve_and_enqueue_native_continuation_dispatch_identity_durably(
+            &mut store,
+            &mut queue,
+            fixture.handoff,
+            dr::NativeContinuationDispatchDurableEnqueueRequest::new(
+                None, maximum,
+            ),
+        )
+        .map_err(|error| format!("durable enqueue: {error:?}"))?;
+    let Bound { dispatch, reservation } = outcome else {
+        return Err(String::from("durable enqueue did not bind"));
+    };
+    let Durable { current, .. } = reservation else {
+        return Err(String::from("durable enqueue did not commit durably"));
+    };
+    if dispatch.value() == 1
+        && queue.pending() == 1
+        && queue.watermarks() == current
+        && current == dispatch_reservation_state_fixture(1, 0)
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable enqueue binding drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_durable_enqueue_preflights_capacity()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchDurableEnqueueError::Queue;
+
+    let first = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let second = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let maximum = nonzero_test_limit(1, "durable enqueue capacity")?;
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        maximum,
+        maximum,
+    );
+    let first_id = queue.enqueue(first.handoff).map_err(|failure| {
+        format!("durable enqueue setup: {:?}", failure.error())
+    })?;
+    let expected = queue.watermarks();
+    let mut store = TestCachedRetryTelemetryBlobStore::default();
+    let failure =
+        dr::reserve_and_enqueue_native_continuation_dispatch_identity_durably(
+            &mut store,
+            &mut queue,
+            second.handoff,
+            dr::NativeContinuationDispatchDurableEnqueueRequest::new(
+                Some(expected),
+                nonzero_test_limit(24, "durable enqueue capacity bytes")?,
+            ),
+        )
+        .err()
+        .ok_or_else(|| String::from("full queue published durable identity"))?;
+    let Queue { error, handoff } = failure else {
+        return Err(String::from("full queue returned wrong durable error"));
+    };
+    let owner_valid = handoff_yields_to_caller(*handoff)?;
+    if matches!(
+        error,
+        NativeContinuationDispatchEnqueueError::Capacity { .. }
+    ) && owner_valid
+        && queue.identity_watermark().value() == first_id.value()
+        && queue.pending() == 1
+        && store.compare_and_swap_calls == 0
+        && store.blob.is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable enqueue capacity preflight drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_durable_enqueue_rejects_local_drift()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchDurableEnqueueError::Reservation;
+    use dr::NativeContinuationDispatchReservationStateCasError as CasError;
+
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let expected = dispatch_reservation_state_fixture(1, 0);
+    let expected_bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(expected);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(expected_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(1, "durable drift pending")?,
+        nonzero_test_limit(1, "durable drift active")?,
+    );
+    let local = queue.watermarks();
+    let failure =
+        dr::reserve_and_enqueue_native_continuation_dispatch_identity_durably(
+            &mut store,
+            &mut queue,
+            fixture.handoff,
+            dr::NativeContinuationDispatchDurableEnqueueRequest::new(
+                Some(expected),
+                nonzero_test_limit(24, "durable drift bytes")?,
+            ),
+        )
+        .err()
+        .ok_or_else(|| String::from("local drift published durable enqueue"))?;
+    let Reservation { error, handoff } = failure else {
+        return Err(String::from("local drift returned wrong durable error"));
+    };
+    if error
+        == (CasError::LocalStateMismatch {
+            local,
+            expected: Some(expected),
+        })
+        && handoff_yields_to_caller(*handoff)?
+        && queue.watermarks() == local
+        && queue.pending() == 0
+        && store.compare_and_swap_calls == 0
+        && store.blob.as_deref() == Some(expected_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "durable enqueue local drift ownership changed",
+        ))
+    }
+}
+
+#[test]
+fn continuation_dispatch_durable_enqueue_retains_conflict_owner()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchDurableEnqueue::Conflict;
+
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let actual = dispatch_reservation_state_fixture(7, 3);
+    let actual_bytes =
+        dr::encode_native_continuation_dispatch_reservation_state(actual);
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        blob: Some(actual_bytes.to_vec()),
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(1, "durable conflict pending")?,
+        nonzero_test_limit(1, "durable conflict active")?,
+    );
+    let outcome =
+        dr::reserve_and_enqueue_native_continuation_dispatch_identity_durably(
+            &mut store,
+            &mut queue,
+            fixture.handoff,
+            dr::NativeContinuationDispatchDurableEnqueueRequest::new(
+                None,
+                nonzero_test_limit(24, "durable conflict bytes")?,
+            ),
+        )
+        .map_err(|error| format!("durable enqueue conflict: {error:?}"))?;
+    let Conflict {
+        current,
+        expected,
+        handoff,
+    } = outcome
+    else {
+        return Err(String::from("stale durable enqueue did not conflict"));
+    };
+    if current == Some(actual)
+        && expected.is_none()
+        && handoff_yields_to_caller(*handoff)?
+        && queue.watermarks() == dispatch_reservation_state_fixture(0, 0)
+        && queue.pending() == 0
+        && store.compare_and_swap_calls == 1
+        && store.blob.as_deref() == Some(actual_bytes.as_slice())
+    {
+        Ok(())
+    } else {
+        Err(String::from("durable enqueue conflict ownership drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_durable_enqueue_binds_published_identity()
+-> Result<(), String> {
+    use dr::NativeContinuationDispatchDurableEnqueue::Bound;
+    use dr::NativeContinuationDispatchReservationStateCas::Published;
+
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let mut store = TestCachedRetryTelemetryBlobStore {
+        fail_durability: true,
+        ..TestCachedRetryTelemetryBlobStore::default()
+    };
+    let mut queue = ContinuationDispatchQueue::new(
+        TestIntervalClock::default(),
+        nonzero_test_limit(1, "published enqueue pending")?,
+        nonzero_test_limit(1, "published enqueue active")?,
+    );
+    let outcome =
+        dr::reserve_and_enqueue_native_continuation_dispatch_identity_durably(
+            &mut store,
+            &mut queue,
+            fixture.handoff,
+            dr::NativeContinuationDispatchDurableEnqueueRequest::new(
+                None,
+                nonzero_test_limit(24, "published enqueue bytes")?,
+            ),
+        )
+        .map_err(|error| format!("published durable enqueue: {error:?}"))?;
+    let Bound { dispatch, reservation } = outcome else {
+        return Err(String::from("published durable identity did not bind"));
+    };
+    let Published {
+        current,
+        durability_error,
+        ..
+    } = reservation
+    else {
+        return Err(String::from("durability failure lost published evidence"));
+    };
+    if dispatch.value() == 1
+        && current == queue.watermarks()
+        && durability_error
+            == TestCachedRetryTelemetryBlobDurabilityError::Confirm
+        && queue.pending() == 1
+        && store.compare_and_swap_calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("published durable enqueue binding drifted"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_reservation_state_checked_cas_tracks_local_binding()
 -> Result<(), String> {
     use dr::{

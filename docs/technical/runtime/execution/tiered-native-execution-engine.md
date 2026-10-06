@@ -1982,8 +1982,16 @@ Queue-synchronized reservation now compares the reconstructed process-local
 dispatch/timing watermarks with the caller's exact durable-state expectation
 before storage access. Drift fails with both states intact, preventing another
 durable reservation from running ahead of a reservation that has not yet been
-bound locally. Affine handoff ownership and clock starts remain outside durable
-state.
+bound locally.
+
+Durable identity enqueue additionally preflights exact-next
+admission and pending capacity before CAS, then binds any committed identity
+(including publication followed by durability-confirmation failure) under an
+exclusive mutable queue borrow. Conflict and pre-commit failure retain the
+affine handoff without local mutation. This removes the caller-visible
+reservation/enqueue gap inside one process but is not crash-atomic persistence
+of affine queue contents. Handoff ownership and clock starts remain outside
+durable state.
 
 Durable affine queue contents, additional adaptive evidence classes,
 parallel/background worker lifecycle, and distributed scheduling remain outside

@@ -15,12 +15,15 @@
 //   - Persist affine handoffs, clock starts, latency samples, queue capacities,
 //     choose storage paths, spawn workers, or infer distributed scheduling.
 // - Allows:
-//   - Inputs: optional expected combined state, read-only local queue
-//     watermarks, explicit reservation kind, positive byte bound, and one
-//     conditional durable store.
+//   - Inputs: optional expected combined state, local queue watermarks or one
+//     exclusively borrowed queue plus affine handoff, explicit reservation
+//     kind, positive byte bound, and one conditional durable store.
 //   - Outputs: restored combined state, exact conflict state, committed next
-//     state, committed sync failure, or typed codec/storage/exhaustion failure.
-//   - Side effects: one delegated conditional durable blob publication.
+//     state, bound dispatch identity, committed sync failure, or typed
+//     queue/codec/storage/exhaustion failure.
+//   - Side effects: one delegated conditional durable blob publication and, for
+//     composed identity enqueue, one process-local queue admission after
+//     commit.
 // - Split-When:
 //   - Affine queue contents, multi-item transactions, or distributed consensus
 //     gains authority.
@@ -30,9 +33,11 @@
 // - Summary:
 //   - Coordinates dispatch and timing reservations in one canonical CAS frame.
 // - Description:
-//   - Each transition advances exactly one selected watermark by one.
+//   - Each transition advances exactly one selected watermark by one; composed
+//     identity enqueue preflights local admission before durable publication.
 // - Usage:
-//   - Restore state, reserve one identity, then bind it to the local queue.
+//   - Restore state, reserve timing explicitly, or durably reserve and enqueue
+//     one dispatch identity through the composed boundary.
 // - Defaults:
 //   - Missing durable state represents dispatch zero and timing zero.
 //
@@ -52,6 +57,7 @@ use crate::blob_store::{
     NativeContinuationConditionalBlobStore as ConditionalBlobStore,
     NativeContinuationDurableBlobStore as DurableBlobStore,
 };
+use crate::interpreter_handoff::NativeInterpreterHandoff;
 use crate::monotonic_clock::NativeContinuationMonotonicClock;
 use crate::{cached_cycle as cycle, continuation_dispatch_queue as queue};
 
@@ -80,6 +86,78 @@ pub struct NativeContinuationDispatchReservationRequest {
     expected: Option<ReservationState>,
     maximum_bytes: NonZeroUsize,
     reservation: NativeContinuationDispatchReservationKind,
+}
+
+/// Inputs for one durable identity reservation plus local affine enqueue.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchDurableEnqueueRequest {
+    expected: Option<ReservationState>,
+    maximum_bytes: NonZeroUsize,
+}
+
+/// Result of durably reserving and immediately binding one dispatch identity.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableEnqueue<DurabilityError> {
+    /// Durable reservation committed and the exact identity entered the queue.
+    Bound {
+        /// Exact process-local dispatch identity now owning the handoff.
+        dispatch: queue::NativeContinuationDispatchId,
+        /// Exact durable commit or committed durability-failure evidence.
+        reservation:
+            NativeContinuationDispatchReservationStateCas<DurabilityError>,
+    },
+    /// Durable reservation committed but local binding unexpectedly failed.
+    ///
+    /// This is fail-closed recovery evidence: the retained handoff may be
+    /// retried with the committed reservation while synchronization prevents a
+    /// later reservation from advancing past it.
+    CommittedUnbound {
+        /// Exact local enqueue failure retaining affine handoff ownership.
+        failure: Box<queue::NativeContinuationDispatchEnqueueFailure>,
+        /// Exact durable commit evidence that must be rebound locally.
+        reservation:
+            NativeContinuationDispatchReservationStateCas<DurabilityError>,
+    },
+    /// Durable state changed concurrently; local queue and handoff are
+    /// unchanged.
+    Conflict {
+        /// Exact current durable state observed by the conditional store.
+        current: Option<ReservationState>,
+        /// Caller-supplied expected durable state.
+        expected: Option<ReservationState>,
+        /// Exact affine handoff never transferred to the queue.
+        handoff: Box<NativeInterpreterHandoff>,
+    },
+}
+
+/// Why durable reserve-and-enqueue failed before a durable outcome existed.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchDurableEnqueueError<StoreError> {
+    /// Local queue cannot accept the exact next reserved identity.
+    Queue {
+        /// Exact non-mutating local admission error.
+        error: queue::NativeContinuationDispatchEnqueueError,
+        /// Exact affine handoff never transferred to the queue.
+        handoff: Box<NativeInterpreterHandoff>,
+    },
+    /// Durable reservation failed before commit/conflict evidence existed.
+    Reservation {
+        /// Exact durable reservation failure.
+        error: NativeContinuationDispatchReservationStateCasError<StoreError>,
+        /// Exact affine handoff never transferred to the queue.
+        handoff: Box<NativeInterpreterHandoff>,
+    },
+}
+
+impl NativeContinuationDispatchDurableEnqueueRequest {
+    /// Constructs one exact durable identity enqueue request.
+    #[must_use]
+    pub const fn new(
+        expected: Option<ReservationState>,
+        maximum_bytes: NonZeroUsize,
+    ) -> Self {
+        Self { expected, maximum_bytes }
+    }
 }
 
 impl NativeContinuationDispatchReservationRequest {
@@ -189,6 +267,20 @@ type CasError<StoreError> =
     NativeContinuationDispatchReservationStateCasError<StoreError>;
 type LoadError<StoreError> =
     NativeContinuationDispatchReservationStateLoadError<StoreError>;
+
+#[derive(Debug)]
+enum DurableEnqueuePreflightError<StoreError> {
+    Queue(queue::NativeContinuationDispatchEnqueueError),
+    Reservation(NativeContinuationDispatchReservationStateCasError<StoreError>),
+}
+
+/// Typed durable identity enqueue result specialized to one durable store.
+pub type NativeContinuationDispatchDurableEnqueueStoreResult<Store> = Result<
+    NativeContinuationDispatchDurableEnqueue<
+        <Store as DurableBlobStore>::DurabilityError,
+    >,
+    NativeContinuationDispatchDurableEnqueueError<<Store as BlobStore>::Error>,
+>;
 
 /// Typed combined-state CAS result specialized to one durable store.
 pub type NativeContinuationDispatchReservationStateCasStoreResult<Store> =
@@ -333,6 +425,150 @@ where
         request.reservation,
         request.maximum_bytes,
     )
+}
+
+fn preflight_durable_identity_enqueue<Clock, StoreError>(
+    local_queue: &queue::NativeContinuationDispatchQueue<Clock>,
+    request: NativeContinuationDispatchDurableEnqueueRequest,
+) -> Result<ReservationState, DurableEnqueuePreflightError<StoreError>>
+where
+    Clock: NativeContinuationMonotonicClock,
+{
+    let local = local_queue.watermarks();
+    let base = request.expected.unwrap_or_else(zero_state);
+    if local != base {
+        return Err(DurableEnqueuePreflightError::Reservation(
+            CasError::LocalStateMismatch {
+                local,
+                expected: request.expected,
+            },
+        ));
+    }
+    let current = advance_state(
+        base,
+        NativeContinuationDispatchReservationKind::Identity,
+    )
+    .ok_or(DurableEnqueuePreflightError::Reservation(
+        CasError::WatermarkExhausted {
+            reservation: NativeContinuationDispatchReservationKind::Identity,
+        },
+    ))?;
+    if local_queue.pending() >= local_queue.maximum_pending().get() {
+        return Err(DurableEnqueuePreflightError::Queue(
+            queue::NativeContinuationDispatchEnqueueError::Capacity {
+                maximum_pending: local_queue.maximum_pending(),
+                pending: local_queue.pending(),
+            },
+        ));
+    }
+    Ok(current)
+}
+
+/// Durably reserves the exact next dispatch identity and binds it locally.
+///
+/// Local synchronization and queue-capacity admission are checked before the
+/// conditional store is touched. With exclusive mutable queue ownership, a
+/// committed reservation can then bind through the already-validated exact
+/// identity without a caller-visible reservation/enqueue gap. This does not
+/// persist affine queue contents and does not claim crash-atomic storage plus
+/// process-memory publication.
+///
+/// # Errors
+///
+/// Returns local synchronization, watermark exhaustion, queue admission, codec,
+/// byte-limit, or storage failure while retaining the exact affine handoff.
+pub fn reserve_and_enqueue_native_continuation_dispatch_identity_durably<
+    Clock,
+    Store,
+>(
+    store: &mut Store,
+    local_queue: &mut queue::NativeContinuationDispatchQueue<Clock>,
+    handoff: NativeInterpreterHandoff,
+    request: NativeContinuationDispatchDurableEnqueueRequest,
+) -> NativeContinuationDispatchDurableEnqueueStoreResult<Store>
+where
+    Clock: NativeContinuationMonotonicClock,
+    Store: ConditionalBlobStore + DurableBlobStore,
+{
+    let current = match preflight_durable_identity_enqueue(local_queue, request)
+    {
+        Ok(current) => current,
+        Err(preflight_error) => {
+            return Err(match preflight_error {
+                DurableEnqueuePreflightError::Queue(queue_error) => {
+                    NativeContinuationDispatchDurableEnqueueError::Queue {
+                        error: queue_error,
+                        handoff: Box::new(handoff),
+                    }
+                },
+                DurableEnqueuePreflightError::Reservation(
+                    reservation_error,
+                ) => {
+                    NativeContinuationDispatchDurableEnqueueError::Reservation {
+                        error: reservation_error,
+                        handoff: Box::new(handoff),
+                    }
+                },
+            });
+        },
+    };
+    let reservation =
+        match reserve_native_continuation_dispatch_identity_durably(
+            store,
+            request.expected,
+            NativeContinuationDispatchReservationKind::Identity,
+            request.maximum_bytes,
+        ) {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                return Err(
+                    NativeContinuationDispatchDurableEnqueueError::Reservation {
+                        error,
+                        handoff: Box::new(handoff),
+                    },
+                );
+            },
+        };
+    if let NativeContinuationDispatchReservationStateCas::Conflict {
+        current: durable_current,
+        expected: durable_expected,
+    } = reservation
+    {
+        return Ok(NativeContinuationDispatchDurableEnqueue::Conflict {
+            current: durable_current,
+            expected: durable_expected,
+            handoff: Box::new(handoff),
+        });
+    }
+    Ok(bind_committed_durable_identity(
+        local_queue,
+        handoff,
+        current,
+        reservation,
+    ))
+}
+
+fn bind_committed_durable_identity<Clock, DurabilityError>(
+    local_queue: &mut queue::NativeContinuationDispatchQueue<Clock>,
+    handoff: NativeInterpreterHandoff,
+    current: ReservationState,
+    reservation: NativeContinuationDispatchReservationStateCas<DurabilityError>,
+) -> NativeContinuationDispatchDurableEnqueue<DurabilityError>
+where
+    Clock: NativeContinuationMonotonicClock,
+{
+    match local_queue.enqueue_reserved(handoff, current.identity()) {
+        Ok(dispatch) => NativeContinuationDispatchDurableEnqueue::Bound {
+            dispatch,
+            reservation,
+        },
+        Err(failure) => {
+            NativeContinuationDispatchDurableEnqueue::CommittedUnbound {
+                failure,
+                reservation,
+            }
+        },
+    }
 }
 
 /// Advances exactly one selected watermark in combined durable queue state.

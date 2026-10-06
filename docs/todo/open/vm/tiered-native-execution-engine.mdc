@@ -780,6 +780,13 @@ behavior.
   before storage access, preventing a second reservation from running ahead of
   an unbound local dispatch or timing identity.
 
+  Durable identity enqueue also
+  preflights exact-next admission and pending capacity before CAS, then binds a
+  committed (including post-publication sync-failed) identity under exclusive
+  mutable queue ownership. Conflict and pre-commit failure retain the affine
+  handoff without local mutation. This narrows the in-process reservation/bind
+  gap but does not claim crash-atomic storage plus process-memory publication.
+
   It does not serialize affine handoffs or clock starts. Durable affine queue
   contents, additional evidence classes, parallel/background worker lifecycle,
   and distributed scheduling remain open.
