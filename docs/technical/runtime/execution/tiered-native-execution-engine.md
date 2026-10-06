@@ -2151,6 +2151,21 @@ and returns still-owned releases for retry. Exact invalidation and full drain
 update usage before cleanup,
 preventing stale budget retention after release failure. Rust borrowing still
 prevents mutation while a returned chain is in use.
+
+Reuse-driven cache-limit recommendation now sits above that mutation boundary.
+It consumes exact cached-retry telemetry, current limits, one caller-owned
+positive hit-per-attempt threshold, and caller-supplied meets/misses limit
+candidates. Insufficient attempts defer; ready evidence either retains identical
+current limits or recommends one exact replacement. Exact rational comparison
+uses cross multiplication and arithmetic failure fails closed to the misses
+candidate.
+
+The recommendation layer performs no cache, adapter, or storage mutation. A
+`Reconfigure` result becomes active only if a caller explicitly routes its exact
+limits through the existing cache-limit CAS/activation or live
+`reconfigure_limits()` boundary. This keeps adaptive policy separate from FIFO
+eviction, lease retirement, cleanup retry, and durable publication authority.
+
 `reconfigure_limits()` stages weighted-limit publication against current usage.
 
 Expansion and already-satisfied requests publish without adapter operations.

@@ -867,6 +867,15 @@ behavior.
   victim and earlier successful victims, cleans the candidate, and retains
   failed ownership for retry.
   Invalidation and full drain update usage before cleanup.
+
+  Reuse-driven cache-limit recommendation now sits above live reconfiguration.
+  Exact cached-retry telemetry plus a caller-owned hit-per-attempt threshold
+  selects only caller-supplied meets/misses limit candidates. Insufficient
+  attempts defer; ready evidence returns `Retain` for the active limits or
+  `Reconfigure` with one exact replacement. The recommender performs no cache,
+  adapter, or storage mutation; callers must explicitly route replacement limits
+  through existing CAS/activation or `reconfigure_limits()` authority.
+
   `reconfigure_limits()` publishes expansion or already-satisfied requests
   without adapter operations. Shrink requests release oldest entries until
   current usage fits, while retaining previous limits until all required
@@ -899,8 +908,8 @@ behavior.
   `executable_lease_cache/reconciliation.rs`, while resident-limit transitions
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
-  branch chains, a concrete FFI shim, adaptive cache policy, and async/product
-  scheduling remain out.
+  branch chains, a concrete FFI shim, broader adaptive cache signals/automatic
+  activation, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy
