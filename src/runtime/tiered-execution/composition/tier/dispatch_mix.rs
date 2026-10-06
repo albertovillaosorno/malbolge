@@ -9,36 +9,36 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Pure latency/productivity dispatch adaptation plus conservative count,
-//     latency, and productivity agreement-only arbitration.
+//   - Pure latency/productivity/cache-reuse adaptation plus conservative count,
+//     latency, productivity, and reuse agreement-only arbitration.
 // - Must-Not:
 //   - Assess telemetry, infer thresholds, assign signal precedence, publish
 //     policy, execute dispatch, persist state, or mutate evidence.
 // - Allows:
-//   - Inputs: validated latency or exact productivity evidence plus explicit
-//     policy table, and existing count-plus-latency arbitration evidence.
-//   - Outputs: deferred/ready adaptations and exact two-/three-signal
+//   - Inputs: validated latency or exact productivity/reuse evidence plus
+//     explicit policy table and existing lower-order arbitration evidence.
+//   - Outputs: deferred/ready adaptations and exact multi-signal
 //     deferred/agreed/conflict evidence.
 //   - Side effects: none.
 // - Split-When:
-//   - Evidence beyond semantic productivity, weighted arbitration, or
-//     productivity-specific precedence gains authority.
+//   - Evidence beyond cache reuse, weighted arbitration, or new signal-specific
+//     precedence gains authority.
 // - Merge-When:
 //   - Product orchestration owns assessment through policy publication
 //     atomically.
 // - Summary:
-//   - Adds latency/productivity selection and conservative multi-signal
-//     authority.
+//   - Adds normalized latency/productivity/reuse evidence and conservative
+//     multi-signal authority.
 // - Description:
 //   - Every ready signal in an arbitration must select one identical policy.
 // - Usage:
-//   - Adapt count/latency first, then optionally require productivity
-//     agreement.
+//   - Adapt count/latency first, then optionally require productivity and cache
+//     reuse agreement.
 // - Defaults:
 //   - No signal has implicit precedence and disagreement yields no policy.
 //
 
-//! Conservative count/latency/productivity dispatch-policy arbitration.
+//! Conservative count/latency/productivity/reuse dispatch-policy arbitration.
 
 use std::num::{NonZeroU64, NonZeroU128, NonZeroUsize};
 
@@ -58,6 +58,51 @@ type CountAdaptation =
 type DispatchPolicy = dispatch_policy::NativeContinuationDispatchPolicy;
 type PolicySet =
     count_adaptation::NativeContinuationDispatchPolicyAdaptationSet;
+
+/// Caller-owned cache-reuse threshold for one telemetry cohort.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeContinuationDispatchPolicyCacheReuseThreshold {
+    minimum_hits_denominator: NonZeroU64,
+    minimum_hits_numerator: NonZeroU64,
+    required_attempts: NonZeroUsize,
+}
+
+/// Why ready cache-reuse evidence selected the misses policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyCacheReuseMiss {
+    /// Exact rational comparison overflowed `u128` and failed closed.
+    ArithmeticOverflow,
+    /// Active-cache hits per attempt missed the caller minimum.
+    BelowMinimumHitsPerAttempt,
+}
+
+/// Exact cache-reuse dispatch-policy adaptation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyCacheReuseAdaptation {
+    /// Positive attempt gate was not reached, so adaptation deferred.
+    Deferred {
+        /// Attempts represented by the supplied telemetry.
+        observed_attempts: usize,
+        /// Positive caller-required attempt count.
+        required_attempts: NonZeroUsize,
+    },
+    /// Ready reuse met the exact caller ratio.
+    Meets {
+        /// Exact caller-configured dispatch policy.
+        policy: DispatchPolicy,
+        /// Exact telemetry whose reuse met the minimum.
+        telemetry: NativeContinuationCachedRetryTelemetry,
+    },
+    /// Ready reuse failed to prove the exact caller ratio.
+    Misses {
+        /// Stable reason reuse did not authorize the meets policy.
+        reason: NativeContinuationDispatchPolicyCacheReuseMiss,
+        /// Exact caller-configured dispatch policy.
+        policy: DispatchPolicy,
+        /// Exact telemetry whose reuse failed closed.
+        telemetry: NativeContinuationCachedRetryTelemetry,
+    },
+}
 
 /// Caller-owned semantic-productivity threshold for one telemetry cohort.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -132,6 +177,34 @@ pub enum NativeContinuationDispatchPolicyThreeSignalArbitration {
     },
 }
 
+/// Agreement-only authority across count, latency, productivity, and reuse.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationDispatchPolicyFourSignalArbitration {
+    /// All four ready evidence classes selected the identical policy.
+    Agreed {
+        /// Existing exact three-signal arbitration.
+        three_signal: NativeContinuationDispatchPolicyThreeSignalArbitration,
+        /// Exact cache-reuse adaptation participating in agreement.
+        cache_reuse: NativeContinuationDispatchPolicyCacheReuseAdaptation,
+        /// Exact policy selected independently by every ready signal.
+        policy: DispatchPolicy,
+    },
+    /// Ready lower-order evidence or cache reuse disagreed.
+    Conflict {
+        /// Existing exact three-signal arbitration.
+        three_signal: NativeContinuationDispatchPolicyThreeSignalArbitration,
+        /// Exact cache-reuse adaptation, ready or deferred.
+        cache_reuse: NativeContinuationDispatchPolicyCacheReuseAdaptation,
+    },
+    /// Lower-order evidence or cache reuse lacked sufficient evidence.
+    Deferred {
+        /// Existing exact three-signal arbitration.
+        three_signal: NativeContinuationDispatchPolicyThreeSignalArbitration,
+        /// Exact cache-reuse adaptation, ready or deferred.
+        cache_reuse: NativeContinuationDispatchPolicyCacheReuseAdaptation,
+    },
+}
+
 /// Exact result of one latency-driven dispatch-policy adaptation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeContinuationDispatchPolicyLatencyAdaptation {
@@ -190,6 +263,64 @@ pub enum NativeContinuationDispatchPolicyAdaptationArbitration {
         /// Exact latency adaptation, ready or deferred.
         latency: NativeContinuationDispatchPolicyLatencyAdaptation,
     },
+}
+
+impl NativeContinuationDispatchPolicyCacheReuseAdaptation {
+    /// Returns the exact selected policy once cache-reuse evidence is ready.
+    #[must_use]
+    pub const fn policy(self) -> Option<DispatchPolicy> {
+        match self {
+            Self::Deferred { .. } => None,
+            Self::Meets { policy, .. } | Self::Misses { policy, .. } => {
+                Some(policy)
+            },
+        }
+    }
+}
+
+impl NativeContinuationDispatchPolicyCacheReuseThreshold {
+    /// Returns the exact minimum hits-per-attempt denominator.
+    #[must_use]
+    pub const fn minimum_hits_denominator(self) -> NonZeroU64 {
+        self.minimum_hits_denominator
+    }
+
+    /// Returns the exact minimum hits-per-attempt numerator.
+    #[must_use]
+    pub const fn minimum_hits_numerator(self) -> NonZeroU64 {
+        self.minimum_hits_numerator
+    }
+
+    /// Constructs one exact positive cache-reuse threshold.
+    #[must_use]
+    pub const fn new(
+        required_attempts: NonZeroUsize,
+        minimum_hits_numerator: NonZeroU64,
+        minimum_hits_denominator: NonZeroU64,
+    ) -> Self {
+        Self {
+            minimum_hits_denominator,
+            minimum_hits_numerator,
+            required_attempts,
+        }
+    }
+
+    /// Returns the positive attempt gate for cache-reuse assessment.
+    #[must_use]
+    pub const fn required_attempts(self) -> NonZeroUsize {
+        self.required_attempts
+    }
+}
+
+impl NativeContinuationDispatchPolicyFourSignalArbitration {
+    /// Returns policy authority only when all four ready signals agree.
+    #[must_use]
+    pub const fn policy(self) -> Option<DispatchPolicy> {
+        match self {
+            Self::Agreed { policy, .. } => Some(policy),
+            Self::Conflict { .. } | Self::Deferred { .. } => None,
+        }
+    }
 }
 
 impl NativeContinuationDispatchPolicyProductivityAdaptation {
@@ -270,6 +401,68 @@ impl NativeContinuationDispatchPolicyLatencyAdaptation {
             Self::Meets { policy, .. } | Self::Misses { policy, .. } => {
                 Some(policy)
             },
+        }
+    }
+}
+
+/// Maps exact cache reuse to caller-configured dispatch policy.
+#[must_use]
+pub fn adapt_native_continuation_dispatch_policy_from_cache_reuse(
+    telemetry: NativeContinuationCachedRetryTelemetry,
+    threshold: NativeContinuationDispatchPolicyCacheReuseThreshold,
+    policies: PolicySet,
+) -> NativeContinuationDispatchPolicyCacheReuseAdaptation {
+    use NativeContinuationDispatchPolicyCacheReuseAdaptation as Adaptation;
+    use NativeContinuationDispatchPolicyCacheReuseMiss as Miss;
+
+    if telemetry.attempts() < threshold.required_attempts.get() {
+        return Adaptation::Deferred {
+            observed_attempts: telemetry.attempts(),
+            required_attempts: threshold.required_attempts,
+        };
+    }
+    let Ok(hits) = u128::try_from(telemetry.hits()) else {
+        return Adaptation::Misses {
+            reason: Miss::ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Ok(attempts) = u128::try_from(telemetry.attempts()) else {
+        return Adaptation::Misses {
+            reason: Miss::ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Some(weighted_hits) = hits.checked_mul(
+        NonZeroU128::from(threshold.minimum_hits_denominator).get(),
+    ) else {
+        return Adaptation::Misses {
+            reason: Miss::ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    let Some(required_hits) = attempts
+        .checked_mul(NonZeroU128::from(threshold.minimum_hits_numerator).get())
+    else {
+        return Adaptation::Misses {
+            reason: Miss::ArithmeticOverflow,
+            policy: policies.misses(),
+            telemetry,
+        };
+    };
+    if weighted_hits >= required_hits {
+        Adaptation::Meets {
+            policy: policies.meets(),
+            telemetry,
+        }
+    } else {
+        Adaptation::Misses {
+            reason: Miss::BelowMinimumHitsPerAttempt,
+            policy: policies.misses(),
+            telemetry,
         }
     }
 }
@@ -378,6 +571,47 @@ pub fn arbitrate_native_continuation_dispatch_policy_three_signals(
                     productivity,
                 },
             }
+        },
+    }
+}
+
+/// Extends three-signal arbitration with cache-reuse agreement only.
+#[must_use]
+pub fn arbitrate_native_continuation_dispatch_policy_four_signals(
+    three_signal: &NativeContinuationDispatchPolicyThreeSignalArbitration,
+    cache_reuse: NativeContinuationDispatchPolicyCacheReuseAdaptation,
+) -> NativeContinuationDispatchPolicyFourSignalArbitration {
+    use NativeContinuationDispatchPolicyFourSignalArbitration as FourSignal;
+    use NativeContinuationDispatchPolicyThreeSignalArbitration as ThreeSignal;
+
+    let three_signal_evidence = *three_signal;
+    match three_signal_evidence {
+        ThreeSignal::Conflict { .. } => FourSignal::Conflict {
+            three_signal: three_signal_evidence,
+            cache_reuse,
+        },
+        ThreeSignal::Deferred { .. } => FourSignal::Deferred {
+            three_signal: three_signal_evidence,
+            cache_reuse,
+        },
+        ThreeSignal::Agreed {
+            policy: agreed_policy, ..
+        } => match cache_reuse.policy() {
+            None => FourSignal::Deferred {
+                three_signal: three_signal_evidence,
+                cache_reuse,
+            },
+            Some(reuse_policy) if reuse_policy == agreed_policy => {
+                FourSignal::Agreed {
+                    three_signal: three_signal_evidence,
+                    cache_reuse,
+                    policy: agreed_policy,
+                }
+            },
+            Some(_) => FourSignal::Conflict {
+                three_signal: three_signal_evidence,
+                cache_reuse,
+            },
         },
     }
 }

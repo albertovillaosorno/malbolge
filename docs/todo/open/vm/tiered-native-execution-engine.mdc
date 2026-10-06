@@ -683,6 +683,18 @@ behavior.
   minimum committed-steps-per-attempt ratio. Exact cross multiplication avoids
   truncating division; arithmetic failure fails closed to the misses policy.
 
+  Cache reuse now adds one more normalized evidence class from the same
+  telemetry:
+  a positive attempt gate plus an exact caller-owned minimum active-cache-hits-
+  per-attempt ratio. Exact cross multiplication avoids truncating division and
+  arithmetic failure fails closed to the misses policy.
+
+  Agreement-only four-signal arbitration layers reuse over existing count/
+  latency/productivity evidence. Prior conflict stays conflict, prior deferral
+  stays deferred, and three-signal agreement authorizes only when ready reuse
+  selects the same policy. Cache reuse does not participate in precedence or
+  publication yet.
+
   Agreement-only three-signal arbitration preserves existing count/latency
   conflict and deferral, and authorizes only when ready productivity selects the
   same policy as an existing count-plus-latency agreement. Agreement-only stays
@@ -734,8 +746,9 @@ behavior.
   reservation before moving pending affine ownership. Neither durable timing
   state nor queue reconstruction persists clock starts or in-flight work.
 
-  Durable queue contents/orchestration, further adaptive evidence classes,
-  parallel/background worker lifecycle, and distributed scheduling remain open.
+  Durable queue contents/orchestration, further adaptive evidence beyond cache
+  reuse, four-signal precedence/publication, parallel/background worker
+  lifecycle, and distributed scheduling remain open.
   Any future active-state frame revision
   will require an explicit new migration contract rather than reinterpretation
   of revision one.
@@ -824,8 +837,9 @@ behavior.
   not crash recovery and does not make queue contents durable.
 
   It does not serialize affine handoffs or clock starts. Durable affine queue
-  contents, additional evidence classes, parallel/background worker lifecycle,
-  and distributed scheduling remain open.
+  contents, adaptive evidence beyond cache reuse, four-signal precedence/
+  publication, parallel/background worker lifecycle, and distributed scheduling
+  remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

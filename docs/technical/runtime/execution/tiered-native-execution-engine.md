@@ -1939,6 +1939,18 @@ gate precedes an exact rational minimum of committed native steps per attempt;
 comparison uses cross multiplication and arithmetic failure selects the
 caller-configured misses policy rather than inventing evidence.
 
+Cache-reuse adaptation adds one further normalized evidence class from the same
+telemetry without changing storage. A positive attempt gate precedes an exact
+rational minimum of active-cache hits per represented attempt. Cross
+multiplication avoids truncating division, and arithmetic failure fails closed
+to the caller-configured misses policy.
+
+Four-signal arbitration layers cache reuse over the existing count/latency/
+productivity result. Prior conflict remains conflict even if reuse is deferred,
+prior deferral remains deferred even if reuse is ready, and existing three-
+signal agreement gains authority only when ready reuse selects the identical
+policy. Cache reuse has no precedence or publication authority yet.
+
 Three-signal arbitration layers productivity over the existing count-plus-
 latency result. Existing count/latency conflict remains conflict even when
 productivity is deferred, existing deferral remains deferred, and an agreed

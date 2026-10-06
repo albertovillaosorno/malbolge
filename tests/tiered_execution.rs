@@ -1897,6 +1897,12 @@ type DispatchThreeSignalDurableStoreResult =
     auth::NativeContinuationDispatchPolicyThreeSignalDurableStoreResult<
         TestCachedRetryTelemetryBlobStore,
     >;
+type DispatchCacheReuseAdaptation =
+    dispatch_mix::NativeContinuationDispatchPolicyCacheReuseAdaptation;
+type DispatchCacheReuseMiss =
+    dispatch_mix::NativeContinuationDispatchPolicyCacheReuseMiss;
+type DispatchFourSignalArbitration =
+    dispatch_mix::NativeContinuationDispatchPolicyFourSignalArbitration;
 type DispatchLatencyAdaptation =
     dispatch_mix::NativeContinuationDispatchPolicyLatencyAdaptation;
 type DispatchProductivityAdaptation =
@@ -97155,6 +97161,190 @@ fn continuation_dispatch_policy_latency_adaptation_selects_misses_policy()
 }
 
 #[test]
+fn continuation_dispatch_policy_cache_reuse_defers_attempt_gate()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_cache_reuse_adaptation(3, 1, 1)?;
+    let DispatchCacheReuseAdaptation::Deferred {
+        observed_attempts,
+        required_attempts,
+    } = adaptation
+    else {
+        return Err(String::from("cache reuse attempt gate selected policy"));
+    };
+    if observed_attempts == 2
+        && required_attempts.get() == 3
+        && adaptation.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse deferral evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_cache_reuse_meets_exact_ratio()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_cache_reuse_adaptation(2, 1, 1)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchCacheReuseAdaptation::Meets { policy, telemetry } = adaptation
+    else {
+        return Err(String::from("exact cache reuse ratio missed"));
+    };
+    if policy == policies.meets()
+        && adaptation.policy() == Some(policies.meets())
+        && telemetry.attempts() == 2
+        && telemetry.hits() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse exact-ratio evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_cache_reuse_rejects_weak_ratio()
+-> Result<(), String> {
+    let adaptation = dispatch_policy_cache_reuse_adaptation(2, 3, 2)?;
+    let policies = dispatch_policy_adaptation_set()?;
+    let DispatchCacheReuseAdaptation::Misses {
+        policy,
+        reason,
+        telemetry,
+    } = adaptation
+    else {
+        return Err(String::from("weak cache reuse ratio met"));
+    };
+    if policy == policies.misses()
+        && adaptation.policy() == Some(policies.misses())
+        && reason == DispatchCacheReuseMiss::BelowMinimumHitsPerAttempt
+        && telemetry.attempts() == 2
+        && telemetry.hits() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse miss evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_agrees_exact_policy()
+-> Result<(), String> {
+    let three_signal = dispatch_policy_three_signal_agreement()?;
+    let cache_reuse = dispatch_policy_cache_reuse_adaptation(2, 1, 1)?;
+    let arbitration =
+        dispatch_policy_four_signal_arbitration(&three_signal, cache_reuse);
+    let DispatchFourSignalArbitration::Agreed {
+        three_signal: observed_three_signal,
+        cache_reuse: observed_cache_reuse,
+        policy,
+    } = arbitration
+    else {
+        return Err(String::from("four ready signals did not agree"));
+    };
+    if observed_three_signal == three_signal
+        && observed_cache_reuse == cache_reuse
+        && policy == dispatch_policy_adaptation_set()?.meets()
+        && arbitration.policy() == Some(policy)
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal agreement evidence drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_rejects_cache_reuse_disagreement()
+-> Result<(), String> {
+    let three_signal = dispatch_policy_three_signal_agreement()?;
+    let cache_reuse = dispatch_policy_cache_reuse_adaptation(2, 3, 2)?;
+    let arbitration =
+        dispatch_policy_four_signal_arbitration(&three_signal, cache_reuse);
+    let DispatchFourSignalArbitration::Conflict {
+        three_signal: observed_three_signal,
+        cache_reuse: observed_cache_reuse,
+    } = arbitration
+    else {
+        return Err(String::from("cache reuse disagreement authorized policy"));
+    };
+    if observed_three_signal == three_signal
+        && observed_cache_reuse == cache_reuse
+        && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal reuse conflict drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_defers_cache_reuse_gap()
+-> Result<(), String> {
+    let three_signal = dispatch_policy_three_signal_agreement()?;
+    let cache_reuse = dispatch_policy_cache_reuse_adaptation(3, 1, 1)?;
+    let arbitration =
+        dispatch_policy_four_signal_arbitration(&three_signal, cache_reuse);
+    let DispatchFourSignalArbitration::Deferred {
+        three_signal: observed_three_signal,
+        cache_reuse: observed_cache_reuse,
+    } = arbitration
+    else {
+        return Err(String::from("cache reuse evidence gap authorized policy"));
+    };
+    if observed_three_signal == three_signal
+        && observed_cache_reuse == cache_reuse
+        && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("four-signal reuse deferral drifted"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_preserves_prior_conflict()
+-> Result<(), String> {
+    let three_signal = dispatch_policy_three_signal_conflict()?;
+    let cache_reuse = dispatch_policy_cache_reuse_adaptation(3, 1, 1)?;
+    let arbitration =
+        dispatch_policy_four_signal_arbitration(&three_signal, cache_reuse);
+    if matches!(
+        arbitration,
+        DispatchFourSignalArbitration::Conflict {
+            three_signal: observed_three_signal,
+            cache_reuse: observed_cache_reuse,
+        } if observed_three_signal == three_signal
+            && observed_cache_reuse == cache_reuse
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse deferral hid prior conflict"))
+    }
+}
+
+#[test]
+fn continuation_dispatch_policy_four_signal_preserves_prior_deferral()
+-> Result<(), String> {
+    let three_signal = dispatch_policy_three_signal_deferred()?;
+    let cache_reuse = dispatch_policy_cache_reuse_adaptation(2, 1, 1)?;
+    let arbitration =
+        dispatch_policy_four_signal_arbitration(&three_signal, cache_reuse);
+    if matches!(
+        arbitration,
+        DispatchFourSignalArbitration::Deferred {
+            three_signal: observed_three_signal,
+            cache_reuse: observed_cache_reuse,
+        } if observed_three_signal == three_signal
+            && observed_cache_reuse == cache_reuse
+    ) && arbitration.policy().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cache reuse evidence hid prior deferral"))
+    }
+}
+
+#[test]
 fn continuation_dispatch_policy_productivity_adaptation_defers_attempt_gate()
 -> Result<(), String> {
     let adaptation = dispatch_policy_productivity_adaptation(3, 5, 2)?;
@@ -100936,6 +101126,46 @@ fn dispatch_policy_latency_adaptation(
             assess_cached_retry_latency(&histogram, thresholds),
             dispatch_policy_adaptation_set()?,
         ),
+    )
+}
+
+fn dispatch_policy_four_signal_arbitration(
+    three_signal: &DispatchThreeSignalArbitration,
+    cache_reuse: DispatchCacheReuseAdaptation,
+) -> DispatchFourSignalArbitration {
+    dispatch_mix::arbitrate_native_continuation_dispatch_policy_four_signals(
+        three_signal,
+        cache_reuse,
+    )
+}
+
+fn dispatch_policy_cache_reuse_adaptation(
+    required_attempts: usize,
+    minimum_hits_numerator: u64,
+    minimum_hits_denominator: u64,
+) -> Result<DispatchCacheReuseAdaptation, String> {
+    let threshold =
+        dispatch_mix::NativeContinuationDispatchPolicyCacheReuseThreshold::new(
+            nonzero_test_limit(
+                required_attempts,
+                "dispatch cache reuse attempts",
+            )?,
+            NonZeroU64::new(minimum_hits_numerator).ok_or_else(|| {
+                String::from("dispatch cache reuse numerator must be positive")
+            })?,
+            NonZeroU64::new(minimum_hits_denominator).ok_or_else(|| {
+                String::from(
+                    "dispatch cache reuse denominator must be positive",
+                )
+            })?,
+        );
+    Ok(
+        dispatch_mix::
+            adapt_native_continuation_dispatch_policy_from_cache_reuse(
+                dispatch_policy_adaptation_telemetry()?,
+                threshold,
+                dispatch_policy_adaptation_set()?,
+            ),
     )
 }
 
