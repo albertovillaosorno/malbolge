@@ -898,6 +898,17 @@ behavior.
   alongside precedence selection, so FIFO eviction/readiness remain window-
   owned and planning performs no window, cache, adapter, or durable mutation.
 
+  Cumulative latency now adds an independent cache-limit signal with a positive
+  sample gate and caller-owned inclusive arithmetic-mean/maximum thresholds.
+  Ready latency selects only caller-supplied candidates and retains simultaneous
+  violations. Histogram overflow is not approximated because the cumulative
+  overflow-bin count is absent from one published latency record.
+
+  Exact latency/window candidate agreement preserves the existing window
+  recommendation; disagreement or missing authority withholds the combined
+  recommendation. This arbitration remains pure and is not yet wired implicitly
+  into the post-observation activation trigger.
+
   Explicit post-observation orchestration now accepts immutable telemetry-
   publication evidence after observed execution returns. Non-published telemetry
   performs no planning or activation; published telemetry plans from its exact
@@ -947,8 +958,9 @@ behavior.
   `executable_lease_cache/reconciliation.rs`, while resident-limit transitions
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
-  branch chains, a concrete FFI shim, additional cache-policy signals,
-  unattended triggering, and async/product scheduling remain out.
+  branch chains, a concrete FFI shim, cache-policy signals beyond cumulative
+  latency (including histogram-overflow integration), latency-aware observed
+  activation, unattended triggering, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy

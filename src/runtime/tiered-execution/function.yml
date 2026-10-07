@@ -812,6 +812,12 @@ parts:
     language: rust
     responsibility: >-
       Trigger explicit cache-limit activation from observed telemetry evidence.
+  - id: part-0146
+    path: composition/tier/cache_latency.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Recommend cache limits from cumulative latency and arbitrate with windows.
 projects: []
 tests: []
 graph:

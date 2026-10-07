@@ -2187,6 +2187,19 @@ with the resulting precedence selection, so FIFO eviction and aggregate
 readiness stay owned by the window rather than by cache policy. Planning itself
 performs no window, cache, adapter, or durable mutation.
 
+Cumulative latency records now provide an independent cache-limit signal with a
+positive sample gate plus caller-owned inclusive arithmetic-mean and maximum
+latency thresholds. Ready latency selects only caller-supplied meets/misses
+limits and retains simultaneous average/maximum violations. Histogram overflow
+is intentionally not approximated because one publication record does not carry
+the cumulative overflow-bin count.
+
+A latency recommendation may be conservatively combined with an existing window
+plan: exact matching limits preserve the window recommendation, disagreement
+withholds authority, and either missing signal remains deferred. This combined
+plan is pure and is not yet injected into post-observation activation
+implicitly.
+
 Explicit post-observation cache orchestration now consumes immutable telemetry-
 publication evidence after observed execution returns. Non-published telemetry
 retains its exact publication evidence and performs no planning or activation.
