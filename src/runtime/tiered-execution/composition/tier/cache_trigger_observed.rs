@@ -645,6 +645,24 @@ pub type NativeExecutableCacheLimitsClaimedObservedLatencyLeaseResult<
     LatencyObservedFailure<PolicyStore>,
 >;
 
+/// Retained-lifecycle ordinary-cache activation, absent without cursor
+/// authority.
+pub type NativeExecutableCacheLimitsRetainedLifecycleObservedCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = Option<
+    NativeExecutableCacheLimitsRetriedObservedCacheResult<
+        'publication,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+        ClockError,
+    >,
+>;
+
 /// Retry-gated ordinary-cache observed activation result.
 pub type NativeExecutableCacheLimitsRetriedObservedCacheResult<
     'publication,
@@ -1778,6 +1796,59 @@ where
         policy_request,
         || activate(publication, &mut context.observed, request),
     )
+}
+
+/// Runs ordinary-cache activation from retained lifecycle cursor authority.
+///
+/// Returns `None` without touching activation resources when the lifecycle has
+/// no safe expected cursor. Completed retry evidence is applied back into the
+/// lifecycle automatically, including post-claim activation failure.
+///
+/// # Errors
+///
+/// `Some(Err(...))` retains exact claim-retry or observed-activation failure.
+pub fn activate_retained_lifecycle_observed_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    lifecycle: &mut RetryLifecycle,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetainedLifecycleObservedCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(lifecycle)?;
+    let result = activate_policy_retried_observed_cache_limits_durably(
+        publication,
+        context,
+        policy_request,
+        request,
+    );
+    match &result {
+        Ok(outcome) => lifecycle.observe_activation(outcome),
+        Err(error) => lifecycle.observe_activation_error(error),
+    }
+    Some(result)
 }
 
 /// Applies product conflict policy before latency-aware cache activation.

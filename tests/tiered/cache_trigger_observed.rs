@@ -1637,3 +1637,93 @@ fn lifecycle_observes_committed_retry_on_activation_failure()
         ))
     }
 }
+
+#[test]
+fn retained_lifecycle_wrapper_fails_closed_and_observes_conflict()
+-> Result<(), String> {
+    let publication = published(1)?;
+    let current = cache_limits(4)?;
+    let mut empty_cursor_store = MemoryStore::default();
+    let mut empty_policy_store = MemoryStore::default();
+    let mut empty_cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut empty_adapter = NoOpAdapter::default();
+    let mut empty_lifecycle = RetryLifecycle::new(
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut empty_context =
+        NativeExecutableCacheLimitsClaimedObservedCacheContext::new(
+            &mut empty_cursor_store,
+            &mut empty_policy_store,
+            &mut empty_cache,
+            &mut empty_adapter,
+        );
+    if activate_retained_lifecycle_observed_cache_limits_durably(
+        &publication,
+        &mut empty_context,
+        &mut empty_lifecycle,
+        &observed_request()?,
+    )
+    .is_some()
+        || empty_cursor_store.compare_calls != 0
+        || empty_policy_store.compare_calls != 0
+        || empty_adapter.calls != 0
+    {
+        return Err(String::from(
+            "cursorless retained lifecycle touched activation resources",
+        ));
+    }
+
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut cursor_store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut policy_store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut context =
+        NativeExecutableCacheLimitsClaimedObservedCacheContext::new(
+            &mut cursor_store,
+            &mut policy_store,
+            &mut cache,
+            &mut adapter,
+        );
+    let result = activate_retained_lifecycle_observed_cache_limits_durably(
+        &publication,
+        &mut context,
+        &mut lifecycle,
+        &observed_request()?,
+    )
+    .ok_or_else(|| String::from("retained cursor authority disappeared"))?
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        result,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1 && !retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(refreshed)
+        && lifecycle.stop().is_some_and(|stop| {
+            stop.reason() == &RetryStopReason::ContentionObserved
+        })
+        && cursor_store.compare_calls == 1
+        && cursor_store.durability_calls == 0
+        && policy_store.compare_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retained lifecycle wrapper did not observe exact conflict",
+        ))
+    }
+}
