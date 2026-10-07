@@ -866,6 +866,12 @@ parts:
     language: rust
     responsibility: >-
       Define stable product reasons for explicit cache-trigger retry stops.
+  - id: part-0155
+    path: composition/tier/cache_policy.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Select typed product direction after cache-trigger claim conflicts.
 projects: []
 tests: []
 graph:

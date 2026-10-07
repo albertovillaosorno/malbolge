@@ -2260,6 +2260,13 @@ exhaustion. The taxonomy never selects `Stop`; budget exhaustion and other
 reasonless terminal outcomes remain outside it. Unattended lifecycle remains
 outside this boundary.
 
+`NativeExecutableCacheLimitsRetryConflictPolicy` now provides two explicit
+product choices over exact conflict evidence. Return-on-contention immediately
+uses `ContentionObserved`; a positive conflict-attempt limit continues below
+that threshold and uses `PolicyLimit` at or above it. Mechanical maximum
+attempts remain a separate retry-boundary budget and can still terminate
+reasonlessly before product policy is consulted.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

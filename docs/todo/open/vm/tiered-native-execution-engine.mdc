@@ -956,7 +956,11 @@ behavior.
   budget exhaustion, and telemetry non-publication remain reasonless. Stable
   product reasons now distinguish `ContentionObserved` (`contention-observed`)
   from caller-owned `PolicyLimit` (`policy-limit`) without selecting stop
-  policy. Unattended lifecycle remains open.
+  policy. Product conflict policy now either returns ownership on the first
+  contention with `ContentionObserved`, or continues below an explicit
+  positive conflict-attempt limit and stops at/above it with `PolicyLimit`.
+  Mechanical attempt exhaustion stays separate and reasonless. Unattended
+  lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
@@ -1021,8 +1025,8 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, cache-policy signals beyond current
-  reuse/pressure/latency evidence, typed trigger-conflict policy, unattended
-  lifecycle, and async/product scheduling remain out.
+  reuse/pressure/latency evidence, unattended lifecycle, and async/product
+  scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy
