@@ -63,6 +63,7 @@ use crate::execution_native::{
 };
 use crate::{
     executable_cache_limits_cas as cache_cas,
+    executable_cache_limits_latency as cache_latency,
     executable_cache_limits_precedence as cache_select,
 };
 
@@ -102,6 +103,9 @@ type LimitsCas =
     cache_cas::NativeExecutableSequenceCacheLimitsCas<DurabilityError>;
 
 type CachePrecedence = cache_select::NativeExecutableCacheLimitsPrecedence;
+
+type LatencyPlan = cache_latency::NativeExecutableCacheLimitsWindowLatencyPlan;
+type LatencyRequest = cache_latency::NativeExecutableCacheLimitsLatencyRequest;
 
 impl BlobStore for MemoryStore {
     type Error = StoreError;
@@ -479,6 +483,289 @@ fn prepublication_store_failure_retains_window_plan() -> Result<(), String> {
     } else {
         Err(String::from(
             "observed activation failure lost plan evidence",
+        ))
+    }
+}
+
+fn latency_request(
+    required_samples: usize,
+    meets: NativeExecutableSequenceCacheLimits,
+    misses: NativeExecutableSequenceCacheLimits,
+) -> Result<LatencyRequest, String> {
+    Ok(LatencyRequest::new(
+        cache_latency::NativeExecutableCacheLimitsLatencyThreshold::new(
+            nonzero(required_samples)?,
+            10,
+            10,
+        ),
+        NativeExecutableCacheLimitsRecommendationSet::new(meets, misses),
+    ))
+}
+
+fn observed_latency_request(
+    required_samples: usize,
+    meets: NativeExecutableSequenceCacheLimits,
+    misses: NativeExecutableSequenceCacheLimits,
+) -> Result<NativeExecutableCacheLimitsObservedLatencyActivationRequest, String>
+{
+    let activation = request()?;
+    Ok(
+        NativeExecutableCacheLimitsObservedLatencyActivationRequest::new(
+            &activation,
+            latency_request(required_samples, meets, misses)?,
+        ),
+    )
+}
+
+#[test]
+fn latency_unpublished_telemetry_skips_store_and_cache() -> Result<(), String> {
+    let publication =
+        NativeContinuationCachedRetryCycleTelemetryPublication::ClockFailure {
+            error: ClockError::Failed,
+        };
+    let current = limits(4)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(1, limits(2)?, limits(8)?)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedLatencyActivation::
+            TelemetryUnpublished { publication: observed }
+            if core::ptr::eq(observed, &publication)
+    ) && store.compare_and_swap_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "unpublished telemetry triggered latency-aware cache policy",
+        ))
+    }
+}
+
+#[test]
+fn latency_gate_defers_published_window_without_store_work()
+-> Result<(), String> {
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(2, limits(2)?, limits(8)?)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedLatencyActivation::Planned { plan }
+            if plan.recommendation().is_none()
+    ) && store.compare_and_swap_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency sample gate reached durable activation",
+        ))
+    }
+}
+
+#[test]
+fn latency_conflict_withholds_published_window_authority() -> Result<(), String>
+{
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let latency_limits = limits(8)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(1, latency_limits, limits(6)?)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedLatencyActivation::Planned {
+            plan: LatencyPlan::Conflict {
+                latency,
+                ..
+            },
+        } if latency.limits() == Some(latency_limits)
+    ) && store.compare_and_swap_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency conflict did not withhold window authority",
+        ))
+    }
+}
+
+#[test]
+fn latency_agreement_activates_ordinary_cache() -> Result<(), String> {
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(1, candidate, limits(8)?)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedLatencyActivation::Activated {
+            activation:
+                NativeExecutableCacheLimitsRecommendedActivation::Ready {
+                    activation:
+                        NativeExecutableSequenceCacheLimitsDurableActivation::
+                            Reconfigured {
+                                publication:
+                                    LimitsCas::Durable {
+                                        current: published,
+                                        previous: None,
+                                        ..
+                                    },
+                                ..
+                            },
+                    ..
+                },
+            plan,
+        } if published == candidate && plan.recommendation().is_some()
+    ) && store.compare_and_swap_calls == 1
+        && cache.limits() == candidate
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency agreement did not activate ordinary cache",
+        ))
+    }
+}
+
+#[test]
+fn latency_agreement_activates_lease_cache() -> Result<(), String> {
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedLeaseContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_lease_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(1, candidate, limits(8)?)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedLatencyActivation::Activated {
+            activation:
+                NativeExecutableCacheLimitsRecommendedActivation::Ready {
+                    activation:
+                        NativeExecutableSequenceCacheLimitsDurableActivation::
+                            Reconfigured {
+                                publication:
+                                    LimitsCas::Durable {
+                                        current: published,
+                                        previous: None,
+                                        ..
+                                    },
+                                ..
+                            },
+                    ..
+                },
+            ..
+        } if published == candidate
+    ) && store.compare_and_swap_calls == 1
+        && cache.limits() == candidate
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency agreement did not activate lease cache",
+        ))
+    }
+}
+
+#[test]
+fn latency_prepublication_failure_retains_combined_plan() -> Result<(), String>
+{
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let mut store = MemoryStore {
+        fail_store: true,
+        ..MemoryStore::default()
+    };
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let failure = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_latency_request(1, candidate, limits(8)?)?,
+    )
+    .err()
+    .ok_or_else(|| String::from("latency-aware store failure disappeared"))?;
+    if failure.plan().recommendation().is_some()
+        && failure.activation().recommendation().limits() == Some(candidate)
+        && store.compare_and_swap_calls == 1
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "latency-aware activation failure lost combined plan",
         ))
     }
 }

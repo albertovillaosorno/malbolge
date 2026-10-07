@@ -906,17 +906,18 @@ behavior.
 
   Exact latency/window candidate agreement preserves the existing window
   recommendation; disagreement or missing authority withholds the combined
-  recommendation. This arbitration remains pure and is not yet wired implicitly
-  into the post-observation activation trigger.
+  recommendation. This arbitration remains pure.
 
-  Explicit post-observation orchestration now accepts immutable telemetry-
-  publication evidence after observed execution returns. Non-published telemetry
-  performs no planning or activation; published telemetry plans from its exact
-  committed window append and routes only authorized policy through existing
-  ordinary/lease durable-live activation. Prepublication failure retains the
-  originating window plan.
+  Explicit post-observation orchestration now offers backward-compatible
+  window-only and latency-aware paths over immutable publication evidence. The
+  latency-aware path consumes the exact latency record and window append from
+  one
+  atomic `Published` outcome and reaches ordinary/lease durable-live activation
+  only after exact candidate agreement. Non-publication, latency deferral, and
+  conflict perform no CAS/cache mutation; prepublication failure retains the
+  exact combined plan.
 
-  The trigger remains caller-invoked rather than hidden inside telemetry
+  Both triggers remain caller-invoked rather than hidden inside telemetry
   collection. Unattended/product scheduling remains open.
 
   Explicit recommendation activation now validates the live limits used by the
@@ -959,8 +960,8 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, cache-policy signals beyond cumulative
-  latency (including histogram-overflow integration), latency-aware observed
-  activation, unattended triggering, and async/product scheduling remain out.
+  latency (including histogram-overflow integration), unattended triggering,
+  and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy

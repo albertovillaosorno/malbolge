@@ -2196,21 +2196,22 @@ the cumulative overflow-bin count.
 
 A latency recommendation may be conservatively combined with an existing window
 plan: exact matching limits preserve the window recommendation, disagreement
-withholds authority, and either missing signal remains deferred. This combined
-plan is pure and is not yet injected into post-observation activation
-implicitly.
+withholds authority, and either missing signal remains deferred. The combined
+plan remains pure.
 
-Explicit post-observation cache orchestration now consumes immutable telemetry-
-publication evidence after observed execution returns. Non-published telemetry
-retains its exact publication evidence and performs no planning or activation.
-Published telemetry plans from the committed window append and routes only an
-authorized recommendation through the existing ordinary- or lease-cache durable/
-live activation transaction.
+Explicit post-observation cache orchestration consumes immutable telemetry-
+publication evidence after observed execution returns. The original window-only
+path remains available unchanged. A parallel latency-aware path consumes the
+exact latency record and window append from the same atomic `Published` outcome,
+then permits ordinary- or lease-cache durable/live activation only after exact
+window/latency candidate agreement.
 
-Prepublication activation failure retains the originating window plan for exact
-auditability. This trigger is still caller-invoked: telemetry collection does
-not
-activate policy implicitly, and unattended/product scheduling remains open.
+Non-published telemetry, latency deferral, and window/latency conflict perform
+no
+CAS or cache mutation. Prepublication activation failure retains the exact
+window or combined window-latency plan that authorized the attempt. Both paths
+remain caller-invoked; telemetry collection does not activate policy implicitly,
+and unattended/product scheduling remains open.
 
 The recommendation and precedence layers perform no cache, adapter, or storage
 
