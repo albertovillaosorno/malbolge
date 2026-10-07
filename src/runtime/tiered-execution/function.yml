@@ -842,6 +842,12 @@ parts:
     language: rust
     responsibility: >-
       Conditionally publish cache-trigger cadence cursor state durably.
+  - id: part-0151
+    path: composition/tier/cache_claim.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Validate and durably claim one exact cache-trigger cadence slot.
 projects: []
 tests: []
 graph:

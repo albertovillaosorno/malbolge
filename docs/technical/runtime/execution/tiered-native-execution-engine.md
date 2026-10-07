@@ -2214,11 +2214,19 @@ explicit; malformed restored bytes fail closed; byte-limit/store failures happen
 before publication; post-publication durability failure retains the committed
 cursor as authoritative evidence.
 
-Canonical durable cursor CAS now excludes stale publishers. Expected and
-candidate cursors are compared as exact revision-one bytes; conflict returns a
-decoded current cursor, malformed conflict bytes fail closed, and durability
-failure after replacement retains the committed candidate. CAS does not validate
-that an arbitrary caller-supplied candidate is one legitimate due-slot advance.
+Canonical durable cursor CAS excludes stale publishers. Expected and candidate
+cursors are compared as exact revision-one bytes; conflict returns a decoded
+current cursor, malformed conflict bytes fail closed, and durability failure
+after replacement retains the committed candidate.
+
+Transition-validating durable slot claim now derives the candidate internally
+from an immutable expected cursor plus one successful window append. Deferred,
+missed, and exhausted cadence evidence performs no store work; only an exact due
+append advances a cursor copy and attempts expected-to-candidate CAS. Stale
+conflict cannot mutate the caller-owned cursor, while post-publication
+durability
+failure remains committed slot-claim evidence. Conflict retry, policy activation
+coupling, and unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
