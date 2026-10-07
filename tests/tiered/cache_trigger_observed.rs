@@ -48,7 +48,16 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetryWindow,
 };
+use crate::execution_native::{
+    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
+    NativeExecutableMappingReport, NativeExecutableReleaseRequest,
+    NativeExecutableSequenceCacheLimits, NativeInstructionSyncReport,
+    NativeInstructionSyncRequest,
+};
 use crate::{
+    executable_cache_limits_latency as cache_latency,
+    executable_cache_limits_precedence as cache_select,
+    executable_cache_limits_recommendation as cache_rec,
     executable_cache_limits_retry_lifecycle as retry_lifecycle,
     executable_cache_limits_retry_reason as retry_reason,
     executable_cache_limits_trigger_cadence_codec as cursor_codec,
@@ -97,6 +106,16 @@ enum DurabilityError {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AdapterError {
+    UnexpectedOperation,
+}
+
+#[derive(Debug, Default)]
+struct NoOpAdapter {
+    calls: usize,
+}
+
 #[derive(Debug, Default)]
 struct MemoryStore {
     bytes: Option<Vec<u8>>,
@@ -104,6 +123,51 @@ struct MemoryStore {
     durability_calls: usize,
     fail_durability: bool,
     forced_conflicts: VecDeque<Option<Vec<u8>>>,
+}
+
+impl NativeExecutableMemoryAdapter for NoOpAdapter {
+    type Error = AdapterError;
+
+    fn allocate_writable(
+        &mut self,
+        _request: NativeExecutableAllocationRequest,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        Err(AdapterError::UnexpectedOperation)
+    }
+
+    fn copy_code(
+        &mut self,
+        _mapping: NativeExecutableMappingReport,
+        _code: &[u8],
+    ) -> Result<NativeExecutableCodeCopyReport, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        Err(AdapterError::UnexpectedOperation)
+    }
+
+    fn protect_read_execute(
+        &mut self,
+        _mapping: NativeExecutableMappingReport,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        Err(AdapterError::UnexpectedOperation)
+    }
+
+    fn release(
+        &mut self,
+        _request: NativeExecutableReleaseRequest,
+    ) -> Result<(), Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        Err(AdapterError::UnexpectedOperation)
+    }
+
+    fn synchronize_instructions(
+        &mut self,
+        _request: NativeInstructionSyncRequest,
+    ) -> Result<NativeInstructionSyncReport, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        Err(AdapterError::UnexpectedOperation)
+    }
 }
 
 impl BlobStore for MemoryStore {
@@ -178,6 +242,70 @@ fn encode_cursor(value: Cursor) -> Vec<u8> {
 fn positive(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value)
         .ok_or_else(|| String::from("test positive value missing"))
+}
+
+fn cache_limits(
+    entries: usize,
+) -> Result<NativeExecutableSequenceCacheLimits, String> {
+    positive(entries).map(NativeExecutableSequenceCacheLimits::new)
+}
+
+fn observed_request()
+-> Result<obs::NativeExecutableCacheLimitsObservedActivationRequest, String> {
+    let one = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test ratio must be positive"))?;
+    let policy = cache_rec::NativeExecutableCacheLimitsTwoSignalRequest::new(
+        cache_rec::NativeExecutableCacheLimitsReuseThreshold::new(
+            positive(4)?,
+            one,
+            one,
+        ),
+        cache_rec::NativeExecutableCacheLimitsRecommendationSet::new(
+            cache_limits(3)?,
+            cache_limits(8)?,
+        ),
+        cache_rec::NativeExecutableCacheLimitsPressureThreshold::new(
+            positive(4)?,
+            2,
+            1,
+        ),
+        cache_rec::NativeExecutableCacheLimitsRecommendationSet::new(
+            cache_limits(3)?,
+            cache_limits(2)?,
+        ),
+    );
+    Ok(
+        obs::NativeExecutableCacheLimitsObservedActivationRequest::new(
+            &policy,
+            cache_select::NativeExecutableCacheLimitsPrecedence::Pressure,
+            None,
+            positive(40)?,
+        ),
+    )
+}
+
+fn observed_latency_request() -> Result<
+    obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+    String,
+> {
+    let activation = observed_request()?;
+    let latency = cache_latency::NativeExecutableCacheLimitsLatencyRequest::new(
+        cache_latency::NativeExecutableCacheLimitsLatencyThreshold::new(
+            positive(1)?,
+            10,
+            10,
+        ),
+        cache_rec::NativeExecutableCacheLimitsRecommendationSet::new(
+            cache_limits(3)?,
+            cache_limits(2)?,
+        ),
+    );
+    Ok(
+        obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest::new(
+            &activation,
+            latency,
+        ),
+    )
 }
 
 fn retry_request(
@@ -1168,4 +1296,189 @@ fn policy_retry_lifecycle_reuses_state_and_clears_stop_on_success()
             "lifecycle reuse did not clear stop state on committed success",
         ))
     }
+}
+
+#[test]
+fn policy_public_wrappers_skip_all_resources_when_unpublished()
+-> Result<(), String> {
+    let publication = TelemetryPublication::ClockFailure {
+        error: ClockError::Failed,
+    };
+    let expected = cursor(1, 2)?;
+    let current = cache_limits(4)?;
+
+    {
+        let mut cursor_store = MemoryStore::default();
+        let mut policy_store = MemoryStore::default();
+        let mut cache = NativeExecutableSequenceCache::with_limits(current);
+        let mut adapter = NoOpAdapter::default();
+        let mut lifecycle = RetryLifecycle::new(
+            positive(32)?,
+            positive(3)?,
+            RetryConflictPolicy::return_on_contention(),
+        );
+        let mut context =
+            NativeExecutableCacheLimitsClaimedObservedCacheContext::new(
+                &mut cursor_store,
+                &mut policy_store,
+                &mut cache,
+                &mut adapter,
+            );
+        let outcome = activate_policy_retried_observed_cache_limits_durably(
+            &publication,
+            &mut context,
+            NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+                from_lifecycle(&mut lifecycle, expected),
+                &observed_request()?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        if !matches!(
+            outcome,
+            RetriedActivation::TelemetryUnpublished {
+                publication: observed,
+            } if core::ptr::eq(observed, &publication)
+        ) || cursor_store.compare_calls != 0
+            || policy_store.compare_calls != 0
+            || cache.limits() != current
+            || adapter.calls != 0
+            || lifecycle.stop().is_some()
+        {
+            return Err(String::from(
+                "ordinary policy wrapper touched unpublished resources",
+            ));
+        }
+    }
+
+    {
+        let mut cursor_store = MemoryStore::default();
+        let mut policy_store = MemoryStore::default();
+        let mut cache = NativeExecutableSequenceCache::with_limits(current);
+        let mut adapter = NoOpAdapter::default();
+        let mut lifecycle = RetryLifecycle::new(
+            positive(32)?,
+            positive(3)?,
+            RetryConflictPolicy::return_on_contention(),
+        );
+        let mut context =
+            NativeExecutableCacheLimitsClaimedObservedCacheContext::new(
+                &mut cursor_store,
+                &mut policy_store,
+                &mut cache,
+                &mut adapter,
+            );
+        let outcome =
+            activate_policy_retried_observed_cache_limits_with_latency_durably(
+                &publication,
+                &mut context,
+                NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+                    from_lifecycle(&mut lifecycle, expected),
+                &observed_latency_request()?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        if !matches!(
+            outcome,
+            RetriedActivation::TelemetryUnpublished {
+                publication: observed,
+            } if core::ptr::eq(observed, &publication)
+        ) || cursor_store.compare_calls != 0
+            || policy_store.compare_calls != 0
+            || cache.limits() != current
+            || adapter.calls != 0
+            || lifecycle.stop().is_some()
+        {
+            return Err(String::from(
+                "latency policy wrapper touched unpublished resources",
+            ));
+        }
+    }
+
+    {
+        let mut cursor_store = MemoryStore::default();
+        let mut policy_store = MemoryStore::default();
+        let mut cache =
+            NativeExecutableSequenceLeaseCache::with_limits(current);
+        let mut adapter = NoOpAdapter::default();
+        let mut lifecycle = RetryLifecycle::new(
+            positive(32)?,
+            positive(3)?,
+            RetryConflictPolicy::return_on_contention(),
+        );
+        let mut context =
+            NativeExecutableCacheLimitsClaimedObservedLeaseContext::new(
+                &mut cursor_store,
+                &mut policy_store,
+                &mut cache,
+                &mut adapter,
+            );
+        let outcome =
+            activate_policy_retried_observed_lease_cache_limits_durably(
+                &publication,
+            &mut context,
+            NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+                from_lifecycle(&mut lifecycle, expected),
+            &observed_request()?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        if !matches!(
+            outcome,
+            RetriedActivation::TelemetryUnpublished {
+                publication: observed,
+            } if core::ptr::eq(observed, &publication)
+        ) || cursor_store.compare_calls != 0
+            || policy_store.compare_calls != 0
+            || cache.limits() != current
+            || adapter.calls != 0
+            || lifecycle.stop().is_some()
+        {
+            return Err(String::from(
+                "lease policy wrapper touched unpublished resources",
+            ));
+        }
+    }
+
+    {
+        let mut cursor_store = MemoryStore::default();
+        let mut policy_store = MemoryStore::default();
+        let mut cache =
+            NativeExecutableSequenceLeaseCache::with_limits(current);
+        let mut adapter = NoOpAdapter::default();
+        let mut lifecycle = RetryLifecycle::new(
+            positive(32)?,
+            positive(3)?,
+            RetryConflictPolicy::return_on_contention(),
+        );
+        let mut context =
+            NativeExecutableCacheLimitsClaimedObservedLeaseContext::new(
+                &mut cursor_store,
+                &mut policy_store,
+                &mut cache,
+                &mut adapter,
+            );
+        let outcome =
+            activate_policy_retried_lease_cache_limits_with_latency_durably(
+                &publication,
+                &mut context,
+                NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+                    from_lifecycle(&mut lifecycle, expected),
+                &observed_latency_request()?,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        if !matches!(
+            outcome,
+            RetriedActivation::TelemetryUnpublished {
+                publication: observed,
+            } if core::ptr::eq(observed, &publication)
+        ) || cursor_store.compare_calls != 0
+            || policy_store.compare_calls != 0
+            || cache.limits() != current
+            || adapter.calls != 0
+            || lifecycle.stop().is_some()
+        {
+            return Err(String::from(
+                "latency lease wrapper touched unpublished resources",
+            ));
+        }
+    }
+
+    Ok(())
 }
