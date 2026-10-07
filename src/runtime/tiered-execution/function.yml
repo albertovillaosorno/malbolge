@@ -806,6 +806,12 @@ parts:
     language: rust
     responsibility: >-
       Plan cache-limit policy from published telemetry-window aggregate totals.
+  - id: part-0145
+    path: composition/tier/cache_observed.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Trigger explicit cache-limit activation from observed telemetry evidence.
 projects: []
 tests: []
 graph:

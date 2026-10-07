@@ -2179,13 +2179,25 @@ On ready conflict, `AgreementOnly` withholds authority while explicit `Reuse` or
 `Pressure` precedence selects only that exact ready recommendation; an
 unavailable
 selected signal remains non-authoritative. Selected recommendations use the same
-explicit durable/live activation bridge. Automatic triggering remains open.
+explicit durable/live activation bridge. Unattended triggering remains open.
 
 Telemetry-window cache-policy planning now runs only after a successful append
 has published retained aggregate totals. It carries the exact append evidence
 with the resulting precedence selection, so FIFO eviction and aggregate
 readiness stay owned by the window rather than by cache policy. Planning itself
 performs no window, cache, adapter, or durable mutation.
+
+Explicit post-observation cache orchestration now consumes immutable telemetry-
+publication evidence after observed execution returns. Non-published telemetry
+retains its exact publication evidence and performs no planning or activation.
+Published telemetry plans from the committed window append and routes only an
+authorized recommendation through the existing ordinary- or lease-cache durable/
+live activation transaction.
+
+Prepublication activation failure retains the originating window plan for exact
+auditability. This trigger is still caller-invoked: telemetry collection does
+not
+activate policy implicitly, and unattended/product scheduling remains open.
 
 The recommendation and precedence layers perform no cache, adapter, or storage
 

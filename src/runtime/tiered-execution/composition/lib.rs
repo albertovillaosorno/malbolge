@@ -99,6 +99,8 @@ pub mod executable_cache_limits_activation;
 pub mod executable_cache_limits_cas;
 #[path = "tier/cache_act.rs"]
 pub mod executable_cache_limits_durable_activation;
+#[path = "tier/cache_observed.rs"]
+pub mod executable_cache_limits_observed_activation;
 #[path = "tier/executable_cache_limits_store.rs"]
 pub mod executable_cache_limits_persistence;
 #[path = "tier/cache_select.rs"]
