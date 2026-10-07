@@ -853,7 +853,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Gate observed cache activation on committed trigger claims and retries.
+      Gate observed cache activation on claims, retries, and conflict direction.
   - id: part-0153
     path: composition/tier/cache_cr.rs
     kind: composition

@@ -655,3 +655,101 @@ fn retry_activation_failure_retains_full_retry_evidence() -> Result<(), String>
         Err(String::from("activation failure lost claim retry evidence"))
     }
 }
+
+#[test]
+fn controlled_retry_stop_withholds_activation() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut seen = None;
+    let controlled =
+        NativeExecutableCacheLimitsControlledRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            |conflict: NativeContinuationRetryConflict| {
+                seen = Some(conflict.completed_attempts());
+                NativeContinuationRetryDirective::Stop
+            },
+        );
+    let outcome = activate_after_controlled_claim_retries(
+        &publication,
+        &mut store,
+        controlled,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(53)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && seen == Some(1)
+        && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(refreshed))
+    {
+        Ok(())
+    } else {
+        Err(String::from("caller stop reached activation"))
+    }
+}
+
+#[test]
+fn controlled_retry_continue_commits_then_activates_once() -> Result<(), String>
+{
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let candidate = cursor(4, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut seen = None;
+    let controlled =
+        NativeExecutableCacheLimitsControlledRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            |conflict: NativeContinuationRetryConflict| {
+                seen = Some(conflict.completed_attempts());
+                NativeContinuationRetryDirective::Continue
+            },
+        );
+    let outcome = activate_after_controlled_claim_retries(
+        &publication,
+        &mut store,
+        controlled,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(59)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::Claimed {
+            retry,
+            observed: 59,
+        } if retry.attempts() == 2
+            && retry.outcome().is_committed()
+    ) && seen == Some(1)
+        && calls == 1
+        && store.compare_calls == 2
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from("caller continue did not reach one activation"))
+    }
+}

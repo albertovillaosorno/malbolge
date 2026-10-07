@@ -16,13 +16,14 @@
 //     work, choose storage paths, or redefine cache-limit policy semantics.
 // - Allows:
 //   - Inputs: observed publication, expected cadence cursor, positive optional
-//     retry budget, separate cursor/policy resources, and activation request.
+//     retry budget/direction, separate cursor/policy resources, and activation
+//     request.
 //   - Outputs: unpublished, withheld claim/retry, claimed activation, or exact
 //     claim/retry/activation failure evidence.
 //   - Side effects: bounded due-slot claims followed by existing activation
 //     side effects only after terminal retry evidence committed.
 // - Split-When:
-//   - Product conflict policy or unattended lifecycle gains authority.
+//   - Typed conflict-reason policy or unattended lifecycle gains authority.
 // - Merge-When:
 //   - One product trigger owner subsumes claim, activation, and lifecycle.
 // - Summary:
@@ -50,6 +51,9 @@ use crate::blob_store::{
 use crate::execution_native::{
     NativeExecutableMemoryAdapter, NativeExecutableSequenceCache,
     NativeExecutableSequenceLeaseCache,
+};
+use crate::retry_control::{
+    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
 };
 use crate::{
     cached_cycle as cached, executable_cache_limits_observed_activation as obs,
@@ -102,6 +106,14 @@ pub struct NativeExecutableCacheLimitsRetriedObservedRequest {
     expected_cursor: Cursor,
     maximum_attempts: NonZeroUsize,
     maximum_bytes: NonZeroUsize,
+}
+
+/// Caller-owned retry bounds plus policy-neutral conflict direction.
+#[derive(Debug)]
+pub struct NativeExecutableCacheLimitsControlledRetriedObservedRequest<Control>
+{
+    control: Control,
+    retry: NativeExecutableCacheLimitsRetriedObservedRequest,
 }
 
 /// Separate cursor/policy resources for one ordinary-cache claimed activation.
@@ -253,6 +265,19 @@ impl NativeExecutableCacheLimitsRetriedObservedRequest {
             maximum_attempts,
             maximum_bytes,
         }
+    }
+}
+
+impl<Control>
+    NativeExecutableCacheLimitsControlledRetriedObservedRequest<Control>
+{
+    /// Binds one retry request to caller conflict direction.
+    #[must_use]
+    pub const fn new(
+        retry: NativeExecutableCacheLimitsRetriedObservedRequest,
+        control: Control,
+    ) -> Self {
+        Self { control, retry }
     }
 }
 
@@ -570,17 +595,20 @@ where
     Ok(ClaimedActivation::Claimed { claim, observed })
 }
 
-fn activate_after_claim_retries<
+fn activate_after_controlled_claim_retries<
     'publication,
     CursorStore,
     Activation,
     ActivationError,
     ClockError,
+    Control,
     Apply,
 >(
     publication: &'publication TelemetryPublication<ClockError>,
     cursor_store: &mut CursorStore,
-    retry_request: NativeExecutableCacheLimitsRetriedObservedRequest,
+    controlled: NativeExecutableCacheLimitsControlledRetriedObservedRequest<
+        Control,
+    >,
     apply: Apply,
 ) -> RetriedResult<
     'publication,
@@ -591,6 +619,9 @@ fn activate_after_claim_retries<
 >
 where
     CursorStore: ConditionalBlobStore + DurableBlobStore,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
     Apply: FnOnce() -> Result<Activation, ActivationError>,
 {
     let TelemetryPublication::Published { window, .. } = publication else {
@@ -599,6 +630,7 @@ where
                 TelemetryUnpublished { publication },
         );
     };
+    let retry_request = controlled.retry;
     let request = ClaimRetryRequest::new(
         retry_request.expected_cursor,
         window,
@@ -606,9 +638,10 @@ where
         retry_request.maximum_attempts,
     );
     let retry =
-        cursor_retry::claim_cache_trigger_cadence_slot_durably_with_retries(
+        cursor_retry::claim_cache_trigger_cadence_slot_with_retry_control(
             cursor_store,
             request,
+            controlled.control,
         )
         .map_err(|error| {
             Box::new(
@@ -636,6 +669,40 @@ where
             retry,
             observed,
         },
+    )
+}
+
+fn activate_after_claim_retries<
+    'publication,
+    CursorStore,
+    Activation,
+    ActivationError,
+    ClockError,
+    Apply,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    cursor_store: &mut CursorStore,
+    retry_request: NativeExecutableCacheLimitsRetriedObservedRequest,
+    apply: Apply,
+) -> RetriedResult<
+    'publication,
+    CursorStore,
+    Activation,
+    ClockError,
+    ActivationError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    Apply: FnOnce() -> Result<Activation, ActivationError>,
+{
+    activate_after_controlled_claim_retries(
+        publication,
+        cursor_store,
+        NativeExecutableCacheLimitsControlledRetriedObservedRequest::new(
+            retry_request,
+            |_conflict| NativeContinuationRetryDirective::Continue,
+        ),
+        apply,
     )
 }
 
@@ -985,6 +1052,205 @@ where
         publication,
         context.cursor_store,
         retry_request,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies caller conflict direction before ordinary-cache activation.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or observed activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_controlled_retried_observed_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    controlled: NativeExecutableCacheLimitsControlledRetriedObservedRequest<
+        Control,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
+    let activate =
+        obs::activate_observed_executable_sequence_cache_limits_durably;
+    activate_after_controlled_claim_retries(
+        publication,
+        context.cursor_store,
+        controlled,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies caller conflict direction before latency-aware cache activation.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or latency-aware activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_controlled_retried_observed_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    controlled: NativeExecutableCacheLimitsControlledRetriedObservedRequest<
+        Control,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
+    let activate = obs::activate_observed_cache_limits_with_latency_durably;
+    activate_after_controlled_claim_retries(
+        publication,
+        context.cursor_store,
+        controlled,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies caller conflict direction before lease-cache activation.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or observed activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_controlled_retried_observed_lease_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    controlled: NativeExecutableCacheLimitsControlledRetriedObservedRequest<
+        Control,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
+    let activate =
+        obs::activate_observed_executable_sequence_lease_cache_limits_durably;
+    activate_after_controlled_claim_retries(
+        publication,
+        context.cursor_store,
+        controlled,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies caller direction before latency-aware lease-cache activation.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or latency-aware activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_controlled_retried_lease_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    controlled: NativeExecutableCacheLimitsControlledRetriedObservedRequest<
+        Control,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDirective,
+{
+    let activate =
+        obs::activate_observed_lease_cache_limits_with_latency_durably;
+    activate_after_controlled_claim_retries(
+        publication,
+        context.cursor_store,
+        controlled,
         || activate(publication, &mut context.observed, request),
     )
 }

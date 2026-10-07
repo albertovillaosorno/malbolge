@@ -2242,8 +2242,12 @@ durable and post-publication-durability-failed terminal claims proceed through
 the caller-selected observed path exactly once. Retry-aware outcomes retain the
 completed attempt count plus terminal claim, and downstream activation failure
 retains that complete committed retry evidence without restarting contention.
-Product-specific conflict policy and unattended lifecycle remain outside this
-boundary.
+
+Retry-aware activation also accepts caller conflict direction. The callback sees
+only exact completed-attempt conflict evidence and returns `Continue` or `Stop`;
+`Stop` preserves the current terminal conflict without activation, while
+`Continue` reuses the same exact refresh/revalidation path. Typed stop-reason or
+product policy taxonomy and unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
