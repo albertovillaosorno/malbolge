@@ -103,6 +103,8 @@ pub mod executable_cache_limits_recommendation;
 pub mod executable_cache_limits_retry_bootstrap;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_lifecycle.rs"]
 pub mod executable_cache_limits_retry_lifecycle;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_pacing.rs"]
+pub mod executable_cache_limits_retry_pacing;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_policy.rs"]
 pub mod executable_cache_limits_retry_policy;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_reason.rs"]

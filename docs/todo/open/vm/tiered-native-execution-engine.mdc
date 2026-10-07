@@ -991,9 +991,15 @@ behavior.
 
   A separate positive relative-wait port now provides explicit product-lifecycle
   delay capability without changing the monotonic measurement clock or cache
-  cadence. Its standard adapter only blocks the current host thread. Lifecycle
-  wait selection, repeated/background execution, cancellation, and asynchronous
-  wake ownership remain open.
+  cadence. Its standard adapter only blocks the current host thread.
+
+  Lifecycle wait selection is now process-local and explicit: the first
+  retained-cursor turn is immediate, completed later turns use the configured
+  positive relative delay, cursor loss avoids waiting, and wait failure grants
+  no readiness. Retained conflict-stop evidence remains per-attempt evidence
+  rather than a permanent lifecycle shutdown signal. Turn execution,
+  cancellation, repeated background ownership, and asynchronous wake ownership
+  remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

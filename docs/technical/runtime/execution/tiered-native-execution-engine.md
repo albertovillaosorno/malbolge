@@ -2311,6 +2311,16 @@ thread via `std::thread::sleep`; it selects no cadence or policy and creates no
 worker. Repeated lifecycle execution, cancellation, async wake handles, and
 background ownership remain open.
 
+A process-local lifecycle pacer now consumes that relative-wait dependency. The
+first turn with retained cursor authority is immediately ready; after the caller
+explicitly records one completed turn, each later authorized turn waits the
+configured positive duration first. Cursor loss fails closed before waiting,
+and wait failure grants no ready evidence.
+
+Retained conflict-stop evidence is not reinterpreted as permanent lifecycle
+shutdown. Turn execution, cancellation, and background/async ownership remain
+separate.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

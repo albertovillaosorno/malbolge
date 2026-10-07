@@ -899,6 +899,12 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: Bind relative waiting to standard-library thread sleep.
+  - id: part-0161
+    path: composition/tier/cache_pacing.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Pace explicit repeated cache-trigger lifecycle turns with relative waits.
 projects: []
 tests: []
 graph:
