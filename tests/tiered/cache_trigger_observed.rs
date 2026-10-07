@@ -9,9 +9,10 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Regression coverage for claim-gated observed activation sequencing.
+//   - Regression coverage for one-shot and bounded-retry claim-gated
+//     activation.
 // - Must-Not:
-//   - Redefine cache policy, retry conflicts, or spawn unattended work.
+//   - Redefine cache policy, retry committed claims, or spawn unattended work.
 // - Allows:
 //   - Inputs: deterministic observed publications and in-memory cursor CAS.
 //   - Outputs: exact unpublished/withheld/claimed/failure evidence.
@@ -32,6 +33,7 @@
 
 //! Regression coverage for durable-claim gating of observed activation.
 
+use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::num::NonZeroU64;
 
@@ -63,6 +65,19 @@ type ClaimedError<ActivationError> =
     >;
 type CursorCas =
     cursor_cas::NativeExecutableCacheLimitsTriggerCadenceCas<DurabilityError>;
+type RetriedActivation<'publication, Activation> =
+    NativeExecutableCacheLimitsRetriedObservedActivation<
+        'publication,
+        DurabilityError,
+        Activation,
+        ClockError,
+    >;
+type RetriedError<ActivationError> =
+    NativeExecutableCacheLimitsRetriedObservedActivationError<
+        Infallible,
+        DurabilityError,
+        ActivationError,
+    >;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ClockError {
@@ -80,6 +95,7 @@ struct MemoryStore {
     compare_calls: usize,
     durability_calls: usize,
     fail_durability: bool,
+    forced_conflicts: VecDeque<Option<Vec<u8>>>,
 }
 
 impl BlobStore for MemoryStore {
@@ -106,6 +122,14 @@ impl ConditionalBlobStore for MemoryStore {
         _maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobConditionalPublicationResult<Self::Error> {
         self.compare_calls = self.compare_calls.saturating_add(1);
+        if let Some(current) = self.forced_conflicts.pop_front() {
+            self.bytes = current.clone();
+            return Ok(
+                NativeContinuationBlobConditionalPublication::Conflict {
+                    current,
+                },
+            );
+        }
         if self.bytes.as_deref() != expected {
             return Ok(
                 NativeContinuationBlobConditionalPublication::Conflict {
@@ -146,6 +170,17 @@ fn encode_cursor(value: Cursor) -> Vec<u8> {
 fn positive(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value)
         .ok_or_else(|| String::from("test positive value missing"))
+}
+
+fn retry_request(
+    expected: Cursor,
+    maximum_attempts: usize,
+) -> Result<NativeExecutableCacheLimitsRetriedObservedRequest, String> {
+    Ok(NativeExecutableCacheLimitsRetriedObservedRequest::new(
+        expected,
+        positive(32)?,
+        positive(maximum_attempts)?,
+    ))
 }
 
 fn published(
@@ -422,5 +457,201 @@ fn unpublished_telemetry_skips_claim_and_activation() -> Result<(), String> {
         Err(String::from(
             "unpublished telemetry reached claim or activation",
         ))
+    }
+}
+
+#[test]
+fn retry_conflict_then_commit_invokes_activation_once() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let candidate = cursor(4, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let outcome = activate_after_claim_retries(
+        &publication,
+        &mut store,
+        retry_request(expected, 3)?,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(37)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::Claimed {
+            retry,
+            observed: 37,
+        } if retry.attempts() == 2
+            && retry.outcome().is_committed()
+    ) && calls == 1
+        && store.compare_calls == 2
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retried committed claim did not gate activation",
+        ))
+    }
+}
+
+#[test]
+fn retry_refresh_non_due_withholds_activation() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(3, 2)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let outcome = activate_after_claim_retries(
+        &publication,
+        &mut store,
+        retry_request(expected, 3)?,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(41)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 2
+                && !retry.outcome().is_committed()
+    ) && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(refreshed))
+    {
+        Ok(())
+    } else {
+        Err(String::from("refreshed non-due retry reached activation"))
+    }
+}
+
+#[test]
+fn retry_budget_exhaustion_withholds_activation() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let outcome = activate_after_claim_retries(
+        &publication,
+        &mut store,
+        retry_request(expected, 1)?,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(43)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(refreshed))
+    {
+        Ok(())
+    } else {
+        Err(String::from("exhausted retry budget reached activation"))
+    }
+}
+
+#[test]
+fn retry_durability_failure_invokes_activation_once() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let candidate = cursor(3, 2)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        fail_durability: true,
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let outcome = activate_after_claim_retries(
+        &publication,
+        &mut store,
+        retry_request(expected, 3)?,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(47)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::Claimed {
+            retry,
+            observed: 47,
+        } if retry.attempts() == 1
+            && retry.outcome().is_committed()
+    ) && calls == 1
+        && store.compare_calls == 1
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "committed retry durability failure withheld activation",
+        ))
+    }
+}
+
+#[test]
+fn retry_activation_failure_retains_full_retry_evidence() -> Result<(), String>
+{
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let candidate = cursor(4, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let result = activate_after_claim_retries(
+        &publication,
+        &mut store,
+        retry_request(expected, 3)?,
+        || Err::<u8, &'static str>("activation failed after retry"),
+    );
+    if matches!(
+        result,
+        Err(error)
+            if matches!(
+                &*error,
+                RetriedError::Observed {
+                    retry,
+                    error: "activation failed after retry",
+                } if retry.attempts() == 2
+                    && retry.outcome().is_committed()
+            )
+    ) && store.compare_calls == 2
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from("activation failure lost claim retry evidence"))
     }
 }

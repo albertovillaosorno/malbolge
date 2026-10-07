@@ -939,12 +939,13 @@ behavior.
   Durable and committed durability-failure claims are terminal.
 
   Window-only and latency-aware ordinary/lease observed activation can now be
-  gated by that committed claim over separate cursor and cache-policy resources.
-  Unpublished telemetry performs neither claim nor policy work; non-due or stale
-  claims withhold activation; durable and committed durability-failure claims
-  proceed through the caller-selected observed path. Activation failure retains
-  the committed claim. Coordinator-level claim-retry integration and unattended
-  lifecycle remain open.
+  gated by either one committed claim or caller-bounded synchronous claim retry
+  over separate cursor and cache-policy resources. Unpublished telemetry
+  performs neither claim nor policy work; non-due, stale, and exhausted retry
+  evidence withholds activation; committed terminal claims activate exactly
+  once. Retry-aware outcomes retain exact attempt count plus terminal claim, and
+  activation failure retains that committed retry evidence without restarting
+  contention. Product conflict policy and unattended lifecycle remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
@@ -1009,8 +1010,8 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, cache-policy signals beyond current
-  reuse/pressure/latency evidence, claim-retry activation integration,
-  unattended lifecycle, and async/product scheduling remain out.
+  reuse/pressure/latency evidence, product conflict policy, unattended
+  lifecycle, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy

@@ -2234,14 +2234,16 @@ refreshed deferred/missed/exhausted decision stops without another CAS. Durable
 publication and committed durability failure are terminal and never retried.
 
 Window-only and latency-aware ordinary- and lease-cache observed activation can
-now be gated by that committed claim. The coordinator owns separate cursor and
-cache-policy resources: unpublished telemetry performs neither claim nor policy
-work; non-due or stale claim evidence performs no cache-policy activation;
-durable and post-publication-durability-failed claims proceed through the
-existing observed path selected by the caller. Downstream activation failure
-retains the already committed claim and does not invent rollback. The observed
-activation coordinator does not yet invoke the bounded claim-retry layer; retry
-integration and unattended lifecycle remain outside this boundary.
+now be gated by either one committed claim or caller-bounded synchronous claim
+retry. The coordinator owns separate cursor and cache-policy resources:
+unpublished telemetry performs neither claim nor policy work; non-due, stale, or
+retry-budget-exhausted terminal evidence performs no cache-policy activation;
+durable and post-publication-durability-failed terminal claims proceed through
+the caller-selected observed path exactly once. Retry-aware outcomes retain the
+completed attempt count plus terminal claim, and downstream activation failure
+retains that complete committed retry evidence without restarting contention.
+Product-specific conflict policy and unattended lifecycle remain outside this
+boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
