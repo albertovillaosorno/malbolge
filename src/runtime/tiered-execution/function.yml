@@ -885,6 +885,20 @@ parts:
     language: rust
     responsibility: >-
       Restore durable cache-trigger cursor authority into retry lifecycle state.
+  - id: part-0158
+    path: port-outbound/relative_wait.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define positive relative waiting for product lifecycle work.
+  - id: part-0159
+    path: adapter-outbound/wakeup/README.md
+    kind: adapter-outbound
+    responsibility: Document standard tiered relative-wait adapter ownership.
+  - id: part-0160
+    path: adapter-outbound/wakeup/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind relative waiting to standard-library thread sleep.
 projects: []
 tests: []
 graph:

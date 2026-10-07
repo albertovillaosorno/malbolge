@@ -143,6 +143,8 @@ pub mod execution_cache;
 pub mod execution_clock;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../adapter-outbound/wakeup/main.rs"]
+pub mod execution_relative_wait;
 #[path = "../adapter-outbound/blob_pair/main.rs"]
 pub mod file_blob_pair_store;
 #[path = "../adapter-outbound/blob/main.rs"]
@@ -249,6 +251,8 @@ pub mod register_masked_aot_object_persistence;
 pub mod register_masked_aot_package_lease_reclamation;
 #[path = "tier/aot_package.rs"]
 pub mod register_masked_aot_package_persistence;
+#[path = "../port-outbound/relative_wait.rs"]
+pub mod relative_wait;
 #[path = "retry_control.rs"]
 pub mod retry_control;
 #[path = "tier/retry_cycle.rs"]

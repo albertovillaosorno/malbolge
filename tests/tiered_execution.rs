@@ -127,6 +127,8 @@ pub mod execution_cache;
 pub mod execution_clock;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/wakeup/main.rs"]
+pub mod execution_relative_wait;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/blob_pair/main.rs"]
 pub mod file_blob_pair_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/blob/main.rs"]
@@ -223,6 +225,8 @@ pub mod pair_retention_reclamation_retry;
 pub mod pair_retention_reclamation_transition;
 #[path = "../src/runtime/tiered-execution/composition/pair_retention_retry.rs"]
 pub mod pair_retention_reconciliation;
+#[path = "../src/runtime/tiered-execution/port-outbound/relative_wait.rs"]
+pub mod relative_wait;
 #[path = "../src/runtime/tiered-execution/composition/retry_control.rs"]
 pub mod retry_control;
 #[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]

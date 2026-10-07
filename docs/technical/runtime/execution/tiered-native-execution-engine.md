@@ -2304,6 +2304,13 @@ success/error evidence back into lifecycle state. A cursorless lifecycle returns
 before touching cursor, policy, cache, or adapter resources. Unattended clock
 ownership and asynchronous triggering remain outside these wrappers.
 
+A separate positive relative-wait port now gives future product lifecycle
+orchestration an explicit delay dependency without extending the monotonic
+interval-measurement clock. The standard adapter blocks only the current host
+thread via `std::thread::sleep`; it selects no cadence or policy and creates no
+worker. Repeated lifecycle execution, cancellation, async wake handles, and
+background ownership remain open.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
