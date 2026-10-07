@@ -105,6 +105,8 @@ pub mod executable_cache_limits_trigger_cadence;
 pub mod executable_cache_limits_trigger_cadence_cas;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_claim.rs"]
 pub mod executable_cache_limits_trigger_cadence_claim;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_cr.rs"]
+pub mod executable_cache_limits_trigger_cadence_claim_retry;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_cc.rs"]
 pub mod executable_cache_limits_trigger_cadence_codec;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_cs.rs"]

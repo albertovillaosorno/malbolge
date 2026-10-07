@@ -854,6 +854,12 @@ parts:
     language: rust
     responsibility: >-
       Gate observed cache activation on one committed trigger-cadence claim.
+  - id: part-0153
+    path: composition/tier/cache_cr.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Retry exact cache-trigger cadence claim conflicts within caller bounds.
 projects: []
 tests: []
 graph:

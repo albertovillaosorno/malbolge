@@ -2224,8 +2224,14 @@ from an immutable expected cursor plus one successful window append. Deferred,
 missed, and exhausted cadence evidence performs no store work; only an exact due
 append advances a cursor copy and attempts expected-to-candidate CAS. Stale
 conflict cannot mutate the caller-owned cursor, while post-publication
-durability
-failure remains committed slot-claim evidence.
+durability failure remains committed slot-claim evidence.
+
+Caller-bounded synchronous claim retry now refreshes only decoded cursor
+conflicts with a present current state. A positive attempt budget and optional
+caller retry directive govern contention. Every continued retry revalidates the
+same immutable append against the refreshed cursor; missing conflict state or a
+refreshed deferred/missed/exhausted decision stops without another CAS. Durable
+publication and committed durability failure are terminal and never retried.
 
 Window-only and latency-aware ordinary- and lease-cache observed activation can
 now be gated by that committed claim. The coordinator owns separate cursor and
@@ -2233,8 +2239,9 @@ cache-policy resources: unpublished telemetry performs neither claim nor policy
 work; non-due or stale claim evidence performs no cache-policy activation;
 durable and post-publication-durability-failed claims proceed through the
 existing observed path selected by the caller. Downstream activation failure
-retains the already committed claim and does not invent rollback. Conflict retry
-and unattended lifecycle remain outside this boundary.
+retains the already committed claim and does not invent rollback. The observed
+activation coordinator does not yet invoke the bounded claim-retry layer; retry
+integration and unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
