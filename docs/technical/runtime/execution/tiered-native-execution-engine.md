@@ -2297,12 +2297,12 @@ It clears process-local cursor authority before restore, installs only canonical
 restored evidence, and leaves authority absent on missing/store/codec failure.
 It still owns no clock or asynchronous trigger loop.
 
-Ordinary-cache activation now has a retained-lifecycle composition wrapper that
-constructs policy retry authority from the stored safe cursor, runs activation,
-and feeds exact terminal success/error evidence back into lifecycle state. A
-cursorless lifecycle returns before touching cursor, policy, cache, or adapter
-resources. Lease/latency variants and asynchronous clock ownership remain
-outside this wrapper.
+All ordinary/lease and latency/non-latency activation variants now have
+retained-lifecycle composition wrappers that construct policy retry authority
+from the stored safe cursor, run activation, and feed exact terminal
+success/error evidence back into lifecycle state. A cursorless lifecycle returns
+before touching cursor, policy, cache, or adapter resources. Unattended clock
+ownership and asynchronous triggering remain outside these wrappers.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

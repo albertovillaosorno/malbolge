@@ -663,6 +663,57 @@ pub type NativeExecutableCacheLimitsRetainedLifecycleObservedCacheResult<
     >,
 >;
 
+/// Retained-lifecycle latency-aware ordinary-cache activation result.
+pub type NativeExecutableCacheLimitsRetainedLifecycleObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = Option<
+    NativeExecutableCacheLimitsRetriedObservedLatencyCacheResult<
+        'publication,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+        ClockError,
+    >,
+>;
+
+/// Retained-lifecycle latency-aware lease-cache activation result.
+pub type NativeExecutableCacheLimitsRetainedLifecycleObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = Option<
+    NativeExecutableCacheLimitsRetriedObservedLatencyLeaseResult<
+        'publication,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+        ClockError,
+    >,
+>;
+
+/// Retained-lifecycle lease-cache activation result.
+pub type NativeExecutableCacheLimitsRetainedLifecycleObservedLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = Option<
+    NativeExecutableCacheLimitsRetriedObservedLeaseResult<
+        'publication,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+        ClockError,
+    >,
+>;
+
 /// Retry-gated ordinary-cache observed activation result.
 pub type NativeExecutableCacheLimitsRetriedObservedCacheResult<
     'publication,
@@ -1896,6 +1947,60 @@ where
     )
 }
 
+/// Runs latency-aware cache activation from retained lifecycle cursor
+/// authority.
+///
+/// Returns `None` before touching activation resources when no safe cursor is
+/// retained. Completed retry evidence is applied back into lifecycle state.
+///
+/// # Errors
+///
+/// `Some(Err(...))` retains exact retry or latency-aware activation failure.
+pub fn activate_retained_lifecycle_observed_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    lifecycle: &mut RetryLifecycle,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetainedLifecycleObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(lifecycle)?;
+    let result =
+        activate_policy_retried_observed_cache_limits_with_latency_durably(
+            publication,
+            context,
+            policy_request,
+            request,
+        );
+    match &result {
+        Ok(outcome) => lifecycle.observe_activation(outcome),
+        Err(error) => lifecycle.observe_activation_error(error),
+    }
+    Some(result)
+}
+
 /// Applies product conflict policy before lease-cache activation.
 ///
 /// Exact typed stop evidence is retained in the request's caller-owned state.
@@ -1942,6 +2047,58 @@ where
     )
 }
 
+/// Runs lease-cache activation from retained lifecycle cursor authority.
+///
+/// Returns `None` before touching activation resources when no safe cursor is
+/// retained. Completed retry evidence is applied back into lifecycle state.
+///
+/// # Errors
+///
+/// `Some(Err(...))` retains exact claim-retry or observed-activation failure.
+pub fn activate_retained_lifecycle_observed_lease_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    lifecycle: &mut RetryLifecycle,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetainedLifecycleObservedLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(lifecycle)?;
+    let result = activate_policy_retried_observed_lease_cache_limits_durably(
+        publication,
+        context,
+        policy_request,
+        request,
+    );
+    match &result {
+        Ok(outcome) => lifecycle.observe_activation(outcome),
+        Err(error) => lifecycle.observe_activation_error(error),
+    }
+    Some(result)
+}
+
 /// Applies product conflict policy before latency-aware lease-cache activation.
 ///
 /// Exact typed stop evidence is retained in the request's caller-owned state.
@@ -1986,6 +2143,60 @@ where
         policy_request,
         || activate(publication, &mut context.observed, request),
     )
+}
+
+/// Runs latency-aware lease-cache activation from retained lifecycle cursor
+/// authority.
+///
+/// Returns `None` before touching activation resources when no safe cursor is
+/// retained. Completed retry evidence is applied back into lifecycle state.
+///
+/// # Errors
+///
+/// `Some(Err(...))` retains exact retry or latency-aware activation failure.
+pub fn activate_retained_lifecycle_lease_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    lifecycle: &mut RetryLifecycle,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetainedLifecycleObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(lifecycle)?;
+    let result =
+        activate_policy_retried_lease_cache_limits_with_latency_durably(
+            publication,
+            context,
+            policy_request,
+            request,
+        );
+    match &result {
+        Ok(outcome) => lifecycle.observe_activation(outcome),
+        Err(error) => lifecycle.observe_activation_error(error),
+    }
+    Some(result)
 }
 
 #[cfg(test)]

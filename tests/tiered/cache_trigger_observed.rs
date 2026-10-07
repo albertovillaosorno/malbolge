@@ -1727,3 +1727,179 @@ fn retained_lifecycle_wrapper_fails_closed_and_observes_conflict()
         ))
     }
 }
+
+#[test]
+fn retained_latency_cache_wrapper_observes_conflict() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let current = cache_limits(4)?;
+    let mut cursor_store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut policy_store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut context =
+        NativeExecutableCacheLimitsClaimedObservedCacheContext::new(
+            &mut cursor_store,
+            &mut policy_store,
+            &mut cache,
+            &mut adapter,
+        );
+    let result =
+        activate_retained_lifecycle_observed_cache_limits_with_latency_durably(
+            &publication,
+            &mut context,
+            &mut lifecycle,
+            &observed_latency_request()?,
+        )
+        .ok_or_else(|| String::from("retained latency cursor disappeared"))?
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        result,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1 && !retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(refreshed)
+        && lifecycle.stop().is_some_and(|stop| {
+            stop.reason() == &RetryStopReason::ContentionObserved
+        })
+        && cursor_store.compare_calls == 1
+        && cursor_store.durability_calls == 0
+        && policy_store.compare_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retained latency cache wrapper did not observe exact conflict",
+        ))
+    }
+}
+
+#[test]
+fn retained_lease_cache_wrapper_observes_conflict() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let current = cache_limits(4)?;
+    let mut cursor_store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut policy_store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut context =
+        NativeExecutableCacheLimitsClaimedObservedLeaseContext::new(
+            &mut cursor_store,
+            &mut policy_store,
+            &mut cache,
+            &mut adapter,
+        );
+    let result =
+        activate_retained_lifecycle_observed_lease_cache_limits_durably(
+            &publication,
+            &mut context,
+            &mut lifecycle,
+            &observed_request()?,
+        )
+        .ok_or_else(|| String::from("retained lease cursor disappeared"))?
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        result,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1 && !retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(refreshed)
+        && lifecycle.stop().is_some_and(|stop| {
+            stop.reason() == &RetryStopReason::ContentionObserved
+        })
+        && cursor_store.compare_calls == 1
+        && cursor_store.durability_calls == 0
+        && policy_store.compare_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retained lease wrapper did not observe exact conflict",
+        ))
+    }
+}
+
+#[test]
+fn retained_latency_lease_wrapper_observes_conflict() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let current = cache_limits(4)?;
+    let mut cursor_store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut policy_store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut context =
+        NativeExecutableCacheLimitsClaimedObservedLeaseContext::new(
+            &mut cursor_store,
+            &mut policy_store,
+            &mut cache,
+            &mut adapter,
+        );
+    let result =
+        activate_retained_lifecycle_lease_cache_limits_with_latency_durably(
+            &publication,
+            &mut context,
+            &mut lifecycle,
+            &observed_latency_request()?,
+        )
+        .ok_or_else(|| {
+            String::from("retained latency lease cursor disappeared")
+        })?
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        result,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1 && !retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(refreshed)
+        && lifecycle.stop().is_some_and(|stop| {
+            stop.reason() == &RetryStopReason::ContentionObserved
+        })
+        && cursor_store.compare_calls == 1
+        && cursor_store.durability_calls == 0
+        && policy_store.compare_calls == 0
+        && cache.limits() == current
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retained latency lease wrapper did not observe exact conflict",
+        ))
+    }
+}

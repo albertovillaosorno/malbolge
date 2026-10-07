@@ -983,12 +983,11 @@ behavior.
   process-local cursor authority before restore and installs only canonical
   restored evidence; missing/store/codec failure leaves authority absent.
 
-  Ordinary-cache activation can now consume retained lifecycle cursor authority
-  directly, run the existing policy retry path, and feed exact terminal outcome
-  or post-claim failure evidence back into lifecycle state. Cursorless lifecycle
-  state returns before activation resources are touched. Lease/latency lifecycle
-  wrappers plus unattended clock ownership and asynchronous triggering remain
-  open.
+  Ordinary/lease and latency/non-latency activation can now consume retained
+  lifecycle cursor authority directly, run the existing policy retry path, and
+  feed exact terminal outcome or post-claim failure evidence back into lifecycle
+  state. Cursorless lifecycle state returns before activation resources are
+  touched. Unattended clock ownership and asynchronous triggering remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
