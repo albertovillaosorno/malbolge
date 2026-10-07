@@ -830,6 +830,12 @@ parts:
     language: rust
     responsibility: >-
       Encode and decode canonical cache-trigger cadence cursor bytes.
+  - id: part-0149
+    path: composition/tier/cache_cs.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Persist and restore canonical cache-trigger cadence cursor state.
 projects: []
 tests: []
 graph:

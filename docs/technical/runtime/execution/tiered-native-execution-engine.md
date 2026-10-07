@@ -2209,11 +2209,11 @@ Decode rejects malformed flags, reserved bytes, zero interval/due semantics, and
 exhausted frames carrying a due value. The codec grants no persistence or CAS
 authority.
 
-Canonical revision-one cursor transport now preserves the positive interval and
-active next-due or exhausted state in one fixed 32-byte little-endian frame.
-Decode rejects malformed flags, reserved bytes, zero interval/due semantics, and
-exhausted frames carrying a due value. The codec grants no persistence or CAS
-authority.
+Typed bounded cursor persistence now publishes and restores those canonical
+bytes through the existing blob-store use case. Missing durable state remains
+explicit; malformed restored bytes fail closed; byte-limit/store failures happen
+before publication; post-publication durability failure retains the committed
+cursor as authoritative evidence. Conditional/CAS ownership remains separate.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
