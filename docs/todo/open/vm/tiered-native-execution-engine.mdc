@@ -978,7 +978,11 @@ behavior.
   evidence back into lifecycle cursor state, including post-claim activation
   failure, without moving state on unpublished or pre-terminal outcomes.
 
-  Unattended lifecycle remains open.
+  Durable lifecycle bootstrap now restores the canonical trigger cursor through
+  bounded persistence before retained-cursor requests are constructed. It clears
+  process-local cursor authority before restore and installs only canonical
+  restored evidence; missing/store/codec failure leaves authority absent.
+  Unattended clock ownership and asynchronous triggering remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

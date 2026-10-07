@@ -135,6 +135,13 @@ impl NativeExecutableCacheLimitsRetryLifecycle {
         self.policy
     }
 
+    pub(crate) const fn replace_expected_cursor(
+        &mut self,
+        expected_cursor: Option<Cursor>,
+    ) {
+        self.expected_cursor = expected_cursor;
+    }
+
     /// Borrows the latest explicit product stop evidence, when present.
     #[must_use]
     pub const fn stop(

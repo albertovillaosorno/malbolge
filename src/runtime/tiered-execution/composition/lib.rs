@@ -109,6 +109,8 @@ pub mod executable_cache_limits_persistence;
 pub mod executable_cache_limits_precedence;
 #[path = "tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
+#[path = "tier/cache_bootstrap.rs"]
+pub mod executable_cache_limits_retry_bootstrap;
 #[path = "tier/cache_lifecycle.rs"]
 pub mod executable_cache_limits_retry_lifecycle;
 #[path = "tier/cache_policy.rs"]

@@ -879,6 +879,12 @@ parts:
     responsibility: >-
       Reuse cache-trigger retry policy, cursor, and stop state across
       observations.
+  - id: part-0157
+    path: composition/tier/cache_bootstrap.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Restore durable cache-trigger cursor authority into retry lifecycle state.
 projects: []
 tests: []
 graph:

@@ -2291,6 +2291,12 @@ unpublished telemetry and pre-terminal claim errors cannot move cursor state.
 The owner reads no clock, persists no configuration, and grants no background
 scheduling authority.
 
+Durable lifecycle bootstrap now restores the canonical trigger cursor through
+the bounded persistence seam before retained-cursor requests are constructed.
+It clears process-local cursor authority before restore, installs only canonical
+restored evidence, and leaves authority absent on missing/store/codec failure.
+It still owns no clock or asynchronous trigger loop.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
