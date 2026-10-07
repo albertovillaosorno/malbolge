@@ -86,6 +86,7 @@ pub enum NativeContinuationCachedRetryLatencyHistogramError {
 /// Exact evidence published by one successful histogram record.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeContinuationCachedRetryLatencyRecord {
+    above_maximum: usize,
     bucket: Option<usize>,
     maximum_nanoseconds: u64,
     minimum_nanoseconds: u64,
@@ -294,6 +295,7 @@ impl NativeContinuationCachedRetryLatencyHistogram {
         self.samples = transition.samples;
         self.total_nanoseconds = transition.total_nanoseconds;
         Ok(NativeContinuationCachedRetryLatencyRecord {
+            above_maximum: transition.above_maximum,
             bucket: transition.bucket,
             maximum_nanoseconds: transition.maximum_nanoseconds,
             minimum_nanoseconds: transition.minimum_nanoseconds,
@@ -330,6 +332,12 @@ impl NativeContinuationCachedRetryLatencyHistogram {
 }
 
 impl NativeContinuationCachedRetryLatencyRecord {
+    /// Returns cumulative samples above the final inclusive histogram bound.
+    #[must_use]
+    pub const fn above_maximum(self) -> usize {
+        self.above_maximum
+    }
+
     /// Returns the inclusive bucket index, or `None` for the overflow bin.
     #[must_use]
     pub const fn bucket(self) -> Option<usize> {

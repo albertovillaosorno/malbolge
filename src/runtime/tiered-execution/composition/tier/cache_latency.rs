@@ -12,8 +12,9 @@
 //   - Pure cache-limit recommendation from exact cumulative latency records and
 //     conservative agreement with an existing window-scoped cache plan.
 // - Must-Not:
-//   - Read clocks, infer candidate limits, approximate histogram overflow,
-//     mutate telemetry/cache/storage, or override missing window authority.
+//   - Read clocks, infer candidate limits, reconstruct hidden bucket
+//     distributions, mutate telemetry/cache/storage, or override missing window
+//     authority.
 // - Allows:
 //   - Inputs: cumulative latency record, caller-owned inclusive latency maxima,
 //     caller-owned candidate limits, and one exact window-scoped cache plan.
@@ -21,13 +22,14 @@
 //     window-plus-latency policy evidence.
 //   - Side effects: none.
 // - Split-When:
-//   - Histogram-overflow policy or caller-selected cross-signal precedence
-//     gains authority.
+//   - Additional latency-distribution policy or caller-selected cross-signal
+//     precedence gains authority.
 // - Merge-When:
 //   - One cache planner owns count, pressure, latency, and activation
 //     atomically.
 // - Summary:
-//   - Adds exact average/maximum latency as an independent cache policy signal.
+//   - Adds exact average/maximum/overflow latency as an independent cache
+//     policy signal.
 // - Description:
 //   - Agreement is required before the existing window recommendation survives.
 // - Usage:
@@ -57,6 +59,7 @@ type WindowPlan = cache_window::NativeExecutableCacheLimitsWindowPlan;
 pub struct NativeExecutableCacheLimitsLatencyThreshold {
     maximum_average_nanoseconds: u64,
     maximum_nanoseconds: u64,
+    maximum_overflow_samples: usize,
     required_samples: NonZeroUsize,
 }
 
@@ -67,6 +70,8 @@ pub enum NativeExecutableCacheLimitsLatencySignal {
     AverageNanoseconds,
     /// Largest sample represented by the cumulative record.
     MaximumNanoseconds,
+    /// Cumulative samples above the final histogram bound.
+    OverflowSamples,
 }
 
 /// Simultaneous cumulative latency threshold violations.
@@ -145,6 +150,7 @@ impl NativeExecutableCacheLimitsLatencySignal {
         match self {
             Self::AverageNanoseconds => 1,
             Self::MaximumNanoseconds => 2,
+            Self::OverflowSamples => 4,
         }
     }
 }
@@ -162,6 +168,12 @@ impl NativeExecutableCacheLimitsLatencyThreshold {
         self.maximum_nanoseconds
     }
 
+    /// Returns the inclusive maximum overflow-bin sample count.
+    #[must_use]
+    pub const fn maximum_overflow_samples(self) -> usize {
+        self.maximum_overflow_samples
+    }
+
     /// Constructs exact cumulative-latency thresholds.
     #[must_use]
     pub const fn new(
@@ -169,9 +181,26 @@ impl NativeExecutableCacheLimitsLatencyThreshold {
         maximum_average_nanoseconds: u64,
         maximum_nanoseconds: u64,
     ) -> Self {
+        Self::new_with_overflow(
+            required_samples,
+            maximum_average_nanoseconds,
+            maximum_nanoseconds,
+            usize::MAX,
+        )
+    }
+
+    /// Constructs latency thresholds including an overflow-bin maximum.
+    #[must_use]
+    pub const fn new_with_overflow(
+        required_samples: NonZeroUsize,
+        maximum_average_nanoseconds: u64,
+        maximum_nanoseconds: u64,
+        maximum_overflow_samples: usize,
+    ) -> Self {
         Self {
             maximum_average_nanoseconds,
             maximum_nanoseconds,
+            maximum_overflow_samples,
             required_samples,
         }
     }
@@ -269,6 +298,10 @@ pub fn recommend_native_executable_cache_limits_from_latency(
     if record.maximum_nanoseconds() > request.threshold.maximum_nanoseconds {
         bits |=
             NativeExecutableCacheLimitsLatencySignal::MaximumNanoseconds.mask();
+    }
+    if record.above_maximum() > request.threshold.maximum_overflow_samples {
+        bits |=
+            NativeExecutableCacheLimitsLatencySignal::OverflowSamples.mask();
     }
     let violations = NativeExecutableCacheLimitsLatencyViolations { bits };
     let (evidence, limits) = if violations.is_empty() {

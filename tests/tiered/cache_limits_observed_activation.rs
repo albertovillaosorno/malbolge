@@ -106,6 +106,9 @@ type CachePrecedence = cache_select::NativeExecutableCacheLimitsPrecedence;
 
 type LatencyPlan = cache_latency::NativeExecutableCacheLimitsWindowLatencyPlan;
 type LatencyRequest = cache_latency::NativeExecutableCacheLimitsLatencyRequest;
+type LatencyEvidence =
+    cache_latency::NativeExecutableCacheLimitsLatencyEvidence;
+type LatencySignal = cache_latency::NativeExecutableCacheLimitsLatencySignal;
 
 impl BlobStore for MemoryStore {
     type Error = StoreError;
@@ -250,8 +253,10 @@ fn request()
     ))
 }
 
-fn published(
+fn published_with_latency(
     counts: [usize; 6],
+    nanoseconds: u64,
+    upper_bounds: Vec<u64>,
 ) -> Result<
     NativeContinuationCachedRetryCycleTelemetryPublication<ClockError>,
     String,
@@ -263,9 +268,9 @@ fn published(
     let append = window
         .append(telemetry)
         .map_err(|error| error.to_string())?;
-    let sample = NativeContinuationCachedRetryLatencySample::new(10);
+    let sample = NativeContinuationCachedRetryLatencySample::new(nanoseconds);
     let mut histogram =
-        NativeContinuationCachedRetryLatencyHistogram::new(vec![20])
+        NativeContinuationCachedRetryLatencyHistogram::new(upper_bounds)
             .map_err(|error| error.to_string())?;
     let latency = histogram
         .record(sample)
@@ -278,6 +283,15 @@ fn published(
             window: Box::new(append),
         },
     )
+}
+
+fn published(
+    counts: [usize; 6],
+) -> Result<
+    NativeContinuationCachedRetryCycleTelemetryPublication<ClockError>,
+    String,
+> {
+    published_with_latency(counts, 10, vec![20])
 }
 
 #[test]
@@ -517,6 +531,31 @@ fn observed_latency_request(
     )
 }
 
+fn observed_overflow_request(
+    meets: NativeExecutableSequenceCacheLimits,
+    misses: NativeExecutableSequenceCacheLimits,
+    maximum_overflow_samples: usize,
+) -> Result<NativeExecutableCacheLimitsObservedLatencyActivationRequest, String>
+{
+    let activation = request()?;
+    let latency = LatencyRequest::new(
+        cache_latency::NativeExecutableCacheLimitsLatencyThreshold::
+            new_with_overflow(
+                nonzero(1)?,
+                1_000,
+                1_000,
+                maximum_overflow_samples,
+            ),
+        NativeExecutableCacheLimitsRecommendationSet::new(meets, misses),
+    );
+    Ok(
+        NativeExecutableCacheLimitsObservedLatencyActivationRequest::new(
+            &activation,
+            latency,
+        ),
+    )
+}
+
 #[test]
 fn latency_unpublished_telemetry_skips_store_and_cache() -> Result<(), String> {
     let publication =
@@ -729,6 +768,69 @@ fn latency_agreement_activates_lease_cache() -> Result<(), String> {
         Err(String::from(
             "latency agreement did not activate lease cache",
         ))
+    }
+}
+
+#[test]
+fn overflow_latency_agreement_activates_cache() -> Result<(), String> {
+    let publication = published_with_latency([4, 8, 3, 0, 4, 2], 30, vec![20])?;
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_cache_limits_with_latency_durably(
+        &publication,
+        &mut context,
+        &observed_overflow_request(limits(8)?, candidate, 0)?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let NativeExecutableCacheLimitsObservedLatencyActivation::Activated {
+        activation,
+        plan: LatencyPlan::Agreed { latency, .. },
+    } = outcome
+    else {
+        return Err(String::from("overflow agreement did not activate"));
+    };
+    let cache_latency::NativeExecutableCacheLimitsLatencyRecommendation::Ready {
+        evidence: LatencyEvidence::Misses(violations),
+        record,
+        ..
+    } = latency
+    else {
+        return Err(String::from("overflow activation lost latency evidence"));
+    };
+    if record.above_maximum() == 1
+        && violations.contains(LatencySignal::OverflowSamples)
+        && matches!(
+            activation,
+            NativeExecutableCacheLimitsRecommendedActivation::Ready {
+                activation:
+                    NativeExecutableSequenceCacheLimitsDurableActivation::
+                        Reconfigured {
+                            publication:
+                                LimitsCas::Durable {
+                                    current: published,
+                                    previous: None,
+                                    ..
+                                },
+                            ..
+                        },
+                ..
+            } if published == candidate
+        )
+        && store.compare_and_swap_calls == 1
+        && cache.limits() == candidate
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("overflow activation evidence drifted"))
     }
 }
 

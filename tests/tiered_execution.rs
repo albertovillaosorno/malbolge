@@ -113936,11 +113936,13 @@ fn cached_retry_latency_records_inclusive_buckets() -> Result<(), String> {
         && histogram.minimum_nanoseconds() == Some(0)
         && histogram.maximum_nanoseconds() == Some(101)
         && !histogram.is_empty()
+        && first.above_maximum() == 0
         && first.bucket() == Some(0)
         && first.samples() == 1
         && first.total_nanoseconds() == 0
         && first.minimum_nanoseconds() == 0
         && first.maximum_nanoseconds() == 0
+        && last.above_maximum() == 1
         && last.bucket().is_none()
         && last.samples() == 6
         && last.total_nanoseconds() == 223

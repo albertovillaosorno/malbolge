@@ -899,10 +899,11 @@ behavior.
   owned and planning performs no window, cache, adapter, or durable mutation.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
-  sample gate and caller-owned inclusive arithmetic-mean/maximum thresholds.
-  Ready latency selects only caller-supplied candidates and retains simultaneous
-  violations. Histogram overflow is not approximated because the cumulative
-  overflow-bin count is absent from one published latency record.
+  sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
+  bin-count thresholds. Successful records carry exact cumulative overflow
+  counts; ready latency retains simultaneous violations without reconstructing
+  hidden bucket samples. Existing threshold construction remains overflow-
+  unbounded unless callers opt into an exact maximum.
 
   Exact latency/window candidate agreement preserves the existing window
   recommendation; disagreement or missing authority withholds the combined
@@ -960,8 +961,7 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, cache-policy signals beyond cumulative
-  latency (including histogram-overflow integration), unattended triggering,
-  and async/product scheduling remain out.
+  latency, unattended triggering, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy

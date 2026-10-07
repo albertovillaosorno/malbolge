@@ -2188,11 +2188,13 @@ readiness stay owned by the window rather than by cache policy. Planning itself
 performs no window, cache, adapter, or durable mutation.
 
 Cumulative latency records now provide an independent cache-limit signal with a
-positive sample gate plus caller-owned inclusive arithmetic-mean and maximum
-latency thresholds. Ready latency selects only caller-supplied meets/misses
-limits and retains simultaneous average/maximum violations. Histogram overflow
-is intentionally not approximated because one publication record does not carry
-the cumulative overflow-bin count.
+positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
+overflow-bin-count thresholds. Each successful histogram record carries exact
+cumulative overflow count evidence, so ready latency can retain simultaneous
+average,
+maximum, and overflow violations without reconstructing hidden bucket samples.
+The original threshold constructor leaves overflow unbounded; callers opt into
+overflow policy explicitly.
 
 A latency recommendation may be conservatively combined with an existing window
 plan: exact matching limits preserve the window recommendation, disagreement
@@ -2204,11 +2206,12 @@ publication evidence after observed execution returns. The original window-only
 path remains available unchanged. A parallel latency-aware path consumes the
 exact latency record and window append from the same atomic `Published` outcome,
 then permits ordinary- or lease-cache durable/live activation only after exact
-window/latency candidate agreement.
+window/latency candidate agreement. Exact overflow-bin evidence participates in
+that same latency recommendation and therefore needs no separate activation
+path.
 
 Non-published telemetry, latency deferral, and window/latency conflict perform
-no
-CAS or cache mutation. Prepublication activation failure retains the exact
+no CAS or cache mutation. Prepublication activation failure retains the exact
 window or combined window-latency plan that authorized the attempt. Both paths
 remain caller-invoked; telemetry collection does not activate policy implicitly,
 and unattended/product scheduling remains open.

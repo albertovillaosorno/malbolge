@@ -24,7 +24,7 @@
 // - Summary:
 //   - Proves exact latency gates, violations, agreement, and conflict behavior.
 // - Description:
-//   - Histogram overflow remains intentionally outside record-based policy.
+//   - Overflow thresholds use exact cumulative record evidence.
 // - Usage:
 //   - Compiled only under Rust test configuration.
 // - Defaults:
@@ -98,6 +98,22 @@ fn latency_threshold(
         average,
         maximum,
     ))
+}
+
+fn latency_threshold_with_overflow(
+    required_samples: usize,
+    average: u64,
+    maximum: u64,
+    overflow: usize,
+) -> Result<super::NativeExecutableCacheLimitsLatencyThreshold, String> {
+    Ok(
+        super::NativeExecutableCacheLimitsLatencyThreshold::new_with_overflow(
+            nonzero(required_samples)?,
+            average,
+            maximum,
+            overflow,
+        ),
+    )
 }
 
 fn window_plan(
@@ -190,6 +206,72 @@ fn latency_inclusive_maxima_select_meets_candidate() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("inclusive latency maxima did not meet"))
+    }
+}
+
+#[test]
+fn latency_inclusive_overflow_maximum_selects_meets() -> Result<(), String> {
+    let meets = limits(3)?;
+    let record = latency_record(&[250, 20])?;
+    let recommendation =
+        super::recommend_native_executable_cache_limits_from_latency(
+            record,
+            super::NativeExecutableCacheLimitsLatencyRequest::new(
+                latency_threshold_with_overflow(2, 200, 300, 1)?,
+                NativeExecutableCacheLimitsRecommendationSet::new(
+                    meets,
+                    limits(6)?,
+                ),
+            ),
+        );
+    if record.above_maximum() == 1
+        && recommendation.limits() == Some(meets)
+        && matches!(
+            recommendation,
+            super::NativeExecutableCacheLimitsLatencyRecommendation::Ready {
+                evidence: LatencyEvidence::WithinMaximums,
+                ..
+            }
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("inclusive overflow maximum did not meet"))
+    }
+}
+
+#[test]
+fn latency_overflow_violation_selects_misses() -> Result<(), String> {
+    use super::NativeExecutableCacheLimitsLatencySignal::OverflowSamples;
+
+    let misses = limits(6)?;
+    let record = latency_record(&[250, 20])?;
+    let recommendation =
+        super::recommend_native_executable_cache_limits_from_latency(
+            record,
+            super::NativeExecutableCacheLimitsLatencyRequest::new(
+                latency_threshold_with_overflow(2, 200, 300, 0)?,
+                NativeExecutableCacheLimitsRecommendationSet::new(
+                    limits(3)?,
+                    misses,
+                ),
+            ),
+        );
+    let super::NativeExecutableCacheLimitsLatencyRecommendation::Ready {
+        evidence: LatencyEvidence::Misses(violations),
+        limits,
+        ..
+    } = recommendation
+    else {
+        return Err(String::from("overflow violation did not select misses"));
+    };
+    if record.above_maximum() == 1
+        && violations.contains(OverflowSamples)
+        && limits == misses
+    {
+        Ok(())
+    } else {
+        Err(String::from("overflow violation evidence drifted"))
     }
 }
 
