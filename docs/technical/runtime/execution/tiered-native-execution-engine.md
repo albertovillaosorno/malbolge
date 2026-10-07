@@ -2228,10 +2228,11 @@ durability failure remains committed slot-claim evidence.
 
 Caller-bounded synchronous claim retry now refreshes only decoded cursor
 conflicts with a present current state. A positive attempt budget and optional
-caller retry directive govern contention. Every continued retry revalidates the
-same immutable append against the refreshed cursor; missing conflict state or a
-refreshed deferred/missed/exhausted decision stops without another CAS. Durable
-publication and committed durability failure are terminal and never retried.
+caller retry directive govern contention. An alternate typed decision adapter
+retains an opaque caller stop reason bound to the exact conflict attempt that
+selected `Stop`; continued retries preserve no synthetic stop state. Budget
+exhaustion, missing current state, refreshed non-due evidence, durable
+publication, and committed durability failure never invent a stop reason.
 
 Window-only and latency-aware ordinary- and lease-cache observed activation can
 now be gated by either one committed claim or caller-bounded synchronous claim
@@ -2246,8 +2247,9 @@ retains that complete committed retry evidence without restarting contention.
 Retry-aware activation also accepts caller conflict direction. The callback sees
 only exact completed-attempt conflict evidence and returns `Continue` or `Stop`;
 `Stop` preserves the current terminal conflict without activation, while
-`Continue` reuses the same exact refresh/revalidation path. Typed stop-reason or
-product policy taxonomy and unattended lifecycle remain outside this boundary.
+`Continue` reuses the same exact refresh/revalidation path. Propagating typed
+stop reasons through this activation coordinator, product reason taxonomy, and
+unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

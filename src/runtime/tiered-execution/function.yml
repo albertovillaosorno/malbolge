@@ -859,7 +859,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Retry exact cache-trigger cadence claim conflicts within caller bounds.
+      Retry cache-trigger claim conflicts and retain typed caller stop reasons.
 projects: []
 tests: []
 graph:

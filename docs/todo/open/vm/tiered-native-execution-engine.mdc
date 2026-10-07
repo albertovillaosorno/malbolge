@@ -934,9 +934,10 @@ behavior.
 
   Caller-bounded synchronous claim retry now refreshes only typed conflicts with
   a present current cursor. Positive attempt budget plus optional caller retry
-  direction govern contention. Each continued retry revalidates the same append;
-  missing current state or refreshed non-due evidence stops without another CAS.
-  Durable and committed durability-failure claims are terminal.
+  direction govern contention. A typed decision adapter retains an opaque caller
+  stop reason bound to the exact conflict attempt selecting `Stop`; continued
+  retries, budget exhaustion, missing state, refreshed non-due evidence, and
+  committed terminal claims never invent stop reasons.
 
   Window-only and latency-aware ordinary/lease observed activation can now be
   gated by either one committed claim or caller-bounded synchronous claim retry
@@ -950,7 +951,8 @@ behavior.
   Retry-aware activation also accepts caller conflict direction: exact
   completed-attempt evidence maps only to `Continue` or `Stop`, with stop
   preserving the terminal conflict and withholding activation. Typed stop-reason
-  policy and unattended lifecycle remain open.
+  propagation through activation, product reason taxonomy, and unattended
+  lifecycle remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

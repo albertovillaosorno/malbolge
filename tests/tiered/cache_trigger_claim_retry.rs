@@ -55,6 +55,12 @@ enum DurabilityError {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StopReason {
+    ContentionObserved,
+    PolicyLimit,
+}
+
 #[derive(Debug, Default)]
 struct MemoryStore {
     bytes: Option<Vec<u8>>,
@@ -385,5 +391,118 @@ fn committed_durability_failure_is_never_retried() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("committed durability failure was retried"))
+    }
+}
+
+#[test]
+fn typed_stop_preserves_reason_and_conflict_attempt() -> Result<(), String> {
+    let append = append_at(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode(expected)),
+        forced_conflicts: VecDeque::from([Some(encode(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let evidence = claim_cache_trigger_cadence_slot_with_retry_decision(
+        &mut store,
+        request(expected, &append, 3)?,
+        |_conflict| {
+            NativeContinuationRetryDecision::Stop(
+                StopReason::ContentionObserved,
+            )
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let stop = evidence
+        .stop()
+        .ok_or_else(|| String::from("typed stop reason disappeared"))?;
+    if evidence.attempts() == 1
+        && stop.conflict().completed_attempts() == 1
+        && stop.reason() == &StopReason::ContentionObserved
+        && matches!(evidence.outcome(), Claim::Attempted {
+            publication: CursorCas::Conflict { .. },
+            ..
+        })
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("typed retry stop evidence drifted"))
+    }
+}
+
+#[test]
+fn typed_continue_then_stop_binds_later_conflict() -> Result<(), String> {
+    let append = append_at(1)?;
+    let expected = cursor(1, 2)?;
+    let first = cursor(1, 3)?;
+    let second = cursor(1, 4)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode(expected)),
+        forced_conflicts: VecDeque::from([
+            Some(encode(first)),
+            Some(encode(second)),
+        ]),
+        ..MemoryStore::default()
+    };
+    let evidence = claim_cache_trigger_cadence_slot_with_retry_decision(
+        &mut store,
+        request(expected, &append, 3)?,
+        |conflict| {
+            if conflict.completed_attempts() == 1 {
+                NativeContinuationRetryDecision::Continue
+            } else {
+                NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit)
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let stop = evidence
+        .stop()
+        .ok_or_else(|| String::from("later typed stop reason disappeared"))?;
+    if evidence.attempts() == 2
+        && stop.conflict().completed_attempts() == 2
+        && stop.reason() == &StopReason::PolicyLimit
+        && store.compare_calls == 2
+        && store.durability_calls == 0
+        && store.bytes == Some(encode(second))
+    {
+        Ok(())
+    } else {
+        Err(String::from("later conflict stop evidence drifted"))
+    }
+}
+
+#[test]
+fn budget_exhaustion_does_not_invent_typed_stop() -> Result<(), String> {
+    let append = append_at(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode(expected)),
+        forced_conflicts: VecDeque::from([Some(encode(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut decisions = 0usize;
+    let evidence = claim_cache_trigger_cadence_slot_with_retry_decision(
+        &mut store,
+        request(expected, &append, 1)?,
+        |_conflict| {
+            decisions = decisions.saturating_add(1);
+            NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if evidence.attempts() == 1
+        && evidence.stop().is_none()
+        && decisions == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("budget exhaustion invented typed stop"))
     }
 }

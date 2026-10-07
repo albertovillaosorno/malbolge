@@ -45,7 +45,9 @@ use crate::blob_store::{
 use crate::cached_cycle::NativeContinuationCachedRetryTelemetryWindowAppend;
 use crate::retry_control::{
     NativeContinuationRetryAttemptCursor, NativeContinuationRetryConflict,
-    NativeContinuationRetryDirective, NativeContinuationRetryEvidence,
+    NativeContinuationRetryDecision, NativeContinuationRetryDirective,
+    NativeContinuationRetryEvidence, NativeContinuationRetryStop,
+    NativeContinuationRetryStopState,
 };
 use crate::{
     executable_cache_limits_trigger_cadence as trigger,
@@ -72,6 +74,16 @@ pub struct NativeExecutableCacheLimitsTriggerCadenceClaimRetryRequest<'append> {
 pub type NativeExecutableCacheLimitsTriggerCadenceClaimRetry<DurabilityError> =
     NativeContinuationRetryEvidence<Claim<DurabilityError>>;
 
+/// Terminal retry evidence plus optional typed caller stop reason.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeExecutableCacheLimitsTriggerCadenceReasonedClaimRetry<
+    DurabilityError,
+    StopReason,
+> {
+    retry: NativeExecutableCacheLimitsTriggerCadenceClaimRetry<DurabilityError>,
+    stop: Option<NativeContinuationRetryStop<StopReason>>,
+}
+
 /// Bounded trigger-claim retry result specialized to one durable store.
 pub type NativeExecutableCacheLimitsTriggerCadenceClaimRetryStoreResult<Store> =
     Result<
@@ -82,6 +94,56 @@ pub type NativeExecutableCacheLimitsTriggerCadenceClaimRetryStoreResult<Store> =
             <Store as BlobStore>::Error,
         >,
     >;
+
+/// Reason-preserving claim-retry result specialized to one durable store.
+pub type NativeExecutableCacheLimitsTriggerCadenceReasonedRetryStoreResult<
+    Store,
+    StopReason,
+> = Result<
+    NativeExecutableCacheLimitsTriggerCadenceReasonedClaimRetry<
+        <Store as DurableBlobStore>::DurabilityError,
+        StopReason,
+    >,
+    cursor_cas::NativeExecutableCacheLimitsTriggerCadenceCasError<
+        <Store as BlobStore>::Error,
+    >,
+>;
+
+impl<DurabilityError, StopReason>
+    NativeExecutableCacheLimitsTriggerCadenceReasonedClaimRetry<
+        DurabilityError,
+        StopReason,
+    >
+{
+    /// Returns the exact number of claim attempts consumed.
+    #[must_use]
+    pub const fn attempts(&self) -> usize {
+        self.retry.attempts()
+    }
+
+    /// Consumes evidence and returns the terminal claim retry.
+    #[must_use]
+    pub fn into_retry(
+        self,
+    ) -> NativeExecutableCacheLimitsTriggerCadenceClaimRetry<DurabilityError>
+    {
+        self.retry
+    }
+
+    /// Borrows the exact terminal claim outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> &Claim<DurabilityError> {
+        self.retry.outcome()
+    }
+
+    /// Borrows typed caller stop evidence when the caller explicitly stopped.
+    #[must_use]
+    pub const fn stop(
+        &self,
+    ) -> Option<&NativeContinuationRetryStop<StopReason>> {
+        self.stop.as_ref()
+    }
+}
 
 impl<'append>
     NativeExecutableCacheLimitsTriggerCadenceClaimRetryRequest<'append>
@@ -121,6 +183,49 @@ where
         store,
         request,
         |_conflict| NativeContinuationRetryDirective::Continue,
+    )
+}
+
+/// Retries typed conflicts while preserving an opaque caller stop reason.
+///
+/// The typed control callback is consulted only for a retryable conflict while
+/// another attempt remains. A caller `Stop(reason)` retains that reason bound
+/// to the exact completed-attempt conflict. Budget exhaustion, non-due refresh,
+/// committed publication, and failures never invent a stop reason.
+///
+/// # Errors
+///
+/// Returns the first byte-limit, codec, or store failure. Durable and committed
+/// publication stop immediately.
+pub fn claim_cache_trigger_cadence_slot_with_retry_decision<
+    Store,
+    StopReason,
+    Control,
+>(
+    store: &mut Store,
+    request: NativeExecutableCacheLimitsTriggerCadenceClaimRetryRequest<'_>,
+    mut control: Control,
+) -> NativeExecutableCacheLimitsTriggerCadenceReasonedRetryStoreResult<
+    Store,
+    StopReason,
+>
+where
+    Store: ConditionalBlobStore + DurableBlobStore,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+{
+    let mut stop_state = NativeContinuationRetryStopState::new();
+    let retry = claim_cache_trigger_cadence_slot_with_retry_control(
+        store,
+        request,
+        |conflict| stop_state.resolve(conflict, control(conflict)),
+    )?;
+    Ok(
+        NativeExecutableCacheLimitsTriggerCadenceReasonedClaimRetry {
+            retry,
+            stop: stop_state.into_stop(),
+        },
     )
 }
 
