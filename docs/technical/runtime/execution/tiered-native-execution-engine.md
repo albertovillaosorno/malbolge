@@ -2197,11 +2197,10 @@ past a due sequence reports a miss without implicit catch-up; interval overflow
 exhausts future eligibility. Replaying an already consumed due publication
 cannot trigger the same slot twice.
 
-This cadence is process-local eligibility evidence only. It reads no clock,
-sleeps or spawns no work, invokes no cache policy, and defines no retry behavior
-for activation failure. Background/product lifecycle and durable cursor
-ownership
-therefore remain outside this boundary.
+This cadence is eligibility evidence only. It reads no clock, sleeps or spawns
+no work, invokes no cache policy, and defines no retry behavior for activation
+failure. Background/product lifecycle and transition-validating durable slot
+ownership therefore remain outside this boundary.
 
 Canonical revision-one cursor transport now preserves the positive interval and
 active next-due or exhausted state in one fixed 32-byte little-endian frame.
@@ -2213,7 +2212,13 @@ Typed bounded cursor persistence now publishes and restores those canonical
 bytes through the existing blob-store use case. Missing durable state remains
 explicit; malformed restored bytes fail closed; byte-limit/store failures happen
 before publication; post-publication durability failure retains the committed
-cursor as authoritative evidence. Conditional/CAS ownership remains separate.
+cursor as authoritative evidence.
+
+Canonical durable cursor CAS now excludes stale publishers. Expected and
+candidate cursors are compared as exact revision-one bytes; conflict returns a
+decoded current cursor, malformed conflict bytes fail closed, and durability
+failure after replacement retains the committed candidate. CAS does not validate
+that an arbitrary caller-supplied candidate is one legitimate due-slot advance.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

@@ -836,6 +836,12 @@ parts:
     language: rust
     responsibility: >-
       Persist and restore canonical cache-trigger cadence cursor state.
+  - id: part-0150
+    path: composition/tier/cache_ca.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Conditionally publish cache-trigger cadence cursor state durably.
 projects: []
 tests: []
 graph:

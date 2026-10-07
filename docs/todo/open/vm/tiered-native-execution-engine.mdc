@@ -907,9 +907,9 @@ behavior.
   cannot consume a slot twice, and interval overflow exhausts future
   eligibility.
 
-  The cadence remains process-local evidence only: no clock read, sleep/spawn,
-  activation call, failure retry, or durable cursor ownership is implied.
-  Background/product lifecycle remains open.
+  The cadence remains eligibility evidence only: no clock read, sleep/spawn,
+  activation call, failure retry, or transition-validating durable slot
+  ownership is implied. Background/product lifecycle remains open.
 
   Canonical revision-one cursor transport now preserves interval plus active
   next-due/exhausted state in one fixed 32-byte little-endian frame. Decode
@@ -917,10 +917,14 @@ behavior.
   CAS, and migration authority remain out.
 
   Typed bounded persistence now publishes/restores canonical cursor bytes
-  through
-  the existing blob-store use case. Missing state stays explicit, malformed
-  restore fails closed, and durability failure after publication retains the
-  committed cursor. Conditional/CAS ownership remains open.
+  through the existing blob-store use case. Missing state stays explicit,
+  malformed restore fails closed, and durability failure after publication
+  retains the committed cursor.
+
+  Canonical durable cursor CAS now excludes stale publishers. Exact expected and
+  candidate bytes drive conditional publication; conflict decodes current state,
+  malformed conflict fails closed, and post-publication durability failure
+  retains the committed candidate. Candidate transition validity remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
@@ -985,7 +989,7 @@ behavior.
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, cache-policy signals beyond current
-  reuse/pressure/latency evidence, conditional/cross-process trigger-cursor
+  reuse/pressure/latency evidence, transition-validating trigger-slot
   ownership, unattended lifecycle, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6

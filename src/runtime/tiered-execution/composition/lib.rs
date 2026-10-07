@@ -111,6 +111,8 @@ pub mod executable_cache_limits_precedence;
 pub mod executable_cache_limits_recommendation;
 #[path = "tier/cache_trigger.rs"]
 pub mod executable_cache_limits_trigger_cadence;
+#[path = "tier/cache_ca.rs"]
+pub mod executable_cache_limits_trigger_cadence_cas;
 #[path = "tier/cache_cc.rs"]
 pub mod executable_cache_limits_trigger_cadence_codec;
 #[path = "tier/cache_cs.rs"]
