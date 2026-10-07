@@ -2189,6 +2189,20 @@ with the resulting precedence selection, so FIFO eviction and aggregate
 readiness stay owned by the window rather than by cache policy. Planning itself
 performs no window, cache, adapter, or durable mutation.
 
+A caller-owned trigger cadence can now gate policy work by the exact monotonic
+sequence carried by a successful window append. Callers choose both the first
+due sequence and a positive sequence interval. Earlier publications defer; an
+exact due publication consumes one slot and advances by the interval; skipping
+past a due sequence reports a miss without implicit catch-up; interval overflow
+exhausts future eligibility. Replaying an already consumed due publication
+cannot trigger the same slot twice.
+
+This cadence is process-local eligibility evidence only. It reads no clock,
+sleeps or spawns no work, invokes no cache policy, and defines no retry behavior
+for activation failure. Background/product lifecycle and durable cursor
+ownership
+therefore remain outside this boundary.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

@@ -818,6 +818,12 @@ parts:
     language: rust
     responsibility: >-
       Recommend cache limits from cumulative latency and arbitrate with windows.
+  - id: part-0147
+    path: composition/tier/cache_trigger.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Gate caller-driven cache-policy triggers by exact publication sequence.
 projects: []
 tests: []
 graph:
