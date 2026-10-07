@@ -977,6 +977,7 @@ behavior.
   binds the exact stored cursor. Observed activation can feed terminal retry
   evidence back into lifecycle cursor state, including post-claim activation
   failure, without moving state on unpublished or pre-terminal outcomes.
+
   Unattended lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
