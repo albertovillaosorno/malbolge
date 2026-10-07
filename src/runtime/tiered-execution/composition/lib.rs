@@ -119,6 +119,8 @@ pub mod executable_cache_limits_trigger_cadence_claim;
 pub mod executable_cache_limits_trigger_cadence_codec;
 #[path = "tier/cache_cs.rs"]
 pub mod executable_cache_limits_trigger_cadence_persistence;
+#[path = "tier/cache_trigger_observed.rs"]
+pub mod executable_cache_limits_trigger_observed_activation;
 #[path = "tier/cache_window.rs"]
 pub mod executable_cache_limits_window_plan;
 #[path = "tier/lease_journal.rs"]

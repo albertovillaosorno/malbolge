@@ -848,6 +848,12 @@ parts:
     language: rust
     responsibility: >-
       Validate and durably claim one exact cache-trigger cadence slot.
+  - id: part-0152
+    path: composition/tier/cache_trigger_observed.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Gate observed cache activation on one committed trigger-cadence claim.
 projects: []
 tests: []
 graph:
