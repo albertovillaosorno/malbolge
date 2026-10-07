@@ -956,7 +956,9 @@ behavior.
   budget exhaustion, and telemetry non-publication remain reasonless. Stable
   product reasons now distinguish `ContentionObserved` (`contention-observed`)
   from caller-owned `PolicyLimit` (`policy-limit`) without selecting stop
-  policy. Product conflict policy now either returns ownership on the first
+  policy.
+
+  Product conflict policy now either returns ownership on the first
   contention with `ContentionObserved`, or continues below an explicit
   positive conflict-attempt limit and stops at/above it with `PolicyLimit`.
   Mechanical attempt exhaustion stays separate and reasonless. Unattended
