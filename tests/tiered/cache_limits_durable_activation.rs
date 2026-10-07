@@ -43,6 +43,10 @@ use crate::blob_store::{
 use crate::cached_cycle::{
     NativeContinuationCachedRetryAttempt, summarize_cached_retry_attempts,
 };
+use crate::executable_cache_limits_precedence::{
+    NativeExecutableCacheLimitsPrecedence,
+    select_native_executable_cache_limits_precedence,
+};
 use crate::executable_cache_limits_recommendation::{
     NativeExecutableCacheLimitsPressureThreshold,
     NativeExecutableCacheLimitsRecommendation,
@@ -229,6 +233,40 @@ fn agreed_recommendation(
     .ok_or_else(|| String::from("test cache signals did not agree"))
 }
 
+fn precedence_recommendation(
+    current: NativeExecutableSequenceCacheLimits,
+    reuse_candidate: NativeExecutableSequenceCacheLimits,
+    pressure_candidate: NativeExecutableSequenceCacheLimits,
+) -> Result<NativeExecutableCacheLimitsRecommendation, String> {
+    let one = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test precedence ratio missing"))?;
+    let request = NativeExecutableCacheLimitsTwoSignalRequest::new(
+        NativeExecutableCacheLimitsReuseThreshold::new(positive(4)?, one, one),
+        NativeExecutableCacheLimitsRecommendationSet::new(
+            limits(3)?,
+            reuse_candidate,
+        ),
+        NativeExecutableCacheLimitsPressureThreshold::new(positive(4)?, 2, 1),
+        NativeExecutableCacheLimitsRecommendationSet::new(
+            limits(3)?,
+            pressure_candidate,
+        ),
+    );
+    let arbitration =
+        recommend_native_executable_cache_limits_from_reuse_and_pressure(
+            crate::cached_cycle::NativeContinuationCachedRetryTelemetry::
+                from_test_counts([4, 8, 3, 0, 4, 2]),
+            current,
+            &request,
+        );
+    select_native_executable_cache_limits_precedence(
+        &arbitration,
+        NativeExecutableCacheLimitsPrecedence::Pressure,
+    )
+    .recommendation()
+    .ok_or_else(|| String::from("test pressure precedence withheld policy"))
+}
+
 fn activation_request(
     expected: Option<NativeExecutableSequenceCacheLimits>,
     candidate: NativeExecutableSequenceCacheLimits,
@@ -302,6 +340,49 @@ fn recommended_request(
             positive(40)?,
         ),
     )
+}
+
+#[test]
+fn precedence_selected_recommendation_activates() -> Result<(), String> {
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let recommendation =
+        precedence_recommendation(current, limits(8)?, candidate)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let outcome =
+        activate_recommended_executable_sequence_cache_limits_durably(
+            &mut store,
+            &mut cache,
+            &mut adapter,
+            &recommended_request(None, recommendation)?,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsRecommendedActivation::Ready {
+            activation:
+                NativeExecutableSequenceCacheLimitsDurableActivation::
+                    Reconfigured {
+                        publication:
+                            NativeExecutableSequenceCacheLimitsCas::Durable {
+                                current: published,
+                                previous: None,
+                                ..
+                            },
+                        ..
+                    },
+            recommendation: observed,
+        } if published == candidate && observed == recommendation
+    ) && cache.limits() == candidate
+        && store.compare_and_swap_calls == 1
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("precedence recommendation did not activate"))
+    }
 }
 
 #[test]

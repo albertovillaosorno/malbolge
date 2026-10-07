@@ -880,11 +880,18 @@ behavior.
   violations and select only caller-supplied candidate limits.
 
   Agreement-only reuse/pressure arbitration uses the same telemetry/current-
-  limit
-  snapshot and authorizes only identical ready candidates. Deferral or differing
-  candidates withhold combined authority; an agreed recommendation retains both
-  evidence sources and remains compatible with explicit activation. Precedence
-  and automatic triggering remain open.
+  limit snapshot and authorizes only identical ready candidates. Deferral or
+  differing candidates withhold combined authority; agreement retains both
+  evidence sources.
+
+  Explicit cache precedence now runs only after completed arbitration. Agreement
+  is invariant and deferral is non-overridable. On ready conflict,
+  `AgreementOnly` withholds authority while caller-selected `Reuse` or
+  `Pressure` precedence selects only that ready recommendation; unavailable
+  selected evidence stays non-authoritative.
+
+  Selected policy remains compatible with the existing explicit activation
+  bridge. Automatic triggering remains open.
 
   Explicit recommendation activation now validates the live limits used by the
   recommendation before storage work. Deferred/retained evidence performs no
@@ -925,7 +932,7 @@ behavior.
   `executable_lease_cache/reconciliation.rs`, while resident-limit transitions
   live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
   the parent. Durable/cross-process leasing, object fusion, direct
-  branch chains, a concrete FFI shim, cache-policy precedence/automatic
+  branch chains, a concrete FFI shim, additional cache-policy signals/automatic
   triggering, and async/product scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
   construction, executable lifecycle, and loaded invocation. Complete v6

@@ -101,6 +101,8 @@ pub mod executable_cache_limits_cas;
 pub mod executable_cache_limits_durable_activation;
 #[path = "tier/executable_cache_limits_store.rs"]
 pub mod executable_cache_limits_persistence;
+#[path = "tier/cache_select.rs"]
+pub mod executable_cache_limits_precedence;
 #[path = "tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
 #[path = "tier/lease_journal.rs"]

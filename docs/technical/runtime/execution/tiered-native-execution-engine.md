@@ -2166,18 +2166,30 @@ inclusive maximums preserve simultaneous eviction/retirement violations and
 select only caller-supplied meets/misses limit candidates.
 
 Agreement-only cache policy now evaluates reuse and pressure against the same
+
 telemetry/current-limit snapshot. Identical ready candidates produce one
 combined
 recommendation retaining both evidence sources; deferral or differing candidates
-withhold authority. The combined recommendation uses the same explicit durable/
-live activation bridge, while precedence and automatic triggering remain open.
+withhold authority.
 
-The recommendation layer performs no cache, adapter, or storage mutation. A
-caller may now explicitly route one completed recommendation through the
-existing
-durable publication plus live activation transaction. Deferred and retained
-recommendations perform no CAS; a reconfiguration first verifies that live
-limits still match the recommendation snapshot, then uses the caller's exact
+Caller-selected cache precedence now applies only after that completed
+arbitration. Existing agreement is invariant and deferral cannot be overridden.
+On ready conflict, `AgreementOnly` withholds authority while explicit `Reuse` or
+
+`Pressure` precedence selects only that exact ready recommendation; an
+unavailable
+selected signal remains non-authoritative. Selected recommendations use the same
+explicit durable/live activation bridge. Automatic triggering remains open.
+
+The recommendation and precedence layers perform no cache, adapter, or storage
+
+mutation. A caller may explicitly route one authorized recommendation through
+the
+existing durable publication plus live activation transaction. Deferred and
+retained recommendations perform no CAS; a reconfiguration first verifies that
+
+live limits still match the recommendation snapshot, then uses the caller's
+exact
 durable expectation. Durable conflict leaves live limits untouched, while typed
 prepublication failure retains the complete recommendation.
 

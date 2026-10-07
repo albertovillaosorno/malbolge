@@ -788,6 +788,18 @@ parts:
     language: rust
     responsibility: >-
       Coordinate dispatch and timing reservation watermarks in one durable CAS.
+  - id: part-0142
+    path: composition/tier/cache_rec.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Recommend caller-owned cache limits from reuse and pressure evidence.
+  - id: part-0143
+    path: composition/tier/cache_select.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Apply caller-selected precedence to cache-limit recommendation evidence.
 projects: []
 tests: []
 graph:

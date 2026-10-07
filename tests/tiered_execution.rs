@@ -93,6 +93,8 @@ pub mod continuation_dispatch_timing_watermark;
 pub mod continuation_dispatch_worker;
 #[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
 pub mod continuation_scheduler;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_select.rs"]
+pub mod executable_cache_limits_precedence;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
