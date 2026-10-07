@@ -2203,6 +2203,18 @@ for activation failure. Background/product lifecycle and durable cursor
 ownership
 therefore remain outside this boundary.
 
+Canonical revision-one cursor transport now preserves the positive interval and
+active next-due or exhausted state in one fixed 32-byte little-endian frame.
+Decode rejects malformed flags, reserved bytes, zero interval/due semantics, and
+exhausted frames carrying a due value. The codec grants no persistence or CAS
+authority.
+
+Canonical revision-one cursor transport now preserves the positive interval and
+active next-due or exhausted state in one fixed 32-byte little-endian frame.
+Decode rejects malformed flags, reserved bytes, zero interval/due semantics, and
+exhausted frames carrying a due value. The codec grants no persistence or CAS
+authority.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

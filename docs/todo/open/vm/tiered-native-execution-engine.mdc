@@ -911,6 +911,16 @@ behavior.
   activation call, failure retry, or durable cursor ownership is implied.
   Background/product lifecycle remains open.
 
+  Canonical revision-one cursor transport now preserves interval plus active
+  next-due/exhausted state in one fixed 32-byte little-endian frame. Decode
+  rejects malformed framing and invalid positive-state combinations; storage,
+  CAS, and migration authority remain out.
+
+  Canonical revision-one cursor transport now preserves interval plus active
+  next-due/exhausted state in one fixed 32-byte little-endian frame. Decode
+  rejects malformed framing and invalid positive-state combinations; storage,
+  CAS, and migration authority remain out.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

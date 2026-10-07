@@ -97,6 +97,15 @@ impl NativeExecutableCacheLimitsTriggerCadence {
         }
     }
 
+    /// Constructs an explicitly exhausted cursor with no future eligibility.
+    #[must_use]
+    pub const fn exhausted(interval: NonZeroU64) -> Self {
+        Self {
+            interval,
+            next_due_sequence: None,
+        }
+    }
+
     /// Returns the positive sequence interval between eligible publications.
     #[must_use]
     pub const fn interval(self) -> NonZeroU64 {

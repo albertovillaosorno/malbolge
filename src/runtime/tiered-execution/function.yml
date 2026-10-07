@@ -824,6 +824,12 @@ parts:
     language: rust
     responsibility: >-
       Gate caller-driven cache-policy triggers by exact publication sequence.
+  - id: part-0148
+    path: composition/tier/cache_cc.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Encode and decode canonical cache-trigger cadence cursor bytes.
 projects: []
 tests: []
 graph:
