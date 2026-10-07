@@ -21,8 +21,7 @@
 //   - Side effects: one exact due-slot claim followed by existing activation
 //     side effects only after that claim committed.
 // - Split-When:
-//   - Conflict retry, latency-aware claim gating, or unattended lifecycle gains
-//     independent authority.
+//   - Conflict retry or unattended lifecycle gains independent authority.
 // - Merge-When:
 //   - One product trigger owner subsumes claim, activation, and lifecycle.
 // - Summary:
@@ -244,8 +243,27 @@ type LeaseObserved<'publication, Store, Adapter, ClockError> =
         Adapter,
         ClockError,
     >;
+type LatencyCacheObserved<'publication, Store, Adapter, ClockError> =
+    obs::NativeExecutableCacheLimitsObservedLatencyCacheActivation<
+        'publication,
+        Store,
+        Adapter,
+        ClockError,
+    >;
+type LatencyLeaseObserved<'publication, Store, Adapter, ClockError> =
+    obs::NativeExecutableCacheLimitsObservedLatencyLeaseActivation<
+        'publication,
+        Store,
+        Adapter,
+        ClockError,
+    >;
 type ObservedFailure<Store> = Box<
     obs::NativeExecutableCacheLimitsObservedActivationFailure<
+        <Store as BlobStore>::Error,
+    >,
+>;
+type LatencyObservedFailure<Store> = Box<
+    obs::NativeExecutableCacheLimitsObservedLatencyActivationFailure<
         <Store as BlobStore>::Error,
     >,
 >;
@@ -300,6 +318,36 @@ pub type NativeExecutableCacheLimitsClaimedObservedLeaseResult<
     LeaseObserved<'publication, PolicyStore, Adapter, ClockError>,
     ClockError,
     ObservedFailure<PolicyStore>,
+>;
+
+/// Latency-aware ordinary-cache cadence-gated observed activation result.
+pub type NativeExecutableCacheLimitsClaimedObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = ClaimedResult<
+    'publication,
+    CursorStore,
+    LatencyCacheObserved<'publication, PolicyStore, Adapter, ClockError>,
+    ClockError,
+    LatencyObservedFailure<PolicyStore>,
+>;
+
+/// Latency-aware lease-cache cadence-gated observed activation result.
+pub type NativeExecutableCacheLimitsClaimedObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+> = ClaimedResult<
+    'publication,
+    CursorStore,
+    LatencyLeaseObserved<'publication, PolicyStore, Adapter, ClockError>,
+    ClockError,
+    LatencyObservedFailure<PolicyStore>,
 >;
 
 fn activate_after_claim<
@@ -403,6 +451,49 @@ where
     )
 }
 
+/// Claims one due slot before latency-aware ordinary-cache activation.
+///
+/// # Errors
+///
+/// Returns cursor-claim failure before activation, or latency-aware observed
+/// activation failure paired with the already committed claim.
+pub fn activate_claimed_observed_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    claim_request: NativeExecutableCacheLimitsClaimedObservedRequest,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsClaimedObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let activate = obs::activate_observed_cache_limits_with_latency_durably;
+    activate_after_claim(
+        publication,
+        context.cursor_store,
+        claim_request,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
 /// Claims one due slot before lease-cache observed activation.
 ///
 /// # Errors
@@ -439,6 +530,50 @@ where
 {
     let activate =
         obs::activate_observed_executable_sequence_lease_cache_limits_durably;
+    activate_after_claim(
+        publication,
+        context.cursor_store,
+        claim_request,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Claims one due slot before latency-aware lease-cache activation.
+///
+/// # Errors
+///
+/// Returns cursor-claim failure before activation, or latency-aware observed
+/// activation failure paired with the already committed claim.
+pub fn activate_claimed_observed_lease_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    claim_request: NativeExecutableCacheLimitsClaimedObservedRequest,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsClaimedObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let activate =
+        obs::activate_observed_lease_cache_limits_with_latency_durably;
     activate_after_claim(
         publication,
         context.cursor_store,

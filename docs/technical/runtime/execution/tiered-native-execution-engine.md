@@ -2227,14 +2227,14 @@ conflict cannot mutate the caller-owned cursor, while post-publication
 durability
 failure remains committed slot-claim evidence.
 
-Window-only ordinary- and lease-cache observed activation can now be gated by
-that committed claim. The coordinator owns separate cursor and cache-policy
-resources: unpublished telemetry performs neither claim nor policy work;
-non-due or stale claim evidence performs no cache-policy activation; durable and
-post-publication-durability-failed claims both proceed through the existing
-observed activation path. Downstream activation failure retains the already
-committed claim and does not invent rollback. Conflict retry, latency-aware
-claim gating, and unattended lifecycle remain outside this boundary.
+Window-only and latency-aware ordinary- and lease-cache observed activation can
+now be gated by that committed claim. The coordinator owns separate cursor and
+cache-policy resources: unpublished telemetry performs neither claim nor policy
+work; non-due or stale claim evidence performs no cache-policy activation;
+durable and post-publication-durability-failed claims proceed through the
+existing observed path selected by the caller. Downstream activation failure
+retains the already committed claim and does not invent rollback. Conflict retry
+and unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
