@@ -97,6 +97,8 @@ pub mod continuation_scheduler;
 pub mod executable_cache_limits_precedence;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_window.rs"]
+pub mod executable_cache_limits_window_plan;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/clock/main.rs"]

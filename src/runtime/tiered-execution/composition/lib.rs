@@ -105,6 +105,8 @@ pub mod executable_cache_limits_persistence;
 pub mod executable_cache_limits_precedence;
 #[path = "tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
+#[path = "tier/cache_window.rs"]
+pub mod executable_cache_limits_window_plan;
 #[path = "tier/lease_journal.rs"]
 pub mod executable_durable_lease_journal;
 #[path = "tier/executable_durable_lease_retry.rs"]

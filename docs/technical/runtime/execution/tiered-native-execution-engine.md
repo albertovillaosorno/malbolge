@@ -2181,6 +2181,12 @@ unavailable
 selected signal remains non-authoritative. Selected recommendations use the same
 explicit durable/live activation bridge. Automatic triggering remains open.
 
+Telemetry-window cache-policy planning now runs only after a successful append
+has published retained aggregate totals. It carries the exact append evidence
+with the resulting precedence selection, so FIFO eviction and aggregate
+readiness stay owned by the window rather than by cache policy. Planning itself
+performs no window, cache, adapter, or durable mutation.
+
 The recommendation and precedence layers perform no cache, adapter, or storage
 
 mutation. A caller may explicitly route one authorized recommendation through

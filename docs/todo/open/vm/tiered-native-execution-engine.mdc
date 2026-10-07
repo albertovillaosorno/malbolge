@@ -893,6 +893,11 @@ behavior.
   Selected policy remains compatible with the existing explicit activation
   bridge. Automatic triggering remains open.
 
+  Window-scoped cache-policy planning now consumes only aggregate totals from a
+  successful telemetry-window append. The plan retains exact append evidence
+  alongside precedence selection, so FIFO eviction/readiness remain window-
+  owned and planning performs no window, cache, adapter, or durable mutation.
+
   Explicit recommendation activation now validates the live limits used by the
   recommendation before storage work. Deferred/retained evidence performs no
   CAS; exact replacement delegates caller-owned durable expectation plus the

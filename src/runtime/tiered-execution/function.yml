@@ -800,6 +800,12 @@ parts:
     language: rust
     responsibility: >-
       Apply caller-selected precedence to cache-limit recommendation evidence.
+  - id: part-0144
+    path: composition/tier/cache_window.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Plan cache-limit policy from published telemetry-window aggregate totals.
 projects: []
 tests: []
 graph:
