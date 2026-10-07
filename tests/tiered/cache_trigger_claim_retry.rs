@@ -46,19 +46,17 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetryWindow,
 };
-use crate::executable_cache_limits_trigger_cadence_codec as codec;
+use crate::{
+    executable_cache_limits_retry_reason as retry_reason,
+    executable_cache_limits_trigger_cadence_codec as codec,
+};
 
 type Decision = trigger::NativeExecutableCacheLimitsTriggerCadenceDecision;
+type StopReason = retry_reason::NativeExecutableCacheLimitsRetryStopReason;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DurabilityError {
     Failed,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StopReason {
-    ContentionObserved,
-    PolicyLimit,
 }
 
 #[derive(Debug, Default)]
@@ -420,6 +418,7 @@ fn typed_stop_preserves_reason_and_conflict_attempt() -> Result<(), String> {
     if evidence.attempts() == 1
         && stop.conflict().completed_attempts() == 1
         && stop.reason() == &StopReason::ContentionObserved
+        && stop.reason().id() == "contention-observed"
         && matches!(evidence.outcome(), Claim::Attempted {
             publication: CursorCas::Conflict { .. },
             ..
@@ -465,6 +464,7 @@ fn typed_continue_then_stop_binds_later_conflict() -> Result<(), String> {
     if evidence.attempts() == 2
         && stop.conflict().completed_attempts() == 2
         && stop.reason() == &StopReason::PolicyLimit
+        && stop.reason().id() == "policy-limit"
         && store.compare_calls == 2
         && store.durability_calls == 0
         && store.bytes == Some(encode(second))

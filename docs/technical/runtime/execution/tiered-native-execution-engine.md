@@ -2253,7 +2253,12 @@ caller-owned stop state after clearing prior evidence, while retaining the same
 activation result shape. Continued retries, retry-budget exhaustion, and
 telemetry non-publication do not invent stop evidence.
 
-Product reason taxonomy and unattended lifecycle remain outside this boundary.
+A stable product retry-stop taxonomy now names `ContentionObserved`
+(`contention-observed`) when one exact conflict is sufficient evidence to stop,
+and `PolicyLimit` (`policy-limit`) when caller-owned policy stops before attempt
+exhaustion. The taxonomy never selects `Stop`; budget exhaustion and other
+reasonless terminal outcomes remain outside it. Unattended lifecycle remains
+outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

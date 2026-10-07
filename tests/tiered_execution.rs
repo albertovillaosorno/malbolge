@@ -99,6 +99,8 @@ pub mod executable_cache_limits_latency;
 pub mod executable_cache_limits_precedence;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_rec.rs"]
 pub mod executable_cache_limits_recommendation;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_reason.rs"]
+pub mod executable_cache_limits_retry_reason;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_trigger.rs"]
 pub mod executable_cache_limits_trigger_cadence;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_ca.rs"]

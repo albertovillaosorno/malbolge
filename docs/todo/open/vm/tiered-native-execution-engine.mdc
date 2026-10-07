@@ -953,8 +953,10 @@ behavior.
   preserving the terminal conflict and withholding activation. A parallel typed
   decision request now retains exact stop reason plus conflict evidence in
   caller-owned stop state after clearing prior evidence; continued retries,
-  budget exhaustion, and telemetry non-publication remain reasonless. Product
-  reason taxonomy and unattended lifecycle remain open.
+  budget exhaustion, and telemetry non-publication remain reasonless. Stable
+  product reasons now distinguish `ContentionObserved` (`contention-observed`)
+  from caller-owned `PolicyLimit` (`policy-limit`) without selecting stop
+  policy. Unattended lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

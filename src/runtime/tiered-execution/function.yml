@@ -860,6 +860,12 @@ parts:
     language: rust
     responsibility: >-
       Retry cache-trigger claim conflicts and retain typed caller stop reasons.
+  - id: part-0154
+    path: composition/tier/cache_reason.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Define stable product reasons for explicit cache-trigger retry stops.
 projects: []
 tests: []
 graph:

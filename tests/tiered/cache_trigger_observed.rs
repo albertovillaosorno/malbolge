@@ -48,7 +48,12 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryTelemetry,
     NativeContinuationCachedRetryTelemetryWindow,
 };
-use crate::executable_cache_limits_trigger_cadence_codec as cursor_codec;
+use crate::{
+    executable_cache_limits_retry_reason as retry_reason,
+    executable_cache_limits_trigger_cadence_codec as cursor_codec,
+};
+
+type StopReason = retry_reason::NativeExecutableCacheLimitsRetryStopReason;
 
 type ClaimedActivation<'publication, Activation> =
     NativeExecutableCacheLimitsClaimedObservedActivation<
@@ -78,12 +83,6 @@ type RetriedError<ActivationError> =
         DurabilityError,
         ActivationError,
     >;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StopReason {
-    ContentionObserved,
-    PolicyLimit,
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ClockError {
@@ -803,6 +802,7 @@ fn reasoned_retry_stop_preserves_reason_and_withholds_activation()
                 && !retry.outcome().is_committed()
     ) && stop.conflict().completed_attempts() == 1
         && stop.reason() == &StopReason::ContentionObserved
+        && stop.reason().id() == "contention-observed"
         && calls == 0
         && store.compare_calls == 1
         && store.durability_calls == 0
