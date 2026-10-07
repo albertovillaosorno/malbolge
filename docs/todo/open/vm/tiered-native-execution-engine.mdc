@@ -965,8 +965,12 @@ behavior.
 
   Observed activation now accepts that product conflict policy directly for
   ordinary/lease and latency/non-latency paths while retaining typed stop state.
-  Callers no longer adapt policy into a decision callback. Unattended lifecycle
-  remains open.
+  Callers no longer adapt policy into a decision callback.
+
+  A process-local retry lifecycle now reuses byte/attempt bounds, conflict
+  policy, and typed stop state across observations while each call still
+  supplies its exact expected durable cursor. Successful/reasonless calls clear
+  stale stop evidence. Unattended lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

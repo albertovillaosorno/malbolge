@@ -2273,6 +2273,13 @@ and latency/non-latency paths all reuse the same reason-preserving retry
 coordinator, so callers no longer adapt policy into a callback themselves.
 Unattended or asynchronous scheduling remains outside this boundary.
 
+A process-local retry lifecycle owner now retains the positive cursor-byte and
+mechanical-attempt bounds, immutable conflict policy, and latest typed product
+stop evidence across repeated observed activations. Each call still supplies the
+exact expected durable cursor; successful or otherwise reasonless attempts clear
+stale stop evidence through the existing coordinator. The owner reads no clock,
+persists no configuration, and grants no background scheduling authority.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

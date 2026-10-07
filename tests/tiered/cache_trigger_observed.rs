@@ -49,10 +49,13 @@ use crate::cached_cycle::{
     NativeContinuationCachedRetryTelemetryWindow,
 };
 use crate::{
+    executable_cache_limits_retry_lifecycle as retry_lifecycle,
     executable_cache_limits_retry_reason as retry_reason,
     executable_cache_limits_trigger_cadence_codec as cursor_codec,
 };
 
+type RetryLifecycle =
+    retry_lifecycle::NativeExecutableCacheLimitsRetryLifecycle;
 type StopReason = retry_reason::NativeExecutableCacheLimitsRetryStopReason;
 
 type ClaimedActivation<'publication, Activation> =
@@ -1081,6 +1084,88 @@ fn policy_retry_attempt_limit_stops_second_conflict() -> Result<(), String> {
     } else {
         Err(String::from(
             "attempt-limit policy did not stop exact second conflict",
+        ))
+    }
+}
+
+#[test]
+fn policy_retry_lifecycle_reuses_state_and_clears_stop_on_success()
+-> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let candidate = cursor(4, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut lifecycle = RetryLifecycle::new(
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let mut calls = 0_usize;
+    let first = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::from_lifecycle(
+            &mut lifecycle,
+            expected,
+        ),
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(89)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let first_stop = lifecycle
+        .stop()
+        .ok_or_else(|| String::from("lifecycle stop evidence disappeared"))?;
+    if !matches!(
+        first,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) || first_stop.reason() != &RetryStopReason::ContentionObserved
+        || first_stop.conflict().completed_attempts() != 1
+        || calls != 0
+    {
+        return Err(String::from("lifecycle first stop evidence drifted"));
+    }
+    let second = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::from_lifecycle(
+            &mut lifecycle,
+            refreshed,
+        ),
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(97)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        second,
+        RetriedActivation::Claimed {
+            retry,
+            observed: 97,
+        } if retry.attempts() == 1
+            && retry.outcome().is_committed()
+    ) && lifecycle.stop().is_none()
+        && lifecycle.maximum_bytes() == positive(32)?
+        && lifecycle.maximum_attempts() == positive(3)?
+        && lifecycle.policy() == RetryConflictPolicy::return_on_contention()
+        && calls == 1
+        && store.compare_calls == 2
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "lifecycle reuse did not clear stop state on committed success",
         ))
     }
 }

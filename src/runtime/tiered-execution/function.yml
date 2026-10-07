@@ -872,6 +872,12 @@ parts:
     language: rust
     responsibility: >-
       Select typed product direction after cache-trigger claim conflicts.
+  - id: part-0156
+    path: composition/tier/cache_lifecycle.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Reuse cache-trigger retry policy and stop state across observations.
 projects: []
 tests: []
 graph:

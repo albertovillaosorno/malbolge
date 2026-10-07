@@ -59,6 +59,7 @@ use crate::retry_control::{
 };
 use crate::{
     cached_cycle as cached, executable_cache_limits_observed_activation as obs,
+    executable_cache_limits_retry_lifecycle as retry_lifecycle,
     executable_cache_limits_retry_policy as retry_policy,
     executable_cache_limits_retry_reason as retry_reason,
     executable_cache_limits_trigger_cadence as trigger,
@@ -86,6 +87,8 @@ type TelemetryPublication<ClockError> =
     cached::NativeContinuationCachedRetryCycleTelemetryPublication<ClockError>;
 type RetryConflictPolicy =
     retry_policy::NativeExecutableCacheLimitsRetryConflictPolicy;
+type RetryLifecycle =
+    retry_lifecycle::NativeExecutableCacheLimitsRetryLifecycle;
 type RetryStopReason = retry_reason::NativeExecutableCacheLimitsRetryStopReason;
 
 type ClaimedActivation<
@@ -331,6 +334,21 @@ impl<'stop, Control, StopReason>
 }
 
 impl<'stop> NativeExecutableCacheLimitsPolicyRetriedObservedRequest<'stop> {
+    /// Binds one reusable lifecycle owner to an expected durable cursor.
+    #[must_use]
+    pub const fn from_lifecycle(
+        lifecycle: &'stop mut RetryLifecycle,
+        expected_cursor: Cursor,
+    ) -> Self {
+        let retry = NativeExecutableCacheLimitsRetriedObservedRequest::new(
+            expected_cursor,
+            lifecycle.maximum_bytes(),
+            lifecycle.maximum_attempts(),
+        );
+        let policy = lifecycle.policy();
+        Self::new(retry, lifecycle.stop_state_mut(), policy)
+    }
+
     /// Binds retry inputs to one explicit product conflict policy.
     #[must_use]
     pub const fn new(
