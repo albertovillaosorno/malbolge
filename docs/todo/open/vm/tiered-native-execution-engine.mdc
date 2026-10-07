@@ -974,7 +974,10 @@ behavior.
   durable cursor and advance it only from exact terminal retry evidence; missing
   durable conflict state clears stale cursor authority. Retained-cursor request
   construction now fails closed when that authority is absent and otherwise
-  binds the exact stored cursor. Unattended lifecycle remains open.
+  binds the exact stored cursor. Observed activation can feed terminal retry
+  evidence back into lifecycle cursor state, including post-claim activation
+  failure, without moving state on unpublished or pre-terminal outcomes.
+  Unattended lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

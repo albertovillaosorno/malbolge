@@ -1543,3 +1543,97 @@ fn retained_lifecycle_request_requires_and_uses_safe_cursor()
         ))
     }
 }
+
+#[test]
+fn lifecycle_observes_withheld_retry_cursor() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(&mut lifecycle)
+            .ok_or_else(|| String::from("retained cursor disappeared"))?;
+    let outcome = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        request,
+        || Ok::<u8, &'static str>(103),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    lifecycle.observe_activation(&outcome);
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(refreshed)
+        && lifecycle.stop().is_some_and(|stop| {
+            stop.reason() == &RetryStopReason::ContentionObserved
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "withheld activation did not advance lifecycle cursor exactly",
+        ))
+    }
+}
+
+#[test]
+fn lifecycle_observes_committed_retry_on_activation_failure()
+-> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let candidate = cursor(3, 2)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        ..MemoryStore::default()
+    };
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        RetryConflictPolicy::return_on_contention(),
+    );
+    let request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(&mut lifecycle)
+            .ok_or_else(|| String::from("retained cursor disappeared"))?;
+    let result = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        request,
+        || Err::<u8, &'static str>("activation failed"),
+    );
+    let error = result
+        .err()
+        .ok_or_else(|| String::from("activation failure disappeared"))?;
+    lifecycle.observe_activation_error(&error);
+    if matches!(
+        &*error,
+        RetriedError::Observed { retry, error: "activation failed" }
+            if retry.attempts() == 1 && retry.outcome().is_committed()
+    ) && lifecycle.expected_cursor() == Some(candidate)
+        && lifecycle.stop().is_none()
+        && store.compare_calls == 1
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "post-claim failure did not preserve lifecycle cursor progress",
+        ))
+    }
+}

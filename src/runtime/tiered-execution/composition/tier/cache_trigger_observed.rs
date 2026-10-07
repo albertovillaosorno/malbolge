@@ -377,6 +377,77 @@ impl<'stop> NativeExecutableCacheLimitsPolicyRetriedObservedRequest<'stop> {
     }
 }
 
+/// Applies observed-activation evidence back into reusable retry lifecycle
+/// state.
+pub trait NativeExecutableCacheLimitsObservedRetryLifecycle {
+    /// Advances lifecycle cursor state from one completed activation outcome.
+    fn observe_activation<ClaimDurabilityError, Activation, ClockError>(
+        &mut self,
+        outcome: &NativeExecutableCacheLimitsRetriedObservedActivation<
+            '_,
+            ClaimDurabilityError,
+            Activation,
+            ClockError,
+        >,
+    );
+
+    /// Advances lifecycle cursor state from a post-claim activation failure.
+    fn observe_activation_error<
+        ClaimStoreError,
+        ClaimDurabilityError,
+        ActivationError,
+    >(
+        &mut self,
+        error: &NativeExecutableCacheLimitsRetriedObservedActivationError<
+            ClaimStoreError,
+            ClaimDurabilityError,
+            ActivationError,
+        >,
+    );
+}
+
+impl NativeExecutableCacheLimitsObservedRetryLifecycle for RetryLifecycle {
+    fn observe_activation<ClaimDurabilityError, Activation, ClockError>(
+        &mut self,
+        outcome: &NativeExecutableCacheLimitsRetriedObservedActivation<
+            '_,
+            ClaimDurabilityError,
+            Activation,
+            ClockError,
+        >,
+    ) {
+        match outcome {
+            NativeExecutableCacheLimitsRetriedObservedActivation::
+                ClaimWithheld { retry }
+            | NativeExecutableCacheLimitsRetriedObservedActivation::Claimed {
+                retry,
+                ..
+            } => self.observe_retry(retry),
+            NativeExecutableCacheLimitsRetriedObservedActivation::
+                TelemetryUnpublished { .. } => {},
+        }
+    }
+
+    fn observe_activation_error<
+        ClaimStoreError,
+        ClaimDurabilityError,
+        ActivationError,
+    >(
+        &mut self,
+        error: &NativeExecutableCacheLimitsRetriedObservedActivationError<
+            ClaimStoreError,
+            ClaimDurabilityError,
+            ActivationError,
+        >,
+    ) {
+        if let NativeExecutableCacheLimitsRetriedObservedActivationError::
+            Observed { retry, .. } = error
+        {
+            self.observe_retry(retry);
+        }
+    }
+}
+
 impl<'resource, CursorStore, PolicyStore, Adapter>
     NativeExecutableCacheLimitsClaimedObservedCacheContext<
         'resource,

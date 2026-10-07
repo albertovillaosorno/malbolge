@@ -2283,9 +2283,12 @@ expected durable cursor and advance it only from terminal retry evidence via the
 claim's next-safe-cursor contract; missing durable conflict state clears that
 cursor rather than retaining stale authority. A retained-cursor request builder
 now refuses to construct retry authority when no safe cursor is present and
-otherwise binds the exact stored cursor without caller reconstruction. The owner
-reads no clock, persists no configuration, and grants no background scheduling
-authority.
+otherwise binds the exact stored cursor without caller reconstruction. An
+observed-activation extension feeds exact terminal retry evidence back into the
+lifecycle after withheld/claimed outcomes and post-claim activation failure;
+unpublished telemetry and pre-terminal claim errors cannot move cursor state.
+The owner reads no clock, persists no configuration, and grants no background
+scheduling authority.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
