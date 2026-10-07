@@ -104,6 +104,23 @@ fn pressure_threshold(
     ))
 }
 
+fn pressure_threshold_with_insertions(
+    attempts: usize,
+    maximum_evicted_keys: usize,
+    maximum_insertions: usize,
+    maximum_retired_keys: usize,
+) -> Result<super::NativeExecutableCacheLimitsPressureThreshold, String> {
+    Ok(
+        super::NativeExecutableCacheLimitsPressureThreshold::
+            new_with_insertions(
+                nonzero(attempts, "pressure attempts")?,
+                maximum_evicted_keys,
+                maximum_insertions,
+                maximum_retired_keys,
+            ),
+    )
+}
+
 fn limits(
     entries: usize,
 ) -> Result<NativeExecutableSequenceCacheLimits, String> {
@@ -364,7 +381,8 @@ fn pressure_inclusive_maximums_select_meets_candidate() -> Result<(), String> {
     else {
         return Err(String::from("inclusive pressure maximums did not meet"));
     };
-    if evidence == CacheEvidence::Pressure(PressureEvidence::WithinMaximums)
+    if pressure_threshold(4, 3, 2)?.maximum_insertions() == usize::MAX
+        && evidence == CacheEvidence::Pressure(PressureEvidence::WithinMaximums)
         && recommended == meets
         && telemetry.evicted_keys() == 3
         && telemetry.retired_keys() == 2
@@ -373,6 +391,74 @@ fn pressure_inclusive_maximums_select_meets_candidate() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("pressure maximum evidence drifted"))
+    }
+}
+
+#[test]
+fn pressure_inclusive_insertion_maximum_selects_meets() -> Result<(), String> {
+    let current = limits(2)?;
+    let meets = limits(5)?;
+    let threshold = pressure_threshold_with_insertions(4, 3, 4, 2)?;
+    let recommendation =
+        super::recommend_native_executable_cache_limits_from_pressure(
+            pressure_telemetry(),
+            current,
+            threshold,
+            super::NativeExecutableCacheLimitsRecommendationSet::new(
+                meets,
+                limits(1)?,
+            ),
+        );
+    if threshold.maximum_insertions() == 4
+        && recommendation.limits() == Some(meets)
+        && matches!(recommendation, CacheRecommendation::Reconfigure {
+            evidence: CacheEvidence::Pressure(PressureEvidence::WithinMaximums),
+            ..
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("inclusive insertion maximum did not meet"))
+    }
+}
+
+#[test]
+fn pressure_insertion_only_violation_selects_misses() -> Result<(), String> {
+    use super::NativeExecutableCacheLimitsPressureSignal::Insertions;
+
+    let current = limits(4)?;
+    let misses = limits(2)?;
+    let recommendation =
+        super::recommend_native_executable_cache_limits_from_pressure(
+            pressure_telemetry(),
+            current,
+            pressure_threshold_with_insertions(4, 3, 3, 2)?,
+            super::NativeExecutableCacheLimitsRecommendationSet::new(
+                limits(8)?,
+                misses,
+            ),
+        );
+    let CacheRecommendation::Reconfigure {
+        evidence:
+            CacheEvidence::Pressure(PressureEvidence::Pressured(violations)),
+        recommended,
+        ..
+    } = recommendation
+    else {
+        return Err(String::from("insertion pressure did not reconfigure"));
+    };
+    if violations.contains(Insertions)
+        && !violations.contains(
+            super::NativeExecutableCacheLimitsPressureSignal::EvictedKeys,
+        )
+        && !violations.contains(
+            super::NativeExecutableCacheLimitsPressureSignal::RetiredKeys,
+        )
+        && recommended == misses
+    {
+        Ok(())
+    } else {
+        Err(String::from("insertion-only pressure evidence drifted"))
     }
 }
 

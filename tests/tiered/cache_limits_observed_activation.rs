@@ -253,6 +253,35 @@ fn request()
     ))
 }
 
+fn insertion_pressure_request()
+-> Result<NativeExecutableCacheLimitsObservedActivationRequest, String> {
+    let one = NonZeroU64::new(1)
+        .ok_or_else(|| String::from("test ratio must be positive"))?;
+    let policy = NativeExecutableCacheLimitsTwoSignalRequest::new(
+        NativeExecutableCacheLimitsReuseThreshold::new(nonzero(4)?, one, one),
+        NativeExecutableCacheLimitsRecommendationSet::new(
+            limits(3)?,
+            limits(8)?,
+        ),
+        NativeExecutableCacheLimitsPressureThreshold::new_with_insertions(
+            nonzero(4)?,
+            3,
+            3,
+            2,
+        ),
+        NativeExecutableCacheLimitsRecommendationSet::new(
+            limits(3)?,
+            limits(2)?,
+        ),
+    );
+    Ok(NativeExecutableCacheLimitsObservedActivationRequest::new(
+        &policy,
+        CachePrecedence::Pressure,
+        None,
+        nonzero(40)?,
+    ))
+}
+
 fn published_with_latency(
     counts: [usize; 6],
     nanoseconds: u64,
@@ -359,6 +388,58 @@ fn deferred_published_telemetry_skips_store_and_cache() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("deferred observed policy reached activation"))
+    }
+}
+
+#[test]
+fn insertion_pressure_activates_cache_through_existing_trigger()
+-> Result<(), String> {
+    let publication = published([4, 8, 3, 0, 4, 2])?;
+    let current = limits(4)?;
+    let candidate = limits(2)?;
+    let mut store = MemoryStore::default();
+    let mut cache = NativeExecutableSequenceCache::with_limits(current);
+    let mut adapter = NoOpAdapter::default();
+    let mut context = NativeExecutableCacheLimitsObservedCacheContext::new(
+        &mut store,
+        &mut cache,
+        &mut adapter,
+    );
+    let outcome = activate_observed_executable_sequence_cache_limits_durably(
+        &publication,
+        &mut context,
+        &insertion_pressure_request()?,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        NativeExecutableCacheLimitsObservedActivation::Activated {
+            activation:
+                NativeExecutableCacheLimitsRecommendedActivation::Ready {
+                    activation:
+                        NativeExecutableSequenceCacheLimitsDurableActivation::
+                            Reconfigured {
+                                publication:
+                                    LimitsCas::Durable {
+                                        current: published,
+                                        previous: None,
+                                        ..
+                                    },
+                                ..
+                            },
+                    ..
+                },
+            ..
+        } if published == candidate
+    ) && store.compare_and_swap_calls == 1
+        && cache.limits() == candidate
+        && adapter.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "insertion pressure did not reach existing cache activation",
+        ))
     }
 }
 

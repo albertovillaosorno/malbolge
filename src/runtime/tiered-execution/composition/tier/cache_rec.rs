@@ -68,6 +68,7 @@ pub enum NativeExecutableCacheLimitsEvidence {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NativeExecutableCacheLimitsPressureThreshold {
     maximum_evicted_keys: usize,
+    maximum_insertions: usize,
     maximum_retired_keys: usize,
     required_attempts: NonZeroUsize,
 }
@@ -77,6 +78,8 @@ pub struct NativeExecutableCacheLimitsPressureThreshold {
 pub enum NativeExecutableCacheLimitsPressureSignal {
     /// Active cache keys evicted while admitting misses.
     EvictedKeys,
+    /// Cache insertions represented by the exact telemetry.
+    Insertions,
     /// Evicted keys still resident behind external leases.
     RetiredKeys,
 }
@@ -234,7 +237,8 @@ impl NativeExecutableCacheLimitsPressureSignal {
     const fn mask(self) -> u8 {
         match self {
             Self::EvictedKeys => 1,
-            Self::RetiredKeys => 2,
+            Self::Insertions => 2,
+            Self::RetiredKeys => 4,
         }
     }
 }
@@ -244,6 +248,12 @@ impl NativeExecutableCacheLimitsPressureThreshold {
     #[must_use]
     pub const fn maximum_evicted_keys(self) -> usize {
         self.maximum_evicted_keys
+    }
+
+    /// Returns the inclusive maximum insertion count.
+    #[must_use]
+    pub const fn maximum_insertions(self) -> usize {
+        self.maximum_insertions
     }
 
     /// Returns the inclusive maximum retired-key count.
@@ -259,8 +269,25 @@ impl NativeExecutableCacheLimitsPressureThreshold {
         maximum_evicted_keys: usize,
         maximum_retired_keys: usize,
     ) -> Self {
+        Self::new_with_insertions(
+            required_attempts,
+            maximum_evicted_keys,
+            usize::MAX,
+            maximum_retired_keys,
+        )
+    }
+
+    /// Constructs exact pressure maxima including cache insertions.
+    #[must_use]
+    pub const fn new_with_insertions(
+        required_attempts: NonZeroUsize,
+        maximum_evicted_keys: usize,
+        maximum_insertions: usize,
+        maximum_retired_keys: usize,
+    ) -> Self {
         Self {
             maximum_evicted_keys,
+            maximum_insertions,
             maximum_retired_keys,
             required_attempts,
         }
@@ -508,6 +535,9 @@ pub fn recommend_native_executable_cache_limits_from_pressure(
     let mut bits = 0;
     if telemetry.evicted_keys() > threshold.maximum_evicted_keys {
         bits |= NativeExecutableCacheLimitsPressureSignal::EvictedKeys.mask();
+    }
+    if telemetry.insertions() > threshold.maximum_insertions {
+        bits |= NativeExecutableCacheLimitsPressureSignal::Insertions.mask();
     }
     if telemetry.retired_keys() > threshold.maximum_retired_keys {
         bits |= NativeExecutableCacheLimitsPressureSignal::RetiredKeys.mask();

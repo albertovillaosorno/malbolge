@@ -2161,9 +2161,11 @@ uses cross multiplication and arithmetic failure fails closed to the misses
 candidate.
 
 Pressure-driven recommendation adds a second independent signal from exact
-eviction and retirement counts after a positive attempt gate. Caller-owned
-inclusive maximums preserve simultaneous eviction/retirement violations and
-select only caller-supplied meets/misses limit candidates.
+eviction, insertion, and retirement counts after a positive attempt gate.
+Caller-owned inclusive maximums preserve simultaneous pressure violations and
+select only caller-supplied meets/misses limit candidates. Existing pressure
+construction remains insertion-unbounded unless callers opt into an exact
+insertion maximum.
 
 Agreement-only cache policy now evaluates reuse and pressure against the same
 
