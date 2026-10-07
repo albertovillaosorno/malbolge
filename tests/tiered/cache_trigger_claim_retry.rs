@@ -235,6 +235,7 @@ fn retry_refresh_consumed_slot_withholds_without_second_cas()
     )
     .map_err(|error| format!("{error:?}"))?;
     if evidence.attempts() == 2
+        && evidence.outcome().next_expected_cursor() == Some(refreshed)
         && matches!(
             evidence.outcome(),
             Claim::Withheld {
@@ -242,7 +243,9 @@ fn retry_refresh_consumed_slot_withholds_without_second_cas()
                     observed_sequence: 1,
                     due_sequence: observed_due,
                 },
+                expected: observed_expected,
             } if observed_due == &due_sequence
+                && observed_expected == &refreshed
         )
         && store.compare_calls == 1
         && store.durability_calls == 0
@@ -269,6 +272,7 @@ fn missing_conflict_state_is_terminal() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if evidence.attempts() == 1
+        && evidence.outcome().next_expected_cursor().is_none()
         && matches!(evidence.outcome(), Claim::Attempted {
             publication: CursorCas::Conflict { current: None, .. },
             ..
@@ -301,6 +305,7 @@ fn exhausted_attempt_budget_preserves_conflict() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if evidence.attempts() == 1
+        && evidence.outcome().next_expected_cursor() == Some(refreshed)
         && matches!(
             evidence.outcome(),
             Claim::Attempted {

@@ -2224,7 +2224,10 @@ from an immutable expected cursor plus one successful window append. Deferred,
 missed, and exhausted cadence evidence performs no store work; only an exact due
 append advances a cursor copy and attempts expected-to-candidate CAS. Stale
 conflict cannot mutate the caller-owned cursor, while post-publication
-durability failure remains committed slot-claim evidence.
+durability failure remains committed slot-claim evidence. Every terminal claim
+also exposes the exact next safe expected cursor: committed candidate, decoded
+conflict current state, or unchanged non-due expected state; missing conflict
+state remains explicitly absent.
 
 Caller-bounded synchronous claim retry now refreshes only decoded cursor
 conflicts with a present current state. A positive attempt budget and optional

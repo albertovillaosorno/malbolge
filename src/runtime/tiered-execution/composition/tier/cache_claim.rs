@@ -70,6 +70,8 @@ pub enum NativeExecutableCacheLimitsTriggerCadenceClaim<DurabilityError> {
     Withheld {
         /// Exact deferred, missed, or exhausted cadence evidence.
         decision: Decision,
+        /// Exact cursor revalidated without durable mutation.
+        expected: Cursor,
     },
 }
 
@@ -95,6 +97,24 @@ impl<DurabilityError>
                 | CursorCas::Published { .. },
             ..
         })
+    }
+
+    /// Returns the exact cursor safe to use as the next expected state.
+    #[must_use]
+    pub const fn next_expected_cursor(&self) -> Option<Cursor> {
+        match self {
+            Self::Attempted {
+                publication: CursorCas::Conflict { current, .. },
+                ..
+            } => *current,
+            Self::Attempted {
+                publication:
+                    CursorCas::Durable { current, .. }
+                    | CursorCas::Published { current, .. },
+                ..
+            } => Some(*current),
+            Self::Withheld { expected, .. } => Some(*expected),
+        }
     }
 }
 
@@ -123,6 +143,7 @@ where
     if !matches!(decision, Decision::Due { .. }) {
         return Ok(NativeExecutableCacheLimitsTriggerCadenceClaim::Withheld {
             decision,
+            expected,
         });
     }
     let publication =

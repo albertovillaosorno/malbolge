@@ -847,7 +847,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Validate and durably claim one exact cache-trigger cadence slot.
+      Validate one durable cache-trigger slot and retain next cursor evidence.
   - id: part-0152
     path: composition/tier/cache_trigger_observed.rs
     kind: composition

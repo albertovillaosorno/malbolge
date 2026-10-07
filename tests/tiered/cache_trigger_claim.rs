@@ -167,6 +167,7 @@ fn exact_due_claim_commits_validated_candidate() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if claim.is_committed()
+        && claim.next_expected_cursor() == Some(candidate)
         && matches!(
             claim,
             NativeExecutableCacheLimitsTriggerCadenceClaim::Attempted {
@@ -212,11 +213,13 @@ fn early_publication_withholds_without_store_work() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if !claim.is_committed()
+        && claim.next_expected_cursor() == Some(expected)
         && matches!(
             claim,
             NativeExecutableCacheLimitsTriggerCadenceClaim::Withheld {
                 decision: Decision::Deferred { .. },
-            }
+                expected: observed_expected,
+            } if observed_expected == expected
         )
         && store.compare_calls == 0
         && store.durability_calls == 0
@@ -244,11 +247,13 @@ fn missed_due_withholds_without_catch_up() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if !claim.is_committed()
+        && claim.next_expected_cursor() == Some(expected)
         && matches!(
             claim,
             NativeExecutableCacheLimitsTriggerCadenceClaim::Withheld {
                 decision: Decision::Missed { .. },
-            }
+                expected: observed_expected,
+            } if observed_expected == expected
         )
         && store.compare_calls == 0
         && store.durability_calls == 0
@@ -279,6 +284,7 @@ fn stale_due_claim_returns_conflict_without_commit() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if !claim.is_committed()
+        && claim.next_expected_cursor() == Some(current)
         && matches!(
             claim,
             NativeExecutableCacheLimitsTriggerCadenceClaim::Attempted {
@@ -320,6 +326,7 @@ fn durability_failure_keeps_due_claim_committed() -> Result<(), String> {
     )
     .map_err(|error| format!("{error:?}"))?;
     if claim.is_committed()
+        && claim.next_expected_cursor() == Some(candidate)
         && matches!(
             claim,
             NativeExecutableCacheLimitsTriggerCadenceClaim::Attempted {

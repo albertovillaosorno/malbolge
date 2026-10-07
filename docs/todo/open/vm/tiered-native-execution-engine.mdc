@@ -930,7 +930,9 @@ behavior.
   immutable expected cursor plus one successful window append. Non-due evidence
   performs zero store work; exact due advances one copy before expected-to-
   candidate CAS. Stale conflict leaves caller state untouched; durability
-  failure after publication remains committed claim evidence.
+  failure after publication remains committed claim evidence. Terminal claims
+  now expose the exact next safe expected cursor for committed, conflict-
+  current, and non-due outcomes; missing conflict state remains absent.
 
   Caller-bounded synchronous claim retry now refreshes only typed conflicts with
   a present current cursor. Positive attempt budget plus optional caller retry
