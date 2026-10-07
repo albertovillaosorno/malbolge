@@ -977,3 +977,110 @@ fn reasoned_retry_budget_exhaustion_has_no_stop_reason() -> Result<(), String> {
         ))
     }
 }
+
+#[test]
+fn policy_retry_return_on_contention_preserves_reason() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut stop_state =
+        NativeContinuationRetryStopState::<RetryStopReason>::new();
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            &mut stop_state,
+            RetryConflictPolicy::return_on_contention(),
+        );
+    let outcome = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        policy_request,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(79)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let stop = stop_state
+        .stop()
+        .ok_or_else(|| String::from("product stop reason disappeared"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && stop.conflict().completed_attempts() == 1
+        && stop.reason() == &RetryStopReason::ContentionObserved
+        && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "return-on-contention policy did not retain exact stop evidence",
+        ))
+    }
+}
+
+#[test]
+fn policy_retry_attempt_limit_stops_second_conflict() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let first = cursor(1, 3)?;
+    let second = cursor(1, 4)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([
+            Some(encode_cursor(first)),
+            Some(encode_cursor(second)),
+        ]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut stop_state =
+        NativeContinuationRetryStopState::<RetryStopReason>::new();
+    let policy_request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            &mut stop_state,
+            RetryConflictPolicy::attempt_limit(positive(2)?),
+        );
+    let outcome = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        policy_request,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(83)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let stop = stop_state
+        .stop()
+        .ok_or_else(|| String::from("policy-limit reason disappeared"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 2
+                && !retry.outcome().is_committed()
+    ) && stop.conflict().completed_attempts() == 2
+        && stop.reason() == &RetryStopReason::PolicyLimit
+        && calls == 0
+        && store.compare_calls == 2
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(second))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "attempt-limit policy did not stop exact second conflict",
+        ))
+    }
+}

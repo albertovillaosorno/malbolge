@@ -853,7 +853,7 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Gate observed activation on claims, retries, and typed caller stop state.
+      Gate observed activation on claims, retries, and product conflict policy.
   - id: part-0153
     path: composition/tier/cache_cr.rs
     kind: composition

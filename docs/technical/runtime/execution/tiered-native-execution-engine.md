@@ -2267,6 +2267,12 @@ that threshold and uses `PolicyLimit` at or above it. Mechanical maximum
 attempts remain a separate retry-boundary budget and can still terminate
 reasonlessly before product policy is consulted.
 
+Observed activation now accepts that product conflict policy directly through a
+policy-bound retry request with caller-owned typed stop state. Ordinary/lease
+and latency/non-latency paths all reuse the same reason-preserving retry
+coordinator, so callers no longer adapt policy into a callback themselves.
+Unattended or asynchronous scheduling remains outside this boundary.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
