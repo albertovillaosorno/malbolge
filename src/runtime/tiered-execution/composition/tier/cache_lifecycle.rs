@@ -9,14 +9,16 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Process-local cache-trigger retry configuration and retained product stop
-//     evidence across repeated observed-activation calls.
+//   - Process-local cache-trigger retry configuration, latest safe expected
+//     cursor, and retained product stop evidence across observed activations.
 // - Must-Not:
 //   - Execute activation, load/store cursors, read clocks, sleep, spawn work,
 //     or infer an expected durable cursor.
 // - Allows:
-//   - Inputs: positive retry/byte bounds and explicit product conflict policy.
-//   - Outputs: immutable retry configuration and latest typed stop evidence.
+//   - Inputs: positive retry/byte bounds, explicit product conflict policy,
+//     optional expected cursor, and exact terminal claim-retry evidence.
+//   - Outputs: immutable retry configuration, latest safe expected cursor, and
+//     latest typed stop evidence.
 //   - Side effects: process-local stop-state mutation by the higher activation
 //     coordinator only.
 // - Split-When:
@@ -27,7 +29,7 @@
 // - Summary:
 //   - Reuses cache-trigger retry policy and stop state across observations.
 // - Description:
-//   - Durable expected-cursor ownership remains outside this state owner.
+//   - Cursor state advances only from exact terminal claim evidence.
 // - Usage:
 //   - Build one owner, then bind it through the observed activation
 //     coordinator.
@@ -45,14 +47,22 @@ use crate::retry_control::{
 use crate::{
     executable_cache_limits_retry_policy as retry_policy,
     executable_cache_limits_retry_reason as retry_reason,
+    executable_cache_limits_trigger_cadence as trigger,
+    executable_cache_limits_trigger_cadence_claim_retry as claim_retry,
 };
 
+type Cursor = trigger::NativeExecutableCacheLimitsTriggerCadence;
 type Policy = retry_policy::NativeExecutableCacheLimitsRetryConflictPolicy;
+type Retry<DurabilityError> =
+    claim_retry::NativeExecutableCacheLimitsTriggerCadenceClaimRetry<
+        DurabilityError,
+    >;
 type StopReason = retry_reason::NativeExecutableCacheLimitsRetryStopReason;
 
 /// Reusable process-local policy and stop state for observed cache activation.
 #[derive(Debug)]
 pub struct NativeExecutableCacheLimitsRetryLifecycle {
+    expected_cursor: Option<Cursor>,
     maximum_attempts: NonZeroUsize,
     maximum_bytes: NonZeroUsize,
     policy: Policy,
@@ -60,6 +70,12 @@ pub struct NativeExecutableCacheLimitsRetryLifecycle {
 }
 
 impl NativeExecutableCacheLimitsRetryLifecycle {
+    /// Returns the latest safe expected durable cursor, when available.
+    #[must_use]
+    pub const fn expected_cursor(&self) -> Option<Cursor> {
+        self.expected_cursor
+    }
+
     /// Returns the positive mechanical attempt budget.
     #[must_use]
     pub const fn maximum_attempts(&self) -> NonZeroUsize {
@@ -80,11 +96,37 @@ impl NativeExecutableCacheLimitsRetryLifecycle {
         policy: Policy,
     ) -> Self {
         Self {
+            expected_cursor: None,
             maximum_attempts,
             maximum_bytes,
             policy,
             stop_state: NativeContinuationRetryStopState::new(),
         }
+    }
+
+    /// Creates one lifecycle owner with an initial expected durable cursor.
+    #[must_use]
+    pub const fn new_with_cursor(
+        expected_cursor: Cursor,
+        maximum_bytes: NonZeroUsize,
+        maximum_attempts: NonZeroUsize,
+        policy: Policy,
+    ) -> Self {
+        Self {
+            expected_cursor: Some(expected_cursor),
+            maximum_attempts,
+            maximum_bytes,
+            policy,
+            stop_state: NativeContinuationRetryStopState::new(),
+        }
+    }
+
+    /// Advances expected cursor state from exact terminal retry evidence.
+    pub const fn observe_retry<DurabilityError>(
+        &mut self,
+        retry: &Retry<DurabilityError>,
+    ) {
+        self.expected_cursor = retry.outcome().next_expected_cursor();
     }
 
     /// Returns the immutable product conflict policy.

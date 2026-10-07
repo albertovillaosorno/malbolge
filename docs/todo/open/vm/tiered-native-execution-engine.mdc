@@ -970,9 +970,10 @@ behavior.
   Callers no longer adapt policy into a decision callback.
 
   A process-local retry lifecycle now reuses byte/attempt bounds, conflict
-  policy, and typed stop state across observations while each call still
-  supplies its exact expected durable cursor. Successful/reasonless calls clear
-  stale stop evidence. Unattended lifecycle remains open.
+  policy, and typed stop state across observations. It can retain an expected
+  durable cursor and advance it only from exact terminal retry evidence; missing
+  durable conflict state clears stale cursor authority. Unattended lifecycle
+  remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

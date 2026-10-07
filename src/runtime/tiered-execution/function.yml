@@ -877,7 +877,8 @@ parts:
     kind: composition
     language: rust
     responsibility: >-
-      Reuse cache-trigger retry policy and stop state across observations.
+      Reuse cache-trigger retry policy, cursor, and stop state across
+      observations.
 projects: []
 tests: []
 graph:
