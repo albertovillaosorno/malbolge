@@ -1482,3 +1482,64 @@ fn policy_public_wrappers_skip_all_resources_when_unpublished()
 
     Ok(())
 }
+
+#[test]
+fn retained_lifecycle_request_requires_and_uses_safe_cursor()
+-> Result<(), String> {
+    let policy = RetryConflictPolicy::return_on_contention();
+    let mut empty = RetryLifecycle::new(positive(32)?, positive(3)?, policy);
+    if NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+        from_retained_lifecycle(&mut empty)
+        .is_some()
+    {
+        return Err(String::from(
+            "cursorless lifecycle constructed retry authority",
+        ));
+    }
+
+    let expected = cursor(5, 2)?;
+    let publication = published(1)?;
+    let expected_bytes = encode_cursor(expected);
+    let mut store = MemoryStore {
+        bytes: Some(expected_bytes.clone()),
+        ..MemoryStore::default()
+    };
+    let mut lifecycle = RetryLifecycle::new_with_cursor(
+        expected,
+        positive(32)?,
+        positive(3)?,
+        policy,
+    );
+    let request =
+        NativeExecutableCacheLimitsPolicyRetriedObservedRequest::
+            from_retained_lifecycle(&mut lifecycle)
+            .ok_or_else(|| String::from("retained cursor was not consumable"))?;
+    let mut calls = 0_usize;
+    let outcome = activate_after_policy_claim_retries(
+        &publication,
+        &mut store,
+        request,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(101)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && calls == 0
+        && store.compare_calls == 0
+        && store.durability_calls == 0
+        && store.bytes == Some(expected_bytes)
+        && lifecycle.expected_cursor() == Some(expected)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retained lifecycle cursor did not bind exact retry request",
+        ))
+    }
+}

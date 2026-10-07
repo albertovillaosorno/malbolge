@@ -972,8 +972,9 @@ behavior.
   A process-local retry lifecycle now reuses byte/attempt bounds, conflict
   policy, and typed stop state across observations. It can retain an expected
   durable cursor and advance it only from exact terminal retry evidence; missing
-  durable conflict state clears stale cursor authority. Unattended lifecycle
-  remains open.
+  durable conflict state clears stale cursor authority. Retained-cursor request
+  construction now fails closed when that authority is absent and otherwise
+  binds the exact stored cursor. Unattended lifecycle remains open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

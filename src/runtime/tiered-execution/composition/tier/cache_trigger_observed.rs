@@ -349,6 +349,17 @@ impl<'stop> NativeExecutableCacheLimitsPolicyRetriedObservedRequest<'stop> {
         Self::new(retry, lifecycle.stop_state_mut(), policy)
     }
 
+    /// Binds one lifecycle using its retained safe expected cursor.
+    #[must_use]
+    pub const fn from_retained_lifecycle(
+        lifecycle: &'stop mut RetryLifecycle,
+    ) -> Option<Self> {
+        let Some(expected_cursor) = lifecycle.expected_cursor() else {
+            return None;
+        };
+        Some(Self::from_lifecycle(lifecycle, expected_cursor))
+    }
+
     /// Binds retry inputs to one explicit product conflict policy.
     #[must_use]
     pub const fn new(

@@ -2281,8 +2281,11 @@ mechanical-attempt bounds, immutable conflict policy, and latest typed product
 stop evidence across repeated observed activations. It may also retain an exact
 expected durable cursor and advance it only from terminal retry evidence via the
 claim's next-safe-cursor contract; missing durable conflict state clears that
-cursor rather than retaining stale authority. The owner reads no clock, persists
-no configuration, and grants no background scheduling authority.
+cursor rather than retaining stale authority. A retained-cursor request builder
+now refuses to construct retry authority when no safe cursor is present and
+otherwise binds the exact stored cursor without caller reconstruction. The owner
+reads no clock, persists no configuration, and grants no background scheduling
+authority.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
