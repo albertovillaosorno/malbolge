@@ -16,14 +16,15 @@
 //     work, choose storage paths, or redefine cache-limit policy semantics.
 // - Allows:
 //   - Inputs: observed publication, expected cadence cursor, positive optional
-//     retry budget/direction, separate cursor/policy resources, and activation
-//     request.
-//   - Outputs: unpublished, withheld claim/retry, claimed activation, or exact
-//     claim/retry/activation failure evidence.
+//     retry budget/direction or typed stop decision, separate cursor/policy
+//     resources, and activation request.
+//   - Outputs: unpublished, withheld claim/retry with optional typed caller
+//     stop evidence, claimed activation, or exact claim/retry/activation
+//     failure evidence.
 //   - Side effects: bounded due-slot claims followed by existing activation
 //     side effects only after terminal retry evidence committed.
 // - Split-When:
-//   - Typed conflict-reason policy or unattended lifecycle gains authority.
+//   - Product stop-reason policy or unattended lifecycle gains authority.
 // - Merge-When:
 //   - One product trigger owner subsumes claim, activation, and lifecycle.
 // - Summary:
@@ -53,7 +54,8 @@ use crate::execution_native::{
     NativeExecutableSequenceLeaseCache,
 };
 use crate::retry_control::{
-    NativeContinuationRetryConflict, NativeContinuationRetryDirective,
+    NativeContinuationRetryConflict, NativeContinuationRetryDecision,
+    NativeContinuationRetryDirective, NativeContinuationRetryStopState,
 };
 use crate::{
     cached_cycle as cached, executable_cache_limits_observed_activation as obs,
@@ -114,6 +116,18 @@ pub struct NativeExecutableCacheLimitsControlledRetriedObservedRequest<Control>
 {
     control: Control,
     retry: NativeExecutableCacheLimitsRetriedObservedRequest,
+}
+
+/// Caller-owned retry bounds, typed decisions, and retained stop evidence.
+#[derive(Debug)]
+pub struct NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+    'stop,
+    Control,
+    StopReason,
+> {
+    control: Control,
+    retry: NativeExecutableCacheLimitsRetriedObservedRequest,
+    stop_state: &'stop mut NativeContinuationRetryStopState<StopReason>,
 }
 
 /// Separate cursor/policy resources for one ordinary-cache claimed activation.
@@ -278,6 +292,28 @@ impl<Control>
         control: Control,
     ) -> Self {
         Self { control, retry }
+    }
+}
+
+impl<'stop, Control, StopReason>
+    NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        'stop,
+        Control,
+        StopReason,
+    >
+{
+    /// Binds retry inputs to caller decisions and typed retained stop state.
+    #[must_use]
+    pub const fn new(
+        retry: NativeExecutableCacheLimitsRetriedObservedRequest,
+        stop_state: &'stop mut NativeContinuationRetryStopState<StopReason>,
+        control: Control,
+    ) -> Self {
+        Self {
+            control,
+            retry,
+            stop_state,
+        }
     }
 }
 
@@ -669,6 +705,57 @@ where
             retry,
             observed,
         },
+    )
+}
+
+fn activate_after_reasoned_claim_retries<
+    'publication,
+    CursorStore,
+    StopReason,
+    Activation,
+    ActivationError,
+    ClockError,
+    Control,
+    Apply,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    cursor_store: &mut CursorStore,
+    reasoned: NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        '_,
+        Control,
+        StopReason,
+    >,
+    apply: Apply,
+) -> RetriedResult<
+    'publication,
+    CursorStore,
+    Activation,
+    ClockError,
+    ActivationError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+    Apply: FnOnce() -> Result<Activation, ActivationError>,
+{
+    let NativeExecutableCacheLimitsReasonedRetriedObservedRequest {
+        mut control,
+        retry,
+        stop_state,
+    } = reasoned;
+    *stop_state = NativeContinuationRetryStopState::new();
+    let controlled =
+        NativeExecutableCacheLimitsControlledRetriedObservedRequest::new(
+            retry,
+            move |conflict| stop_state.resolve(conflict, control(conflict)),
+        );
+    activate_after_controlled_claim_retries(
+        publication,
+        cursor_store,
+        controlled,
+        apply,
     )
 }
 
@@ -1251,6 +1338,225 @@ where
         publication,
         context.cursor_store,
         controlled,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies typed caller stop decisions before ordinary-cache activation.
+///
+/// Exact stop evidence is retained in the request's caller-owned stop state.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or observed activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_reasoned_retried_observed_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    StopReason,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    reasoned: NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        '_,
+        Control,
+        StopReason,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+{
+    let activate =
+        obs::activate_observed_executable_sequence_cache_limits_durably;
+    activate_after_reasoned_claim_retries(
+        publication,
+        context.cursor_store,
+        reasoned,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies typed stop decisions before latency-aware cache activation.
+///
+/// Exact stop evidence is retained in the request's caller-owned stop state.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or latency-aware activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_reasoned_retried_observed_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    StopReason,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedCacheContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    reasoned: NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        '_,
+        Control,
+        StopReason,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLatencyCacheResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+{
+    let activate = obs::activate_observed_cache_limits_with_latency_durably;
+    activate_after_reasoned_claim_retries(
+        publication,
+        context.cursor_store,
+        reasoned,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies typed caller stop decisions before lease-cache activation.
+///
+/// Exact stop evidence is retained in the request's caller-owned stop state.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or observed activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_reasoned_retried_observed_lease_cache_limits_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    StopReason,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    reasoned: NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        '_,
+        Control,
+        StopReason,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+{
+    let activate =
+        obs::activate_observed_executable_sequence_lease_cache_limits_durably;
+    activate_after_reasoned_claim_retries(
+        publication,
+        context.cursor_store,
+        reasoned,
+        || activate(publication, &mut context.observed, request),
+    )
+}
+
+/// Applies typed stop decisions before latency-aware lease-cache activation.
+///
+/// Exact stop evidence is retained in the request's caller-owned stop state.
+///
+/// # Errors
+///
+/// Returns claim-retry failure, or latency-aware activation failure paired with
+/// exact committed retry evidence.
+pub fn activate_reasoned_retried_lease_cache_limits_with_latency_durably<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    StopReason,
+    ClockError,
+    Control,
+>(
+    publication: &'publication TelemetryPublication<ClockError>,
+    context: &mut NativeExecutableCacheLimitsClaimedObservedLeaseContext<
+        '_,
+        CursorStore,
+        PolicyStore,
+        Adapter,
+    >,
+    reasoned: NativeExecutableCacheLimitsReasonedRetriedObservedRequest<
+        '_,
+        Control,
+        StopReason,
+    >,
+    request: &obs::NativeExecutableCacheLimitsObservedLatencyActivationRequest,
+) -> NativeExecutableCacheLimitsRetriedObservedLatencyLeaseResult<
+    'publication,
+    CursorStore,
+    PolicyStore,
+    Adapter,
+    ClockError,
+>
+where
+    CursorStore: ConditionalBlobStore + DurableBlobStore,
+    PolicyStore: ConditionalBlobStore + DurableBlobStore,
+    Adapter: NativeExecutableMemoryAdapter,
+    Control: FnMut(
+        NativeContinuationRetryConflict,
+    ) -> NativeContinuationRetryDecision<StopReason>,
+{
+    let activate =
+        obs::activate_observed_lease_cache_limits_with_latency_durably;
+    activate_after_reasoned_claim_retries(
+        publication,
+        context.cursor_store,
+        reasoned,
         || activate(publication, &mut context.observed, request),
     )
 }

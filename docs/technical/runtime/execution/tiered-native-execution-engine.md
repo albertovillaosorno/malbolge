@@ -2247,9 +2247,13 @@ retains that complete committed retry evidence without restarting contention.
 Retry-aware activation also accepts caller conflict direction. The callback sees
 only exact completed-attempt conflict evidence and returns `Continue` or `Stop`;
 `Stop` preserves the current terminal conflict without activation, while
-`Continue` reuses the same exact refresh/revalidation path. Propagating typed
-stop reasons through this activation coordinator, product reason taxonomy, and
-unattended lifecycle remain outside this boundary.
+`Continue` reuses the same exact refresh/revalidation path. A parallel typed
+decision request writes exact caller stop reason plus conflict evidence into
+caller-owned stop state after clearing prior evidence, while retaining the same
+activation result shape. Continued retries, retry-budget exhaustion, and
+telemetry non-publication do not invent stop evidence.
+
+Product reason taxonomy and unattended lifecycle remain outside this boundary.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

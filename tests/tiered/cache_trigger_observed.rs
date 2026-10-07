@@ -80,6 +80,12 @@ type RetriedError<ActivationError> =
     >;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StopReason {
+    ContentionObserved,
+    PolicyLimit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ClockError {
     Failed,
 }
@@ -751,5 +757,223 @@ fn controlled_retry_continue_commits_then_activates_once() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("caller continue did not reach one activation"))
+    }
+}
+
+#[test]
+fn reasoned_retry_stop_preserves_reason_and_withholds_activation()
+-> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut stop_state = NativeContinuationRetryStopState::<StopReason>::new();
+    let reasoned =
+        NativeExecutableCacheLimitsReasonedRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            &mut stop_state,
+            |_conflict| {
+                NativeContinuationRetryDecision::Stop(
+                    StopReason::ContentionObserved,
+                )
+            },
+        );
+    let outcome = activate_after_reasoned_claim_retries(
+        &publication,
+        &mut store,
+        reasoned,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(61)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let stop = stop_state
+        .stop()
+        .ok_or_else(|| String::from("typed stop reason disappeared"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && stop.conflict().completed_attempts() == 1
+        && stop.reason() == &StopReason::ContentionObserved
+        && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(refreshed))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "typed caller stop did not remain bound to withheld activation",
+        ))
+    }
+}
+
+#[test]
+fn reasoned_retry_continue_commits_without_stop_and_activates_once()
+-> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let candidate = cursor(4, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut stop_state = NativeContinuationRetryStopState::<StopReason>::new();
+    let reasoned =
+        NativeExecutableCacheLimitsReasonedRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            &mut stop_state,
+            |_conflict| NativeContinuationRetryDecision::Continue,
+        );
+    let outcome = activate_after_reasoned_claim_retries(
+        &publication,
+        &mut store,
+        reasoned,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(67)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::Claimed {
+            retry,
+            observed: 67,
+        } if retry.attempts() == 2
+            && retry.outcome().is_committed()
+    ) && stop_state.stop().is_none()
+        && calls == 1
+        && store.compare_calls == 2
+        && store.durability_calls == 1
+        && store.bytes == Some(encode_cursor(candidate))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "typed continue invented stop evidence or skipped activation",
+        ))
+    }
+}
+
+#[test]
+fn reasoned_retry_unpublished_clears_stop_reason_without_claim()
+-> Result<(), String> {
+    let publication = TelemetryPublication::ClockFailure {
+        error: ClockError::Failed,
+    };
+    let expected = cursor(1, 2)?;
+    let mut store = MemoryStore::default();
+    let mut calls = 0_usize;
+    let mut decisions = 0_usize;
+    let mut stop_state = NativeContinuationRetryStopState::<StopReason>::new();
+    let stale_directive = stop_state.resolve(
+        NativeContinuationRetryConflict::new(7),
+        NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit),
+    );
+    let reasoned =
+        NativeExecutableCacheLimitsReasonedRetriedObservedRequest::new(
+            retry_request(expected, 3)?,
+            &mut stop_state,
+            |_conflict| {
+                decisions = decisions.saturating_add(1);
+                NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit)
+            },
+        );
+    let outcome = activate_after_reasoned_claim_retries(
+        &publication,
+        &mut store,
+        reasoned,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(73)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::TelemetryUnpublished {
+            publication: observed,
+        } if core::ptr::eq(observed, &publication)
+    ) && stale_directive == NativeContinuationRetryDirective::Stop
+        && stop_state.stop().is_none()
+        && decisions == 0
+        && calls == 0
+        && store.compare_calls == 0
+        && store.durability_calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "unpublished retry retained stop evidence or touched claim state",
+        ))
+    }
+}
+
+#[test]
+fn reasoned_retry_budget_exhaustion_has_no_stop_reason() -> Result<(), String> {
+    let publication = published(1)?;
+    let expected = cursor(1, 2)?;
+    let refreshed = cursor(1, 3)?;
+    let mut store = MemoryStore {
+        bytes: Some(encode_cursor(expected)),
+        forced_conflicts: VecDeque::from([Some(encode_cursor(refreshed))]),
+        ..MemoryStore::default()
+    };
+    let mut calls = 0_usize;
+    let mut decisions = 0_usize;
+    let mut stop_state = NativeContinuationRetryStopState::<StopReason>::new();
+    let stale_directive = stop_state.resolve(
+        NativeContinuationRetryConflict::new(9),
+        NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit),
+    );
+    let reasoned =
+        NativeExecutableCacheLimitsReasonedRetriedObservedRequest::new(
+            retry_request(expected, 1)?,
+            &mut stop_state,
+            |_conflict| {
+                decisions = decisions.saturating_add(1);
+                NativeContinuationRetryDecision::Stop(StopReason::PolicyLimit)
+            },
+        );
+    let outcome = activate_after_reasoned_claim_retries(
+        &publication,
+        &mut store,
+        reasoned,
+        || {
+            calls = calls.saturating_add(1);
+            Ok::<u8, &'static str>(71)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        outcome,
+        RetriedActivation::ClaimWithheld { retry }
+            if retry.attempts() == 1
+                && !retry.outcome().is_committed()
+    ) && stale_directive == NativeContinuationRetryDirective::Stop
+        && stop_state.stop().is_none()
+        && decisions == 0
+        && calls == 0
+        && store.compare_calls == 1
+        && store.durability_calls == 0
+        && store.bytes == Some(encode_cursor(refreshed))
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "retry budget exhaustion invented caller stop evidence",
+        ))
     }
 }

@@ -950,9 +950,11 @@ behavior.
 
   Retry-aware activation also accepts caller conflict direction: exact
   completed-attempt evidence maps only to `Continue` or `Stop`, with stop
-  preserving the terminal conflict and withholding activation. Typed stop-reason
-  propagation through activation, product reason taxonomy, and unattended
-  lifecycle remain open.
+  preserving the terminal conflict and withholding activation. A parallel typed
+  decision request now retains exact stop reason plus conflict evidence in
+  caller-owned stop state after clearing prior evidence; continued retries,
+  budget exhaustion, and telemetry non-publication remain reasonless. Product
+  reason taxonomy and unattended lifecycle remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
