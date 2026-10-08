@@ -225,8 +225,8 @@ impl<Reason, TurnError> Drop
 /// On success, the returned handle must be explicitly joined or dropped. Drop
 /// cancels then joins synchronously, even if the callback has not finished.
 /// No host timer can preempt a running callback; no durable queue exists here.
-/// If the worker callback panics, it revokes the process-local expected cursor
-/// before returning owned resources and `WorkerPanicked` through normal join.
+/// If the worker callback or its destructor panics, process-local cursor
+/// authority is revoked before returning owned resources and `WorkerPanicked`.
 ///
 /// # Errors
 ///
@@ -265,9 +265,16 @@ where
                 &mut worker_turn,
             )
         }));
-        let terminal = match run {
-            Ok(result) => NativeCacheOwnedWorkerTerminal::Returned(result),
-            Err(_panic) => {
+        // Caller-owned callback destructors can panic even after a successful
+        // run. Drop the callback under independent protection before returning
+        // its lifecycle to the supervisor. If both the run and drop panic,
+        // neither can overrule process-local cursor revocation.
+        let dropped = catch_unwind(AssertUnwindSafe(|| drop(worker_turn)));
+        let terminal = match (run, dropped) {
+            (Ok(result), Ok(())) => {
+                NativeCacheOwnedWorkerTerminal::Returned(result)
+            },
+            (_run, _drop_panic) => {
                 worker_resources.lifecycle.replace_expected_cursor(None);
                 NativeCacheOwnedWorkerTerminal::WorkerPanicked
             },

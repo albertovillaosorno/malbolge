@@ -36,6 +36,7 @@
 //! Owned finite host-worker lifecycle and shutdown regressions.
 
 use std::num::NonZeroU64;
+use std::panic::resume_unwind;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -48,6 +49,14 @@ use crate::{
 
 type RunStop<Reason> =
     run::NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>;
+
+struct PanicWhenDropped;
+
+impl Drop for PanicWhenDropped {
+    fn drop(&mut self) {
+        resume_unwind(Box::new("caller callback destructor"));
+    }
+}
 
 fn positive(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value).ok_or_else(|| String::from("zero turns"))
@@ -185,8 +194,6 @@ fn owned_worker_retains_typed_callback_failure() -> Result<(), String> {
 #[test]
 fn callback_panic_revokes_cursor_but_recovers_owned_resources()
 -> Result<(), String> {
-    use std::panic::resume_unwind;
-
     let handle = start_owned_cache_retry_worker(
         positive(3)?,
         resources()?,
@@ -396,8 +403,6 @@ fn dropped_handle_waits_for_running_callback_before_shutdown()
 #[test]
 fn recovered_panicking_worker_cannot_retry_without_trusted_cursor()
 -> Result<(), String> {
-    use std::panic::resume_unwind;
-
     let first = start_owned_cache_retry_worker(
         positive(3)?,
         resources()?,
@@ -557,8 +562,6 @@ fn shutdown_retains_callback_error() -> Result<(), String> {
 #[test]
 fn cancel_and_join_retains_worker_panic_and_revokes_cursor()
 -> Result<(), String> {
-    use std::panic::resume_unwind;
-
     let (signal, receiver) = mpsc::sync_channel::<()>(0);
     let handle = start_owned_cache_retry_worker(
         positive(3)?,
@@ -592,5 +595,132 @@ fn cancel_and_join_retains_worker_panic_and_revokes_cursor()
         Err(String::from(
             "shutdown masked panic or trusted forged cursor",
         ))
+    }
+}
+
+#[test]
+fn callback_destructor_panic_revokes_cursor_after_normal_stop()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let handle = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            Ok::<_, &'static str>(ControlFlow::Break("normal stop"))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let finished = handle.join().map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        finished.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) && finished.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("destructor panic fabricated successful stop"))
+    }
+}
+
+#[test]
+fn destructor_panic_overrides_returned_failure_without_cursor_trust()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let handle = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            Err::<ControlFlow<&'static str>, &'static str>("returned failure")
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let finished = handle.join().map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        finished.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) && finished.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("destructor panic retained untrusted cursor"))
+    }
+}
+
+#[test]
+fn callback_and_destructor_panics_do_not_abort_worker_owner()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let handle = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        move |current| -> Result<ControlFlow<&'static str>, &'static str> {
+            let _keep = &destructor;
+            let forged =
+                cadence::NativeExecutableCacheLimitsTriggerCadence::new(
+                    nanos(71).map_err(|_error| "invalid duration")?,
+                    nanos(72).map_err(|_error| "invalid duration")?,
+                );
+            current.replace_expected_cursor(Some(forged));
+            resume_unwind(Box::new("callback body panic"));
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let finished = handle.join().map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        finished.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) && finished.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("dual panic leaked process-local cursor"))
+    }
+}
+
+#[test]
+fn destructor_panic_stays_fail_closed_across_next_owned_run()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let first = start_owned_cache_retry_worker(
+        positive(1)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let stopped = first.join().map_err(|error| format!("{error:?}"))?;
+    if !matches!(
+        stopped.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) || stopped.resources.lifecycle.expected_cursor().is_some()
+    {
+        return Err(String::from("destructor panic did not revoke cursor"));
+    }
+    let callbacks = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&callbacks);
+    let second = start_owned_cache_retry_worker(
+        positive(2)?,
+        stopped.resources,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let recovered = second.join().map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        recovered.terminal,
+        NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::CursorUnavailable { completed: 0 }
+        ))
+    ) && callbacks.load(Ordering::SeqCst) == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("destructor panic authorized subsequent retry"))
     }
 }

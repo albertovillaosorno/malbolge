@@ -1088,6 +1088,11 @@ behavior.
   repeated cancellation does not rewrite callback errors or panic recovery.
   Stop remains cooperative and does not establish completed guest execution.
 
+  Owned worker shutdown now also protects caller-owned callback destruction.
+  Either a callback-body or destructor panic fails closed to `WorkerPanicked`,
+  clears the returned process-local cursor, and blocks unbootstrapped retry.
+  Simultaneous callback/destructor panics cannot fabricate terminal success.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

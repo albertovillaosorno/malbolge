@@ -2467,6 +2467,15 @@ a callback's returned error or a worker panic with apparent cancellation. Joined
 resources retain the same cursor policy as direct join: returned errors retain
 cursor authority, whereas callback panic clears the process-local cursor.
 
+The owned worker also protects destruction of the caller-owned callback after
+its bounded run returns. A callback destructor may itself panic even after a
+normal terminal outcome, so the owner catches destruction separately before
+returning lifecycle state. Either a callback-body panic or a destructor panic
+now returns `WorkerPanicked` and clears process-local cursor authority; both
+may happen in one turn without leaving retry authority trusted. No panic result
+is converted into a successful terminal record, and a subsequent owned run
+requires a separately admitted cursor before executing another callback.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
