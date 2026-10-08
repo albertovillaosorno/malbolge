@@ -882,3 +882,128 @@ fn completed_try_join_retains_callback_destructor_panic_and_cursor_loss()
         Err(String::from("nonblocking join admitted destructor panic"))
     }
 }
+
+#[test]
+fn pending_try_shutdown_preserves_owner_and_repeat_request()
+-> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = Pacer::new(nanos(5_000_000_000)?);
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle =
+        start_owned_cache_retry_worker(positive(3)?, state, move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        })
+        .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (first_request, pending) = match handle.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Pending { cancellation, worker } => {
+            (cancellation, worker)
+        },
+        NativeCacheOwnedWorkerTryShutdown::Joined(_finished) => {
+            return Err(String::from("in-flight shutdown falsely joined"));
+        },
+    };
+    let (repeat_request, recovered) = match pending.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Pending { cancellation, worker } => {
+            (cancellation, worker)
+        },
+        NativeCacheOwnedWorkerTryShutdown::Joined(_finished) => {
+            return Err(String::from("repeated stop falsely joined"));
+        },
+    };
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let finished = recovered.join().map_err(|error| format!("{error:?}"))?;
+    if first_request == Ok(true)
+        && repeat_request == Ok(false)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Ok(RunStop::Cancelled {
+                completed: 1
+            }))
+        )
+        && finished.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending shutdown lost typed cancellation"))
+    }
+}
+
+#[test]
+fn completed_try_shutdown_preserves_normal_caller_stop() -> Result<(), String> {
+    let handle = start_owned_cache_retry_worker(
+        positive(1)?,
+        resources()?,
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("normal-stop")),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let result = match handle.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Joined(shutdown) => shutdown,
+        NativeCacheOwnedWorkerTryShutdown::Pending { .. } => {
+            return Err(String::from("finished shutdown reported pending"));
+        },
+    };
+    let finished = result.joined.map_err(|error| format!("{error:?}"))?;
+    if result.cancellation == Ok(true)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CallerStopped {
+                    completed: 1,
+                    reason: "normal-stop"
+                }
+            ))
+        )
+        && finished.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("late stop request masked natural completion"))
+    }
+}
+
+#[test]
+fn completed_try_shutdown_retains_callback_destructor_panic()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let handle = start_owned_cache_retry_worker(
+        positive(1)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            Ok::<_, &'static str>(ControlFlow::Break("return before drop"))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let result = match handle.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Joined(shutdown) => shutdown,
+        NativeCacheOwnedWorkerTryShutdown::Pending { .. } => {
+            return Err(String::from("finished panic worker reported pending"));
+        },
+    };
+    let finished = result.joined.map_err(|error| format!("{error:?}"))?;
+    if result.cancellation == Ok(true)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && finished.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("late stop request masked destructor panic"))
+    }
+}

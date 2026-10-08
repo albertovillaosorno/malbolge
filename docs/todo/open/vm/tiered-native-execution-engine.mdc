@@ -1107,6 +1107,12 @@ behavior.
   Discarded `Pending` ownership still cancels and blocks until the worker joins;
   host completion is not durable or guest-semantic success evidence.
 
+  A cancellation-first nonblocking join now returns either a still-owned handle
+  with the exact first/repeated stop request or a joined typed terminal result.
+  The progress variant retains its receiver while pending and final transport
+  totals after join; a late stop does not rewrite normal completion or panic.
+  No detached tasks or callback preemption are implied.
+
 
   The owned bounded-progress handle now permits read-only concurrent snapshots
   of enqueue, saturation, and receiver-abandonment counters. Those individual

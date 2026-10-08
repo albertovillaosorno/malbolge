@@ -125,6 +125,21 @@ pub enum NativeCacheOwnedProgressTryJoin<Reason, TurnError> {
     Pending(NativeCacheOwnedProgressHandle<Reason, TurnError>),
 }
 
+/// Nonblocking progress-aware stop attempt retaining its pending owner.
+#[derive(Debug)]
+#[must_use]
+pub enum NativeCacheOwnedProgressTryShutdown<Reason, TurnError> {
+    /// Worker finished; exact cancel, join, and final transport evidence.
+    Joined(NativeCacheOwnedProgressShutdown<Reason, TurnError>),
+    /// Still pending, with the original receiver and counters owned.
+    Pending {
+        /// Exact first/repeated cancellation request or sync failure.
+        cancellation: Result<bool, WaitError>,
+        /// Owned worker and receiver remain available for future supervision.
+        worker: NativeCacheOwnedProgressHandle<Reason, TurnError>,
+    },
+}
+
 impl<Reason, TurnError> NativeCacheOwnedProgressHandle<Reason, TurnError> {
     /// Requests sticky stop without asserting guest callback preemption.
     ///
@@ -194,6 +209,37 @@ impl<Reason, TurnError> NativeCacheOwnedProgressHandle<Reason, TurnError> {
     #[must_use]
     pub const fn take_progress_receiver(&mut self) -> Option<Receiver<Notice>> {
         self.receiver.take()
+    }
+
+    /// Attempts cancellation-first nonblocking join without losing progress.
+    ///
+    /// On `Pending`, the unchanged progress receiver and live counters remain
+    /// with the owner even after a failed or repeated cancellation request.
+    /// On `Joined`, exact final notification counts and typed terminal work
+    /// are separate from the request evidence. No callback is preempted.
+    pub fn try_cancel_and_join(
+        self,
+    ) -> NativeCacheOwnedProgressTryShutdown<Reason, TurnError> {
+        let cancellation = self.cancel();
+        match self.try_join() {
+            NativeCacheOwnedProgressTryJoin::Joined(completion) => {
+                NativeCacheOwnedProgressTryShutdown::Joined(
+                    NativeCacheOwnedProgressShutdown {
+                        shutdown: owned::NativeCacheOwnedWorkerShutdown {
+                            cancellation,
+                            joined: completion.joined,
+                        },
+                        totals: completion.totals,
+                    },
+                )
+            },
+            NativeCacheOwnedProgressTryJoin::Pending(worker) => {
+                NativeCacheOwnedProgressTryShutdown::Pending {
+                    cancellation,
+                    worker,
+                }
+            },
+        }
     }
 
     /// Attempts a nonblocking join without discarding progress observation.

@@ -60,6 +60,28 @@ impl Drop for PanicOnDrop {
     }
 }
 
+type PendingStop<Reason, TurnError> = Result<
+    (
+        Result<bool, WaitError>,
+        NativeCacheOwnedProgressHandle<Reason, TurnError>,
+    ),
+    String,
+>;
+
+fn expect_pending_stop<Reason, TurnError>(
+    outcome: NativeCacheOwnedProgressTryShutdown<Reason, TurnError>,
+) -> PendingStop<Reason, TurnError> {
+    match outcome {
+        NativeCacheOwnedProgressTryShutdown::Pending {
+            cancellation,
+            worker,
+        } => Ok((cancellation, worker)),
+        NativeCacheOwnedProgressTryShutdown::Joined(_joined) => {
+            Err(String::from("in-flight worker returned joined"))
+        },
+    }
+}
+
 fn positive(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value).ok_or_else(|| String::from("zero limit"))
 }
@@ -1225,5 +1247,162 @@ fn finished_progress_try_join_keeps_exact_returned_turn_error()
         Ok(())
     } else {
         Err(String::from("nonblocking join erased returned turn error"))
+    }
+}
+
+#[test]
+fn pending_progress_try_shutdown_retains_receiver_and_repeated_stop()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 3)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (first_request, pending) =
+        expect_pending_stop(handle.try_cancel_and_join())?;
+    let (repeat_request, recovered) =
+        expect_pending_stop(pending.try_cancel_and_join())?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let first = recovered
+        .progress()
+        .ok_or("receiver lost")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let finished = recovered.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if first_request == Ok(true)
+        && repeat_request == Ok(false)
+        && first
+            == (Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && finished.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::Cancelled { completed: 1 }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending stop lost receiver or exact work"))
+    }
+}
+
+#[test]
+fn completed_progress_try_shutdown_retains_terminal_and_final_counts()
+-> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(2, 1)?,
+        resources()?,
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("completed")),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let completed = match handle.try_cancel_and_join() {
+        NativeCacheOwnedProgressTryShutdown::Joined(shutdown) => shutdown,
+        NativeCacheOwnedProgressTryShutdown::Pending { .. } => {
+            return Err(String::from(
+                "finished progress worker reported pending",
+            ));
+        },
+    };
+    let joined = completed
+        .shutdown
+        .joined
+        .map_err(|error| format!("{error:?}"))?;
+    if completed.shutdown.cancellation == Ok(true)
+        && completed.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CallerStopped {
+                    completed: 1,
+                    reason: "completed"
+                }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "late stop masked exact progress or caller stop",
+        ))
+    }
+}
+
+#[test]
+fn progress_try_shutdown_counts_abandoned_receiver_after_stop()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 3)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    drop(handle.take_progress_receiver());
+    let (request, pending) = expect_pending_stop(handle.try_cancel_and_join())?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let completed = pending.join();
+    let joined = completed.joined.map_err(|error| format!("{error:?}"))?;
+    if request == Ok(true)
+        && completed.totals
+            == (Totals {
+                enqueued: 0,
+                full: 0,
+                receiver_gone: 1,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::Cancelled { completed: 1 }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pending stop lost abandoned transport evidence",
+        ))
     }
 }

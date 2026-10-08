@@ -2504,6 +2504,18 @@ join, so consumers must retain it or explicitly perform bounded supervision.
 Host finish detection is separate from VM semantic admission, and a finished
 thread may still carry a typed callback error or a revoked process-local cursor.
 
+A cancellation-first nonblocking `try_cancel_and_join` also preserves ownership
+on both the plain worker and the bounded-progress adapter. A `Pending` attempt
+returns the same owner, exact first/repeated cancellation-request outcome, and,
+for progress owners, the original receiver and live advisory counters.
+
+A `Joined` attempt retains that request evidence separately from typed worker
+termination and, for progress owners, final transport counts. A stop request
+after natural thread completion is still only a stop request and cannot rewrite
+the original caller-stop, callback error, or worker panic into cancellation.
+No path detaches or preempts work, and dropping `Pending` still blocks until
+the worker joins.
+
 The owned bounded-progress handle also exposes a read-only in-memory snapshot
 of enqueued, full-buffer, and abandoned-receiver counts while its worker runs.
 Each counter only increases, but the three independent atomic reads do not

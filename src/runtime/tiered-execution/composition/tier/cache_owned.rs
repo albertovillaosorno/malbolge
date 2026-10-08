@@ -164,6 +164,21 @@ pub enum NativeCacheOwnedWorkerTryJoin<Reason, TurnError> {
     Pending(NativeCacheOwnedWorkerHandle<Reason, TurnError>),
 }
 
+/// Nonblocking cancellation-first join attempt without releasing ownership.
+#[derive(Debug)]
+#[must_use]
+pub enum NativeCacheOwnedWorkerTryShutdown<Reason, TurnError> {
+    /// Worker has finished; both stop request and typed join are available.
+    Joined(NativeCacheOwnedWorkerShutdown<Reason, TurnError>),
+    /// The worker is not finished; exact request result and owner are returned.
+    Pending {
+        /// Exact first/repeated stop request or synchronization failure.
+        cancellation: Result<bool, WaitError>,
+        /// Still-owned worker; dropping it will cancel and block until join.
+        worker: NativeCacheOwnedWorkerHandle<Reason, TurnError>,
+    },
+}
+
 impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
     /// Requests sticky cooperative stop without claiming callback preemption.
     ///
@@ -215,6 +230,32 @@ impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
         join.join().map_err(|_panic| {
             NativeCacheOwnedWorkerJoinFailure::ThreadPanicked
         })?
+    }
+
+    /// Requests cooperative stop and attempts a nonblocking owned join.
+    ///
+    /// `Pending` retains the original owned handle even if stop was already
+    /// requested or its synchronization failed. `Joined` retains the exact
+    /// cancellation request separately from the already-finished worker.
+    /// Neither outcome claims an executing callback was preempted; callers
+    /// must keep the returned `Pending` owner or explicitly dispose of it.
+    pub fn try_cancel_and_join(
+        self,
+    ) -> NativeCacheOwnedWorkerTryShutdown<Reason, TurnError> {
+        let cancellation = self.cancel();
+        match self.try_join() {
+            NativeCacheOwnedWorkerTryJoin::Joined(joined) => {
+                NativeCacheOwnedWorkerTryShutdown::Joined(
+                    NativeCacheOwnedWorkerShutdown { cancellation, joined },
+                )
+            },
+            NativeCacheOwnedWorkerTryJoin::Pending(worker) => {
+                NativeCacheOwnedWorkerTryShutdown::Pending {
+                    cancellation,
+                    worker,
+                }
+            },
+        }
     }
 
     /// Attempts one nonblocking join without losing an unfinished owner.
