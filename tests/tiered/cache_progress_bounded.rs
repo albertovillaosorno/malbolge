@@ -488,3 +488,148 @@ fn repeated_cancellation_reports_exact_prior_request() -> Result<(), String> {
         ))
     }
 }
+
+#[test]
+fn supervisor_panic_preserves_original_payload_and_revokes_cursor()
+-> Result<(), String> {
+    use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+
+    let (mut lifecycle, _default_pacer) = fixture()?;
+    let mut pacer = pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(
+        nanos(5_000_000_000)?,
+    );
+    let bounds =
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(4)?);
+    let mut called = 0usize;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _outcome = run_scoped_cache_retry_worker_bounded_fallible_progress(
+            bounds,
+            Resources::new(&mut lifecycle, &mut pacer),
+            |_current| {
+                called = called.saturating_add(1);
+                Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+            },
+            |_cancel, notices| -> Result<(), &'static str> {
+                let _notice = notices.recv();
+                resume_unwind(Box::new("supervisor panic retained"));
+            },
+        );
+    }));
+    let payload = result.err().ok_or_else(|| {
+        String::from("supervisor panic improperly returned success")
+    })?;
+    if payload.downcast_ref::<&'static str>().copied()
+        == Some("supervisor panic retained")
+        && lifecycle.expected_cursor().is_none()
+        && called == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("supervisor panic leaked cursor authority"))
+    }
+}
+
+#[test]
+fn worker_panic_after_one_return_cannot_fabricate_bounded_totals()
+-> Result<(), String> {
+    use std::panic::resume_unwind;
+
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let mut called = 0usize;
+    let mut observed = Vec::new();
+    let result = run_scoped_cache_retry_worker_bounded_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(2)?, limit(4)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                resume_unwind(Box::new("untrusted second callback"));
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| observed.extend(notices.iter()),
+    );
+    if matches!(
+        result,
+        Err(worker::NativeCacheScopedWorkerError::WorkerPanicked)
+    ) && lifecycle.expected_cursor().is_none()
+        && called == 2
+        && observed
+            == vec![Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            }]
+    {
+        Ok(())
+    } else {
+        Err(String::from("worker panic leaked typed progress authority"))
+    }
+}
+
+#[test]
+fn returned_callback_cursor_loss_blocks_next_turn() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_bounded_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(3)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |current| {
+            current.replace_expected_cursor(None);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| notices.recv(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run == Ok(RunStop::CursorUnavailable { completed: 1 })
+        && result.worker.supervisor
+            == Ok(Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && result.totals.enqueued == 1
+        && total(result.totals) == 1
+        && lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("progress overrode lost cursor authority"))
+    }
+}
+
+#[test]
+fn missing_final_stop_notice_never_erases_caller_stop() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let mut called = 0usize;
+    let result = run_scoped_cache_retry_worker_bounded_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(3)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                Ok::<_, &'static str>(ControlFlow::Break("typed stop"))
+            } else {
+                Ok(ControlFlow::Continue(()))
+            }
+        },
+        |_cancel, notices| notices.recv(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run
+        == Ok(RunStop::CallerStopped {
+            completed: 2,
+            reason: "typed stop",
+        })
+        && result.worker.supervisor
+            == Ok(Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && total(result.totals) == 2
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "missing stop notice erased terminal authority",
+        ))
+    }
+}
