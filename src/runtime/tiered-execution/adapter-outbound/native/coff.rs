@@ -99,6 +99,8 @@ pub enum CoffAdmissionError {
     RelocationType,
     /// Raw section size and file-data pointer disagree about byte ownership.
     SectionPointer,
+    /// The image-only section virtual-size field is nonzero.
+    SectionVirtualSize,
     /// A referenced long name begins inside another string-table entry.
     StringTableOffset,
     /// This validator only admits Windows COFF target identities.
@@ -167,6 +169,9 @@ impl Display for CoffAdmissionError {
             },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
+            },
+            Self::SectionVirtualSize => {
+                "COFF object section declares image-only virtual size"
             },
             Self::StringTableOffset => {
                 "COFF long-name offset is not a string start"
@@ -385,6 +390,11 @@ fn parse_sections(
         let offset =
             checked_add(start, checked_mul(index, COFF_SECTION_BYTES)?)?;
         let name = parse_section_name(object, offset, strings)?;
+        // VirtualSize describes a loaded PE image, not a COFF object.
+        // Object sections must use raw-size geometry instead.
+        if read_u32(object, checked_add(offset, 8)?)? != 0 {
+            return Err(CoffAdmissionError::SectionVirtualSize);
+        }
         let virtual_address = read_u32(object, checked_add(offset, 12)?)?;
         let raw_size =
             usize_from_u32(read_u32(object, checked_add(offset, 16)?)?)?;

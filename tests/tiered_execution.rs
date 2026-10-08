@@ -46023,6 +46023,7 @@ fn check_compiled_coff_case(
         return Err(String::from("COFF admission changed artifact identity"));
     }
     check_rejected_coff_image_flags(&source, &artifact)?;
+    check_rejected_coff_section_virtual_size(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
@@ -46066,6 +46067,32 @@ fn check_rejected_coff_image_flags(
             != Err(CoffAdmissionError::FileCharacteristics)
         {
             return Err(format!("COFF admitted {label} as object"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_section_virtual_size(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_text_header(artifact.object())?;
+    let offset = header.saturating_add(8);
+    if read_fixture_u32(artifact.object(), offset)? != 0 {
+        return Err(String::from("compiler sets object section VirtualSize"));
+    }
+    for virtual_size in [1u32, u32::MAX] {
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, offset, virtual_size)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionVirtualSize)
+        {
+            return Err(format!(
+                "COFF admitted object VirtualSize={virtual_size}"
+            ));
         }
     }
     Ok(())
@@ -66053,6 +66080,36 @@ fn verified_direct_load_image_rejects_relocations() -> Result<(), String> {
     } else {
         Err(String::from("load image admitted relocations"))
     }
+}
+
+#[test]
+fn verified_direct_load_image_rejects_section_virtual_size()
+-> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let header = coff_fixture_text_header(artifact.object())?;
+        for size in [1u32, u32::MAX] {
+            let mut bytes = artifact.object().to_vec();
+            write_fixture_u32(&mut bytes, header.saturating_add(8), size)?;
+            if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+                != Err(VerifiedDirectLoadError::Object(
+                    CoffAdmissionError::SectionVirtualSize,
+                ))
+            {
+                return Err(format!(
+                    "direct COFF admitted VirtualSize={size} on {isa:?}"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn native_executable_mapping_id(
