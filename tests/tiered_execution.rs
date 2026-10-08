@@ -46035,6 +46035,8 @@ fn check_compiled_coff_case(
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
         check_rejected_coff_unterminated_long_name(&source, &artifact)?;
+        check_rejected_coff_embedded_long_name(&source, &artifact)?;
+        check_rejected_coff_embedded_section_name(&source, &artifact)?;
         check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
@@ -46500,6 +46502,101 @@ fn check_x64_coff_relocation_patch_widths(
         {
             return Err(format!("x64 relocation {kind:#06x} crossed section"));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_embedded_long_name(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol offset: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let string_start = symbol_start
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF string table offset overflow")?;
+    let current_len = read_fixture_u32(object, string_start)?;
+    let total_len = usize::try_from(current_len)
+        .map_err(|error| format!("COFF string length: {error}"))?;
+    if string_start.checked_add(total_len) != Some(object.len()) {
+        return Err(String::from("COFF fixture string table is not final"));
+    }
+    if object.get(symbol_start.saturating_add(16)) == Some(&2u8) {
+        return Err(String::from("COFF fixture first symbol external"));
+    }
+    // The suffix 'embedded' is NUL-terminated but starts in the middle of a
+    // different long-name entry rather than at its beginning.
+    let mut bytes = object.to_vec();
+    bytes.extend_from_slice(b"Xembedded\0");
+    write_fixture_u32(
+        &mut bytes,
+        string_start,
+        current_len.saturating_add(10),
+    )?;
+    write_fixture_u32(&mut bytes, symbol_start, 0)?;
+    write_fixture_u32(
+        &mut bytes,
+        symbol_start.saturating_add(4),
+        current_len.saturating_add(1),
+    )?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::StringTableOffset)
+    {
+        return Err(String::from("COFF admitted embedded long-name offset"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_embedded_section_name(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let text = coff_fixture_text_header(object)?;
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let symbol_count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let string_start = symbol_start
+        .checked_add(symbol_count.saturating_mul(18))
+        .ok_or("COFF string start overflow")?;
+    let original_len = read_fixture_u32(object, string_start)?;
+    if string_start.checked_add(
+        usize::try_from(original_len)
+            .map_err(|error| format!("COFF string size: {error}"))?,
+    ) != Some(object.len())
+    {
+        return Err(String::from("COFF fixture string table not trailing"));
+    }
+    let mut bytes = object.to_vec();
+    bytes.extend_from_slice(b"X.text\0");
+    write_fixture_u32(
+        &mut bytes,
+        string_start,
+        original_len.saturating_add(7),
+    )?;
+    let name = format!("/{}", original_len.saturating_add(1));
+    let field = bytes
+        .get_mut(text..text.saturating_add(8))
+        .ok_or("COFF section name field missing")?;
+    field.fill(0);
+    let destination = field
+        .get_mut(..name.len())
+        .ok_or("COFF section offset too long")?;
+    destination.copy_from_slice(name.as_bytes());
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::StringTableOffset)
+    {
+        return Err(String::from("COFF admitted embedded section name"));
     }
     Ok(())
 }

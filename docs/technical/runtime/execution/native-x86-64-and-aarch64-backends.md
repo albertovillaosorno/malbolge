@@ -89,9 +89,10 @@ Short COFF section and symbol names must have zero-filled padding after
 their first NUL byte; nonzero bytes hidden past a terminator are rejected.
 This also applies to slash-prefixed section string-table offsets.
 
-Long COFF section and symbol names must also terminate inside their declared
-string-table extent; an unterminated referenced name is rejected even if its
-bytes are UTF-8 and otherwise fit in the object. Structural admission stops
+Long COFF section and symbol names must terminate inside their declared
+string-table extent. Referenced offsets must designate the start of a string
+rather than an embedded suffix of another name. A NUL-terminated suffix by
+itself does not grant an independent name identity. Structural admission stops
 before semantic equivalence or execution authority; it is not a linker or
 instruction verifier.
 

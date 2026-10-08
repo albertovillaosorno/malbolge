@@ -99,6 +99,8 @@ pub enum CoffAdmissionError {
     RelocationType,
     /// Raw section size and file-data pointer disagree about byte ownership.
     SectionPointer,
+    /// A referenced long name begins inside another string-table entry.
+    StringTableOffset,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
     /// Object does not contain one usable `.text` section.
@@ -165,6 +167,9 @@ impl Display for CoffAdmissionError {
             },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
+            },
+            Self::StringTableOffset => {
+                "COFF long-name offset is not a string start"
             },
             Self::TargetFormat => {
                 "COFF admission requires a Windows native target"
@@ -799,6 +804,9 @@ fn parse_string(
         return Err(CoffAdmissionError::Bounds);
     }
     let start = checked_add(strings.start, relative)?;
+    if relative > 4 && object.get(start.saturating_sub(1)) != Some(&0u8) {
+        return Err(CoffAdmissionError::StringTableOffset);
+    }
     let table_end = checked_add(strings.start, strings.bytes)?;
     let remainder = object
         .get(start..table_end)
