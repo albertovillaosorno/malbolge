@@ -1083,6 +1083,11 @@ behavior.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open; this is not persistent background scheduling or a hard deadline.
 
+  The owned handle also exposes an explicit stop-and-join result containing
+  independently typed cancellation-request and worker-join outcomes. First or
+  repeated cancellation does not rewrite callback errors or panic recovery.
+  Stop remains cooperative and does not establish completed guest execution.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

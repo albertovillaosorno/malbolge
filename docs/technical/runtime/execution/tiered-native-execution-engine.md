@@ -2457,6 +2457,16 @@ instead prevent resource recovery and is never treated as successful progress.
 This is finite host orchestration, not a durable queue, unattended scheduler,
 worker pool, or independent ownership of native guest semantics.
 
+Owned workers now also offer explicit `cancel_and_join` shutdown that returns
+both the exact sticky cancellation-request evidence and the independently joined
+worker outcome. A first `true` stop request does not prove that the worker
+observed it before natural completion; a repeated request returns `false`.
+
+Shutdown joins even when cancellation synchronization fails and does not replace
+a callback's returned error or a worker panic with apparent cancellation. Joined
+resources retain the same cursor policy as direct join: returned errors retain
+cursor authority, whereas callback panic clears the process-local cursor.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

@@ -446,3 +446,151 @@ fn recovered_panicking_worker_cannot_retry_without_trusted_cursor()
         ))
     }
 }
+
+#[test]
+fn cancel_and_join_preserves_first_stop_and_exact_completion()
+-> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = Pacer::new(nanos(5_000_000_000)?);
+    let (signal, receiver) = mpsc::sync_channel::<()>(0);
+    let callbacks = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&callbacks);
+    let handle =
+        start_owned_cache_retry_worker(positive(4)?, state, move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            signal.send(()).map_err(|_error| "signal failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        })
+        .map_err(|_failure| String::from("startup failed"))?;
+    receiver
+        .recv()
+        .map_err(|_error| String::from("no callback"))?;
+    let shutdown = handle.cancel_and_join();
+    let finished = shutdown.joined.map_err(|error| format!("{error:?}"))?;
+    if shutdown.cancellation == Ok(true)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Ok(RunStop::Cancelled {
+                completed: 1
+            }))
+        )
+        && finished.resources.lifecycle.expected_cursor().is_some()
+        && callbacks.load(Ordering::SeqCst) == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("first stop lost exact joined evidence"))
+    }
+}
+
+#[test]
+fn repeated_stop_and_join_retains_both_outcomes() -> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = Pacer::new(nanos(5_000_000_000)?);
+    let (signal, receiver) = mpsc::sync_channel::<()>(0);
+    let handle =
+        start_owned_cache_retry_worker(positive(4)?, state, move |_current| {
+            signal.send(()).map_err(|_error| "signal failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        })
+        .map_err(|_failure| String::from("startup failed"))?;
+    receiver
+        .recv()
+        .map_err(|_error| String::from("no callback"))?;
+    let original = handle.cancel().map_err(|error| format!("{error:?}"))?;
+    let shutdown = handle.cancel_and_join();
+    let finished = shutdown.joined.map_err(|error| format!("{error:?}"))?;
+    if original
+        && shutdown.cancellation == Ok(false)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Ok(RunStop::Cancelled {
+                completed: 1
+            }))
+        )
+        && finished.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "repeated stop changed worker terminal evidence",
+        ))
+    }
+}
+
+#[test]
+fn shutdown_retains_callback_error() -> Result<(), String> {
+    type Failure<Wait, Turn> =
+        failed::NativeExecutableCacheLimitsRetryLifecycleRunFailure<Wait, Turn>;
+
+    let (signal, receiver) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker(
+        positive(4)?,
+        resources()?,
+        move |_current| {
+            signal.send(()).map_err(|_error| "signal failed")?;
+            Err::<ControlFlow<&'static str>, _>("original turn failure")
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    receiver
+        .recv()
+        .map_err(|_error| String::from("no callback"))?;
+    let shutdown = handle.cancel_and_join();
+    let finished = shutdown.joined.map_err(|error| format!("{error:?}"))?;
+    if shutdown.cancellation == Ok(true)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Err(Failure::Turn {
+                completed: 1,
+                error: "original turn failure",
+            }))
+        )
+        && finished.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("shutdown erased completed callback failure"))
+    }
+}
+
+#[test]
+fn cancel_and_join_retains_worker_panic_and_revokes_cursor()
+-> Result<(), String> {
+    use std::panic::resume_unwind;
+
+    let (signal, receiver) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        move |current| -> Result<ControlFlow<&'static str>, &'static str> {
+            signal.send(()).map_err(|_error| "signal failed")?;
+            let forged =
+                cadence::NativeExecutableCacheLimitsTriggerCadence::new(
+                    nanos(48).map_err(|_error| "invalid duration")?,
+                    nanos(49).map_err(|_error| "invalid duration")?,
+                );
+            current.replace_expected_cursor(Some(forged));
+            resume_unwind(Box::new("worker panic after signal"));
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    receiver
+        .recv()
+        .map_err(|_error| String::from("no callback"))?;
+    let shutdown = handle.cancel_and_join();
+    let finished = shutdown.joined.map_err(|error| format!("{error:?}"))?;
+    if shutdown.cancellation == Ok(true)
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && finished.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "shutdown masked panic or trusted forged cursor",
+        ))
+    }
+}

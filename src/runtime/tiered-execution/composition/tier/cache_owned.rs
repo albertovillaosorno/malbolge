@@ -128,6 +128,15 @@ pub type NativeCacheOwnedWorkerJoinResult<Reason, TurnError> = Result<
     NativeCacheOwnedWorkerJoinFailure,
 >;
 
+/// Explicit stop-request evidence plus an independently joined worker result.
+#[derive(Debug)]
+pub struct NativeCacheOwnedWorkerShutdown<Reason, TurnError> {
+    /// Exact first/repeated cancellation request or synchronization failure.
+    pub cancellation: Result<bool, WaitError>,
+    /// The independently joined terminal result and owned resources, if any.
+    pub joined: NativeCacheOwnedWorkerJoinResult<Reason, TurnError>,
+}
+
 /// Exact host thread handle with a separately recoverable owned completion.
 type OwnedThread<Reason, TurnError> =
     thread::JoinHandle<NativeCacheOwnedWorkerJoinResult<Reason, TurnError>>;
@@ -153,6 +162,21 @@ impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
     /// Returns exact cancellation mutex poison without inventing a stop.
     pub fn cancel(&self) -> Result<bool, WaitError> {
         self.cancellation.cancel()
+    }
+
+    /// Requests cooperative cancellation then joins and retains both outcomes.
+    ///
+    /// This blocks until an in-flight callback returns. Even a failed stop
+    /// request still joins the worker; its terminal result is never fabricated
+    /// from the request outcome. A returned `true` only proves the first stop
+    /// request, not that the worker observed it before normal completion.
+    #[must_use]
+    pub fn cancel_and_join(
+        self,
+    ) -> NativeCacheOwnedWorkerShutdown<Reason, TurnError> {
+        let cancellation = self.cancel();
+        let joined = self.join();
+        NativeCacheOwnedWorkerShutdown { cancellation, joined }
     }
 
     /// Checks host thread completion, not durable or typed terminal evidence.
