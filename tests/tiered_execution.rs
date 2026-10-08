@@ -46023,6 +46023,7 @@ fn check_compiled_coff_case(
         return Err(String::from("COFF admission changed artifact identity"));
     }
     check_rejected_coff_image_flags(&source, &artifact)?;
+    check_rejected_coff_unowned_tail(&source, &artifact)?;
     check_rejected_coff_entry_symbol_type(&source, &artifact)?;
     check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
@@ -46071,6 +46072,27 @@ fn check_rejected_coff_image_flags(
             != Err(CoffAdmissionError::FileCharacteristics)
         {
             return Err(format!("COFF admitted {label} as object"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unowned_tail(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    // A container overlay cannot masquerade as ordinary COFF storage. Valid
+    // relocation data appended after the string table is separately owned.
+    for suffix in [b"Z".as_slice(), b"\0\0\0".as_slice()] {
+        let mut bytes = artifact.object().to_vec();
+        bytes.extend_from_slice(suffix);
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::UnownedBytes)
+        {
+            return Err(String::from("COFF admitted unowned trailing bytes"));
         }
     }
     Ok(())
@@ -66154,6 +66176,30 @@ fn verified_direct_load_image_extracts_every_template_on_both_isas()
                     "direct load image drifted for {kind:?} on {isa:?}",
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_unowned_tail() -> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let mut bytes = artifact.object().to_vec();
+        bytes.push(0u8);
+        if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+            != Err(VerifiedDirectLoadError::Object(
+                CoffAdmissionError::UnownedBytes,
+            ))
+        {
+            return Err(format!("direct COFF admitted overlay on {isa:?}"));
         }
     }
     Ok(())

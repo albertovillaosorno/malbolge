@@ -74,6 +74,8 @@ The COFF object layout is further required to have disjoint on-disk regions
 for headers, initialized section bytes, relocation records, symbol slots, and
 long-name storage. A section cannot alias its own headers or borrow symbol or
 string-table bytes as executable code. Zero-size sections own no bytes.
+Unowned trailing overlays are also rejected; an explicitly referenced
+relocation table after the string table remains owned and admissible.
 
 COFF line-number debugging records are not implemented by this validator.
 Both the section's line-number pointer and count must be zero; orphan pointers

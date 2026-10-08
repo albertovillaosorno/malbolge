@@ -109,6 +109,8 @@ pub enum CoffAdmissionError {
     TargetFormat,
     /// Object does not contain one usable `.text` section.
     TextSection,
+    /// File has trailing bytes not owned by any declared COFF region.
+    UnownedBytes,
 }
 
 /// Rejection while extracting a relocation-free executable text image.
@@ -187,6 +189,7 @@ impl Display for CoffAdmissionError {
             Self::TextSection => {
                 "COFF object lacks one non-writable executable .text section"
             },
+            Self::UnownedBytes => "COFF object has unowned trailing bytes",
         })
     }
 }
@@ -790,6 +793,12 @@ fn validate_coff_layout(
             return Err(CoffAdmissionError::LayoutOverlap);
         }
         previous_end = end;
+    }
+    // Every byte after the last owned range is an opaque, unvalidated
+    // overlay. Relocation tables after the string table are already owned
+    // above and remain valid when their declared ranges reach file end.
+    if previous_end != object.len() {
+        return Err(CoffAdmissionError::UnownedBytes);
     }
     Ok(())
 }
