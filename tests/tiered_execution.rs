@@ -1684,6 +1684,14 @@ struct CoffCompileCase {
     isa: HostIsa,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct NativeCoffRelocationLocation {
+    relocation: usize,
+    section_address: u32,
+    section_header: usize,
+    section_size: u32,
+}
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 type CollapsedNoOperationHaltArtifact =
@@ -46033,19 +46041,21 @@ fn check_rejected_coff_relocation_section(
                 header.saturating_add(24),
             )?)
             .map_err(|error| format!("COFF relocation conversion: {error}"))?;
-            relocated_symbol = Some(
-                usize::try_from(read_fixture_u32(
-                    object,
-                    relocations.saturating_add(4),
-                )?)
-                .map_err(|error| {
-                    format!("COFF symbol index conversion: {error}")
-                })?,
-            );
+            let symbol_index = usize::try_from(read_fixture_u32(
+                object,
+                relocations.saturating_add(4),
+            )?)
+            .map_err(|error| {
+                format!("COFF symbol index conversion: {error}")
+            })?;
+            let address = read_fixture_u32(object, header.saturating_add(12))?;
+            let size = read_fixture_u32(object, header.saturating_add(16))?;
+            relocated_symbol =
+                Some((symbol_index, relocations, address, size, header));
             break;
         }
     }
-    let index =
+    let (index, relocation, section_address, section_size, section_header) =
         relocated_symbol.ok_or("AArch64 COFF fixture has no relocation")?;
     let symbol_offset = symbol_table
         .checked_add(index.saturating_mul(18))
@@ -46053,6 +46063,31 @@ fn check_rejected_coff_relocation_section(
         .ok_or("relocation symbol section offset overflow")?;
     let nonexistent_section = u16::try_from(section_count.saturating_add(1))
         .map_err(|error| format!("COFF section count conversion: {error}"))?;
+    check_rejected_coff_relocation_symbols(
+        source,
+        artifact,
+        symbol_offset,
+        nonexistent_section,
+    )?;
+    check_rejected_coff_relocation_addresses(
+        source,
+        artifact,
+        NativeCoffRelocationLocation {
+            relocation,
+            section_address,
+            section_header,
+            section_size,
+        },
+    )
+}
+
+fn check_rejected_coff_relocation_symbols(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    symbol_offset: usize,
+    nonexistent_section: u16,
+) -> Result<(), String> {
+    let object = artifact.object();
     for (section_number, label) in [
         (nonexistent_section, "nonexistent"),
         (0, "undefined"),
@@ -46082,6 +46117,62 @@ fn check_rejected_coff_relocation_section(
             .map_err(|error| error.to_string())?;
     let _admitted_absolute = structurally_admit_coff(&absolute_artifact)
         .map_err(|error| format!("COFF absolute symbol rejected: {error}"))?;
+
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_addresses(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    let NativeCoffRelocationLocation {
+        relocation,
+        section_address,
+        section_header,
+        section_size,
+    } = location;
+    let object = artifact.object();
+    // Moving the section origin past an otherwise unchanged relocation also
+    // puts its address outside that section, before the first valid byte.
+    let original_address = read_fixture_u32(object, relocation)?;
+    let advanced_origin = original_address
+        .checked_add(1)
+        .ok_or("COFF origin overflow")?;
+    let mut underflow = object.to_vec();
+    write_fixture_u32(
+        &mut underflow,
+        section_header.saturating_add(12),
+        advanced_origin,
+    )?;
+    let underflow_artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, underflow)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&underflow_artifact)
+        != Err(CoffAdmissionError::Bounds)
+    {
+        return Err(String::from("COFF relocation before section admitted"));
+    }
+
+    // A relocation's virtual address belongs to the section containing it,
+    // not merely to the bounds of the whole object or relocation table.
+    let end = section_address
+        .checked_add(section_size)
+        .ok_or("COFF section virtual address overflow")?;
+    for (invalid_address, label) in [(end, "section end"), (u32::MAX, "max")] {
+        let mut mutated = object.to_vec();
+        write_fixture_u32(&mut mutated, relocation, invalid_address)?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, mutated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds)
+        {
+            return Err(format!(
+                "COFF relocation admitted {label} virtual address"
+            ));
+        }
+    }
     Ok(())
 }
 

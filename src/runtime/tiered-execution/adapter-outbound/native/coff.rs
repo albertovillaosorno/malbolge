@@ -172,6 +172,7 @@ struct CoffSection {
     raw_start: usize,
     relocation_count: usize,
     relocation_start: usize,
+    virtual_address: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -324,6 +325,7 @@ fn parse_sections(
         let offset =
             checked_add(start, checked_mul(index, COFF_SECTION_BYTES)?)?;
         let name = parse_section_name(object, offset, strings)?;
+        let virtual_address = read_u32(object, checked_add(offset, 12)?)?;
         let raw_size =
             usize_from_u32(read_u32(object, checked_add(offset, 16)?)?)?;
         let raw_start =
@@ -340,6 +342,7 @@ fn parse_sections(
             raw_start,
             relocation_count,
             relocation_start,
+            virtual_address,
         });
     }
     Ok(sections)
@@ -517,6 +520,17 @@ fn validate_symbols_and_relocations(
                 section.relocation_start,
                 checked_mul(relocation_index, COFF_RELOCATION_BYTES)?,
             )?;
+            let virtual_address = read_u32(object, offset)?;
+            // COFF relocation addresses are section-relative positions plus
+            // the section header's virtual-address origin. Reject positions
+            // that do not designate a byte in the owning section.
+            let relative = virtual_address
+                .checked_sub(section.virtual_address)
+                .and_then(|position| usize::try_from(position).ok())
+                .ok_or(CoffAdmissionError::Bounds)?;
+            if relative >= section.raw_size {
+                return Err(CoffAdmissionError::Bounds);
+            }
             let symbol_index =
                 usize_from_u32(read_u32(object, checked_add(offset, 4)?)?)?;
             let symbol = parsed
