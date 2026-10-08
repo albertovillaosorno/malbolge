@@ -916,6 +916,11 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: Bind cooperative cancellation to standard condition waits.
+  - id: part-0164
+    path: composition/tier/cache_run.rs
+    kind: composition
+    language: rust
+    responsibility: Bound caller-owned repeated cache-trigger lifecycle turns.
 projects: []
 tests: []
 graph:

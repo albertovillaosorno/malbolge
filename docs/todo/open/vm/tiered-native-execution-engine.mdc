@@ -1015,6 +1015,12 @@ behavior.
   handshake. Mid-turn preemption, background ownership, and asynchronous wake
   scheduling remain open.
 
+  A bounded caller-invoked runner now repeats cancellation-aware paced turns
+  under one positive maximum and retains exact completed-turn counts. Typed
+  terminal outcomes distinguish caller stop, cancellation, cursor loss, and
+  limit exhaustion without collecting a result history or creating workers.
+  Unattended worker ownership and asynchronous wake scheduling remain open.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

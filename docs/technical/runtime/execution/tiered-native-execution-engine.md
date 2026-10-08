@@ -2340,6 +2340,12 @@ Only a returned caller-owned turn marks pacing complete. Cancellation is
 cooperative at turn boundaries, not an atomic query-and-execute gate or mid-turn
 preemption.
 
+One caller-driven bounded runner now repeats those cancellable paced turns with
+an explicit positive turn limit. Its typed terminal evidence separates limit,
+caller stop, cancellation, and cursor loss while counting only completed turn
+callbacks. It does not allocate a result history, start a worker, or own a
+background scheduler; cancellation still applies only between turns.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
