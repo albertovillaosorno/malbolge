@@ -47,6 +47,10 @@ rejects unresolved external dependencies. Internal ARM64 relocations to defined
 one-based section or the COFF-defined absolute-symbol sentinel; undefined,
 debug-only, and out-of-range section references fail closed.
 
+Unreferenced symbols are also checked for valid one-based section numbers or
+the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
+invalid sections.
+
 Pinned ARM64 compiler-object mutation regressions also check that relocation
 addresses fall within the owning section's virtual-address origin and raw byte
 extent. Admission recognizes only defined relocation kinds for the object's

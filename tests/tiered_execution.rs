@@ -46031,6 +46031,7 @@ fn check_compiled_coff_case(
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
         check_rejected_coff_unterminated_long_name(&source, &artifact)?;
+        check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
     }
@@ -46371,6 +46372,41 @@ fn check_x64_coff_relocation_patch_widths(
         if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds)
         {
             return Err(format!("x64 relocation {kind:#06x} crossed section"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unreferenced_symbol_sections(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbols = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let section_count = read_fixture_u16(object, 2)?;
+    if object.get(symbols.saturating_add(16)) == Some(&2u8) {
+        return Err(String::from("COFF first symbol unexpectedly external"));
+    }
+    let section_offset = symbols.saturating_add(12);
+    let nonexistent = section_count
+        .checked_add(1)
+        .ok_or("COFF section count overflow")?;
+    // The first symbol is static, not the entry or a relocation target.
+    // Bad section numbers must be rejected even without a consumer.
+    for (number, label) in [
+        (nonexistent, "outside section table"),
+        (u16::MAX - 2, "unknown negative sentinel"),
+    ] {
+        let mut bytes = object.to_vec();
+        write_fixture_u16(&mut bytes, section_offset, number)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::ExternalDependency)
+        {
+            return Err(format!("COFF admitted {label} on static symbol"));
         }
     }
     Ok(())

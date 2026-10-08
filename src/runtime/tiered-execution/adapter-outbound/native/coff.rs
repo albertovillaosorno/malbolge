@@ -557,10 +557,29 @@ fn required_entry_offset(
     entry_offset.ok_or(CoffAdmissionError::EntrySymbol)
 }
 
+fn validate_symbol_sections(
+    parsed: &ParsedCoff,
+) -> Result<(), CoffAdmissionError> {
+    for symbol in parsed.symbols.iter().flatten() {
+        // Every symbol, including unreferenced static symbols, must carry
+        // either a real one-based section or one of COFF's three sentinels:
+        // UNDEFINED (0), ABSOLUTE (-1), or DEBUG (-2).
+        let invalid = symbol.section_number < -2
+            || (symbol.section_number > 0
+                && usize::try_from(symbol.section_number)
+                    .is_ok_and(|number| number > parsed.sections.len()));
+        if invalid {
+            return Err(CoffAdmissionError::ExternalDependency);
+        }
+    }
+    Ok(())
+}
+
 fn validate_symbols_and_relocations(
     object: &[u8],
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
+    validate_symbol_sections(parsed)?;
     let _entry_offset = required_entry_offset(parsed)?;
     let machine = read_u16(object, 0)?;
     for section in &parsed.sections {
