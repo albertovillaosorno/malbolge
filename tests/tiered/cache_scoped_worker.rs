@@ -275,3 +275,117 @@ fn panicking_supervisor_joins_worker_before_unwind() -> Result<(), String> {
         Err(String::from("supervisor panic escaped before worker join"))
     }
 }
+
+#[test]
+fn cursorless_scope_never_executes_callback() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    lifecycle.replace_expected_cursor(None);
+    let mut called = 0usize;
+    let completed = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| "supervised",
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if completed.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && completed.supervisor == "supervised"
+        && called == 0
+        && lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("scoped worker ran without cursor authority"))
+    }
+}
+
+#[test]
+fn failed_callback_cursor_loss_withholds_later_scoped_invocation()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let first = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |current| {
+            current.replace_expected_cursor(None);
+            Err::<ControlFlow<&'static str>, &'static str>("claim-failed")
+        },
+        |_cancel| (),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if first.run != Err(fallible::
+        NativeExecutableCacheLimitsRetryLifecycleRunFailure::Turn {
+        completed: 1, error: "claim-failed",
+    }) {
+        return Err(String::from("first failure lost owned cursor evidence"));
+    }
+    let mut called = 0usize;
+    let second = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| (),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if second.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && called == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "followup worker ignored lost cursor authority",
+        ))
+    }
+}
+
+#[test]
+fn scoped_cancellation_does_not_poison_next_run() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let first = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        move |_current| {
+            started_tx.send(()).map_err(|_error| "start-failed")?;
+            release_rx.recv().map_err(|_error| "release-failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |cancel| {
+            started_rx.recv().map_err(|_error| "start-failed")?;
+            let new = cancel.cancel().map_err(|_error| "cancel-failed")?;
+            release_tx.send(()).map_err(|_error| "release-failed")?;
+            Ok::<_, &'static str>(new)
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if first.run != Ok(RunStop::Cancelled { completed: 1 })
+        || first.supervisor != Ok(true)
+    {
+        return Err(String::from("first scope failed to cancel exactly"));
+    }
+    let second = run_scoped_cache_retry_worker(
+        positive_usize(2)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("resume")),
+        |_cancel| "second-supervisor",
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if second.run
+        == Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "resume",
+        })
+        && second.supervisor == "second-supervisor"
+    {
+        Ok(())
+    } else {
+        Err(String::from("sticky cancellation crossed worker scopes"))
+    }
+}
