@@ -723,7 +723,7 @@ fn parse_section_name(
 ) -> Result<String, CoffAdmissionError> {
     let raw = slice(object, offset, 8)?;
     if raw.first() == Some(&b'/') {
-        let digits = trim_nul(raw.get(1..).ok_or(CoffAdmissionError::Bounds)?);
+        let digits = trim_nul(raw.get(1..).ok_or(CoffAdmissionError::Bounds)?)?;
         let text =
             from_utf8(digits).map_err(|_error| CoffAdmissionError::Bounds)?;
         let relative = text
@@ -750,7 +750,7 @@ fn parse_symbol_name(
 }
 
 fn parse_inline_name(raw: &[u8]) -> Result<String, CoffAdmissionError> {
-    let bytes = trim_nul(raw);
+    let bytes = trim_nul(raw)?;
     let text = from_utf8(bytes).map_err(|_error| CoffAdmissionError::Bounds)?;
     Ok(String::from(text))
 }
@@ -858,12 +858,20 @@ fn slice(
     object.get(start..end).ok_or(CoffAdmissionError::Bounds)
 }
 
-fn trim_nul(bytes: &[u8]) -> &[u8] {
+fn trim_nul(bytes: &[u8]) -> Result<&[u8], CoffAdmissionError> {
     let length = bytes
         .iter()
         .position(|byte| *byte == 0)
         .unwrap_or(bytes.len());
-    bytes.get(..length).unwrap_or(bytes)
+    // COFF short names are NUL-padded, not arbitrary data following the
+    // first terminator. Reject hidden bytes on any parsed inline name.
+    if bytes
+        .get(length..)
+        .is_none_or(|padding| padding.iter().any(|byte| *byte != 0))
+    {
+        return Err(CoffAdmissionError::Bounds);
+    }
+    bytes.get(..length).ok_or(CoffAdmissionError::Bounds)
 }
 
 fn usize_from_u32(value: u32) -> Result<usize, CoffAdmissionError> {

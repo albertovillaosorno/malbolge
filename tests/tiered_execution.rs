@@ -46026,6 +46026,8 @@ fn check_compiled_coff_case(
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
     check_rejected_coff_line_numbers(&source, &artifact)?;
+    check_rejected_coff_inline_name_padding(&source, &artifact)?;
+    check_rejected_coff_symbol_name_padding(&source, &artifact)?;
     check_rejected_coff_relocation_pointer(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
@@ -46115,6 +46117,76 @@ fn check_rejected_coff_section_alias(
         != Err(CoffAdmissionError::LayoutOverlap)
     {
         return Err(String::from("COFF admitted aliased section data"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_inline_name_padding(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_text_header(artifact.object())?;
+    for index in [6usize, 7usize] {
+        let mut bytes = artifact.object().to_vec();
+        let pad = header.saturating_add(index);
+        if bytes.get(pad) != Some(&0u8) {
+            return Err(String::from(
+                "COFF .text name padding fixture changed",
+            ));
+        }
+        let byte = bytes.get_mut(pad).ok_or("COFF name padding offset")?;
+        *byte = b'Z';
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds)
+        {
+            return Err(format!(
+                "COFF admitted nonzero name padding at offset {index}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_symbol_name_padding(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol offset: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let candidate = (0..count)
+        .find_map(|index| {
+            let offset = symbol_start.saturating_add(index.saturating_mul(18));
+            let name = object.get(offset..offset.saturating_add(8))?;
+            let zero = name.iter().position(|byte| *byte == 0)?;
+            if name.first() != Some(&0u8)
+                && zero > 0
+                && zero < 7
+                && name.get(zero..).is_some_and(|padding| {
+                    padding.iter().all(|byte| *byte == 0)
+                })
+                && object.get(offset.saturating_add(16)) != Some(&2u8)
+            {
+                Some(offset)
+            } else {
+                None
+            }
+        })
+        .ok_or("COFF fixture lacks padded static inline symbol")?;
+    let mut bytes = object.to_vec();
+    let last = bytes
+        .get_mut(candidate.saturating_add(7))
+        .ok_or("COFF symbol padding offset")?;
+    *last = b'Z';
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds) {
+        return Err(String::from("COFF admitted dirty inline symbol padding"));
     }
     Ok(())
 }
