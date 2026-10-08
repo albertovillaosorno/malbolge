@@ -956,3 +956,181 @@ fn pending_progress_try_join_retains_taken_receiver_ownership()
         ))
     }
 }
+
+#[test]
+fn live_progress_snapshot_excludes_in_flight_callback() -> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 1)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::Break("done"))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    if handle.progress_totals() != Totals::default() {
+        return Err(String::from("in-flight callback inflated live counts"));
+    }
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let notice = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    while handle.progress_totals().enqueued == 0 {
+        thread::yield_now();
+    }
+    let live = handle.progress_totals();
+    let finished = handle.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if notice
+        == (Notice {
+            completed: 1,
+            kind: Kind::CallerStopped,
+        })
+        && live
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && finished.totals == live
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CallerStopped {
+                    completed: 1,
+                    reason: "done"
+                }
+            ))
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("live snapshot rewrote terminal result"))
+    }
+}
+
+#[test]
+fn live_progress_snapshot_tracks_full_queue_without_draining()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut completed = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 2)?,
+        resources()?,
+        move |_current| {
+            completed = completed.saturating_add(1);
+            if completed == 2 {
+                entered_tx.send(()).map_err(|_error| "entry failed")?;
+                release_rx.recv().map_err(|_error| "release failed")?;
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let first = handle.progress_totals();
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    while handle.progress_totals().full == 0 {
+        thread::yield_now();
+    }
+    let live = handle.progress_totals();
+    let finished = handle.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if first
+        == (Totals {
+            enqueued: 1,
+            full: 0,
+            receiver_gone: 0,
+        })
+        && live
+            == (Totals {
+                enqueued: 1,
+                full: 1,
+                receiver_gone: 0,
+            })
+        && finished.totals == live
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::LimitReached { completed: 2 }
+            ))
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("live saturation changed finite work"))
+    }
+}
+
+#[test]
+fn pending_join_preserves_live_progress_snapshot_and_receiver_loss()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 1)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let receiver = handle.take_progress_receiver().ok_or("receiver missing")?;
+    drop(receiver);
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let pending = match handle.try_join() {
+        NativeCacheOwnedProgressTryJoin::Pending(recovered) => recovered,
+        NativeCacheOwnedProgressTryJoin::Joined(_finished) => {
+            return Err(String::from("unfinished worker falsely joined"));
+        },
+    };
+    if pending.progress_totals() != Totals::default() {
+        return Err(String::from("poll fabricated returned callback"));
+    }
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    while pending.progress_totals().receiver_gone == 0 {
+        thread::yield_now();
+    }
+    let live = pending.progress_totals();
+    let finished = pending.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if live
+        == (Totals {
+            enqueued: 0,
+            full: 0,
+            receiver_gone: 1,
+        })
+        && finished.totals == live
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::LimitReached { completed: 1 }
+            ))
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending snapshot lost explicit receiver drop"))
+    }
+}

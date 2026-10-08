@@ -1107,6 +1107,12 @@ behavior.
   Discarded `Pending` ownership still cancels and blocks until the worker joins;
   host completion is not durable or guest-semantic success evidence.
 
+
+  The owned bounded-progress handle now permits read-only concurrent snapshots
+  of enqueue, saturation, and receiver-abandonment counters. Those individual
+  atomics are monotonic but not one coherent point-in-time snapshot and cannot
+  prove final completion. Only join returns authoritative transport totals.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

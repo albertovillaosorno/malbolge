@@ -2504,6 +2504,17 @@ join, so consumers must retain it or explicitly perform bounded supervision.
 Host finish detection is separate from VM semantic admission, and a finished
 thread may still carry a typed callback error or a revoked process-local cursor.
 
+The owned bounded-progress handle also exposes a read-only in-memory snapshot
+of enqueued, full-buffer, and abandoned-receiver counts while its worker runs.
+Each counter only increases, but the three independent atomic reads do not
+form one linearizable snapshot. A receiver can observe a notice before its
+corresponding enqueue increment is visible to another thread.
+
+The snapshot neither blocks nor drains notifications, and it excludes an
+in-flight callback until its return and transport attempt. Only the joined
+result offers final exact transport totals and typed worker termination;
+intermediate observation cannot authorize cursor admission or guest completion.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

@@ -179,6 +179,17 @@ impl<Reason, TurnError> NativeCacheOwnedProgressHandle<Reason, TurnError> {
         self.receiver.as_ref()
     }
 
+    /// Reads live advisory transport counts without joining or stopping work.
+    ///
+    /// Individual counts only increase until join, but this concurrent read
+    /// is not a single atomic snapshot across the three fields. A receiver
+    /// may see a notice before its enqueue counter update becomes visible.
+    /// It cannot prove guest completion, cursor authority, or a final total.
+    #[must_use]
+    pub fn progress_totals(&self) -> Totals {
+        self.counters.snapshot()
+    }
+
     /// Transfers receiver ownership to the caller, including ability to drop.
     #[must_use]
     pub const fn take_progress_receiver(&mut self) -> Option<Receiver<Notice>> {
