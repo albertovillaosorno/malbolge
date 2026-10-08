@@ -46023,12 +46023,95 @@ fn check_compiled_coff_case(
         return Err(String::from("COFF admission changed artifact identity"));
     }
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
+    check_rejected_coff_overlapping_storage(&source, &artifact)?;
+    check_rejected_coff_section_alias(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
         check_rejected_coff_unterminated_long_name(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
+    }
+    Ok(())
+}
+
+fn coff_fixture_text_header(object: &[u8]) -> Result<usize, String> {
+    let count = usize::from(read_fixture_u16(object, 2)?);
+    (0..count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            object.get(*header..header.saturating_add(8))
+                == Some(b".text\0\0\0".as_slice())
+        })
+        .ok_or_else(|| String::from("COFF fixture missing text header"))
+}
+
+fn check_rejected_coff_overlapping_storage(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let text = coff_fixture_text_header(object)?;
+    let raw_size = read_fixture_u32(object, text.saturating_add(16))?;
+    let symbol_start = read_fixture_u32(object, 8)?;
+    if raw_size == 0 || symbol_start < raw_size {
+        return Err(String::from("COFF text/storage test fixture invalid"));
+    }
+    let cases = [
+        (20u32, "section header"),
+        (
+            symbol_start.saturating_sub(raw_size.saturating_sub(1)),
+            "symbol table",
+        ),
+    ];
+    for (raw_start, name) in cases {
+        let mut tampered_bytes = object.to_vec();
+        write_fixture_u32(
+            &mut tampered_bytes,
+            text.saturating_add(20),
+            raw_start,
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source,
+            tampered_bytes,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::LayoutOverlap)
+        {
+            return Err(format!("COFF admitted overlapping {name} bytes"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_section_alias(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let text = coff_fixture_text_header(object)?;
+    let text_start = read_fixture_u32(object, text.saturating_add(20))?;
+    let count = usize::from(read_fixture_u16(object, 2)?);
+    let another = (0..count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .filter(|header| *header != text)
+        .find(|header| {
+            read_fixture_u32(object, header.saturating_add(16))
+                .is_ok_and(|size| size > 0)
+        });
+    let Some(other) = another else {
+        return Ok(());
+    };
+    let mut bytes = object.to_vec();
+    write_fixture_u32(&mut bytes, other.saturating_add(20), text_start)?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::LayoutOverlap)
+    {
+        return Err(String::from("COFF admitted aliased section data"));
     }
     Ok(())
 }
@@ -46152,8 +46235,33 @@ fn check_x64_coff_relocation_types_and_spans(
             ));
         }
     }
+    check_x64_coff_relocation_table_alias(source, &object, location)?;
     check_x64_coff_span_dependent_types(source, &object, location)?;
     check_x64_coff_relocation_patch_widths(source, &object, location)
+}
+
+fn check_x64_coff_relocation_table_alias(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    let section_raw =
+        read_fixture_u32(object, location.section_header.saturating_add(20))?;
+    let mut bytes = object.to_vec();
+    write_fixture_u32(
+        &mut bytes,
+        location.section_header.saturating_add(24),
+        section_raw,
+    )?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::LayoutOverlap)
+    {
+        return Err(String::from("COFF admitted aliased relocation table"));
+    }
+    Ok(())
 }
 
 fn check_x64_coff_span_dependent_types(

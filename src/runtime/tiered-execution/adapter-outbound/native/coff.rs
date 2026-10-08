@@ -75,6 +75,8 @@ pub enum CoffAdmissionError {
     ExternalDependency,
     /// Object contains an external function other than the required entry.
     ExtraExternalFunction,
+    /// Two separately owned COFF file regions overlap on disk.
+    LayoutOverlap,
     /// COFF machine identity disagrees with the native target key.
     Machine,
     /// Object header includes an executable-image optional header.
@@ -125,6 +127,7 @@ impl Display for CoffAdmissionError {
             Self::ExtraExternalFunction => {
                 "COFF object exports an unexpected external function"
             },
+            Self::LayoutOverlap => "COFF file regions overlap",
             Self::Machine => {
                 "COFF machine does not match native target identity"
             },
@@ -240,6 +243,8 @@ pub(super) fn extract_relocation_free_executable_text(
         parse_coff(object).map_err(CoffExecutableTextError::Admission)?;
     validate_sections(object, &parsed.sections)
         .map_err(CoffExecutableTextError::Admission)?;
+    validate_coff_layout(object, &parsed)
+        .map_err(CoffExecutableTextError::Admission)?;
     validate_symbols_and_relocations(object, &parsed)
         .map_err(CoffExecutableTextError::Admission)?;
     if parsed
@@ -290,6 +295,7 @@ pub fn structurally_admit_coff(
     }
     let parsed = parse_coff(object)?;
     validate_sections(object, &parsed.sections)?;
+    validate_coff_layout(object, &parsed)?;
     validate_profile_metadata(object, &parsed.sections, artifact.key())?;
     validate_symbols_and_relocations(object, &parsed)?;
     Ok(StructurallyAdmittedNativeObjectArtifact {
@@ -609,6 +615,65 @@ const fn relocation_patch_width(machine: u16, kind: u16) -> Option<usize> {
         },
         _ => None,
     }
+}
+
+fn add_coff_layout_range(
+    object: &[u8],
+    ranges: &mut Vec<(usize, usize)>,
+    start: usize,
+    size: usize,
+) -> Result<(), CoffAdmissionError> {
+    if size == 0 {
+        return Ok(());
+    }
+    require_range(object, start, size)?;
+    ranges.push((start, checked_add(start, size)?));
+    Ok(())
+}
+
+fn validate_coff_layout(
+    object: &[u8],
+    parsed: &ParsedCoff,
+) -> Result<(), CoffAdmissionError> {
+    let header_bytes = checked_add(
+        COFF_HEADER_BYTES,
+        checked_mul(parsed.sections.len(), COFF_SECTION_BYTES)?,
+    )?;
+    let symbol_start = usize_from_u32(read_u32(object, 8)?)?;
+    let symbol_count = usize_from_u32(read_u32(object, 12)?)?;
+    let symbol_bytes = checked_mul(symbol_count, COFF_SYMBOL_BYTES)?;
+    let string_start = checked_add(symbol_start, symbol_bytes)?;
+    let string_bytes = parse_string_table_length(object, string_start)?;
+    let capacity = parsed.sections.len().saturating_mul(2).saturating_add(3);
+    let mut ranges = Vec::with_capacity(capacity);
+    add_coff_layout_range(object, &mut ranges, 0, header_bytes)?;
+    add_coff_layout_range(object, &mut ranges, symbol_start, symbol_bytes)?;
+    add_coff_layout_range(object, &mut ranges, string_start, string_bytes)?;
+    for section in &parsed.sections {
+        add_coff_layout_range(
+            object,
+            &mut ranges,
+            section.raw_start,
+            section.raw_size,
+        )?;
+        let relocation_bytes =
+            checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
+        add_coff_layout_range(
+            object,
+            &mut ranges,
+            section.relocation_start,
+            relocation_bytes,
+        )?;
+    }
+    ranges.sort_unstable_by_key(|(start, _end)| *start);
+    let mut previous_end = 0;
+    for (start, end) in ranges {
+        if start < previous_end {
+            return Err(CoffAdmissionError::LayoutOverlap);
+        }
+        previous_end = end;
+    }
+    Ok(())
 }
 
 fn parse_section_name(
