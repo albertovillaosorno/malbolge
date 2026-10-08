@@ -46024,6 +46024,7 @@ fn check_compiled_coff_case(
     }
     check_rejected_coff_image_flags(&source, &artifact)?;
     check_rejected_coff_entry_symbol_type(&source, &artifact)?;
+    check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
@@ -46155,6 +46156,57 @@ fn check_rejected_coff_entry_symbol_type(
         }
     }
     Ok(())
+}
+
+fn check_rejected_coff_signed_section_name_offset(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let bytes = coff_fixture_signed_section_name_offset(artifact.object())?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds) {
+        return Err(String::from(
+            "COFF admitted signed decimal section-name offset",
+        ));
+    }
+    Ok(())
+}
+
+fn coff_fixture_signed_section_name_offset(
+    object: &[u8],
+) -> Result<Vec<u8>, String> {
+    let text_header = coff_fixture_text_header(object)?;
+    let symbols = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let strings = symbols
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF string table offset overflow")?;
+    let size = read_fixture_u32(object, strings)?;
+    let end = strings
+        .checked_add(
+            usize::try_from(size)
+                .map_err(|error| format!("COFF string table size: {error}"))?,
+        )
+        .ok_or("COFF string table end overflow")?;
+    if end != object.len() {
+        return Err(String::from("COFF string table is not final"));
+    }
+    let reference = format!("/+{size}");
+    let mut bytes = object.to_vec();
+    bytes.extend_from_slice(b".text\0");
+    write_fixture_u32(&mut bytes, strings, size.saturating_add(6))?;
+    let name = bytes
+        .get_mut(text_header..text_header.saturating_add(8))
+        .ok_or("COFF section name field out of bounds")?;
+    name.fill(0);
+    name.get_mut(..reference.len())
+        .ok_or("COFF section reference too long")?
+        .copy_from_slice(reference.as_bytes());
+    Ok(bytes)
 }
 
 fn coff_fixture_text_header(object: &[u8]) -> Result<usize, String> {
@@ -66139,6 +66191,30 @@ fn verified_direct_load_image_rejects_relocations() -> Result<(), String> {
     } else {
         Err(String::from("load image admitted relocations"))
     }
+}
+
+#[test]
+fn verified_direct_load_image_rejects_signed_section_name_offsets()
+-> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let bytes = coff_fixture_signed_section_name_offset(artifact.object())?;
+        if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+            != Err(VerifiedDirectLoadError::Object(CoffAdmissionError::Bounds))
+        {
+            return Err(format!(
+                "direct COFF load admitted signed name offset on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]

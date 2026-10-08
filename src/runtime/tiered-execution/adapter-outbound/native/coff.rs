@@ -781,6 +781,9 @@ fn parse_section_name(
     let raw = slice(object, offset, 8)?;
     if raw.first() == Some(&b'/') {
         let digits = trim_nul(raw.get(1..).ok_or(CoffAdmissionError::Bounds)?)?;
+        if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+            return Err(CoffAdmissionError::Bounds);
+        }
         let text =
             from_utf8(digits).map_err(|_error| CoffAdmissionError::Bounds)?;
         let relative = text

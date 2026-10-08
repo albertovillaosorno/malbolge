@@ -93,6 +93,8 @@ mistaken for a valid callable entry.
 Short COFF section and symbol names must have zero-filled padding after
 their first NUL byte; nonzero bytes hidden past a terminator are rejected.
 This also applies to slash-prefixed section string-table offsets.
+Those offsets must contain ASCII decimal digits only: an integer-parser
+sign prefix such as `/+12` is not a valid COFF name reference.
 
 Long COFF section and symbol names must terminate inside their declared
 string-table extent. Referenced offsets must designate the start of a string
