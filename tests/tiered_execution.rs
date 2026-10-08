@@ -46025,6 +46025,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
+    check_rejected_coff_line_numbers(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
@@ -46112,6 +46113,31 @@ fn check_rejected_coff_section_alias(
         != Err(CoffAdmissionError::LayoutOverlap)
     {
         return Err(String::from("COFF admitted aliased section data"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_line_numbers(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_text_header(artifact.object())?;
+    // A count without a pointer, a pointer without a count, and even a
+    // complete table are all unsupported by this executable admission path.
+    for (pointer, count) in [(0u32, 1u16), (20, 0), (20, 1)] {
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, header.saturating_add(28), pointer)?;
+        write_fixture_u16(&mut bytes, header.saturating_add(34), count)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::LineNumbers)
+        {
+            return Err(format!(
+                "COFF admitted line numbers: pointer={pointer}, count={count}"
+            ));
+        }
     }
     Ok(())
 }

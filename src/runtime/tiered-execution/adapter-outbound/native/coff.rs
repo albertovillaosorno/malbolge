@@ -77,6 +77,8 @@ pub enum CoffAdmissionError {
     ExtraExternalFunction,
     /// Two separately owned COFF file regions overlap on disk.
     LayoutOverlap,
+    /// Deprecated COFF line-number records are not structurally supported.
+    LineNumbers,
     /// COFF machine identity disagrees with the native target key.
     Machine,
     /// Object header includes an executable-image optional header.
@@ -128,6 +130,7 @@ impl Display for CoffAdmissionError {
                 "COFF object exports an unexpected external function"
             },
             Self::LayoutOverlap => "COFF file regions overlap",
+            Self::LineNumbers => "COFF line-number records are unsupported",
             Self::Machine => {
                 "COFF machine does not match native target identity"
             },
@@ -356,6 +359,14 @@ fn parse_sections(
             usize_from_u32(read_u32(object, checked_add(offset, 24)?)?)?;
         let relocation_count =
             usize::from(read_u16(object, checked_add(offset, 32)?)?);
+        // COFF line-number debug records have no validator or ownership in
+        // this execution format. Ignore neither an advertised count nor an
+        // orphaned file pointer: each would leave untrusted bytes unchecked.
+        if read_u32(object, checked_add(offset, 28)?)? != 0
+            || read_u16(object, checked_add(offset, 34)?)? != 0
+        {
+            return Err(CoffAdmissionError::LineNumbers);
+        }
         let characteristics = read_u32(object, checked_add(offset, 36)?)?;
         sections.push(CoffSection {
             characteristics,
