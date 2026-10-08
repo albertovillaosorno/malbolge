@@ -46077,10 +46077,10 @@ fn check_rejected_coff_relocation_section(
     // claim semantic equivalence of the altered machine code.
     let mut absolute = object.to_vec();
     write_fixture_u16(&mut absolute, symbol_offset, u16::MAX)?;
-    let absolute =
+    let absolute_artifact =
         UntrustedNativeObjectArtifact::from_compiler_output(source, absolute)
             .map_err(|error| error.to_string())?;
-    let _admitted_absolute = structurally_admit_coff(&absolute)
+    let _admitted_absolute = structurally_admit_coff(&absolute_artifact)
         .map_err(|error| format!("COFF absolute symbol rejected: {error}"))?;
     Ok(())
 }
