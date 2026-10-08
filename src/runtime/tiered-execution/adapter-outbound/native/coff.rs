@@ -587,6 +587,13 @@ fn required_entry_offset(
         if symbol.section_number == 0 {
             return Err(CoffAdmissionError::ExternalDependency);
         }
+        // The callable entry must be the exact COFF function type, not a
+        // different base/derived type which happens to set the function bit.
+        if symbol.name == REQUIRED_ENTRY
+            && symbol.symbol_type != IMAGE_SYM_DTYPE_FUNCTION
+        {
+            return Err(CoffAdmissionError::EntryTarget);
+        }
         if symbol.symbol_type & IMAGE_SYM_DTYPE_FUNCTION == 0 {
             continue;
         }

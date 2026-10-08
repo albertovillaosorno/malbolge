@@ -86,6 +86,10 @@ Raw section pointers are bounded even when a section owns zero raw bytes;
 such sections may retain in-file offsets emitted by the compiler. Populated
 sections must use a nonzero file offset rather than aliasing the COFF header.
 
+The required public entry symbol must use exactly COFF's external function
+type (`0x0020`); other base or derived type bits are rejected rather than
+mistaken for a valid callable entry.
+
 Short COFF section and symbol names must have zero-filled padding after
 their first NUL byte; nonzero bytes hidden past a terminator are rejected.
 This also applies to slash-prefixed section string-table offsets.

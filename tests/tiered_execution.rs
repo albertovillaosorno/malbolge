@@ -46023,6 +46023,7 @@ fn check_compiled_coff_case(
         return Err(String::from("COFF admission changed artifact identity"));
     }
     check_rejected_coff_image_flags(&source, &artifact)?;
+    check_rejected_coff_entry_symbol_type(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
@@ -46092,6 +46093,64 @@ fn check_rejected_coff_section_virtual_size(
         {
             return Err(format!(
                 "COFF admitted object VirtualSize={virtual_size}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_entry_symbol_type(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let entry = b"malbolge_native_region_apply";
+    let name_start = object
+        .windows(entry.len().saturating_add(1))
+        .position(|window| {
+            window.get(..entry.len()) == Some(entry.as_slice())
+                && window.last() == Some(&0u8)
+        })
+        .ok_or("COFF fixture lacks entry string")?;
+    let strings = symbol_table
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF string table offset overflow")?;
+    let relative_offset = name_start
+        .checked_sub(strings)
+        .ok_or("COFF entry name not in string table")?;
+    let relative = u32::try_from(relative_offset)
+        .map_err(|error| format!("COFF entry name relative: {error}"))?;
+    let entry_symbol = (0..count)
+        .map(|index| symbol_table.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            read_fixture_u32(object, *offset) == Ok(0)
+                && read_fixture_u32(object, offset.saturating_add(4))
+                    == Ok(relative)
+                && object.get(offset.saturating_add(16)) == Some(&2u8)
+        })
+        .ok_or("COFF fixture has no external entry symbol")?;
+    if read_fixture_u16(object, entry_symbol.saturating_add(14))? != 0x0020 {
+        return Err(String::from("compiler entry symbol type changed"));
+    }
+    for invalid_type in [0x0021u16, 0x0120, u16::MAX] {
+        let mut bytes = object.to_vec();
+        write_fixture_u16(
+            &mut bytes,
+            entry_symbol.saturating_add(14),
+            invalid_type,
+        )?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::EntryTarget)
+        {
+            return Err(format!(
+                "COFF accepted malformed entry type {invalid_type:#06x}"
             ));
         }
     }
