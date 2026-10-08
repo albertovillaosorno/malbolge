@@ -52,6 +52,8 @@ const COFF_SECTION_BYTES: usize = 40;
 const COFF_SYMBOL_BYTES: usize = 18;
 const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
+// Image-only flags are invalid on a compiler-produced COFF object module.
+const IMAGE_FILE_IMAGE_ONLY_FLAGS: u16 = 0x0001 | 0x0002 | 0x2000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
@@ -75,6 +77,8 @@ pub enum CoffAdmissionError {
     ExternalDependency,
     /// Object contains an external function other than the required entry.
     ExtraExternalFunction,
+    /// Object file illegally claims image-only COFF characteristics.
+    FileCharacteristics,
     /// Two separately owned COFF file regions overlap on disk.
     LayoutOverlap,
     /// Deprecated COFF line-number records are not structurally supported.
@@ -132,6 +136,9 @@ impl Display for CoffAdmissionError {
             },
             Self::ExtraExternalFunction => {
                 "COFF object exports an unexpected external function"
+            },
+            Self::FileCharacteristics => {
+                "COFF object claims executable-image file attributes"
             },
             Self::LayoutOverlap => "COFF file regions overlap",
             Self::LineNumbers => "COFF line-number records are unsupported",
@@ -252,6 +259,8 @@ pub(super) fn extract_relocation_free_executable_text(
             CoffAdmissionError::OptionalHeader,
         ));
     }
+    validate_file_characteristics(object)
+        .map_err(CoffExecutableTextError::Admission)?;
     let parsed =
         parse_coff(object).map_err(CoffExecutableTextError::Admission)?;
     validate_sections(object, &parsed.sections)
@@ -306,6 +315,7 @@ pub fn structurally_admit_coff(
     if read_u16(object, 16)? != 0 {
         return Err(CoffAdmissionError::OptionalHeader);
     }
+    validate_file_characteristics(object)?;
     let parsed = parse_coff(object)?;
     validate_sections(object, &parsed.sections)?;
     validate_coff_layout(object, &parsed)?;
@@ -314,6 +324,16 @@ pub fn structurally_admit_coff(
     Ok(StructurallyAdmittedNativeObjectArtifact {
         artifact: artifact.clone(),
     })
+}
+
+fn validate_file_characteristics(
+    object: &[u8],
+) -> Result<(), CoffAdmissionError> {
+    let flags = read_u16(object, 18)?;
+    if flags & IMAGE_FILE_IMAGE_ONLY_FLAGS != 0 {
+        return Err(CoffAdmissionError::FileCharacteristics);
+    }
+    Ok(())
 }
 
 const fn expected_machine(isa: HostIsa) -> u16 {

@@ -46022,6 +46022,7 @@ fn check_compiled_coff_case(
     {
         return Err(String::from("COFF admission changed artifact identity"));
     }
+    check_rejected_coff_image_flags(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
@@ -46037,6 +46038,33 @@ fn check_compiled_coff_case(
         check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_image_flags(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let original = read_fixture_u16(artifact.object(), 18)?;
+    for (flag, label) in [
+        (0x0001u16, "relocations stripped"),
+        (0x0002, "executable image"),
+        (0x2000, "DLL image"),
+    ] {
+        if original & flag != 0 {
+            return Err(format!("compiler already sets {label} flag"));
+        }
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u16(&mut bytes, 18, original | flag)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::FileCharacteristics)
+        {
+            return Err(format!("COFF admitted {label} as object"));
+        }
     }
     Ok(())
 }
@@ -65836,6 +65864,38 @@ fn verified_direct_load_image_extracts_every_template_on_both_isas()
             {
                 return Err(format!(
                     "direct load image drifted for {kind:?} on {isa:?}",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_image_flags() -> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let original = read_fixture_u16(artifact.object(), 18)?;
+        for flag in [0x0001u16, 0x0002, 0x2000] {
+            let mut bytes = artifact.object().to_vec();
+            write_fixture_u16(&mut bytes, 18, original | flag)?;
+            let result = VerifiedDirectLoadImage::from_object_for_test(
+                &artifact, &bytes,
+            );
+            if result
+                != Err(VerifiedDirectLoadError::Object(
+                    CoffAdmissionError::FileCharacteristics,
+                ))
+            {
+                return Err(format!(
+                    "direct COFF admitted image flag {flag:#06x} on {isa:?}"
                 ));
             }
         }

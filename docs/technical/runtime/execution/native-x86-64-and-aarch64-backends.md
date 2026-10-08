@@ -47,6 +47,11 @@ rejects unresolved external dependencies. Internal ARM64 relocations to defined
 one-based section or the COFF-defined absolute-symbol sentinel; undefined,
 debug-only, and out-of-range section references fail closed.
 
+The COFF file header must identify an object module: image-only flags such as
+`RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the
+optional-header size is zero. Relocation-free image extraction uses the same
+file-characteristics gate.
+
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
 invalid sections.
