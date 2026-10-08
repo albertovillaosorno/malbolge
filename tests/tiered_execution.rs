@@ -95,6 +95,8 @@ pub mod continuation_dispatch_worker;
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_latency.rs"]
 pub mod executable_cache_limits_latency;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_owned.rs"]
+pub mod executable_cache_limits_owned_worker;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_select.rs"]
 pub mod executable_cache_limits_precedence;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_rec.rs"]

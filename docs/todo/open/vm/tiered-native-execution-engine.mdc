@@ -1073,8 +1073,15 @@ behavior.
   cooperative stop on a returned `Err`. Exact worker, supervisor, and bounded
   transport outcomes remain separate, including a repeated cancel request.
   Panic still revokes process-local cursor authority through the joined owner.
+
+  A separate owned finite host worker now accepts exclusive lifecycle/pacer and
+  callback ownership, returning a joinable handle with cancellation and host
+  completion polling. Explicit join returns exact typed run evidence and owned
+  resources; dropping the handle requests stop then **blocks until joined**.
+  Spawn and handoff errors recover unchanged inputs, and callback panic clears
+  process-local cursor authority before returning typed failure and resources.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
-  open.
+  open; this is not persistent background scheduling or a hard deadline.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

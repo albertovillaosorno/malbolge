@@ -941,6 +941,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Bound advisory progress queues and retain drop evidence.
+  - id: part-0169
+    path: composition/tier/cache_owned.rs
+    kind: composition
+    language: rust
+    responsibility: Own and join one finite cancellable retry worker handle.
 projects: []
 tests: []
 graph:

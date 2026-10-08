@@ -2433,6 +2433,30 @@ supervisor failure retains the original error and the exact cancellation
 request outcome; a supervisor panic still uses the scoped worker's fail-closed
 cursor revocation. Successful supervision does not implicitly stop the worker.
 
+An owned finite host worker can now transfer lifecycle and pacing state into a
+joinable, cancellable standard-library thread without borrowing a scoped owner.
+Its returned handle provides a request-only sticky cancel operation, a host
+completion poll, and an explicit blocking join that returns the process-local
+resources alongside the exact typed retry terminal outcome. A natural join does
+not request cancellation. Each owned invocation uses a fresh cancellation scope.
+
+Dropping an unfinished handle requests cancellation and **blocks until join**;
+it never silently detaches its worker. An executing callback must still return,
+so neither drop nor join establishes a hard deadline or mid-turn preemption.
+The caller must avoid holding a resource needed by its own callback when it
+joins or drops the handle, or an ordinary host deadlock can result.
+
+A spawn failure preserves unchanged lifecycle, pacer, and callback ownership in
+a boxed typed launch failure. After successful spawn, a synchronous handoff
+transfers the inputs; a failed handoff also returns those unsent inputs. Worker
+callback panic is caught before the owned lifecycle escapes: its process-local
+cursor authority is cleared and a typed panic terminal result is returned with
+the resources. A rare infrastructure panic outside that protected callback may
+instead prevent resource recovery and is never treated as successful progress.
+
+This is finite host orchestration, not a durable queue, unattended scheduler,
+worker pool, or independent ownership of native guest semantics.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
