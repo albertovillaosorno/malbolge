@@ -46056,6 +46056,7 @@ fn check_rejected_coff_image_flags(
     for (flag, label) in [
         (0x0001u16, "relocations stripped"),
         (0x0002, "executable image"),
+        (0x0100, "32-bit machine"),
         (0x2000, "DLL image"),
     ] {
         if original & flag != 0 {
@@ -66170,7 +66171,7 @@ fn verified_direct_load_image_rejects_image_flags() -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
         let original = read_fixture_u16(artifact.object(), 18)?;
-        for flag in [0x0001u16, 0x0002, 0x2000] {
+        for flag in [0x0001u16, 0x0002, 0x0100, 0x2000] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u16(&mut bytes, 18, original | flag)?;
             let result = VerifiedDirectLoadImage::from_object_for_test(

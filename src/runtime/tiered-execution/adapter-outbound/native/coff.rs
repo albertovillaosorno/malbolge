@@ -52,8 +52,8 @@ const COFF_SECTION_BYTES: usize = 40;
 const COFF_SYMBOL_BYTES: usize = 18;
 const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
-// Image-only flags are invalid on a compiler-produced COFF object module.
-const IMAGE_FILE_IMAGE_ONLY_FLAGS: u16 = 0x0001 | 0x0002 | 0x2000;
+// These file flags contradict either an object module or the 64-bit machine.
+const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
@@ -345,7 +345,7 @@ fn validate_file_characteristics(
     object: &[u8],
 ) -> Result<(), CoffAdmissionError> {
     let flags = read_u16(object, 18)?;
-    if flags & IMAGE_FILE_IMAGE_ONLY_FLAGS != 0 {
+    if flags & IMAGE_FILE_INCOMPATIBLE_FLAGS != 0 {
         return Err(CoffAdmissionError::FileCharacteristics);
     }
     Ok(())
