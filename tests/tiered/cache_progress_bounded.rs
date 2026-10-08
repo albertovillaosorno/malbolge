@@ -333,3 +333,158 @@ fn explicit_receiver_drop_counts_missing_notices() -> Result<(), String> {
         ))
     }
 }
+
+#[test]
+fn fallible_bounded_supervisor_cancels_on_first_notice() -> Result<(), String> {
+    let (mut lifecycle, _default_pacer) = fixture()?;
+    let mut pacer = pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(
+        nanos(5_000_000_000)?,
+    );
+    let mut called = 0usize;
+    let result = run_scoped_cache_retry_worker_bounded_fallible_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(4)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| {
+            let _first = notices.recv().map_err(|_error| "notice missing")?;
+            Err::<(), _>("observer failed")
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run == Ok(RunStop::Cancelled { completed: 1 })
+        && result.worker.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "observer failed",
+            })
+        && called == 1
+        && total(result.totals) == 1
+        && result.totals.enqueued == 1
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("fallible bounded supervisor failed to cancel"))
+    }
+}
+
+#[test]
+fn fallible_bounded_supervisor_success_preserves_all_turns()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_bounded_fallible_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(3)?, limit(3)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| {
+            Ok::<_, &'static str>(notices.iter().collect::<Vec<_>>())
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run == Ok(RunStop::LimitReached { completed: 3 })
+        && result.worker.supervisor
+            == Ok(vec![
+                Notice {
+                    completed: 1,
+                    kind: Kind::Continued,
+                },
+                Notice {
+                    completed: 2,
+                    kind: Kind::Continued,
+                },
+                Notice {
+                    completed: 3,
+                    kind: Kind::Continued,
+                },
+            ])
+        && result.totals.enqueued == 3
+        && result.totals.full == 0
+        && result.totals.receiver_gone == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "successful supervisor mutated bounded turn result",
+        ))
+    }
+}
+
+#[test]
+fn fallible_supervisor_and_callback_errors_remain_independent()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_bounded_fallible_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(3)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            Err::<ControlFlow<&'static str>, &'static str>("activation failed")
+        },
+        |_cancel, notices| {
+            let observed = notices.recv().map_err(|_error| "missing error")?;
+            if observed.kind == Kind::Failed {
+                Err::<(), _>("supervisor failed")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run
+        == Err(TurnFailure::Turn {
+            completed: 1,
+            error: "activation failed",
+        })
+        && result.worker.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "supervisor failed",
+            })
+        && total(result.totals) == 1
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("supervisor failure erased callback error"))
+    }
+}
+
+#[test]
+fn repeated_cancellation_reports_exact_prior_request() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    lifecycle.replace_expected_cursor(None);
+    let result = run_scoped_cache_retry_worker_bounded_fallible_progress(
+        NativeCacheScopedBoundedProgressLimits::new(limit(1)?, limit(3)?),
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |cancel, _notices| {
+            let first = cancel.cancel().map_err(|_error| "cancel failed")?;
+            if first {
+                Err::<(), _>("already cancelled")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.worker.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && result.worker.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(false),
+                error: "already cancelled",
+            })
+        && result.totals == NativeCacheScopedBoundedProgressTotals::default()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "repeat request invented progress or lost outcome",
+        ))
+    }
+}

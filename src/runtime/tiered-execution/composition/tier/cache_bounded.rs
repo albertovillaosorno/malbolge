@@ -135,6 +135,21 @@ impl ProgressCounters {
     }
 }
 
+/// Fallible supervisor result with independent bounded progress totals.
+pub type NativeCacheScopedBoundedFallibleProgressResult<
+    Reason,
+    TurnError,
+    SupervisorResult,
+    SupervisorError,
+> = NativeCacheScopedBoundedProgressResult<
+    Reason,
+    TurnError,
+    Result<
+        SupervisorResult,
+        worker::NativeCacheScopedSupervisorFailure<SupervisorError>,
+    >,
+>;
+
 /// Joins a finite worker with a nonblocking, capacity-bounded progress queue.
 ///
 /// Exactly one notice is attempted for each callback that *returns*. Only
@@ -215,6 +230,62 @@ where
         totals: counters.snapshot(),
         worker: result,
     })
+}
+
+/// Observes bounded progress and requests stop on returned supervisor failure.
+///
+/// The supervisor owns the receiver, including the option to discard it early.
+/// Returned `Err` requests cooperative cancellation before join and preserves
+/// exact request evidence alongside the original error. The independent worker
+/// result and exact notification totals are not replaced by supervisor policy.
+/// Returned supervisor errors do not revoke trusted cursor authority; a panic
+/// still does so through the underlying scoped worker's existing boundary.
+///
+/// # Errors
+///
+/// Returns exact spawn/panic failure. Returned supervisor errors and typed
+/// callback/wait failures remain in independent fields of the completion.
+pub fn run_scoped_cache_retry_worker_bounded_fallible_progress<
+    Reason,
+    Turn,
+    TurnError,
+    Supervisor,
+    SupervisorResult,
+    SupervisorError,
+>(
+    limits: NativeCacheScopedBoundedProgressLimits,
+    resources: Resources<'_>,
+    turn: Turn,
+    supervise: Supervisor,
+) -> NativeCacheScopedBoundedFallibleProgressResult<
+    Reason,
+    TurnError,
+    SupervisorResult,
+    SupervisorError,
+>
+where
+    Reason: Send,
+    Turn: FnMut(&mut RetryLifecycle) -> Result<ControlFlow<Reason>, TurnError>
+        + Send,
+    TurnError: Send,
+    Supervisor: FnOnce(
+        &CancelHandle,
+        Receiver<Notice>,
+    ) -> Result<SupervisorResult, SupervisorError>,
+{
+    run_scoped_cache_retry_worker_bounded_progress(
+        limits,
+        resources,
+        turn,
+        move |cancel, notices| {
+            supervise(cancel, notices).map_err(|error| {
+                worker::NativeCacheScopedSupervisorFailure {
+                    cancellation: cancel.cancel(),
+                    error,
+                }
+            })
+        },
+    )
 }
 
 #[cfg(test)]

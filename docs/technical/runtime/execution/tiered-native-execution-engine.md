@@ -2426,6 +2426,13 @@ The queue holds at most the chosen capacity instead of the finite turn maximum;
 full or dropped observation never blocks the worker or retries native work.
 The original unbounded progress API remains unchanged for existing callers.
 
+A bounded progress supervisor also has an opt-in fallible form. Returning `Err`
+requests cooperative cancellation before join, without overwriting the
+callback result or the exact enqueue/full/abandonment transport totals. Its
+supervisor failure retains the original error and the exact cancellation
+request outcome; a supervisor panic still uses the scoped worker's fail-closed
+cursor revocation. Successful supervision does not implicitly stop the worker.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
