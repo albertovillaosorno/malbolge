@@ -54,6 +54,9 @@ admitted AMD64/AArch64 identities. Relocation-free extraction shares this
 file-characteristics gate. COFF object sections also require `VirtualSize`
 to be zero rather than accepting the image-only loaded-size field.
 
+The callable `.text` section also cannot be marked as linker-only
+information or linker-discarded, even when its code/read/execute bits are set.
+
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
 invalid sections.

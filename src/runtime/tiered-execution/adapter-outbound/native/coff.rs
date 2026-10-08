@@ -57,7 +57,9 @@ const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
 const IMAGE_SCN_ALIGN_MASK: u32 = 0x00f0_0000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
+const IMAGE_SCN_LNK_INFO: u32 = 0x0000_0200;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
+const IMAGE_SCN_LNK_REMOVE: u32 = 0x0000_0800;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
@@ -518,7 +520,11 @@ fn validate_sections(
                 IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
             if section.raw_size == 0
                 || section.characteristics & required != required
-                || section.characteristics & IMAGE_SCN_MEM_WRITE != 0
+                || section.characteristics
+                    & (IMAGE_SCN_MEM_WRITE
+                        | IMAGE_SCN_LNK_INFO
+                        | IMAGE_SCN_LNK_REMOVE)
+                    != 0
             {
                 return Err(CoffAdmissionError::TextSection);
             }
