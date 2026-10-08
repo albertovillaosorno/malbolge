@@ -652,3 +652,107 @@ fn fallible_supervisor_error_preserves_cursor_and_new_scope()
         Err(String::from("prior supervisor error poisoned new scope"))
     }
 }
+
+#[test]
+fn fallible_supervisor_error_keeps_independent_turn_failure()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let finished = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            started_tx.send(()).map_err(|_error| "signal-failed")?;
+            Err::<ControlFlow<&'static str>, &'static str>("activation-failed")
+        },
+        |_cancel| {
+            started_rx.recv().map_err(|_error| "no-callback")?;
+            Err::<(), _>("supervisor-failed")
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if finished.run == Err(fallible::
+        NativeExecutableCacheLimitsRetryLifecycleRunFailure::Turn {
+        completed: 1, error: "activation-failed",
+    }) && finished.supervisor == Err(NativeCacheScopedSupervisorFailure {
+        cancellation: Ok(true),
+        error: "supervisor-failed",
+    }) && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("independent supervisor/turn failure was lost"))
+    }
+}
+
+#[test]
+fn fallible_supervisor_panic_still_revokes_cursor_authority()
+-> Result<(), String> {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let (mut lifecycle, _initial_pacer) = resources()?;
+    let mut pacer = Pacer::new(positive_u64(5_000_000_000)?);
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let limit = positive_usize(4)?;
+    let mut called = 0usize;
+    let panic_result = catch_unwind(AssertUnwindSafe(|| {
+        let _result = run_scoped_cache_retry_worker_fallible_supervisor(
+            limit,
+            NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+            |_current| {
+                called = called.saturating_add(1);
+                if called == 1 {
+                    started_tx.send(()).map_err(|_error| "signal-failed")?;
+                }
+                Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+            },
+            |_cancel| -> Result<(), &'static str> {
+                let _started = started_rx.recv();
+                resume_unwind(Box::new("fallible-supervisor-panicked"));
+            },
+        );
+    }));
+    let payload = panic_result.err().ok_or_else(|| {
+        String::from("fallible supervisor panic was suppressed")
+    })?;
+    if payload.downcast_ref::<&'static str>().copied()
+        == Some("fallible-supervisor-panicked")
+        && lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "fallible supervisor panic kept cursor authority",
+        ))
+    }
+}
+
+#[test]
+fn fallible_supervisor_missing_cursor_preserves_error_without_work()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    lifecycle.replace_expected_cursor(None);
+    let mut called = 0usize;
+    let finished = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| Err::<(), _>("missing-cursor"),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if finished.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && finished.supervisor
+            == Err(NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "missing-cursor",
+            })
+        && called == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("cursorless failed supervision invented work"))
+    }
+}
