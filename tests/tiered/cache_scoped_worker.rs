@@ -515,3 +515,140 @@ fn supervisor_unwind_revokes_cursor_after_worker_stop() -> Result<(), String> {
         Err(String::from("supervisor panic retained cursor authority"))
     }
 }
+
+#[test]
+fn fallible_supervisor_error_stops_repeated_worker_turns() -> Result<(), String>
+{
+    let (mut lifecycle, _initial_pacer) = resources()?;
+    let mut pacer = Pacer::new(positive_u64(5_000_000_000)?);
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let mut called = 0usize;
+    let finished = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(4)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            started_tx.send(()).map_err(|_error| "start-failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| {
+            started_rx.recv().map_err(|_error| "no-callback")?;
+            Err::<(), _>("supervisor-failed")
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if finished.run == Ok(RunStop::Cancelled { completed: 1 })
+        && finished.supervisor
+            == Err(NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "supervisor-failed",
+            })
+        && called == 1
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("fallible supervisor did not stop next turn"))
+    }
+}
+
+#[test]
+fn fallible_supervisor_success_does_not_request_cancellation()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let mut called = 0usize;
+    let finished = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| Ok::<_, &'static str>("supervised"),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if finished.run == Ok(RunStop::LimitReached { completed: 3 })
+        && finished.supervisor == Ok("supervised")
+        && called == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("successful supervision stopped finite work"))
+    }
+}
+
+#[test]
+fn fallible_supervisor_records_existing_cancel_request() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    lifecycle.replace_expected_cursor(None);
+    let mut called = 0usize;
+    let finished = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(2)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |cancel| {
+            let first = cancel.cancel().map_err(|_error| "cancel-failed")?;
+            if first {
+                Err::<(), _>("supervisor-failed")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if finished.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && finished.supervisor
+            == Err(NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(false),
+                error: "supervisor-failed",
+            })
+        && called == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("repeat cancellation lost exact evidence"))
+    }
+}
+
+#[test]
+fn fallible_supervisor_error_preserves_cursor_and_new_scope()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let first = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(1)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("done")),
+        |_cancel| Err::<(), _>("supervision-failed"),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if first.supervisor
+        != Err(NativeCacheScopedSupervisorFailure {
+            cancellation: Ok(true),
+            error: "supervision-failed",
+        })
+        || lifecycle.expected_cursor().is_none()
+    {
+        return Err(String::from("ordinary supervisor error revoked cursor"));
+    }
+    let second = run_scoped_cache_retry_worker_fallible_supervisor(
+        positive_usize(1)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("resumed")),
+        |_cancel| Ok::<_, &'static str>("second-supervisor"),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if second.run
+        == Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "resumed",
+        })
+        && second.supervisor == Ok("second-supervisor")
+    {
+        Ok(())
+    } else {
+        Err(String::from("prior supervisor error poisoned new scope"))
+    }
+}

@@ -2384,6 +2384,16 @@ Returned typed callback errors still preserve exact cursor authority as before;
 recovery from panic instead requires an explicit trusted durable re-bootstrap.
 No durable cursor is altered by this in-memory fail-closed transition.
 
+A separate opt-in fallible-supervisor adapter now treats a returned `Err` as a
+cooperative stop request before the finite scoped worker joins. It retains the
+exact supervisor error and cancellation request outcome (`true`, `false`, or
+synchronization failure) separately from the worker's typed terminal result.
+
+Successful supervision does not implicitly cancel work. A returned supervisor
+error does not clear cursor authority or preempt an in-progress callback, unlike
+a supervisor panic which still revokes process-local retry authority. The
+original generic supervisor entry point preserves its return semantics.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

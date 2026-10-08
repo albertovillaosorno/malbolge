@@ -111,6 +111,80 @@ pub type NativeCacheScopedWorkerResult<Reason, TurnError, SupervisorResult> =
         NativeCacheScopedWorkerError,
     >;
 
+/// Returned supervisor error plus exact cancellation-request evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeCacheScopedSupervisorFailure<Error> {
+    /// `true` for the first stop request, `false` if already cancelled.
+    /// A failed request retains its exact synchronization error.
+    pub cancellation: Result<bool, WaitError>,
+    /// The unchanged error reported by the caller-owned supervisor.
+    pub error: Error,
+}
+
+/// Outcome of a scoped run with an explicitly fallible supervisor.
+pub type NativeCacheScopedFallibleSupervisorResult<
+    Reason,
+    TurnError,
+    SupervisorResult,
+    SupervisorError,
+> = NativeCacheScopedWorkerResult<
+    Reason,
+    TurnError,
+    Result<
+        SupervisorResult,
+        NativeCacheScopedSupervisorFailure<SupervisorError>,
+    >,
+>;
+
+/// Supervises one finite worker, requesting stop when supervision fails.
+///
+/// `Ok` leaves cancellation to the caller; `Err` requests sticky cooperative
+/// stop before the worker is joined and retains both the supervisor error and
+/// the exact request outcome. The worker can finish an already-running callback
+/// before stopping. The returned worker outcome remains independent, including
+/// a possible completed turn or worker error during the cancellation race.
+///
+/// The ordinary `run_scoped_cache_retry_worker` keeps its original semantics:
+/// generic supervisor return values never implicitly request cancellation.
+///
+/// # Errors
+///
+/// Preserves the existing typed worker spawn/panic errors. Supervisor errors
+/// live in the completion, alongside cancellation-request evidence.
+pub fn run_scoped_cache_retry_worker_fallible_supervisor<
+    Reason,
+    Turn,
+    TurnError,
+    Supervisor,
+    SupervisorResult,
+    SupervisorError,
+>(
+    maximum_turns: NonZeroUsize,
+    resources: NativeCacheScopedWorkerResources<'_>,
+    turn: Turn,
+    supervise: Supervisor,
+) -> NativeCacheScopedFallibleSupervisorResult<
+    Reason,
+    TurnError,
+    SupervisorResult,
+    SupervisorError,
+>
+where
+    Reason: Send,
+    Turn: FnMut(&mut RetryLifecycle) -> Result<ControlFlow<Reason>, TurnError>
+        + Send,
+    TurnError: Send,
+    Supervisor:
+        FnOnce(&CancelHandle) -> Result<SupervisorResult, SupervisorError>,
+{
+    run_scoped_cache_retry_worker(maximum_turns, resources, turn, |cancel| {
+        supervise(cancel).map_err(|error| NativeCacheScopedSupervisorFailure {
+            cancellation: cancel.cancel(),
+            error,
+        })
+    })
+}
+
 /// Starts exactly one scoped worker and joins it before returning.
 ///
 /// The worker borrows the retry lifecycle and pacer, uses a fresh standard

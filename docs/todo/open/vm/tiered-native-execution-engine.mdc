@@ -1045,6 +1045,11 @@ behavior.
   authority after joining, even when the worker changed it before unwinding.
   Returned typed callback errors preserve exact cursor state, and a later run
   without trusted re-bootstrap cannot begin another retry turn.
+
+  An opt-in fallible supervisor now requests cooperative stop on returned
+  `Err`, preserving the original error plus exact cancellation request evidence
+  separately from typed worker outcomes. Successful supervision changes no
+  cancellation policy; ordinary returned errors do not revoke cursor authority.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 
