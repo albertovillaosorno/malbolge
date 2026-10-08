@@ -62,6 +62,11 @@ linker-only information, discarded, or COMDAT-selected. Neither the callable
 `.text` section nor `.mbprof` can be marked `MEM_DISCARDABLE`, because both
 must remain independently available during native execution and admission.
 
+Populated auxiliary COMDAT sections require a matching static section
+symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
+missing section-definition selectors fail closed. Empty COMDAT sections with
+no relocations remain admissible, matching legitimate pinned Clang output.
+
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
 invalid sections.

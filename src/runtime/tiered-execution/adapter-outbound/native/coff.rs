@@ -104,6 +104,8 @@ pub enum CoffAdmissionError {
     RelocationType,
     /// Section characteristics use the reserved alignment encoding.
     SectionAlignment,
+    /// An auxiliary section requires unsupported linker selection semantics.
+    SectionLinkage,
     /// Raw section size and file-data pointer disagree about byte ownership.
     SectionPointer,
     /// The image-only section virtual-size field is nonzero.
@@ -179,6 +181,7 @@ impl Display for CoffAdmissionError {
                 "COFF relocation type is invalid for the native machine"
             },
             Self::SectionAlignment => "COFF uses reserved section alignment",
+            Self::SectionLinkage => "COFF section requires linker selection",
             Self::SectionPointer => "COFF section raw-size/pointer mismatch",
             Self::SectionVirtualSize => {
                 "COFF object section declares image-only virtual size"
@@ -516,7 +519,7 @@ fn validate_sections(
                 checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
             require_range(object, section.relocation_start, bytes)?;
         }
-        validate_metadata_linker_flags(section)?;
+        validate_section_linker_flags(section)?;
         if section.name == ".text" {
             text_count = text_count.saturating_add(1);
             let required =
@@ -547,7 +550,7 @@ fn validate_sections(
     }
 }
 
-fn validate_metadata_linker_flags(
+fn validate_section_linker_flags(
     section: &CoffSection,
 ) -> Result<(), CoffAdmissionError> {
     // Profile identity may not be discarded, selected, or treated as linker
@@ -694,11 +697,58 @@ fn validate_symbol_sections(
     Ok(())
 }
 
+fn validate_comdat_selections(
+    object: &[u8],
+    parsed: &ParsedCoff,
+) -> Result<(), CoffAdmissionError> {
+    let table = usize_from_u32(read_u32(object, 8)?)?;
+    for (section_index, section) in parsed.sections.iter().enumerate() {
+        if section.characteristics & IMAGE_SCN_LNK_COMDAT == 0
+            || (section.raw_size == 0 && section.relocation_count == 0)
+        {
+            continue;
+        }
+        let number = i16::try_from(section_index.saturating_add(1))
+            .map_err(|_error| CoffAdmissionError::Bounds)?;
+        let mut validated = false;
+        for (index, candidate) in parsed.symbols.iter().enumerate() {
+            let Some(symbol) = candidate else {
+                continue;
+            };
+            if symbol.section_number != number
+                || symbol.storage_class != 3
+                || symbol.name != section.name
+            {
+                continue;
+            }
+            if validated {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
+            let offset =
+                checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
+            if read_u8(object, checked_add(offset, 17)?)? == 0 {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
+            let selection_offset = checked_add(offset, COFF_SYMBOL_BYTES + 14)?;
+            let selection = read_u8(object, selection_offset)?;
+            if !(1..=7).contains(&selection) {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
+            validated = true;
+        }
+        if !validated {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+    }
+    Ok(())
+}
+
 fn validate_symbols_and_relocations(
     object: &[u8],
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
     validate_symbol_sections(parsed)?;
+    validate_comdat_selections(object, parsed)?;
     let _entry_offset = required_entry_offset(parsed)?;
     let machine = read_u16(object, 0)?;
     for section in &parsed.sections {

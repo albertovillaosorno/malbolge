@@ -46047,6 +46047,7 @@ fn check_compiled_coff_case(
         check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
         check_rejected_coff_unreferenced_symbol_value(&source, &artifact)?;
     } else {
+        check_rejected_coff_comdat_selection(&source, &artifact)?;
         check_rejected_coff_relocation_section(&source, &artifact)?;
     }
     Ok(())
@@ -46992,6 +46993,58 @@ fn check_rejected_coff_unterminated_long_name(
             .map_err(|error| error.to_string())?;
     if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds) {
         return Err(String::from("COFF admitted an unterminated long name"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_selection(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let sections = usize::from(read_fixture_u16(object, 2)?);
+    let section_number = (0..sections)
+        .find(|index| {
+            let header = 20usize.saturating_add(index.saturating_mul(40));
+            read_fixture_u32(object, header.saturating_add(36))
+                .is_ok_and(|flags| flags & 0x0000_1000 != 0)
+        })
+        .ok_or("AArch64 compiler fixture lacks COMDAT data")?;
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let symbol_count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let section_u16 = u16::try_from(section_number.saturating_add(1))
+        .map_err(|error| format!("COMDAT section index: {error}"))?;
+    let aux_offset = (0..symbol_count)
+        .map(|index| symbol_start.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            read_fixture_u16(object, offset.saturating_add(12))
+                == Ok(section_u16)
+                && object.get(offset.saturating_add(16)) == Some(&3u8)
+                && object.get(offset.saturating_add(17)) == Some(&1u8)
+        })
+        .ok_or("COMDAT section lacks static section-definition symbol")?
+        .saturating_add(32);
+    let original = *object
+        .get(aux_offset)
+        .ok_or("COMDAT selection byte outside object")?;
+    if !(1..=7).contains(&original) {
+        return Err(format!("compiler emitted COMDAT selection {original}"));
+    }
+    for selection in [0u8, 8, u8::MAX] {
+        let mut bytes = object.to_vec();
+        *bytes
+            .get_mut(aux_offset)
+            .ok_or("selection outside object")? = selection;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted COMDAT selection {selection}"));
+        }
     }
     Ok(())
 }
