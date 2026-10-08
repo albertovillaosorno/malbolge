@@ -57,6 +57,7 @@ const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
 const IMAGE_SCN_ALIGN_MASK: u32 = 0x00f0_0000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
+const IMAGE_SCN_LNK_COMDAT: u32 = 0x0000_1000;
 const IMAGE_SCN_LNK_INFO: u32 = 0x0000_0200;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
 const IMAGE_SCN_LNK_REMOVE: u32 = 0x0000_0800;
@@ -514,6 +515,7 @@ fn validate_sections(
                 checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
             require_range(object, section.relocation_start, bytes)?;
         }
+        validate_metadata_linker_flags(section)?;
         if section.name == ".text" {
             text_count = text_count.saturating_add(1);
             let required =
@@ -522,6 +524,7 @@ fn validate_sections(
                 || section.characteristics & required != required
                 || section.characteristics
                     & (IMAGE_SCN_MEM_WRITE
+                        | IMAGE_SCN_LNK_COMDAT
                         | IMAGE_SCN_LNK_INFO
                         | IMAGE_SCN_LNK_REMOVE)
                     != 0
@@ -540,6 +543,21 @@ fn validate_sections(
     } else {
         Err(CoffAdmissionError::TextSection)
     }
+}
+
+fn validate_metadata_linker_flags(
+    section: &CoffSection,
+) -> Result<(), CoffAdmissionError> {
+    // Profile identity may not be discarded, selected, or treated as linker
+    // annotations; it must remain independently loadable section data.
+    if section.name == PROFILE_METADATA_SECTION
+        && section.characteristics
+            & (IMAGE_SCN_LNK_COMDAT | IMAGE_SCN_LNK_INFO | IMAGE_SCN_LNK_REMOVE)
+            != 0
+    {
+        return Err(CoffAdmissionError::ProfileMetadata);
+    }
+    Ok(())
 }
 
 fn requires_profile_metadata(key: &NativeArtifactKey) -> bool {

@@ -56,6 +56,9 @@ to be zero rather than accepting the image-only loaded-size field.
 
 The callable `.text` section also cannot be marked as linker-only
 information or linker-discarded, even when its code/read/execute bits are set.
+COMDAT-selected code is also unsupported because the loader owns no COMDAT
+selection semantics. The `.mbprof` identity section likewise cannot be
+linker-only information, discarded, or COMDAT-selected.
 
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden

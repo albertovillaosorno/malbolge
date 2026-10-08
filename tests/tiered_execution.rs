@@ -46028,6 +46028,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
     check_rejected_coff_nonloadable_text(&source, &artifact)?;
+    check_rejected_coff_linker_owned_metadata(&source, &artifact)?;
     check_rejected_coff_reserved_section_alignment(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
@@ -46268,6 +46269,7 @@ fn check_rejected_coff_nonloadable_text(
     for (flag, label) in [
         (0x0000_0200u32, "linker information"),
         (0x0000_0800, "linker discard"),
+        (0x0000_1000, "COMDAT selection"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler marked .text as {label}"));
@@ -46281,6 +46283,46 @@ fn check_rejected_coff_nonloadable_text(
             != Err(CoffAdmissionError::TextSection)
         {
             return Err(format!("COFF admitted {label} as executable text"));
+        }
+    }
+    Ok(())
+}
+
+fn coff_fixture_metadata_header(object: &[u8]) -> Result<usize, String> {
+    let count = usize::from(read_fixture_u16(object, 2)?);
+    (0..count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            object.get(*header..header.saturating_add(8))
+                == Some(b".mbprof\0".as_slice())
+        })
+        .ok_or_else(|| String::from("COFF fixture lacks .mbprof section"))
+}
+
+fn check_rejected_coff_linker_owned_metadata(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_metadata_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let original = read_fixture_u32(artifact.object(), offset)?;
+    for (flag, label) in [
+        (0x0000_0200u32, "linker information"),
+        (0x0000_0800, "linker discard"),
+        (0x0000_1000, "COMDAT selection"),
+    ] {
+        if original & flag != 0 {
+            return Err(format!("compiler .mbprof has {label}"));
+        }
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, offset, original | flag)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::ProfileMetadata)
+        {
+            return Err(format!("COFF admitted {label} profile metadata"));
         }
     }
     Ok(())
@@ -66370,6 +66412,38 @@ fn verified_direct_load_image_rejects_signed_section_name_offsets()
 }
 
 #[test]
+fn verified_direct_load_image_rejects_linker_owned_metadata()
+-> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let offset =
+            coff_fixture_metadata_header(artifact.object())?.saturating_add(36);
+        let original = read_fixture_u32(artifact.object(), offset)?;
+        for flag in [0x0000_0200u32, 0x0000_0800, 0x0000_1000] {
+            let mut bytes = artifact.object().to_vec();
+            write_fixture_u32(&mut bytes, offset, original | flag)?;
+            if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+                != Err(VerifiedDirectLoadError::Object(
+                    CoffAdmissionError::ProfileMetadata,
+                ))
+            {
+                return Err(format!(
+                    "direct COFF admitted linker-owned metadata on {isa:?}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn verified_direct_load_image_rejects_nonloadable_text() -> Result<(), String> {
     let program = direct_output_program();
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
@@ -66383,7 +66457,7 @@ fn verified_direct_load_image_rejects_nonloadable_text() -> Result<(), String> {
         let header = coff_fixture_text_header(artifact.object())?;
         let offset = header.saturating_add(36);
         let original = read_fixture_u32(artifact.object(), offset)?;
-        for flag in [0x0000_0200u32, 0x0000_0800] {
+        for flag in [0x0000_0200u32, 0x0000_0800, 0x0000_1000] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u32(&mut bytes, offset, original | flag)?;
             if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
