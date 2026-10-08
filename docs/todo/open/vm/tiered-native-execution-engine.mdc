@@ -1100,6 +1100,13 @@ behavior.
   Thread startup failure retains owned resources and the boxed callback wrapper.
   This still is not a durable scheduler or callback preemption mechanism.
 
+
+  A nonblocking `try_join` now returns either the same still-owned worker or
+  its exact joined result, and the bounded-progress variant preserves the
+  attached/taken receiver and final queue counts across that transition.
+  Discarded `Pending` ownership still cancels and blocks until the worker joins;
+  host completion is not durable or guest-semantic success evidence.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

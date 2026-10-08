@@ -154,6 +154,16 @@ pub struct NativeCacheOwnedWorkerHandle<Reason, TurnError> {
     thread: Option<OwnedThread<Reason, TurnError>>,
 }
 
+/// Nonblocking join attempt that never silently releases worker ownership.
+#[derive(Debug)]
+#[must_use]
+pub enum NativeCacheOwnedWorkerTryJoin<Reason, TurnError> {
+    /// The worker was finished and its independent typed result was joined.
+    Joined(NativeCacheOwnedWorkerJoinResult<Reason, TurnError>),
+    /// The worker has not exited; the same cancellable owner is returned.
+    Pending(NativeCacheOwnedWorkerHandle<Reason, TurnError>),
+}
+
 impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
     /// Requests sticky cooperative stop without claiming callback preemption.
     ///
@@ -205,6 +215,20 @@ impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
         join.join().map_err(|_panic| {
             NativeCacheOwnedWorkerJoinFailure::ThreadPanicked
         })?
+    }
+
+    /// Attempts one nonblocking join without losing an unfinished owner.
+    ///
+    /// `Pending` returns the same handle and its exact cancellation scope;
+    /// dropping that handle still cancels and joins. `Joined` is returned only
+    /// after host thread completion and consumes its exact typed result.
+    /// This is a host-completion poll, never durable or guest-state admission.
+    pub fn try_join(self) -> NativeCacheOwnedWorkerTryJoin<Reason, TurnError> {
+        if self.is_finished() {
+            NativeCacheOwnedWorkerTryJoin::Joined(self.join())
+        } else {
+            NativeCacheOwnedWorkerTryJoin::Pending(self)
+        }
     }
 }
 

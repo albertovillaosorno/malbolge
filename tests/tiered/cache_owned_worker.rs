@@ -724,3 +724,127 @@ fn destructor_panic_stays_fail_closed_across_next_owned_run()
         Err(String::from("destructor panic authorized subsequent retry"))
     }
 }
+
+#[test]
+fn unfinished_try_join_preserves_owner_and_cooperative_stop()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let handle = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let pending = match handle.try_join() {
+        NativeCacheOwnedWorkerTryJoin::Pending(recovered) => recovered,
+        NativeCacheOwnedWorkerTryJoin::Joined(_finished) => {
+            return Err(String::from("in-flight callback falsely joined"));
+        },
+    };
+    let stop = pending.cancel().map_err(|error| format!("{error:?}"))?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let finished = pending.join().map_err(|error| format!("{error:?}"))?;
+    if stop
+        && matches!(
+            finished.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Ok(RunStop::Cancelled {
+                completed: 1
+            }))
+        )
+        && calls.load(Ordering::SeqCst) == 1
+        && finished.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending join lost ownership or cancellation"))
+    }
+}
+
+#[test]
+fn completed_try_join_returns_typed_owned_result_without_cancel()
+-> Result<(), String> {
+    let handle = start_owned_cache_retry_worker(
+        positive(1)?,
+        resources()?,
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("finished")),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    // Completion polling is host evidence only; no clock-dependent sleeps.
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let joined = match handle.try_join() {
+        NativeCacheOwnedWorkerTryJoin::Joined(joined) => joined,
+        NativeCacheOwnedWorkerTryJoin::Pending(_handle) => {
+            return Err(String::from("finished thread reported pending"));
+        },
+    }
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        NativeCacheOwnedWorkerTerminal::Returned(Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "finished"
+        }))
+    ) && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "nonblocking join changed typed terminal outcome",
+        ))
+    }
+}
+
+#[test]
+fn discarding_pending_join_owner_still_cancels_and_joins() -> Result<(), String>
+{
+    let mut state = resources()?;
+    state.pacer = Pacer::new(nanos(5_000_000_000)?);
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let handle =
+        start_owned_cache_retry_worker(positive(3)?, state, move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        })
+        .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let pending = match handle.try_join() {
+        NativeCacheOwnedWorkerTryJoin::Pending(recovered) => recovered,
+        NativeCacheOwnedWorkerTryJoin::Joined(_finished) => {
+            return Err(String::from("in-flight callback falsely joined"));
+        },
+    };
+    let stopped = pending.cancel().map_err(|error| format!("{error:?}"))?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    drop(pending);
+    if stopped && calls.load(Ordering::SeqCst) == 1 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "discarded pending owner detached additional work",
+        ))
+    }
+}

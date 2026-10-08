@@ -2491,6 +2491,19 @@ drop. An owned launch failure retains both lifecycle and the original callback
 inside its boxed observer wrapper for possible resubmission, not its original
 concrete callback type. This remains in-memory host orchestration only.
 
+Both the plain owned worker and its bounded-progress adapter now offer a
+nonblocking `try_join` ownership transition. If the host thread has not
+finished, `Pending` returns the unchanged owned handle and cancellation scope;
+progress owners also retain the original receiver and transport counters.
+If the thread has finished, `Joined` returns the exact normal join result and,
+for progress owners, final transport totals without requesting cancellation.
+
+A pending join is not a detached task, completion guarantee, or durable guest
+state. Discarding its returned handle still invokes cancellation-first blocking
+join, so consumers must retain it or explicitly perform bounded supervision.
+Host finish detection is separate from VM semantic admission, and a finished
+thread may still carry a typed callback error or a revoked process-local cursor.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

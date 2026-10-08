@@ -115,6 +115,16 @@ pub struct NativeCacheOwnedProgressHandle<Reason, TurnError> {
     worker: owned::NativeCacheOwnedWorkerHandle<Reason, TurnError>,
 }
 
+/// Nonblocking owned progress join that preserves an unfinished receiver.
+#[derive(Debug)]
+#[must_use]
+pub enum NativeCacheOwnedProgressTryJoin<Reason, TurnError> {
+    /// Joined resources, exact worker result, and final transport counters.
+    Joined(NativeCacheOwnedProgressCompletion<Reason, TurnError>),
+    /// The exact owned worker, receiver, and counters remain available.
+    Pending(NativeCacheOwnedProgressHandle<Reason, TurnError>),
+}
+
 impl<Reason, TurnError> NativeCacheOwnedProgressHandle<Reason, TurnError> {
     /// Requests sticky stop without asserting guest callback preemption.
     ///
@@ -173,6 +183,22 @@ impl<Reason, TurnError> NativeCacheOwnedProgressHandle<Reason, TurnError> {
     #[must_use]
     pub const fn take_progress_receiver(&mut self) -> Option<Receiver<Notice>> {
         self.receiver.take()
+    }
+
+    /// Attempts a nonblocking join without discarding progress observation.
+    ///
+    /// On `Pending`, ownership of the same receiver and worker is returned;
+    /// callers may continue observing or request cooperative cancellation.
+    /// On `Joined`, the worker has finished and the transport counters are
+    /// final but remain advisory, independent from exact typed run evidence.
+    pub fn try_join(
+        self,
+    ) -> NativeCacheOwnedProgressTryJoin<Reason, TurnError> {
+        if self.is_finished() {
+            NativeCacheOwnedProgressTryJoin::Joined(self.join())
+        } else {
+            NativeCacheOwnedProgressTryJoin::Pending(self)
+        }
     }
 }
 

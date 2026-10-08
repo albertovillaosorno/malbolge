@@ -782,3 +782,177 @@ fn dropping_progress_owner_joins_in_flight_callback() -> Result<(), String> {
         ))
     }
 }
+
+#[test]
+fn pending_progress_try_join_keeps_receiver_and_cancel_scope()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let pending = match handle.try_join() {
+        NativeCacheOwnedProgressTryJoin::Pending(recovered) => recovered,
+        NativeCacheOwnedProgressTryJoin::Joined(_finished) => {
+            return Err(String::from("in-flight progress falsely joined"));
+        },
+    };
+    let stop = pending.cancel().map_err(|error| format!("{error:?}"))?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let first = pending
+        .progress()
+        .ok_or("receiver lost")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let finished = pending.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if stop
+        && first
+            == (Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && finished.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::Cancelled { completed: 1 }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pending progress join lost receiver or terminal",
+        ))
+    }
+}
+
+#[test]
+fn completed_progress_try_join_returns_final_counts_without_cancel()
+-> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 1)?,
+        resources()?,
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("done")),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let finished = match handle.try_join() {
+        NativeCacheOwnedProgressTryJoin::Joined(finished) => finished,
+        NativeCacheOwnedProgressTryJoin::Pending(_handle) => {
+            return Err(String::from(
+                "finished progress thread reported pending",
+            ));
+        },
+    };
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if finished.totals
+        == (Totals {
+            enqueued: 1,
+            full: 0,
+            receiver_gone: 0,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CallerStopped {
+                    completed: 1,
+                    reason: "done"
+                }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "nonblocking progress join rewrote terminal evidence",
+        ))
+    }
+}
+
+#[test]
+fn pending_progress_try_join_retains_taken_receiver_ownership()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 1)?,
+        resources()?,
+        move |_current| {
+            entered_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::Break("complete"))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let receiver = handle.take_progress_receiver().ok_or("receiver missing")?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let pending = match handle.try_join() {
+        NativeCacheOwnedProgressTryJoin::Pending(recovered) => recovered,
+        NativeCacheOwnedProgressTryJoin::Joined(_finished) => {
+            return Err(String::from("in-flight callback already joined"));
+        },
+    };
+    if pending.progress().is_some() {
+        return Err(String::from("taken receiver unexpectedly duplicated"));
+    }
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let notice = receiver
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let finished = pending.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if notice
+        == (Notice {
+            completed: 1,
+            kind: Kind::CallerStopped,
+        })
+        && finished.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CallerStopped {
+                    completed: 1,
+                    reason: "complete"
+                }
+            ))
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "pending poll transferred receiver unexpectedly",
+        ))
+    }
+}
