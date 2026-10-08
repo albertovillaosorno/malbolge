@@ -46041,6 +46041,7 @@ fn check_compiled_coff_case(
         check_rejected_coff_embedded_long_name(&source, &artifact)?;
         check_rejected_coff_embedded_section_name(&source, &artifact)?;
         check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
+        check_rejected_coff_unreferenced_symbol_value(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
     }
@@ -46769,6 +46770,57 @@ fn check_rejected_coff_unreferenced_symbol_sections(
             != Err(CoffAdmissionError::ExternalDependency)
         {
             return Err(format!("COFF admitted {label} on static symbol"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unreferenced_symbol_value(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbols = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol start: {error}"))?;
+    let section_number =
+        usize::from(read_fixture_u16(object, symbols.saturating_add(12))?);
+    let sections = usize::from(read_fixture_u16(object, 2)?);
+    if section_number == 0
+        || section_number > sections
+        || object.get(symbols.saturating_add(16)) == Some(&2u8)
+    {
+        return Err(String::from("COFF fixture lacks first static section"));
+    }
+    let header = 20usize
+        .saturating_add(section_number.saturating_sub(1).saturating_mul(40));
+    let size = read_fixture_u32(object, header.saturating_add(16))?;
+    if size == 0 || size == u32::MAX {
+        return Err(String::from("COFF first static symbol has no raw extent"));
+    }
+    // COFF labels at the exact end of populated storage are legitimate.
+    let mut boundary = object.to_vec();
+    write_fixture_u32(&mut boundary, symbols.saturating_add(8), size)?;
+    let end_label =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, boundary)
+            .map_err(|error| error.to_string())?;
+    let _admitted_end_label = structurally_admit_coff(&end_label)
+        .map_err(|error| format!("COFF one-past-end label: {error}"))?;
+    for invalid_value in [size.saturating_add(1), u32::MAX] {
+        let mut bytes = object.to_vec();
+        write_fixture_u32(
+            &mut bytes,
+            symbols.saturating_add(8),
+            invalid_value,
+        )?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SymbolValue)
+        {
+            return Err(format!(
+                "COFF admitted static symbol offset {invalid_value}"
+            ));
         }
     }
     Ok(())

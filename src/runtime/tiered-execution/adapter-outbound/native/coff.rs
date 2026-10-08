@@ -103,6 +103,8 @@ pub enum CoffAdmissionError {
     SectionVirtualSize,
     /// A referenced long name begins inside another string-table entry.
     StringTableOffset,
+    /// A defined symbol offset exceeds its populated owning section.
+    SymbolValue,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
     /// Object does not contain one usable `.text` section.
@@ -175,6 +177,9 @@ impl Display for CoffAdmissionError {
             },
             Self::StringTableOffset => {
                 "COFF long-name offset is not a string start"
+            },
+            Self::SymbolValue => {
+                "COFF defined symbol exceeds its raw section extent"
             },
             Self::TargetFormat => {
                 "COFF admission requires a Windows native target"
@@ -627,6 +632,22 @@ fn validate_symbol_sections(
                     .is_ok_and(|number| number > parsed.sections.len()));
         if invalid {
             return Err(CoffAdmissionError::ExternalDependency);
+        }
+        if symbol.section_number > 0 {
+            let index = usize::try_from(symbol.section_number)
+                .map_err(|_error| CoffAdmissionError::Bounds)?;
+            let section = parsed
+                .sections
+                .get(index.saturating_sub(1))
+                .ok_or(CoffAdmissionError::ExternalDependency)?;
+            // BSS and other zero-raw-size sections may contain logical
+            // symbols beyond the empty file extent. Populated sections do
+            // have a concrete bound, including one-past-end labels.
+            if section.raw_size != 0
+                && usize_from_u32(symbol.value)? > section.raw_size
+            {
+                return Err(CoffAdmissionError::SymbolValue);
+            }
         }
     }
     Ok(())

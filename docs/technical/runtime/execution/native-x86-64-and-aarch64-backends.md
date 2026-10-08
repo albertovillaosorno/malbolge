@@ -86,6 +86,11 @@ Raw section pointers are bounded even when a section owns zero raw bytes;
 such sections may retain in-file offsets emitted by the compiler. Populated
 sections must use a nonzero file offset rather than aliasing the COFF header.
 
+Every symbol defined in a section with raw bytes must point no farther
+than one past the section's end. Zero-raw-size sections remain exempt because
+uninitialized COFF data can contain logical symbols without file-backed bytes.
+This bound applies to unreferenced static symbols, not only the public entry.
+
 The required public entry symbol must use exactly COFF's external function
 type (`0x0020`); other base or derived type bits are rejected rather than
 mistaken for a valid callable entry.
