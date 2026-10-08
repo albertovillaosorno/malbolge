@@ -40,6 +40,7 @@
 
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::{io, thread};
 
 use fallible::run_bounded_interruptible_fallible_cache_limits_retry_lifecycle;
@@ -120,9 +121,11 @@ pub type NativeCacheScopedWorkerResult<Reason, TurnError, SupervisorResult> =
 ///
 /// Cancellation is a cooperative pre-turn boundary, not an interruption of
 /// native code, an atomic callback-start handshake, or a hard time deadline.
-/// A panicking supervisor propagates its panic after the scoped thread joins.
-/// A panicking worker is returned as an error; its partially changed borrowed
-/// lifecycle must be treated as untrusted by the caller.
+/// A panicking supervisor requests cancellation, joins the worker, then
+/// resumes the original panic. A panicking worker is returned as an error;
+/// its partially changed borrowed lifecycle must be treated as untrusted.
+/// If both panic, the supervisor's original panic takes precedence after join.
+/// Synchronization poison when requesting cancellation cannot mask that panic.
 ///
 /// # Errors
 ///
@@ -163,9 +166,16 @@ where
                 )
             })
             .map_err(NativeCacheScopedWorkerError::Spawn)?;
-        let supervisor = supervise(&cancel);
-        let run = worker
-            .join()
+        let supervised = catch_unwind(AssertUnwindSafe(|| supervise(&cancel)));
+        if supervised.is_err() {
+            let _request = cancel.cancel();
+        }
+        let joined = worker.join();
+        let supervisor = match supervised {
+            Ok(value) => value,
+            Err(payload) => resume_unwind(payload),
+        };
+        let run = joined
             .map_err(|_panic| NativeCacheScopedWorkerError::WorkerPanicked)?;
         Ok(NativeCacheScopedWorkerCompletion { run, supervisor })
     })

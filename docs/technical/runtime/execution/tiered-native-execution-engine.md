@@ -2371,6 +2371,12 @@ fabricated as successful work. Cooperative cancellation applies only before a
 turn, not within running native or interpreter code. This is not a detached
 background scheduler, durable work queue, worker pool, or hard deadline.
 
+If the supervisor unwinds, the scoped owner first requests sticky cancellation,
+then joins the worker before resuming the original supervisor panic. The worker
+panic cannot replace that original panic, even if both endpoints unwind; a
+failure to signal cancellation also cannot masquerade as supervisor success.
+This cooperative protection does not interrupt an already executing callback.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

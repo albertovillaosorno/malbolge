@@ -1036,6 +1036,10 @@ behavior.
   joined before returning. It preserves separate worker and supervisor results,
   uses typed spawn/panic failures, and never detaches affine lifecycle
   ownership.
+
+  Supervisor unwind now requests cooperative cancellation before joining and
+  rethrowing its original panic, including when the worker also panics. Neither
+  signal failure nor a second panic fabricates successful progress.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 

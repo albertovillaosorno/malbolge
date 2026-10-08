@@ -36,7 +36,6 @@
 //! Joined and cancellable scoped cache-trigger worker regression tests.
 
 use std::num::NonZeroU64;
-use std::panic::resume_unwind;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 
@@ -255,7 +254,9 @@ fn cancellation_during_callback_waits_for_completion() -> Result<(), String> {
 fn panicking_supervisor_joins_worker_before_unwind() -> Result<(), String> {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let (mut lifecycle, mut pacer) = resources()?;
+    let (mut lifecycle, _initial_pacer) = resources()?;
+    let mut pacer = Pacer::new(positive_u64(5_000_000_000)?);
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
     let mut observed = 0usize;
     let limit = positive_usize(3)?;
     let result = catch_unwind(AssertUnwindSafe(|| {
@@ -264,15 +265,23 @@ fn panicking_supervisor_joins_worker_before_unwind() -> Result<(), String> {
             NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
             |_current| {
                 observed = observed.saturating_add(1);
+                started_tx.send(()).map_err(|_error| "start-failed")?;
                 Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
             },
-            |_cancel| resume_unwind(Box::new("intentional supervisor panic")),
+            |_cancel| {
+                let _started = started_rx.recv();
+                resume_unwind(Box::new("intentional supervisor panic"));
+            },
         );
     }));
-    if result.is_err() && observed == 3 {
+    let payload = result.err().ok_or_else(|| {
+        String::from("supervisor panic was incorrectly suppressed")
+    })?;
+    let text = payload.downcast_ref::<&'static str>().copied();
+    if text == Some("intentional supervisor panic") && observed == 1 {
         Ok(())
     } else {
-        Err(String::from("supervisor panic escaped before worker join"))
+        Err(String::from("panic did not cancel and join exact work"))
     }
 }
 
@@ -387,5 +396,40 @@ fn scoped_cancellation_does_not_poison_next_run() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("sticky cancellation crossed worker scopes"))
+    }
+}
+
+#[test]
+fn supervisor_panic_precedes_concurrent_worker_panic() -> Result<(), String> {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let (mut lifecycle, mut pacer) = resources()?;
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let limit = positive_usize(3)?;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _outcome = run_scoped_cache_retry_worker(
+            limit,
+            NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+            |_current| -> Result<ControlFlow<&'static str>, &'static str> {
+                let _send = started_tx.send(());
+                resume_unwind(Box::new(
+                    "worker panic must not mask supervisor",
+                ));
+            },
+            |_cancel| {
+                let _started = started_rx.recv();
+                resume_unwind(Box::new("supervisor panic retained"));
+            },
+        );
+    }));
+    let panic_payload = result.err().ok_or_else(|| {
+        String::from("both panics incorrectly produced worker success")
+    })?;
+    if panic_payload.downcast_ref::<&'static str>().copied()
+        == Some("supervisor panic retained")
+    {
+        Ok(())
+    } else {
+        Err(String::from("worker panic masked supervisor panic"))
     }
 }
