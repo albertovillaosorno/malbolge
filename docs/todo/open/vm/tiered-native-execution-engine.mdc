@@ -1040,6 +1040,11 @@ behavior.
   Supervisor unwind now requests cooperative cancellation before joining and
   rethrowing its original panic, including when the worker also panics. Neither
   signal failure nor a second panic fabricates successful progress.
+
+  Both worker panic and supervisor unwind now clear process-local cursor
+  authority after joining, even when the worker changed it before unwinding.
+  Returned typed callback errors preserve exact cursor state, and a later run
+  without trusted re-bootstrap cannot begin another retry turn.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 

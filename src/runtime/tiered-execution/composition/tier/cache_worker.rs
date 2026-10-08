@@ -123,15 +123,58 @@ pub type NativeCacheScopedWorkerResult<Reason, TurnError, SupervisorResult> =
 /// native code, an atomic callback-start handshake, or a hard time deadline.
 /// A panicking supervisor requests cancellation, joins the worker, then
 /// resumes the original panic. A panicking worker is returned as an error;
-/// its partially changed borrowed lifecycle must be treated as untrusted.
+/// its process-local cursor authority is cleared before returning.
 /// If both panic, the supervisor's original panic takes precedence after join.
-/// Synchronization poison when requesting cancellation cannot mask that panic.
+/// Both worker and supervisor panic clear cursor authority before reusing
+/// state. Synchronization poison when requesting cancellation cannot mask that
+/// panic.
 ///
 /// # Errors
 ///
 /// Returns exact spawn failure or typed worker panic; neither is converted
 /// into a fabricated run result or a completed-turn count.
 pub fn run_scoped_cache_retry_worker<
+    Reason,
+    Turn,
+    TurnError,
+    Supervisor,
+    SupervisorResult,
+>(
+    maximum_turns: NonZeroUsize,
+    resources: NativeCacheScopedWorkerResources<'_>,
+    turn: Turn,
+    supervise: Supervisor,
+) -> NativeCacheScopedWorkerResult<Reason, TurnError, SupervisorResult>
+where
+    Reason: Send,
+    Turn: FnMut(&mut RetryLifecycle) -> Result<ControlFlow<Reason>, TurnError>
+        + Send,
+    TurnError: Send,
+    Supervisor: FnOnce(&CancelHandle) -> SupervisorResult,
+{
+    let NativeCacheScopedWorkerResources { lifecycle, pacer } = resources;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        run_scoped_cache_retry_worker_inner(
+            maximum_turns,
+            NativeCacheScopedWorkerResources::new(&mut *lifecycle, &mut *pacer),
+            turn,
+            supervise,
+        )
+    }));
+    match result {
+        Ok(Err(NativeCacheScopedWorkerError::WorkerPanicked)) => {
+            lifecycle.replace_expected_cursor(None);
+            Err(NativeCacheScopedWorkerError::WorkerPanicked)
+        },
+        Ok(completion) => completion,
+        Err(payload) => {
+            lifecycle.replace_expected_cursor(None);
+            resume_unwind(payload)
+        },
+    }
+}
+
+fn run_scoped_cache_retry_worker_inner<
     Reason,
     Turn,
     TurnError,

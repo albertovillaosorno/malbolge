@@ -141,7 +141,7 @@ fn failed_worker_callback_retains_exact_typed_failure() -> Result<(), String> {
     if completed.run == Err(fallible::
         NativeExecutableCacheLimitsRetryLifecycleRunFailure::Turn {
         completed: 1, error: "activation-failed",
-    }) {
+    }) && lifecycle.expected_cursor().is_some() {
         Ok(())
     } else {
         Err(String::from("worker callback failure lost exact evidence"))
@@ -186,7 +186,9 @@ fn worker_panic_returns_typed_failure_after_join() -> Result<(), String> {
         },
         |_cancel| "supervisor-returned",
     );
-    if matches!(result, Err(NativeCacheScopedWorkerError::WorkerPanicked)) {
+    if matches!(result, Err(NativeCacheScopedWorkerError::WorkerPanicked))
+        && lifecycle.expected_cursor().is_none()
+    {
         Ok(())
     } else {
         Err(String::from("worker panic fabricated lifecycle completion"))
@@ -278,7 +280,10 @@ fn panicking_supervisor_joins_worker_before_unwind() -> Result<(), String> {
         String::from("supervisor panic was incorrectly suppressed")
     })?;
     let text = payload.downcast_ref::<&'static str>().copied();
-    if text == Some("intentional supervisor panic") && observed == 1 {
+    if text == Some("intentional supervisor panic")
+        && observed == 1
+        && lifecycle.expected_cursor().is_none()
+    {
         Ok(())
     } else {
         Err(String::from("panic did not cancel and join exact work"))
@@ -427,9 +432,86 @@ fn supervisor_panic_precedes_concurrent_worker_panic() -> Result<(), String> {
     })?;
     if panic_payload.downcast_ref::<&'static str>().copied()
         == Some("supervisor panic retained")
+        && lifecycle.expected_cursor().is_none()
     {
         Ok(())
     } else {
         Err(String::from("worker panic masked supervisor panic"))
+    }
+}
+
+#[test]
+fn panicking_worker_revokes_modified_cursor_before_next_run()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer) = resources()?;
+    let forged_cursor = trigger::NativeExecutableCacheLimitsTriggerCadence::new(
+        positive_u64(20)?,
+        positive_u64(2)?,
+    );
+    let first = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |current| -> Result<ControlFlow<&'static str>, &'static str> {
+            current.replace_expected_cursor(Some(forged_cursor));
+            resume_unwind(Box::new("panic after cursor mutation"));
+        },
+        |_cancel| (),
+    );
+    if !matches!(first, Err(NativeCacheScopedWorkerError::WorkerPanicked))
+        || lifecycle.expected_cursor().is_some()
+    {
+        return Err(String::from("worker panic retained untrusted cursor"));
+    }
+    let mut called = 0usize;
+    let second = run_scoped_cache_retry_worker(
+        positive_usize(3)?,
+        NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel| (),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if second.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && called == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry continued after panicking worker"))
+    }
+}
+
+#[test]
+fn supervisor_unwind_revokes_cursor_after_worker_stop() -> Result<(), String> {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let (mut lifecycle, mut pacer) = resources()?;
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let limit = positive_usize(3)?;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _result = run_scoped_cache_retry_worker(
+            limit,
+            NativeCacheScopedWorkerResources::new(&mut lifecycle, &mut pacer),
+            |_current| {
+                let _sent = started_tx.send(());
+                Ok::<_, &'static str>(ControlFlow::Break("worker-stopped"))
+            },
+            |_cancel| {
+                let _started = started_rx.recv();
+                resume_unwind(Box::new("supervisor-stop-unobserved"));
+            },
+        );
+    }));
+    let payload = result.err().ok_or_else(|| {
+        String::from("unexpected supervisor success after panic")
+    })?;
+    if payload.downcast_ref::<&'static str>().copied()
+        == Some("supervisor-stop-unobserved")
+        && lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("supervisor panic retained cursor authority"))
     }
 }

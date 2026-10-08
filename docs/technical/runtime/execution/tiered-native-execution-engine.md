@@ -2377,6 +2377,13 @@ panic cannot replace that original panic, even if both endpoints unwind; a
 failure to signal cancellation also cannot masquerade as supervisor success.
 This cooperative protection does not interrupt an already executing callback.
 
+Worker or supervisor panic now revokes retained process-local cursor
+authority before the borrowed state returns to the caller. This avoids
+reusing cursor evidence after a partially completed or unobserved retry turn.
+Returned typed callback errors still preserve exact cursor authority as before;
+recovery from panic instead requires an explicit trusted durable re-bootstrap.
+No durable cursor is altered by this in-memory fail-closed transition.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
