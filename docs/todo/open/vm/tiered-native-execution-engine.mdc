@@ -1056,6 +1056,12 @@ behavior.
   sharing mutable cursor state or product failure values. Advisory notices use
   a nonblocking in-memory channel limited by finite turns; a dropped receiver
   never blocks work, and only the joined result grants terminal authority.
+
+  An opt-in fallible progress supervisor now composes completed-turn notices
+  with the existing supervisor error policy: returned errors request stop before
+  join and preserve exact cancellation evidence alongside the worker result.
+  Successful supervision does not request stop, and panics still revoke cursor
+  authority through the existing scoped owner.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 

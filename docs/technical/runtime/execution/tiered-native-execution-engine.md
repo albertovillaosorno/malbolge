@@ -2406,6 +2406,13 @@ explicit finite turn limit, so callers must choose a safe resource bound.
 Disconnection proves no successful terminal outcome and must not be treated as
 cursor admission or durable completion; panics emit no invented callback notice.
 
+An opt-in fallible progress supervisor combines these notices with the existing
+supervisor-error cancellation contract. A returned supervisor error requests
+sticky stop, preserving its exact error and cancellation-request outcome while
+the joined worker retains separate terminal evidence. Successful supervision
+never cancels implicitly, and panic recovery still revokes in-memory cursor
+rights through the original scoped worker.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

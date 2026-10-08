@@ -430,3 +430,146 @@ fn cursor_loss_after_report_blocks_next_turn() -> Result<(), String> {
         Err(String::from("progress overrode revoked cursor authority"))
     }
 }
+
+#[test]
+fn fallible_observer_error_cancels_after_first_notice() -> Result<(), String> {
+    let (mut lifecycle, _default_pacer) = fixture()?;
+    let mut pacer = Pacer::new(nanos(5_000_000_000)?);
+    let mut called = 0usize;
+    let result = run_scoped_cache_retry_worker_with_fallible_progress(
+        positive(4)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| {
+            let _first = notices.recv().map_err(|_error| "notice missing")?;
+            Err::<(), _>("observer-failed")
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run == Ok(RunStop::Cancelled { completed: 1 })
+        && result.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "observer-failed",
+            })
+        && called == 1
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("fallible observer did not cancel next turn"))
+    }
+}
+
+#[test]
+fn successful_fallible_observer_drains_bounded_stream() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_with_fallible_progress(
+        positive(3)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| {
+            Ok::<_, &'static str>(notices.iter().collect::<Vec<_>>())
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run == Ok(RunStop::LimitReached { completed: 3 })
+        && result.supervisor
+            == Ok(vec![
+                Notice {
+                    completed: 1,
+                    kind: Kind::Continued,
+                },
+                Notice {
+                    completed: 2,
+                    kind: Kind::Continued,
+                },
+                Notice {
+                    completed: 3,
+                    kind: Kind::Continued,
+                },
+            ])
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "success path lost progress or canceled worker",
+        ))
+    }
+}
+
+#[test]
+fn fallible_observer_retains_already_cancelled_evidence() -> Result<(), String>
+{
+    let (mut lifecycle, mut pacer) = fixture()?;
+    lifecycle.replace_expected_cursor(None);
+    let result = run_scoped_cache_retry_worker_with_fallible_progress(
+        positive(3)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |cancel, _notices| {
+            let first = cancel.cancel().map_err(|_error| "cancel-failed")?;
+            if first {
+                Err::<(), _>("already-cancelled")
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && result.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(false),
+                error: "already-cancelled",
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("repeated stop request evidence changed"))
+    }
+}
+
+#[test]
+fn fallible_observer_error_keeps_completed_caller_stop() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_with_fallible_progress(
+        positive(3)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| Ok::<_, &'static str>(ControlFlow::Break("private-stop")),
+        |_cancel, notices| {
+            let notice = notices.recv().map_err(|_error| "missing stop")?;
+            if notice.kind == Kind::CallerStopped {
+                Err::<(), _>("supervision failed")
+            } else {
+                Err("wrong notice")
+            }
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run
+        == Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "private-stop",
+        })
+        && result.supervisor
+            == Err(worker::NativeCacheScopedSupervisorFailure {
+                cancellation: Ok(true),
+                error: "supervision failed",
+            })
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "supervisor error erased completed caller stop",
+        ))
+    }
+}

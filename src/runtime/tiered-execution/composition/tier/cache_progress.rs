@@ -134,6 +134,60 @@ where
     )
 }
 
+/// Joins one finite worker under progress-aware fallible supervision.
+///
+/// Successful supervision does not request cancellation. A supervisor `Err`
+/// requests stop before join and retains the exact error plus cancellation
+/// request outcome separately from the worker's terminal evidence. The
+/// callback-completion stream is advisory and does not confer cursor rights.
+///
+/// # Errors
+///
+/// Propagates exact worker spawn and panic failures; typed supervisor and
+/// worker callback errors remain in the returned completion when available.
+pub fn run_scoped_cache_retry_worker_with_fallible_progress<
+    Reason,
+    Turn,
+    TurnError,
+    Supervisor,
+    SupervisorResult,
+    SupervisorError,
+>(
+    maximum_turns: NonZeroUsize,
+    resources: Resources<'_>,
+    turn: Turn,
+    supervise: Supervisor,
+) -> worker::NativeCacheScopedFallibleSupervisorResult<
+    Reason,
+    TurnError,
+    SupervisorResult,
+    SupervisorError,
+>
+where
+    Reason: Send,
+    Turn: FnMut(&mut RetryLifecycle) -> Result<ControlFlow<Reason>, TurnError>
+        + Send,
+    TurnError: Send,
+    Supervisor: FnOnce(
+        &CancelHandle,
+        &Receiver<NativeCacheScopedTurnProgress>,
+    ) -> Result<SupervisorResult, SupervisorError>,
+{
+    run_scoped_cache_retry_worker_with_progress(
+        maximum_turns,
+        resources,
+        turn,
+        |cancel, notices| {
+            supervise(cancel, notices).map_err(|error| {
+                worker::NativeCacheScopedSupervisorFailure {
+                    cancellation: cancel.cancel(),
+                    error,
+                }
+            })
+        },
+    )
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/tiered/cache_worker_progress.rs"]
 mod tests;
