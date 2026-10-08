@@ -54,6 +54,7 @@ const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
 // These file flags contradict either an object module or the 64-bit machine.
 const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
+const IMAGE_SCN_ALIGN_MASK: u32 = 0x00f0_0000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
@@ -97,6 +98,8 @@ pub enum CoffAdmissionError {
     RelocationPointer,
     /// A relocation type is undefined for the claimed COFF machine.
     RelocationType,
+    /// Section characteristics use the reserved alignment encoding.
+    SectionAlignment,
     /// Raw section size and file-data pointer disagree about byte ownership.
     SectionPointer,
     /// The image-only section virtual-size field is nonzero.
@@ -168,12 +171,11 @@ impl Display for CoffAdmissionError {
             Self::RelocationPointer => {
                 "COFF relocation count and table pointer disagree"
             },
-            Self::SectionPointer => {
-                "COFF section data size and file pointer disagree"
-            },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
             },
+            Self::SectionAlignment => "COFF uses reserved section alignment",
+            Self::SectionPointer => "COFF section raw-size/pointer mismatch",
             Self::SectionVirtualSize => {
                 "COFF object section declares image-only virtual size"
             },
@@ -475,6 +477,13 @@ fn validate_sections(
 ) -> Result<(), CoffAdmissionError> {
     let mut text_count = 0usize;
     for section in sections {
+        // Alignment codes 1..=14 are defined in PE/COFF. The all-ones
+        // code 15 is reserved, not a valid requested section alignment.
+        if section.characteristics & IMAGE_SCN_ALIGN_MASK
+            == IMAGE_SCN_ALIGN_MASK
+        {
+            return Err(CoffAdmissionError::SectionAlignment);
+        }
         // The overflow flag makes the first relocation a count record,
         // rather than the symbol relocation parsed by this bounded reader.
         if section.characteristics & IMAGE_SCN_LNK_NRELOC_OVFL != 0 {

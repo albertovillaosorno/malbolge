@@ -78,6 +78,10 @@ Unowned trailing overlays are also rejected; an explicitly referenced
 relocation table after the string table remains owned and admissible.
 
 COFF line-number debugging records are not implemented by this validator.
+Section alignment uses defined PE/COFF codes only. Alignment code `15`
+(the reserved all-ones encoding) is rejected even if raw data is in bounds;
+normal compiler alignment encodings remain valid on both target ISAs.
+
 Both the section's line-number pointer and count must be zero; orphan pointers
 and advertised debug tables fail closed rather than bypassing layout checks.
 

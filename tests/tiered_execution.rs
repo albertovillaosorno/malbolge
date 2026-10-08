@@ -46027,6 +46027,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_entry_symbol_type(&source, &artifact)?;
     check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
+    check_rejected_coff_reserved_section_alignment(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
@@ -46231,6 +46232,29 @@ fn coff_fixture_signed_section_name_offset(
         .ok_or("COFF section reference too long")?
         .copy_from_slice(reference.as_bytes());
     Ok(bytes)
+}
+
+fn check_rejected_coff_reserved_section_alignment(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let text = coff_fixture_text_header(artifact.object())?;
+    let flag_offset = text.saturating_add(36);
+    let original = read_fixture_u32(artifact.object(), flag_offset)?;
+    if original & 0x00f0_0000 == 0x00f0_0000 {
+        return Err(String::from("compiler emits reserved COFF alignment"));
+    }
+    let mut bytes = artifact.object().to_vec();
+    write_fixture_u32(&mut bytes, flag_offset, original | 0x00f0_0000)?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::SectionAlignment)
+    {
+        return Err(String::from("COFF admitted reserved section alignment"));
+    }
+    Ok(())
 }
 
 fn coff_fixture_text_header(object: &[u8]) -> Result<usize, String> {
@@ -66310,6 +66334,36 @@ fn verified_direct_load_image_rejects_signed_section_name_offsets()
         {
             return Err(format!(
                 "direct COFF load admitted signed name offset on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_section_alignment() -> Result<(), String>
+{
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let mut bytes = artifact.object().to_vec();
+        let header = coff_fixture_text_header(artifact.object())?;
+        let offset = header.saturating_add(36);
+        let flags = read_fixture_u32(&bytes, offset)?;
+        write_fixture_u32(&mut bytes, offset, flags | 0x00f0_0000)?;
+        if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+            != Err(VerifiedDirectLoadError::Object(
+                CoffAdmissionError::SectionAlignment,
+            ))
+        {
+            return Err(format!(
+                "direct COFF accepted alignment 15 on {isa:?}"
             ));
         }
     }
