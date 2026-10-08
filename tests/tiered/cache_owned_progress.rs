@@ -36,6 +36,7 @@
 
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::resume_unwind;
+use std::thread;
 
 use super::*;
 use crate::{
@@ -548,5 +549,236 @@ fn dropping_owned_progress_handle_still_joins_finite_worker()
         Ok(())
     } else {
         Err(String::from("dropping progress owner detached its worker"))
+    }
+}
+
+#[test]
+fn returned_notice_cannot_override_revoked_cursor() -> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        |current| {
+            current.replace_expected_cursor(None);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let notice = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if notice
+        == (Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CursorUnavailable { completed: 1 }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+        && result.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("advisory progress overrode cursor revocation"))
+    }
+}
+
+#[test]
+fn dropped_caller_stop_notice_never_erases_exact_stop() -> Result<(), String> {
+    let mut called = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                Ok::<_, &'static str>(ControlFlow::Break("caller stopped"))
+            } else {
+                Ok(ControlFlow::Continue(()))
+            }
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::CallerStopped {
+                completed: 2,
+                reason: "caller stopped"
+            }
+        ))
+    ) && result.totals
+        == (Totals {
+            enqueued: 1,
+            full: 1,
+            receiver_gone: 0,
+        })
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "missing stop notice erased completed worker result",
+        ))
+    }
+}
+
+#[test]
+fn queue_full_does_not_mask_later_callback_error() -> Result<(), String> {
+    let mut called = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                Err("exact second turn error")
+            } else {
+                Ok(ControlFlow::<&'static str>::Continue(()))
+            }
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        owned::NativeCacheOwnedWorkerTerminal::Returned(Err(
+            RunFailure::Turn {
+                completed: 2,
+                error: "exact second turn error",
+            }
+        ))
+    ) && result.totals
+        == (Totals {
+            enqueued: 1,
+            full: 1,
+            receiver_gone: 0,
+        })
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "full observation queue erased exact turn error",
+        ))
+    }
+}
+
+#[test]
+fn repeated_owned_progress_stop_keeps_independent_join_result()
+-> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(
+        nanos(5_000_000_000)?,
+    );
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        state,
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let first = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let requested = handle.cancel().map_err(|error| format!("{error:?}"))?;
+    let shutdown = handle.cancel_and_join();
+    let joined = shutdown
+        .shutdown
+        .joined
+        .map_err(|error| format!("{error:?}"))?;
+    if requested
+        && shutdown.shutdown.cancellation == Ok(false)
+        && first
+            == (Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::Cancelled { completed: 1 }
+            ))
+        )
+        && shutdown.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("repeated stop lost exact worker evidence"))
+    }
+}
+
+#[test]
+fn dropping_progress_owner_joins_in_flight_callback() -> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let (drop_started_tx, drop_started_rx) =
+        mpsc::sync_channel::<Result<bool, WaitError>>(0);
+    let (drop_done_tx, drop_done_rx) = mpsc::channel::<()>();
+    let callbacks = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&callbacks);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            started_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("callback missing"))?;
+    let dropper = thread::spawn(move || {
+        let request = handle.cancel();
+        let _sent = drop_started_tx.send(request);
+        drop(handle);
+        let _finished = drop_done_tx.send(());
+    });
+    let request = drop_started_rx
+        .recv()
+        .map_err(|_error| String::from("stop request missing"))?;
+    let premature = drop_done_rx.try_recv();
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    dropper
+        .join()
+        .map_err(|_panic| String::from("dropper panicked"))?;
+    if request == Ok(true)
+        && premature == Err(mpsc::TryRecvError::Empty)
+        && drop_done_rx.recv().is_ok()
+        && callbacks.load(Ordering::SeqCst) == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "dropped progress owner detached an active callback",
+        ))
     }
 }
