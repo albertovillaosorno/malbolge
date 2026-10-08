@@ -1684,6 +1684,12 @@ struct CoffCompileCase {
     isa: HostIsa,
 }
 
+#[derive(Debug)]
+struct NativeCoffRelocationFixture {
+    location: NativeCoffRelocationLocation,
+    object: Vec<u8>,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct NativeCoffRelocationLocation {
     relocation: usize,
@@ -46018,8 +46024,128 @@ fn check_compiled_coff_case(
     }
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
+        check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
+    }
+    Ok(())
+}
+
+fn compile_x64_coff_relocation_fixture(
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<NativeCoffRelocationFixture, String> {
+    let object = artifact.object();
+    let count = usize::from(read_fixture_u16(object, 2)?);
+    let section_header = (0..count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            object.get(*header..header.saturating_add(8))
+                == Some(b".text\0\0\0".as_slice())
+        })
+        .ok_or("x64 COFF fixture has no .text section header")?;
+    let symbol_table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbols: {error}"))?;
+    let first_symbol_section =
+        read_fixture_u16(object, symbol_table.saturating_add(12))?;
+    if first_symbol_section == 0 || usize::from(first_symbol_section) > count {
+        return Err(String::from("x64 COFF first symbol undefined"));
+    }
+    let section_address =
+        read_fixture_u32(object, section_header.saturating_add(12))?;
+    let section_size =
+        read_fixture_u32(object, section_header.saturating_add(16))?;
+    if section_size < 8 {
+        return Err(String::from("x64 COFF fixture text is too short"));
+    }
+    let relocation = object.len();
+    let relocation_offset = u32::try_from(relocation)
+        .map_err(|error| format!("COFF relocation offset: {error}"))?;
+    let mut mutated = object.to_vec();
+    mutated.extend_from_slice(&[0u8; 10]);
+    write_fixture_u32(
+        &mut mutated,
+        section_header.saturating_add(24),
+        relocation_offset,
+    )?;
+    write_fixture_u16(&mut mutated, section_header.saturating_add(32), 1)?;
+    write_fixture_u32(&mut mutated, relocation, section_address)?;
+    write_fixture_u32(&mut mutated, relocation.saturating_add(4), 0)?;
+    write_fixture_u16(&mut mutated, relocation.saturating_add(8), 0x0004)?;
+    Ok(NativeCoffRelocationFixture {
+        location: NativeCoffRelocationLocation {
+            relocation,
+            section_address,
+            section_header,
+            section_size,
+        },
+        object: mutated,
+    })
+}
+
+fn check_x64_coff_relocation_types_and_spans(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let NativeCoffRelocationFixture { location, mut object } =
+        compile_x64_coff_relocation_fixture(artifact)?;
+    let initial = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        object.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&initial)
+        .map_err(|error| format!("valid x64 relocation rejected: {error}"))?;
+    for kind in [0x0011, u16::MAX] {
+        write_fixture_u16(
+            &mut object,
+            location.relocation.saturating_add(8),
+            kind,
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source,
+            object.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::RelocationType)
+        {
+            return Err(format!(
+                "invalid x64 COFF relocation type {kind:#06x}"
+            ));
+        }
+    }
+    check_x64_coff_relocation_patch_widths(source, &object, location)
+}
+
+fn check_x64_coff_relocation_patch_widths(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    let end = location
+        .section_address
+        .checked_add(location.section_size)
+        .ok_or("x64 COFF section end overflow")?;
+    for (kind, width) in [(0x0001, 8u32), (0x0004, 4), (0x000a, 2)] {
+        let mut truncated = object.to_vec();
+        write_fixture_u16(
+            &mut truncated,
+            location.relocation.saturating_add(8),
+            kind,
+        )?;
+        write_fixture_u32(
+            &mut truncated,
+            location.relocation,
+            end.saturating_sub(width.saturating_sub(1)),
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, truncated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds)
+        {
+            return Err(format!("x64 relocation {kind:#06x} crossed section"));
+        }
     }
     Ok(())
 }
@@ -46069,16 +46195,15 @@ fn check_rejected_coff_relocation_section(
         symbol_offset,
         nonexistent_section,
     )?;
-    check_rejected_coff_relocation_addresses(
-        source,
-        artifact,
-        NativeCoffRelocationLocation {
-            relocation,
-            section_address,
-            section_header,
-            section_size,
-        },
-    )
+    let location = NativeCoffRelocationLocation {
+        relocation,
+        section_address,
+        section_header,
+        section_size,
+    };
+    check_rejected_coff_relocation_addresses(source, artifact, location)?;
+    check_rejected_coff_relocation_types(source, artifact, location)?;
+    check_rejected_coff_relocation_spans(source, artifact, location)
 }
 
 fn check_rejected_coff_relocation_symbols(
@@ -46170,6 +46295,73 @@ fn check_rejected_coff_relocation_addresses(
         {
             return Err(format!(
                 "COFF relocation admitted {label} virtual address"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_types(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    for invalid_type in [0x0012, u16::MAX] {
+        let mut mutated = artifact.object().to_vec();
+        write_fixture_u16(
+            &mut mutated,
+            location.relocation.saturating_add(8),
+            invalid_type,
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, mutated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::RelocationType)
+        {
+            return Err(format!(
+                "COFF invalid ARM64 relocation {invalid_type:#06x}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_spans(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    let section_end = location
+        .section_address
+        .checked_add(location.section_size)
+        .ok_or("COFF relocation extent overflow")?;
+    // ARM64 branch instructions and data relocations occupy four or eight
+    // bytes, whereas the SECTION relocation occupies two bytes.
+    for (kind, width) in [(0x0003, 4u32), (0x000e, 8), (0x000d, 2)] {
+        if location.section_size < width {
+            return Err(String::from("COFF fixture section too small"));
+        }
+        let mut truncated = artifact.object().to_vec();
+        write_fixture_u16(
+            &mut truncated,
+            location.relocation.saturating_add(8),
+            kind,
+        )?;
+        write_fixture_u32(
+            &mut truncated,
+            location.relocation,
+            section_end.saturating_sub(width.saturating_sub(1)),
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, truncated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds)
+        {
+            return Err(format!(
+                "COFF relocation {kind:#06x} crossed section end"
             ));
         }
     }

@@ -80,6 +80,8 @@ pub enum CoffAdmissionError {
     OptionalHeader,
     /// Required profile metadata is absent, malformed, or mismatched.
     ProfileMetadata,
+    /// A relocation type is undefined for the claimed COFF machine.
+    RelocationType,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
     /// Object does not contain one usable `.text` section.
@@ -126,6 +128,9 @@ impl Display for CoffAdmissionError {
             },
             Self::ProfileMetadata => {
                 "COFF profile metadata is absent, malformed, or mismatched"
+            },
+            Self::RelocationType => {
+                "COFF relocation type is invalid for the native machine"
             },
             Self::TargetFormat => {
                 "COFF admission requires a Windows native target"
@@ -514,6 +519,7 @@ fn validate_symbols_and_relocations(
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
     let _entry_offset = required_entry_offset(parsed)?;
+    let machine = read_u16(object, 0)?;
     for section in &parsed.sections {
         for relocation_index in 0..section.relocation_count {
             let offset = checked_add(
@@ -528,7 +534,14 @@ fn validate_symbols_and_relocations(
                 .checked_sub(section.virtual_address)
                 .and_then(|position| usize::try_from(position).ok())
                 .ok_or(CoffAdmissionError::Bounds)?;
-            if relative >= section.raw_size {
+            let kind = read_u16(object, checked_add(offset, 8)?)?;
+            let width = relocation_patch_width(machine, kind)
+                .ok_or(CoffAdmissionError::RelocationType)?;
+            if relative >= section.raw_size
+                || relative
+                    .checked_add(width)
+                    .is_none_or(|end| end > section.raw_size)
+            {
                 return Err(CoffAdmissionError::Bounds);
             }
             let symbol_index =
@@ -551,6 +564,29 @@ fn validate_symbols_and_relocations(
         }
     }
     Ok(())
+}
+
+// Width in bytes of the location patched by each defined PE/COFF relocation
+// type. ABSOLUTE and AMD64 PAIR are metadata-only and patch no section bytes.
+// Symbol closure is checked separately, including for metadata-only records.
+const fn relocation_patch_width(machine: u16, kind: u16) -> Option<usize> {
+    match (machine, kind) {
+        (IMAGE_FILE_MACHINE_AMD64, 0x0000 | 0x000f)
+        | (IMAGE_FILE_MACHINE_ARM64, 0x0000) => Some(0),
+        (IMAGE_FILE_MACHINE_AMD64, 0x0001)
+        | (IMAGE_FILE_MACHINE_ARM64, 0x000e) => Some(8),
+        (IMAGE_FILE_MACHINE_AMD64, 0x000a)
+        | (IMAGE_FILE_MACHINE_ARM64, 0x000d) => Some(2),
+        (IMAGE_FILE_MACHINE_AMD64, 0x000c) => Some(1),
+        (
+            IMAGE_FILE_MACHINE_AMD64,
+            0x0002..=0x0009 | 0x000b | 0x000d..=0x000e | 0x0010,
+        )
+        | (IMAGE_FILE_MACHINE_ARM64, 0x0001..=0x000c | 0x000f..=0x0011) => {
+            Some(4)
+        },
+        _ => None,
+    }
 }
 
 fn parse_section_name(

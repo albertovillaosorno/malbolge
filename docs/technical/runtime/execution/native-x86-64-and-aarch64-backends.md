@@ -47,10 +47,14 @@ rejects unresolved external dependencies. Internal ARM64 relocations to defined
 one-based section or the COFF-defined absolute-symbol sentinel; undefined,
 debug-only, and out-of-range section references fail closed.
 
-A pinned ARM64 compiler-object mutation regression also checks that COFF
-relocation addresses fall within the owning section's virtual-address origin
-and raw byte extent. Structural admission deliberately stops before semantic
-equivalence or execution authority.
+Pinned ARM64 compiler-object mutation regressions also check that relocation
+addresses fall within the owning section's virtual-address origin and raw byte
+extent. Admission recognizes only defined relocation kinds for the object's
+x86-64 or AArch64 machine ID and bounds the complete relocation patch width
+(e.g., two-, four-, or eight-byte fields) to its owning section. Undefined
+relocation kinds and patches crossing a section boundary fail closed.
+Structural admission deliberately stops before semantic equivalence or
+execution authority; it is not a linker or instruction verifier.
 
 A first direct backend now exists for the safe fallback case. It emits canonical
 minimal COFF directly in Rust for x86-64 and AArch64, with machine code that
