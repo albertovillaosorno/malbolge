@@ -946,6 +946,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Own and join one finite cancellable retry worker handle.
+  - id: part-0170
+    path: composition/tier/cache_own_notice.rs
+    kind: composition
+    language: rust
+    responsibility: Expose bounded progress for owned finite retry workers.
 projects: []
 tests: []
 graph:

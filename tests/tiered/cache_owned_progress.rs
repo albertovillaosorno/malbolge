@@ -1,0 +1,552 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - Apache-2.0
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+//
+// Boundary-Contract:
+// - Owns:
+//   - Owned finite worker progress admission, cancellation, and panic tests.
+// - Must-Not:
+//   - Trust advisory notices as cursor state, detach workers, or use sleeps to
+//     determine cross-thread callback order.
+// - Allows:
+//   - Inputs: local bounded progress limits and finite owned retry resources.
+//   - Outputs: exact notice gaps, post-join totals, typed work results.
+//   - Side effects: handshake-controlled host threads, joined before return.
+// - Split-When:
+//   - Durable progress authority requires independent integration evidence.
+// - Merge-When:
+//   - One product scheduler owns finite progress admission and completions.
+// - Summary:
+//   - Proves nonblocking owned progress cannot change worker terminal truth.
+// - Description:
+//   - Capacity saturation, observer abandonment, and callback panic retain
+//     exact independent worker and transport evidence.
+// - Usage:
+//   - Test-only finite cross-thread owned worker fixtures.
+// - Defaults:
+//   - Fresh retry state and cancellation for every test.
+//
+
+//! Joinable owned cache worker progress observation tests.
+
+use std::num::{NonZeroU64, NonZeroUsize};
+use std::panic::resume_unwind;
+
+use super::*;
+use crate::{
+    executable_cache_limits_retry_pacing as pacing,
+    executable_cache_limits_retry_policy as policy,
+    executable_cache_limits_retry_run as run,
+    executable_cache_limits_retry_run_fallible as fallible,
+    executable_cache_limits_trigger_cadence as cadence,
+};
+
+type RunStop<Reason> =
+    run::NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>;
+type RunFailure<Wait, Turn> =
+    fallible::NativeExecutableCacheLimitsRetryLifecycleRunFailure<Wait, Turn>;
+
+struct PanicOnDrop;
+
+impl Drop for PanicOnDrop {
+    fn drop(&mut self) {
+        resume_unwind(Box::new("observed callback cleanup panic"));
+    }
+}
+
+fn positive(value: usize) -> Result<NonZeroUsize, String> {
+    NonZeroUsize::new(value).ok_or_else(|| String::from("zero limit"))
+}
+
+fn nanos(value: u64) -> Result<NonZeroU64, String> {
+    NonZeroU64::new(value).ok_or_else(|| String::from("zero duration"))
+}
+
+fn resources() -> Result<owned::NativeCacheOwnedWorkerResources, String> {
+    let trigger = cadence::NativeExecutableCacheLimitsTriggerCadence::new(
+        nanos(1)?,
+        nanos(2)?,
+    );
+    Ok(owned::NativeCacheOwnedWorkerResources::new(
+        RetryLifecycle::new_with_cursor(
+            trigger, positive(12)?, positive(3)?,
+            policy::NativeExecutableCacheLimitsRetryConflictPolicy::
+                return_on_contention(),
+        ),
+        pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(nanos(1)?),
+    ))
+}
+
+fn limits(capacity: usize, turns: usize) -> Result<Limits, String> {
+    Ok(Limits::new(positive(capacity)?, positive(turns)?))
+}
+
+#[test]
+fn owned_progress_keeps_ordered_notices_and_typed_limit() -> Result<(), String>
+{
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(3, 3)?,
+        resources()?,
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let observations = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .iter()
+        .collect::<Vec<_>>();
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::LimitReached { completed: 3 }
+        ))
+    ) && observations
+        == vec![
+            Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            },
+            Notice {
+                completed: 2,
+                kind: Kind::Continued,
+            },
+            Notice {
+                completed: 3,
+                kind: Kind::Continued,
+            },
+        ]
+        && result.totals
+            == (Totals {
+                enqueued: 3,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("ordered progress changed exact typed limit"))
+    }
+}
+
+#[test]
+fn owned_full_queue_preserves_finite_callbacks() -> Result<(), String> {
+    let mut called = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 20)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::LimitReached { completed: 20 }
+        ))
+    ) && result.totals
+        == (Totals {
+            enqueued: 1,
+            full: 19,
+            receiver_gone: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("full owned queue blocked or lost work"))
+    }
+}
+
+#[test]
+fn owned_receiver_abandonment_retains_exact_lost_notice() -> Result<(), String>
+{
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut called = 0usize;
+    let mut handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 2)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                release_rx.recv().map_err(|_error| "release missing")?;
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let receiver = handle.take_progress_receiver().ok_or("receiver missing")?;
+    let first = receiver
+        .recv()
+        .map_err(|_error| String::from("no first notice"))?;
+    drop(receiver);
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("cannot release"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if first
+        == (Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::LimitReached { completed: 2 }
+            ))
+        )
+        && result.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 1,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("receiver abandonment changed owned outcome"))
+    }
+}
+
+#[test]
+fn owned_notice_supervisor_cancels_before_second_turn() -> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(
+        nanos(5_000_000_000)?,
+    );
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        state,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let first = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("first notice missing"))?;
+    let shutdown = handle.cancel_and_join();
+    let joined = shutdown
+        .shutdown
+        .joined
+        .map_err(|error| format!("{error:?}"))?;
+    if first
+        == (Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        })
+        && shutdown.shutdown.cancellation == Ok(true)
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::Cancelled { completed: 1 }
+            ))
+        )
+        && shutdown.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && calls.load(Ordering::SeqCst) == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("progress-aware stop admitted another turn"))
+    }
+}
+
+#[test]
+fn owned_progress_keeps_private_callback_failure() -> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 3)?,
+        resources()?,
+        |_current| Err::<ControlFlow<&'static str>, _>("activation failed"),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let notice = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("error notice missing"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if notice
+        == (Notice {
+            completed: 1,
+            kind: Kind::Failed,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Err(
+                RunFailure::Turn {
+                    completed: 1,
+                    error: "activation failed"
+                }
+            ))
+        )
+        && result.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("progress lost exact activation failure"))
+    }
+}
+
+#[test]
+fn owned_progress_cursorless_run_emits_zero_notices() -> Result<(), String> {
+    let mut state = resources()?;
+    state.lifecycle.replace_expected_cursor(None);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        state,
+        |_current| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let disconnected =
+        handle.progress().ok_or("receiver missing")?.recv().is_err();
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if disconnected
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+                RunStop::CursorUnavailable { completed: 0 }
+            ))
+        )
+        && result.totals == Totals::default()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cursorless worker fabricated progress"))
+    }
+}
+
+#[test]
+fn owned_callback_panic_emits_no_false_completion() -> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        resources()?,
+        |_current| -> Result<ControlFlow<&'static str>, &'static str> {
+            resume_unwind(Box::new("callback panic"));
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let disconnected =
+        handle.progress().ok_or("receiver missing")?.recv().is_err();
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if disconnected
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+        && result.totals == Totals::default()
+    {
+        Ok(())
+    } else {
+        Err(String::from("panic invented progress or cursor authority"))
+    }
+}
+
+#[test]
+fn owned_callback_destructor_panic_still_returns_progress_totals()
+-> Result<(), String> {
+    let destructor = PanicOnDrop;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 1)?,
+        resources()?,
+        move |_current| {
+            let _hold = &destructor;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let notice = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if notice
+        == (Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+        && result.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "destructor panic kept untrusted cursor authority",
+        ))
+    }
+}
+
+#[test]
+fn partial_progress_before_worker_panic_never_authorizes_retry()
+-> Result<(), String> {
+    let mut called = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(2, 3)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                resume_unwind(Box::new("second callback panic"));
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let observations = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .iter()
+        .collect::<Vec<_>>();
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if observations
+        == vec![Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        }]
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+        && result.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("partial progress invented terminal success"))
+    }
+}
+
+#[test]
+fn dropped_receiver_before_callback_return_counts_every_notice()
+-> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut called = 0usize;
+    let mut handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(2, 3)?,
+        resources()?,
+        move |_current| {
+            called = called.saturating_add(1);
+            if called == 1 {
+                started_tx.send(()).map_err(|_error| "entry closed")?;
+                release_rx.recv().map_err(|_error| "release closed")?;
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("no callback"))?;
+    let receiver = handle.take_progress_receiver().ok_or("receiver missing")?;
+    drop(receiver);
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("cannot release"))?;
+    let result = handle.join();
+    let joined = result.joined.map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        owned::NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::LimitReached { completed: 3 }
+        ))
+    ) && result.totals
+        == (Totals {
+            enqueued: 0,
+            full: 0,
+            receiver_gone: 3,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("abandoned receiver altered worker execution"))
+    }
+}
+
+#[test]
+fn dropping_owned_progress_handle_still_joins_finite_worker()
+-> Result<(), String> {
+    let mut state = resources()?;
+    state.pacer = pacing::NativeExecutableCacheLimitsRetryLifecyclePacer::new(
+        nanos(5_000_000_000)?,
+    );
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 4)?,
+        state,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    let first = handle
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    drop(handle);
+    if first
+        == (Notice {
+            completed: 1,
+            kind: Kind::Continued,
+        })
+        && calls.load(Ordering::SeqCst) == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("dropping progress owner detached its worker"))
+    }
+}

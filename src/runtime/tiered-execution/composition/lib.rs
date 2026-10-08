@@ -103,6 +103,8 @@ pub mod executable_cache_limits_durable_activation;
 pub mod executable_cache_limits_latency;
 #[path = "tier/cache_observed.rs"]
 pub mod executable_cache_limits_observed_activation;
+#[path = "tier/cache_own_notice.rs"]
+pub mod executable_cache_limits_owned_progress_worker;
 #[path = "tier/cache_owned.rs"]
 pub mod executable_cache_limits_owned_worker;
 #[path = "tier/executable_cache_limits_store.rs"]

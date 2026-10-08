@@ -1093,6 +1093,13 @@ behavior.
   clears the returned process-local cursor, and blocks unbootstrapped retry.
   Simultaneous callback/destructor panics cannot fabricate terminal success.
 
+  An opt-in owned bounded-progress adapter now combines an independently
+  joinable finite worker with positive-capacity, nonblocking advisory notices.
+  The observer can borrow, take, or abandon its receiver; post-join admission,
+  full, and disconnected counts remain separate from typed worker authority.
+  Thread startup failure retains owned resources and the boxed callback wrapper.
+  This still is not a durable scheduler or callback preemption mechanism.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

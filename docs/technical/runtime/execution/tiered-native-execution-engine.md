@@ -2476,6 +2476,21 @@ may happen in one turn without leaving retry authority trusted. No panic result
 is converted into a successful terminal record, and a subsequent owned run
 requires a separately admitted cursor before executing another callback.
 
+An opt-in owned bounded-progress variant now pairs that joinable host handle
+with a positive-capacity, nonblocking callback-completion channel. Callers can
+borrow or take its receiver while the worker executes, and can cancel, join,
+or cancel-and-join without transferring mutable lifecycle state to observers.
+A received notice discloses only its one-based returned-callback index and
+continue, caller-stop, or error class, never the callback's owned value.
+
+After explicit join, exact enqueued, full-buffer, and abandoned-receiver totals
+remain separate from the owned worker's typed terminal result and resources.
+Full or dropped observation never blocks execution, grants cursor authority,
+or silently detaches a worker; the ordinary owner still cancels and joins on
+drop. An owned launch failure retains both lifecycle and the original callback
+inside its boxed observer wrapper for possible resubmission, not its original
+concrete callback type. This remains in-memory host orchestration only.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
