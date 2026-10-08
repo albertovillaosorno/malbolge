@@ -290,3 +290,134 @@ fn absent_cursor_skips_fallible_callbacks_and_wait_queries()
         Err(String::from("cursorless run touched fallible resources"))
     }
 }
+
+#[test]
+fn callback_failure_preserves_pacing_across_bounded_runs() -> Result<(), String>
+{
+    let (mut lifecycle, mut pacer, mut wait) = resources()?;
+    let first = run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+        positive(2)?,
+        &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+        |_lifecycle| {
+            Err::<ControlFlow<&'static str>, &'static str>("activation-failed")
+        },
+    );
+    if first
+        != Err(RunError::Turn {
+            completed: 1,
+            error: "activation-failed",
+        })
+        || wait.calls != 0
+    {
+        return Err(String::from("first failed callback not retained"));
+    }
+    let second =
+        run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+            positive(2)?,
+            &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+            |_lifecycle| Ok::<_, &'static str>(ControlFlow::Break("stopped")),
+        );
+    if second
+        == Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "stopped",
+        })
+        && wait.calls == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed callback skipped retry pacing"))
+    }
+}
+
+#[test]
+fn wait_error_preserves_pacing_for_later_retry() -> Result<(), String> {
+    let (mut lifecycle, mut pacer, mut wait) = resources()?;
+    let first = run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+        positive(1)?,
+        &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+        |_lifecycle| {
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    );
+    if first != Ok(RunStop::LimitReached { completed: 1 }) {
+        return Err(String::from("initial turn did not finish"));
+    }
+    wait.fail_on_wait = true;
+    let failed =
+        run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+            positive(2)?,
+            &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+            |_lifecycle| Ok::<_, &'static str>(ControlFlow::Break("unused")),
+        );
+    if failed
+        != Err(RunError::Wait(RunWaitFailure {
+            completed: 0,
+            error: "wait-failed",
+        }))
+        || wait.calls != 1
+    {
+        return Err(String::from("pre-turn wait failure invented work"));
+    }
+    wait.fail_on_wait = false;
+    let recovered =
+        run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+            positive(2)?,
+            &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+            |_lifecycle| Ok::<_, &'static str>(ControlFlow::Break("recovered")),
+        );
+    if recovered
+        == Ok(RunStop::CallerStopped {
+            completed: 1,
+            reason: "recovered",
+        })
+        && wait.calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry after wait failure skipped pacing"))
+    }
+}
+
+#[test]
+fn cursor_loss_during_failed_callback_withholds_followup_turn()
+-> Result<(), String> {
+    let (mut lifecycle, mut pacer, mut wait) = resources()?;
+    let first = run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+        positive(3)?,
+        &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+        |current| {
+            current.replace_expected_cursor(None);
+            Err::<ControlFlow<&'static str>, &'static str>("failed")
+        },
+    );
+    if first
+        != Err(RunError::Turn {
+            completed: 1,
+            error: "failed",
+        })
+    {
+        return Err(String::from("failed callback lost stop evidence"));
+    }
+    wait.query_error = true;
+    let mut called = 0usize;
+    let withheld =
+        run_bounded_interruptible_fallible_cache_limits_retry_lifecycle(
+            positive(3)?,
+            &mut Context::new(&mut pacer, &mut lifecycle, &mut wait),
+            |_lifecycle| {
+                called = called.saturating_add(1);
+                Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+            },
+        );
+    if withheld == Ok(RunStop::CursorUnavailable { completed: 0 })
+        && called == 0
+        && wait.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "cursor loss after failed callback started work",
+        ))
+    }
+}
