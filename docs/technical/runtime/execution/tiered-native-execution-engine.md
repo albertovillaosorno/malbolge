@@ -2343,7 +2343,11 @@ preemption.
 One caller-driven bounded runner now repeats those cancellable paced turns with
 an explicit positive turn limit. Its typed terminal evidence separates limit,
 caller stop, cancellation, and cursor loss while counting only completed turn
-callbacks. It does not allocate a result history, start a worker, or own a
+callbacks. Cancellation-query or wait failure returns the exact delegated
+error paired with the count of already completed turns, without counting the
+failed attempt as a completed callback.
+
+The runner does not allocate a result history, start a worker, or own a
 background scheduler; cancellation still applies only between turns.
 
 Cumulative latency records now provide an independent cache-limit signal with a

@@ -1019,7 +1019,11 @@ behavior.
   under one positive maximum and retains exact completed-turn counts. Typed
   terminal outcomes distinguish caller stop, cancellation, cursor loss, and
   limit exhaustion without collecting a result history or creating workers.
-  Unattended worker ownership and asynchronous wake scheduling remain open.
+
+  Cancellation-query and relative-wait failures now retain the exact error plus
+  the number of completed turns before the failed attempt. The failure never
+  counts as an executed callback. Unattended worker ownership and asynchronous
+  wake scheduling remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

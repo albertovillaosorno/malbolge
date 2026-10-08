@@ -50,6 +50,7 @@ enum FakeAction {
     #[default]
     Elapse,
     Fail,
+    FailOnSecondWait,
 }
 
 #[derive(Debug, Default)]
@@ -57,13 +58,18 @@ struct FakeWait {
     action: FakeAction,
     calls: Vec<NonZeroU64>,
     cancelled: bool,
+    query_error: bool,
 }
 
 impl NativeContinuationInterruptibleWait for FakeWait {
     type Error = &'static str;
 
     fn is_cancelled(&self) -> Result<bool, Self::Error> {
-        Ok(self.cancelled)
+        if self.query_error {
+            Err("query failed")
+        } else {
+            Ok(self.cancelled)
+        }
     }
 
     fn wait_nanoseconds(
@@ -76,8 +82,13 @@ impl NativeContinuationInterruptibleWait for FakeWait {
                 self.cancelled = true;
                 Ok(WaitOutcome::Cancelled)
             },
-            FakeAction::Elapse => Ok(WaitOutcome::Elapsed),
             FakeAction::Fail => Err("wait failed"),
+            FakeAction::FailOnSecondWait if self.calls.len() == 2 => {
+                Err("wait failed")
+            },
+            FakeAction::Elapse | FakeAction::FailOnSecondWait => {
+                Ok(WaitOutcome::Elapsed)
+            },
         }
     }
 }
@@ -124,7 +135,7 @@ fn limit_stops_after_exact_completed_turns() -> Result<(), String> {
             ControlFlow::<&'static str>::Continue(())
         },
     )
-    .map_err(String::from)?;
+    .map_err(|failure| String::from(failure.error))?;
     if result == (RunStop::LimitReached { completed: 3 })
         && called == 3
         && wait.calls.len() == 2
@@ -157,7 +168,7 @@ fn caller_stop_includes_stopping_turn() -> Result<(), String> {
             }
         },
     )
-    .map_err(String::from)?;
+    .map_err(|failure| String::from(failure.error))?;
     if result
         == (RunStop::CallerStopped {
             completed: 2,
@@ -193,7 +204,7 @@ fn cancelled_next_wait_does_not_count_another_turn() -> Result<(), String> {
             ControlFlow::<&'static str>::Continue(())
         },
     )
-    .map_err(String::from)?;
+    .map_err(|failure| String::from(failure.error))?;
     if result == (RunStop::Cancelled { completed: 1 })
         && called == 1
         && wait.calls.len() == 1
@@ -222,7 +233,7 @@ fn cursor_loss_after_completed_turn_stops_before_second_wait()
             ControlFlow::<&'static str>::Continue(())
         },
     )
-    .map_err(String::from)?;
+    .map_err(|failure| String::from(failure.error))?;
     if result == (RunStop::CursorUnavailable { completed: 1 })
         && wait.calls.is_empty()
     {
@@ -253,12 +264,87 @@ fn failing_wait_keeps_exact_error_and_completed_pacing() -> Result<(), String> {
             ControlFlow::<&'static str>::Continue(())
         },
     );
-    if result.err() == Some("wait failed")
+    if result.err()
+        == Some(NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure {
+            completed: 1,
+            error: "wait failed",
+        })
         && called == 1
         && wait.calls.len() == 1
     {
         Ok(())
     } else {
         Err(String::from("wait failure was converted to stop evidence"))
+    }
+}
+
+#[test]
+fn failure_of_initial_cancellation_query_records_zero_turns()
+-> Result<(), String> {
+    let mut lifecycle = lifecycle()?;
+    let mut pacer = pacer()?;
+    let mut wait = FakeWait {
+        query_error: true,
+        ..FakeWait::default()
+    };
+    let mut called = 0usize;
+    let result = run_bounded_interruptible_cache_limits_retry_lifecycle(
+        positive(3)?,
+        &mut NativeExecutableCacheLimitsRetryLifecycleRunContext::new(
+            &mut pacer,
+            &mut lifecycle,
+            &mut wait,
+        ),
+        |_lifecycle| {
+            called = called.saturating_add(1);
+            ControlFlow::<&'static str>::Continue(())
+        },
+    );
+    if result.err()
+        == Some(NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure {
+            completed: 0,
+            error: "query failed",
+        })
+        && called == 0
+        && wait.calls.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("initial query failure fabricated progress"))
+    }
+}
+
+#[test]
+fn repeated_wait_failure_keeps_prior_completion_count() -> Result<(), String> {
+    let mut lifecycle = lifecycle()?;
+    let mut pacer = pacer()?;
+    let mut wait = FakeWait {
+        action: FakeAction::FailOnSecondWait,
+        ..FakeWait::default()
+    };
+    let mut called = 0usize;
+    let result = run_bounded_interruptible_cache_limits_retry_lifecycle(
+        positive(4)?,
+        &mut NativeExecutableCacheLimitsRetryLifecycleRunContext::new(
+            &mut pacer,
+            &mut lifecycle,
+            &mut wait,
+        ),
+        |_lifecycle| {
+            called = called.saturating_add(1);
+            ControlFlow::<&'static str>::Continue(())
+        },
+    );
+    if result.err()
+        == Some(NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure {
+            completed: 2,
+            error: "wait failed",
+        })
+        && called == 2
+        && wait.calls.len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("later wait failure discarded prior progress"))
     }
 }

@@ -17,7 +17,8 @@
 // - Allows:
 //   - Inputs: positive turn limit, retained lifecycle owner, pacing state,
 //     interruptible wait, and one caller-owned turn callback.
-//   - Outputs: exact completed-turn count and typed terminal stop evidence.
+//   - Outputs: typed terminal stop or wait-failure evidence with completed turn
+//     counts.
 //   - Side effects: only bounded caller-owned turns and delegated relative
 //     waits.
 // - Split-When:
@@ -29,7 +30,7 @@
 //   - Runs a caller-driven finite lifecycle loop without spawning workers.
 // - Description:
 //   - Every returned callback counts as one completed turn, including a caller
-//     break; cancellation and errors never fabricate completed work.
+//     break; failed pre-turn waits preserve earlier completed progress.
 // - Usage:
 //   - The caller invokes and owns the entire synchronous bounded run.
 // - Defaults:
@@ -78,9 +79,20 @@ pub enum NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason> {
     },
 }
 
+/// Exact delegated wait error and progress before the failed attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure<Error> {
+    /// Completed caller-owned turns before the failed wait/query.
+    pub completed: usize,
+    /// Exact underlying cancellation query or relative-wait error.
+    pub error: Error,
+}
+
 /// Exact result of one bounded interruptible run.
-pub type NativeExecutableCacheLimitsRunResult<Reason, WaitError> =
-    Result<NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>, WaitError>;
+pub type NativeExecutableCacheLimitsRunResult<Reason, WaitError> = Result<
+    NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>,
+    NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure<WaitError>,
+>;
 
 type RunStop<Reason> = NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>;
 
@@ -116,8 +128,8 @@ impl<'resource, Wait>
 ///
 /// # Errors
 ///
-/// Returns the exact delegated cancellation or wait error without claiming a
-/// terminal stop or a completed turn for the failed attempt.
+/// Returns the exact delegated cancellation or wait error with the count of
+/// earlier completed turns, without counting the failed attempt as a turn.
 pub fn run_bounded_interruptible_cache_limits_retry_lifecycle<
     Wait,
     Turn,
@@ -133,12 +145,14 @@ where
 {
     let mut completed = 0usize;
     for _ in 0..maximum_turns.get() {
-        let result = run_turn(
-            context.pacer,
-            context.lifecycle,
-            context.wait,
-            &mut turn,
-        )?;
+        let result =
+            run_turn(context.pacer, context.lifecycle, context.wait, &mut turn)
+                .map_err(|error| {
+                    NativeExecutableCacheLimitsRetryLifecycleRunWaitFailure {
+                        completed,
+                        error,
+                    }
+                })?;
         match result {
             TurnOutcome::Cancelled => {
                 return Ok(RunStop::Cancelled { completed });
