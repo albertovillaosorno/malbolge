@@ -2350,6 +2350,15 @@ failed attempt as a completed callback.
 The runner does not allocate a result history, start a worker, or own a
 background scheduler; cancellation still applies only between turns.
 
+A fallible-turn adapter now retains that same bounded cooperative behavior while
+separating exact pre-turn wait/query failure from returned caller-owned semantic
+failure. A returned error counts the failed callback itself as a completed
+attempt; a pre-turn wait error counts only earlier returned callbacks.
+Successful caller stops, cancellation, cursor loss, and explicit limit
+exhaustion keep their distinct terminal evidence.
+
+No callback error is retried implicitly.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

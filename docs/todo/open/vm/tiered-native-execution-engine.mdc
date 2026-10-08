@@ -1025,6 +1025,12 @@ behavior.
   counts as an executed callback. Unattended worker ownership and asynchronous
   wake scheduling remain open.
 
+  A synchronous fallible-turn adapter now preserves the same finite loop while
+  retaining exact caller callback errors distinctly from delegated wait errors.
+  Returned callback failure counts as one completed attempt, pre-turn failures
+  do not, and cancellation/cursor/limit/caller-stop outcomes remain typed. It
+  creates no workers and does not automatically retry product activation errors.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

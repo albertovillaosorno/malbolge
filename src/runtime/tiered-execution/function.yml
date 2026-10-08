@@ -921,6 +921,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Bound caller-owned repeated cache-trigger lifecycle turns.
+  - id: part-0165
+    path: composition/tier/cache_run_try.rs
+    kind: composition
+    language: rust
+    responsibility: Retain fallible cache-trigger turn and wait progression.
 projects: []
 tests: []
 graph:
