@@ -58,7 +58,9 @@ The callable `.text` section also cannot be marked as linker-only
 information or linker-discarded, even when its code/read/execute bits are set.
 COMDAT-selected code is also unsupported because the loader owns no COMDAT
 selection semantics. The `.mbprof` identity section likewise cannot be
-linker-only information, discarded, or COMDAT-selected.
+linker-only information, discarded, or COMDAT-selected. Neither the callable
+`.text` section nor `.mbprof` can be marked `MEM_DISCARDABLE`, because both
+must remain independently available during native execution and admission.
 
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden

@@ -61,6 +61,7 @@ const IMAGE_SCN_LNK_COMDAT: u32 = 0x0000_1000;
 const IMAGE_SCN_LNK_INFO: u32 = 0x0000_0200;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
 const IMAGE_SCN_LNK_REMOVE: u32 = 0x0000_0800;
+const IMAGE_SCN_MEM_DISCARDABLE: u32 = 0x0200_0000;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
@@ -524,6 +525,7 @@ fn validate_sections(
                 || section.characteristics & required != required
                 || section.characteristics
                     & (IMAGE_SCN_MEM_WRITE
+                        | IMAGE_SCN_MEM_DISCARDABLE
                         | IMAGE_SCN_LNK_COMDAT
                         | IMAGE_SCN_LNK_INFO
                         | IMAGE_SCN_LNK_REMOVE)
@@ -552,7 +554,10 @@ fn validate_metadata_linker_flags(
     // annotations; it must remain independently loadable section data.
     if section.name == PROFILE_METADATA_SECTION
         && section.characteristics
-            & (IMAGE_SCN_LNK_COMDAT | IMAGE_SCN_LNK_INFO | IMAGE_SCN_LNK_REMOVE)
+            & (IMAGE_SCN_LNK_COMDAT
+                | IMAGE_SCN_LNK_INFO
+                | IMAGE_SCN_LNK_REMOVE
+                | IMAGE_SCN_MEM_DISCARDABLE)
             != 0
     {
         return Err(CoffAdmissionError::ProfileMetadata);
