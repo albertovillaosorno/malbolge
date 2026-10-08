@@ -49,6 +49,11 @@ use crate::{
 
 type RunStop<Reason> =
     run::NativeExecutableCacheLimitsRetryLifecycleRunStop<Reason>;
+type RunFailure<WaitError, TurnError> =
+    failed::NativeExecutableCacheLimitsRetryLifecycleRunFailure<
+        WaitError,
+        TurnError,
+    >;
 
 struct PanicWhenDropped;
 
@@ -1005,5 +1010,100 @@ fn completed_try_shutdown_retains_callback_destructor_panic()
         Ok(())
     } else {
         Err(String::from("late stop request masked destructor panic"))
+    }
+}
+
+#[test]
+fn pending_try_shutdown_keeps_returned_turn_error_and_cursor()
+-> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker(
+        positive(2)?,
+        resources()?,
+        move |_current| {
+            started_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Err::<ControlFlow<&'static str>, _>("typed callback failed")
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (request, pending) = match handle.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Pending { cancellation, worker } => {
+            (cancellation, worker)
+        },
+        NativeCacheOwnedWorkerTryShutdown::Joined(_completed) => {
+            return Err(String::from("in-flight error returned joined"));
+        },
+    };
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let result = pending.join().map_err(|error| format!("{error:?}"))?;
+    if request == Ok(true)
+        && matches!(
+            result.terminal,
+            NativeCacheOwnedWorkerTerminal::Returned(Err(RunFailure::Turn {
+                completed: 1,
+                error: "typed callback failed",
+            }))
+        )
+        && result.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending shutdown overwrote callback error"))
+    }
+}
+
+#[test]
+fn pending_try_shutdown_keeps_callback_panic_and_revoked_cursor()
+-> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker(
+        positive(2)?,
+        resources()?,
+        move |current| -> Result<ControlFlow<&'static str>, &'static str> {
+            started_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            let forged =
+                cadence::NativeExecutableCacheLimitsTriggerCadence::new(
+                    nanos(81).map_err(|_error| "duration failed")?,
+                    nanos(82).map_err(|_error| "duration failed")?,
+                );
+            current.replace_expected_cursor(Some(forged));
+            resume_unwind(Box::new("callback panic after stop request"));
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (request, pending) = match handle.try_cancel_and_join() {
+        NativeCacheOwnedWorkerTryShutdown::Pending { cancellation, worker } => {
+            (cancellation, worker)
+        },
+        NativeCacheOwnedWorkerTryShutdown::Joined(_completed) => {
+            return Err(String::from("in-flight panic returned joined"));
+        },
+    };
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let result = pending.join().map_err(|error| format!("{error:?}"))?;
+    if request == Ok(true)
+        && matches!(
+            result.terminal,
+            NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && result.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("pending shutdown trusted panicking callback"))
     }
 }

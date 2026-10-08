@@ -1406,3 +1406,118 @@ fn progress_try_shutdown_counts_abandoned_receiver_after_stop()
         ))
     }
 }
+
+#[test]
+fn pending_progress_try_shutdown_keeps_exact_callback_failure()
+-> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 2)?,
+        resources()?,
+        move |_current| {
+            started_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Err::<ControlFlow<&'static str>, _>("typed activation failure")
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (request, pending) = expect_pending_stop(handle.try_cancel_and_join())?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let notice = pending
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let completed = pending.join();
+    let joined = completed.joined.map_err(|error| format!("{error:?}"))?;
+    if request == Ok(true)
+        && notice
+            == (Notice {
+                completed: 1,
+                kind: Kind::Failed,
+            })
+        && completed.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Err(
+                RunFailure::Turn {
+                    completed: 1,
+                    error: "typed activation failure"
+                }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "stop request erased callback failure progress",
+        ))
+    }
+}
+
+#[test]
+fn pending_progress_try_shutdown_does_not_mask_destructor_panic()
+-> Result<(), String> {
+    let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let destructor = PanicOnDrop;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 2)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            started_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    started_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let (request, pending) = expect_pending_stop(handle.try_cancel_and_join())?;
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release failed"))?;
+    let notice = pending
+        .progress()
+        .ok_or("receiver missing")?
+        .recv()
+        .map_err(|_error| String::from("notice missing"))?;
+    let completed = pending.join();
+    let joined = completed.joined.map_err(|error| format!("{error:?}"))?;
+    if request == Ok(true)
+        && notice
+            == (Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            })
+        && completed.totals
+            == (Totals {
+                enqueued: 1,
+                full: 0,
+                receiver_gone: 0,
+            })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("stop request admitted destructor panic"))
+    }
+}
