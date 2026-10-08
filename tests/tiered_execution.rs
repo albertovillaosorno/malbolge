@@ -46029,6 +46029,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_inline_name_padding(&source, &artifact)?;
     check_rejected_coff_symbol_name_padding(&source, &artifact)?;
     check_rejected_coff_relocation_pointer(&source, &artifact)?;
+    check_rejected_coff_raw_section_pointer(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
@@ -46210,6 +46211,32 @@ fn check_rejected_coff_line_numbers(
         {
             return Err(format!(
                 "COFF admitted line numbers: pointer={pointer}, count={count}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_raw_section_pointer(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_text_header(artifact.object())?;
+    // A zero-size section may carry a bounded pointer, but may not point
+    // beyond the file. Populated section data cannot start at byte zero.
+    for (size, pointer, expected) in [
+        (0u32, u32::MAX, CoffAdmissionError::Bounds),
+        (4, 0, CoffAdmissionError::SectionPointer),
+    ] {
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, header.saturating_add(16), size)?;
+        write_fixture_u32(&mut bytes, header.saturating_add(20), pointer)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered) != Err(expected) {
+            return Err(format!(
+                "COFF accepted section size={size} and pointer={pointer}"
             ));
         }
     }

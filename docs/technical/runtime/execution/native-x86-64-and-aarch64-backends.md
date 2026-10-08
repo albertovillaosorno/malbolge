@@ -76,6 +76,10 @@ Relocation table pointers and counts must also agree about table presence:
 zero count requires zero pointer; a nonzero count requires a nonzero pointer.
 This forbids unowned relocation pointers as well as records at offset zero.
 
+Raw section pointers are bounded even when a section owns zero raw bytes;
+such sections may retain in-file offsets emitted by the compiler. Populated
+sections must use a nonzero file offset rather than aliasing the COFF header.
+
 Short COFF section and symbol names must have zero-filled padding after
 their first NUL byte; nonzero bytes hidden past a terminator are rejected.
 This also applies to slash-prefixed section string-table offsets.

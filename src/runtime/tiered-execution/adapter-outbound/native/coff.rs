@@ -93,6 +93,8 @@ pub enum CoffAdmissionError {
     RelocationPointer,
     /// A relocation type is undefined for the claimed COFF machine.
     RelocationType,
+    /// Raw section size and file-data pointer disagree about byte ownership.
+    SectionPointer,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
     /// Object does not contain one usable `.text` section.
@@ -150,6 +152,9 @@ impl Display for CoffAdmissionError {
             },
             Self::RelocationPointer => {
                 "COFF relocation count and table pointer disagree"
+            },
+            Self::SectionPointer => {
+                "COFF section data size and file pointer disagree"
             },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
@@ -437,7 +442,17 @@ fn validate_sections(
         if (section.relocation_count == 0) != (section.relocation_start == 0) {
             return Err(CoffAdmissionError::RelocationPointer);
         }
-        if section.raw_size != 0 {
+        // Some COFF compilers preserve an in-file raw pointer even for a
+        // zero-size section. Such a pointer owns no bytes but cannot extend
+        // outside this object. Populated sections cannot begin at byte zero.
+        if section.raw_size == 0 {
+            if section.raw_start > object.len() {
+                return Err(CoffAdmissionError::Bounds);
+            }
+        } else {
+            if section.raw_start == 0 {
+                return Err(CoffAdmissionError::SectionPointer);
+            }
             require_range(object, section.raw_start, section.raw_size)?;
         }
         if section.relocation_count != 0 {
