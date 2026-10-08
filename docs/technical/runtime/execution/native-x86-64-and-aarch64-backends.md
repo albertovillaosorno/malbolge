@@ -43,8 +43,12 @@ A safe-Rust COFF parser now structurally admits those compiler outputs without
 invoking LLVM inspection tools. Admission binds the COFF machine to the target
 ISA, requires the exact callable entry in executable/non-writable `.text`, and
 rejects unresolved external dependencies. Internal ARM64 relocations to defined
-`.rdata` constants are allowed. Structural admission deliberately stops before
-semantic equivalence or execution authority.
+`.rdata` constants are allowed. Relocations must reference an existing
+one-based section or the COFF-defined absolute-symbol sentinel; undefined,
+debug-only, and out-of-range section references fail closed. A pinned ARM64
+compiler-object mutation regression checks these cases independently of native
+execution. Structural admission deliberately stops before semantic equivalence
+or execution authority.
 
 A first direct backend now exists for the safe fallback case. It emits canonical
 minimal COFF directly in Rust for x86-64 and AArch64, with machine code that

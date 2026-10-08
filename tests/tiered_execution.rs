@@ -46010,7 +46010,78 @@ fn check_compiled_coff_case(
     }
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
+    } else {
+        check_rejected_coff_relocation_section(&source, &artifact)?;
     }
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_section(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section_count = usize::from(read_fixture_u16(object, 2)?);
+    let symbol_table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol table conversion: {error}"))?;
+    let mut relocated_symbol = None;
+    for index in 0..section_count {
+        let header = 20usize.saturating_add(index.saturating_mul(40));
+        if read_fixture_u16(object, header.saturating_add(32))? != 0 {
+            let relocations = usize::try_from(read_fixture_u32(
+                object,
+                header.saturating_add(24),
+            )?)
+            .map_err(|error| format!("COFF relocation conversion: {error}"))?;
+            relocated_symbol = Some(
+                usize::try_from(read_fixture_u32(
+                    object,
+                    relocations.saturating_add(4),
+                )?)
+                .map_err(|error| {
+                    format!("COFF symbol index conversion: {error}")
+                })?,
+            );
+            break;
+        }
+    }
+    let index =
+        relocated_symbol.ok_or("AArch64 COFF fixture has no relocation")?;
+    let symbol_offset = symbol_table
+        .checked_add(index.saturating_mul(18))
+        .and_then(|value| value.checked_add(12))
+        .ok_or("relocation symbol section offset overflow")?;
+    let nonexistent_section = u16::try_from(section_count.saturating_add(1))
+        .map_err(|error| format!("COFF section count conversion: {error}"))?;
+    for (section_number, label) in [
+        (nonexistent_section, "nonexistent"),
+        (0, "undefined"),
+        (u16::MAX - 1, "debug-only"),
+    ] {
+        let mut mutated = object.to_vec();
+        write_fixture_u16(&mut mutated, symbol_offset, section_number)?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, mutated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::ExternalDependency)
+        {
+            return Err(format!(
+                "COFF relocation admitted {label} symbol section"
+            ));
+        }
+    }
+    // COFF's absolute symbol sentinel is defined without a section, unlike
+    // undefined/common and debug-only symbols. Structural admission does not
+    // claim semantic equivalence of the altered machine code.
+    let mut absolute = object.to_vec();
+    write_fixture_u16(&mut absolute, symbol_offset, u16::MAX)?;
+    let absolute =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, absolute)
+            .map_err(|error| error.to_string())?;
+    let _admitted_absolute = structurally_admit_coff(&absolute)
+        .map_err(|error| format!("COFF absolute symbol rejected: {error}"))?;
     Ok(())
 }
 
@@ -64969,6 +65040,18 @@ fn direct_object_text(object: &[u8]) -> Result<&[u8], String> {
     object
         .get(start..end)
         .ok_or_else(|| String::from("text range exceeds object"))
+}
+
+fn read_fixture_u16(bytes: &[u8], offset: usize) -> Result<u16, String> {
+    let end = offset
+        .checked_add(2)
+        .ok_or_else(|| String::from("fixture u16 offset overflow"))?;
+    let raw = bytes
+        .get(offset..end)
+        .ok_or_else(|| String::from("fixture u16 exceeds object"))?;
+    let array = <[u8; 2]>::try_from(raw)
+        .map_err(|error| format!("fixture u16 width: {error}"))?;
+    Ok(u16::from_le_bytes(array))
 }
 
 fn read_fixture_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {

@@ -113,7 +113,7 @@ impl Display for CoffAdmissionError {
                 "native entry is not defined inside executable .text"
             },
             Self::ExternalDependency => {
-                "COFF object depends on an undefined external symbol"
+                "COFF object references an undefined or invalid symbol"
             },
             Self::ExtraExternalFunction => {
                 "COFF object exports an unexpected external function"
@@ -524,7 +524,14 @@ fn validate_symbols_and_relocations(
                 .get(symbol_index)
                 .and_then(Option::as_ref)
                 .ok_or(CoffAdmissionError::ExternalDependency)?;
-            if symbol.section_number == 0 {
+            // A relocation must resolve to an actual one-based COFF section
+            // or to the defined absolute-symbol sentinel. Undefined/common,
+            // debug, and out-of-range section numbers have no loadable target.
+            let defined = symbol.section_number == -1
+                || (symbol.section_number > 0
+                    && usize::try_from(symbol.section_number)
+                        .is_ok_and(|number| number <= parsed.sections.len()));
+            if !defined {
                 return Err(CoffAdmissionError::ExternalDependency);
             }
         }
