@@ -346,7 +346,8 @@ fn dropped_handle_waits_for_running_callback_before_shutdown()
 -> Result<(), String> {
     let (started_tx, started_rx) = mpsc::sync_channel::<()>(0);
     let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
-    let (drop_started_tx, drop_started_rx) = mpsc::sync_channel::<()>(0);
+    let (drop_started_tx, drop_started_rx) =
+        mpsc::sync_channel::<Result<bool, WaitError>>(0);
     let (drop_completed_tx, drop_completed_rx) = mpsc::channel::<()>();
     let callbacks = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&callbacks);
@@ -365,11 +366,13 @@ fn dropped_handle_waits_for_running_callback_before_shutdown()
         .recv()
         .map_err(|_error| String::from("no callback"))?;
     let dropper = thread::spawn(move || {
-        let _started = drop_started_tx.send(());
+        // Stop is sequenced before releasing the executing callback.
+        let requested = handle.cancel();
+        let _started = drop_started_tx.send(requested);
         drop(handle);
         let _completed = drop_completed_tx.send(());
     });
-    drop_started_rx
+    let stopped = drop_started_rx
         .recv()
         .map_err(|_error| String::from("no dropper"))?;
     let premature = drop_completed_rx.try_recv();
@@ -379,12 +382,67 @@ fn dropped_handle_waits_for_running_callback_before_shutdown()
     dropper
         .join()
         .map_err(|_panic| String::from("dropper panicked"))?;
-    if premature == Err(mpsc::TryRecvError::Empty)
+    if stopped == Ok(true)
+        && premature == Err(mpsc::TryRecvError::Empty)
         && drop_completed_rx.recv().is_ok()
         && callbacks.load(Ordering::SeqCst) == 1
     {
         Ok(())
     } else {
         Err(String::from("dropping handle failed to join finite work"))
+    }
+}
+
+#[test]
+fn recovered_panicking_worker_cannot_retry_without_trusted_cursor()
+-> Result<(), String> {
+    use std::panic::resume_unwind;
+
+    let first = start_owned_cache_retry_worker(
+        positive(3)?,
+        resources()?,
+        |current| -> Result<ControlFlow<&'static str>, &'static str> {
+            let forged =
+                cadence::NativeExecutableCacheLimitsTriggerCadence::new(
+                    nanos(30).map_err(|_error| "invalid duration")?,
+                    nanos(31).map_err(|_error| "invalid duration")?,
+                );
+            current.replace_expected_cursor(Some(forged));
+            resume_unwind(Box::new("untrusted callback panic"));
+        },
+    )
+    .map_err(|_failure| String::from("first startup failed"))?;
+    let prior = first.join().map_err(|error| format!("{error:?}"))?;
+    if !matches!(
+        prior.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) || prior.resources.lifecycle.expected_cursor().is_some()
+    {
+        return Err(String::from("panic did not revoke forged cursor"));
+    }
+    let callbacks = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&callbacks);
+    let second = start_owned_cache_retry_worker(
+        positive(2)?,
+        prior.resources,
+        move |_current| {
+            let _previous = counted.fetch_add(1, Ordering::SeqCst);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("second startup failed"))?;
+    let recovered = second.join().map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        recovered.terminal,
+        NativeCacheOwnedWorkerTerminal::Returned(Ok(
+            RunStop::CursorUnavailable { completed: 0 }
+        ))
+    ) && callbacks.load(Ordering::SeqCst) == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "recovered owned state bypassed missing cursor",
+        ))
     }
 }
