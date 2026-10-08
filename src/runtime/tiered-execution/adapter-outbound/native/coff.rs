@@ -644,7 +644,7 @@ fn parse_string(
     let length = remainder
         .iter()
         .position(|byte| *byte == 0)
-        .unwrap_or(remainder.len());
+        .ok_or(CoffAdmissionError::Bounds)?;
     let bytes = remainder.get(..length).ok_or(CoffAdmissionError::Bounds)?;
     let text = from_utf8(bytes).map_err(|_error| CoffAdmissionError::Bounds)?;
     Ok(String::from(text))

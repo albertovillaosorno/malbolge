@@ -46025,6 +46025,7 @@ fn check_compiled_coff_case(
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
+        check_rejected_coff_unterminated_long_name(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
     }
@@ -46146,6 +46147,56 @@ fn check_x64_coff_relocation_patch_widths(
         {
             return Err(format!("x64 relocation {kind:#06x} crossed section"));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unterminated_long_name(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol table: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let string_table = symbol_table
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF fixture string table overflow")?;
+    let string_length = read_fixture_u32(object, string_table)?;
+    let string_end = string_table
+        .checked_add(
+            usize::try_from(string_length)
+                .map_err(|error| format!("COFF string size: {error}"))?,
+        )
+        .ok_or("COFF fixture string end overflow")?;
+    if string_end != object.len()
+        || object.get(symbol_table.saturating_add(16)) == Some(&2u8)
+    {
+        return Err(String::from(
+            "COFF fixture has no isolated long-name slot",
+        ));
+    }
+    // Append one unterminated name and redirect an ordinary static symbol to
+    // it without touching the required entry or any prior string-table name.
+    let mut mutated = object.to_vec();
+    mutated.push(b'Z');
+    write_fixture_u32(
+        &mut mutated,
+        string_table,
+        string_length.saturating_add(1),
+    )?;
+    write_fixture_u32(&mut mutated, symbol_table, 0)?;
+    write_fixture_u32(
+        &mut mutated,
+        symbol_table.saturating_add(4),
+        string_length,
+    )?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, mutated)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds) {
+        return Err(String::from("COFF admitted an unterminated long name"));
     }
     Ok(())
 }

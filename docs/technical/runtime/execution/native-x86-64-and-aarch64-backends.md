@@ -53,8 +53,12 @@ extent. Admission recognizes only defined relocation kinds for the object's
 x86-64 or AArch64 machine ID and bounds the complete relocation patch width
 (e.g., two-, four-, or eight-byte fields) to its owning section. Undefined
 relocation kinds and patches crossing a section boundary fail closed.
-Structural admission deliberately stops before semantic equivalence or
-execution authority; it is not a linker or instruction verifier.
+
+Long COFF section and symbol names must also terminate inside their declared
+string-table extent; an unterminated referenced name is rejected even if its
+bytes are UTF-8 and otherwise fit in the object. Structural admission stops
+before semantic equivalence or execution authority; it is not a linker or
+instruction verifier.
 
 A first direct backend now exists for the safe fallback case. It emits canonical
 minimal COFF directly in Rust for x86-64 and AArch64, with machine code that
