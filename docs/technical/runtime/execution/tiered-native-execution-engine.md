@@ -2330,6 +2330,16 @@ Poisoned synchronization and indeterminate wakes remain typed failures rather
 than fabricated completion. Lifecycle integration, mid-turn cancellation,
 background work, and asynchronous wake scheduling remain open.
 
+The process-local pacer now integrates that interruptible wait explicitly.
+Cursorless turns return before querying cancellation, and cancellation before an
+immediate turn or during a repeated wait blocks caller-owned execution. After
+an elapsed repeated wait, the pacer checks cancellation again before invoking
+the turn closure; query/wait failure also grants no readiness.
+
+Only a returned caller-owned turn marks pacing complete. Cancellation is
+cooperative at turn boundaries, not an atomic query-and-execute gate or mid-turn
+preemption.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

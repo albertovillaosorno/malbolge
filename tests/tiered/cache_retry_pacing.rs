@@ -65,6 +65,54 @@ impl NativeContinuationRelativeWait for FakeWait {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum FakeWaitAction {
+    Cancel,
+    #[default]
+    Elapse,
+    ElapseThenCancel,
+    Fail,
+}
+
+#[derive(Debug, Default)]
+struct FakeInterruptibleWait {
+    action: FakeWaitAction,
+    calls: Vec<NonZeroU64>,
+    cancelled: bool,
+    query_error: bool,
+}
+
+impl NativeContinuationInterruptibleWait for FakeInterruptibleWait {
+    type Error = &'static str;
+
+    fn is_cancelled(&self) -> Result<bool, Self::Error> {
+        if self.query_error {
+            Err("query failed")
+        } else {
+            Ok(self.cancelled)
+        }
+    }
+
+    fn wait_nanoseconds(
+        &mut self,
+        nanoseconds: NonZeroU64,
+    ) -> Result<WaitOutcome, Self::Error> {
+        self.calls.push(nanoseconds);
+        match self.action {
+            FakeWaitAction::Cancel => {
+                self.cancelled = true;
+                Ok(WaitOutcome::Cancelled)
+            },
+            FakeWaitAction::Elapse => Ok(WaitOutcome::Elapsed),
+            FakeWaitAction::ElapseThenCancel => {
+                self.cancelled = true;
+                Ok(WaitOutcome::Elapsed)
+            },
+            FakeWaitAction::Fail => Err("wait failed"),
+        }
+    }
+}
+
 fn positive_usize(value: usize) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value)
         .ok_or_else(|| String::from("test usize must be positive"))
@@ -254,5 +302,225 @@ fn paced_turn_skips_execution_without_ready_evidence() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("failed paced turn executed caller work"))
+    }
+}
+
+#[test]
+fn interruptible_pacing_cursor_loss_prevents_cancellation_queries()
+-> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(41)?);
+    let mut lifecycle = RetryLifecycle::new(
+        positive_usize(32)?,
+        positive_usize(3)?,
+        RetryPolicy::return_on_contention(),
+    );
+    pacer.observe_turn_completed();
+    let mut wait = FakeInterruptibleWait {
+        query_error: true,
+        ..FakeInterruptibleWait::default()
+    };
+    let mut calls = 0usize;
+    let result = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    if result
+        == NativeExecutableCacheLimitsRetryLifecycleTurn::CursorUnavailable
+        && wait.calls.is_empty()
+        && calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("missing cursor touched cancellable resources"))
+    }
+}
+
+#[test]
+fn interruptible_pacing_immediate_cancel_skips_turn_and_does_not_complete()
+-> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(43)?);
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeInterruptibleWait {
+        cancelled: true,
+        ..FakeInterruptibleWait::default()
+    };
+    let mut calls = 0usize;
+    let result = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    wait.cancelled = false;
+    let next = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    if result == NativeExecutableCacheLimitsRetryLifecycleTurn::Cancelled
+        && matches!(
+            next,
+            NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+                outcome: (),
+                waited: false,
+            }
+        )
+        && calls == 1
+        && wait.calls.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "initial cancellation consumed first readiness",
+        ))
+    }
+}
+
+#[test]
+fn interruptible_pacing_repeat_wait_cancellation_skips_turn()
+-> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(47)?);
+    pacer.observe_turn_completed();
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeInterruptibleWait {
+        action: FakeWaitAction::Cancel,
+        ..FakeInterruptibleWait::default()
+    };
+    let mut calls = 0usize;
+    let result = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    if result == NativeExecutableCacheLimitsRetryLifecycleTurn::Cancelled
+        && wait.calls == [positive_u64(47)?]
+        && calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("cancelled wait executed lifecycle work"))
+    }
+}
+
+#[test]
+fn interruptible_pacing_rechecks_cancel_after_elapsed_wait()
+-> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(53)?);
+    pacer.observe_turn_completed();
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeInterruptibleWait {
+        action: FakeWaitAction::ElapseThenCancel,
+        ..FakeInterruptibleWait::default()
+    };
+    let mut calls = 0usize;
+    let result = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    if result == NativeExecutableCacheLimitsRetryLifecycleTurn::Cancelled
+        && wait.calls == [positive_u64(53)?]
+        && calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("late cancellation was ignored"))
+    }
+}
+
+#[test]
+fn interruptible_pacing_query_failure_skips_execution() -> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(61)?);
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeInterruptibleWait {
+        query_error: true,
+        ..FakeInterruptibleWait::default()
+    };
+    let mut calls = 0usize;
+    let error = execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .err();
+    if error == Some("query failed") && calls == 0 && wait.calls.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("cancel query failure granted readiness"))
+    }
+}
+
+#[test]
+fn interruptible_pacing_reports_wait_failures_and_waited_execution()
+-> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(59)?);
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeInterruptibleWait::default();
+    let mut calls = 0usize;
+    let immediate =
+        execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+            &mut pacer,
+            &mut lifecycle,
+            &mut wait,
+            |_lifecycle| calls = calls.saturating_add(1),
+        )
+        .map_err(String::from)?;
+    wait.action = FakeWaitAction::Fail;
+    let wait_error =
+        execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+            &mut pacer,
+            &mut lifecycle,
+            &mut wait,
+            |_lifecycle| calls = calls.saturating_add(1),
+        )
+        .err();
+    wait.action = FakeWaitAction::Elapse;
+    let repeated =
+        execute_interruptible_paced_cache_limits_retry_lifecycle_turn(
+            &mut pacer,
+            &mut lifecycle,
+            &mut wait,
+            |_lifecycle| calls = calls.saturating_add(1),
+        )
+        .map_err(String::from)?;
+    if matches!(
+        immediate,
+        NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+            outcome: (),
+            waited: false,
+        }
+    ) && wait_error == Some("wait failed")
+        && matches!(
+            repeated,
+            NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+                outcome: (),
+                waited: true,
+            }
+        )
+        && calls == 2
+        && wait.calls == [positive_u64(59)?, positive_u64(59)?]
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "interruptible wait failure progression drifted",
+        ))
     }
 }

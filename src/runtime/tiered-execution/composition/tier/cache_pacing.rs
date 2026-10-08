@@ -12,16 +12,16 @@
 //   - Process-local wait selection before explicit repeated cache-trigger
 //     lifecycle turns.
 // - Must-Not:
-//   - Execute activation, choose retry policy, read clocks, persist state,
+//   - Select native activation or retry policy, read clocks, persist state,
 //     spawn workers, or treat retained conflict-stop evidence as shutdown.
 // - Allows:
 //   - Inputs: retained lifecycle cursor authority, one positive repeat delay,
-//     explicit completed-turn observation, and a relative-wait dependency.
-//   - Outputs: cursor-unavailable or ready evidence retaining whether waiting
-//     occurred.
+//     completed-turn observation, and ordinary or interruptible waiting.
+//   - Outputs: cursor-unavailable, cancelled, or ready evidence indicating
+//     whether waiting occurred.
 //   - Side effects: at most one delegated relative wait before a repeated turn.
 // - Split-When:
-//   - Cancellation, background workers, or asynchronous wake ownership gains
+//   - Mid-turn cancellation, background workers, or async wake ownership gains
 //     independent lifecycle semantics.
 // - Merge-When:
 //   - One product scheduler owns pacing and complete lifecycle turn execution.
@@ -41,6 +41,10 @@
 use std::num::NonZeroU64;
 
 use crate::executable_cache_limits_retry_lifecycle as lifecycle;
+use crate::interruptible_wait::{
+    NativeContinuationInterruptibleWait,
+    NativeContinuationInterruptibleWaitOutcome as WaitOutcome,
+};
 use crate::relative_wait::NativeContinuationRelativeWait;
 
 type RetryLifecycle = lifecycle::NativeExecutableCacheLimitsRetryLifecycle;
@@ -54,6 +58,8 @@ pub type NativeExecutableCacheLimitsRetryLifecycleTurnResult<
 /// Readiness evidence produced before one explicit lifecycle turn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeExecutableCacheLimitsRetryLifecyclePacing {
+    /// Cancellation prevents the next turn before caller-owned execution.
+    Cancelled,
     /// No safe retained cursor exists, so no turn or wait is authorized.
     CursorUnavailable,
     /// One lifecycle turn is ready for caller-owned execution.
@@ -66,6 +72,8 @@ pub enum NativeExecutableCacheLimitsRetryLifecyclePacing {
 /// Result of composing pacing with one caller-owned lifecycle turn.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativeExecutableCacheLimitsRetryLifecycleTurn<Outcome> {
+    /// Cancellation prevented execution before the next caller-owned turn.
+    Cancelled,
     /// No safe cursor existed, so neither waiting nor turn execution occurred.
     CursorUnavailable,
     /// One caller-owned turn completed after optional repeat pacing.
@@ -97,6 +105,56 @@ impl NativeExecutableCacheLimitsRetryLifecyclePacer {
     /// Records that caller-owned execution completed one lifecycle turn.
     pub const fn observe_turn_completed(&mut self) {
         self.turn_completed = true;
+    }
+
+    /// Prepares one explicit turn with cooperative pre-turn cancellation.
+    ///
+    /// Cursor loss prevents any cancellation query or delay. Sticky
+    /// cancellation is checked before immediate turns and after elapsed
+    /// repeat delays. A cancellation observation never authorizes
+    /// caller-owned work. This does not interrupt a running turn or make
+    /// the final query-and-call atomic.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact cancellation query or wait failure without readiness.
+    pub fn prepare_interruptible_turn<Wait>(
+        &self,
+        lifecycle: &RetryLifecycle,
+        wait: &mut Wait,
+    ) -> Result<NativeExecutableCacheLimitsRetryLifecyclePacing, Wait::Error>
+    where
+        Wait: NativeContinuationInterruptibleWait,
+    {
+        if lifecycle.expected_cursor().is_none() {
+            return Ok(
+                NativeExecutableCacheLimitsRetryLifecyclePacing::
+                    CursorUnavailable,
+            );
+        }
+        if wait.is_cancelled()? {
+            return Ok(
+                NativeExecutableCacheLimitsRetryLifecyclePacing::Cancelled,
+            );
+        }
+        if !self.turn_completed {
+            return Ok(
+                NativeExecutableCacheLimitsRetryLifecyclePacing::Ready {
+                    waited: false,
+                },
+            );
+        }
+        if wait.wait_nanoseconds(self.repeat_delay_nanoseconds)?
+            == WaitOutcome::Cancelled
+            || wait.is_cancelled()?
+        {
+            return Ok(
+                NativeExecutableCacheLimitsRetryLifecyclePacing::Cancelled,
+            );
+        }
+        Ok(NativeExecutableCacheLimitsRetryLifecyclePacing::Ready {
+            waited: true,
+        })
     }
 
     /// Prepares one explicit lifecycle turn without granting background work.
@@ -144,6 +202,48 @@ impl NativeExecutableCacheLimitsRetryLifecyclePacer {
     }
 }
 
+/// Paces one explicit caller-owned turn with cooperative cancellation.
+///
+/// A missing cursor returns before touching the wait dependency. Cancellation
+/// before the immediate turn or during a repeated wait prevents the closure;
+/// only a returned closure outcome records turn completion. Cancellation is
+/// not a mid-turn preemption guarantee.
+///
+/// # Errors
+///
+/// Returns an exact cancellation query or wait failure, without executing work.
+pub fn execute_interruptible_paced_cache_limits_retry_lifecycle_turn<
+    Wait,
+    Turn,
+    Outcome,
+>(
+    pacer: &mut NativeExecutableCacheLimitsRetryLifecyclePacer,
+    lifecycle: &mut RetryLifecycle,
+    wait: &mut Wait,
+    turn: Turn,
+) -> NativeExecutableCacheLimitsRetryLifecycleTurnResult<Outcome, Wait::Error>
+where
+    Wait: NativeContinuationInterruptibleWait,
+    Turn: FnOnce(&mut RetryLifecycle) -> Outcome,
+{
+    match pacer.prepare_interruptible_turn(lifecycle, wait)? {
+        NativeExecutableCacheLimitsRetryLifecyclePacing::Cancelled => {
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::Cancelled)
+        },
+        NativeExecutableCacheLimitsRetryLifecyclePacing::CursorUnavailable => {
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::CursorUnavailable)
+        },
+        NativeExecutableCacheLimitsRetryLifecyclePacing::Ready { waited } => {
+            let outcome = turn(lifecycle);
+            pacer.observe_turn_completed();
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+                outcome,
+                waited,
+            })
+        },
+    }
+}
+
 /// Paces and executes at most one explicit caller-owned lifecycle turn.
 ///
 /// Missing cursor authority returns without touching the wait dependency or
@@ -165,6 +265,9 @@ where
     Turn: FnOnce(&mut RetryLifecycle) -> Outcome,
 {
     match pacer.prepare_turn(lifecycle, wait)? {
+        NativeExecutableCacheLimitsRetryLifecyclePacing::Cancelled => {
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::Cancelled)
+        },
         NativeExecutableCacheLimitsRetryLifecyclePacing::CursorUnavailable => {
             Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::CursorUnavailable)
         },
