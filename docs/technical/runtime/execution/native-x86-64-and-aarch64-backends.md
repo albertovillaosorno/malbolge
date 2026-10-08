@@ -54,6 +54,11 @@ x86-64 or AArch64 machine ID and bounds the complete relocation patch width
 (e.g., two-, four-, or eight-byte fields) to its owning section. Undefined
 relocation kinds and patches crossing a section boundary fail closed.
 
+Relocation-count overflow encoding is deliberately unsupported and rejected:
+its first record stores a count rather than a symbol relocation. x64
+span-dependent `SREL32`/`SSPAN32` and their required `PAIR` records also fail
+closed until the native adapter owns their paired linker semantics.
+
 Long COFF section and symbol names must also terminate inside their declared
 string-table extent; an unterminated referenced name is rejected even if its
 bytes are UTF-8 and otherwise fit in the object. Structural admission stops

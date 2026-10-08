@@ -46022,12 +46022,49 @@ fn check_compiled_coff_case(
     {
         return Err(String::from("COFF admission changed artifact identity"));
     }
+    check_rejected_coff_relocation_overflow(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
         check_rejected_coff_unterminated_long_name(&source, &artifact)?;
     } else {
         check_rejected_coff_relocation_section(&source, &artifact)?;
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_overflow(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section_count = usize::from(read_fixture_u16(object, 2)?);
+    let header = (0..section_count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            read_fixture_u16(object, header.saturating_add(32))
+                .is_ok_and(|count| count > 0)
+        })
+        .unwrap_or(20);
+    let flags_offset = header.saturating_add(36);
+    let flags = read_fixture_u32(object, flags_offset)?;
+    for extended_count in [None, Some(u16::MAX)] {
+        let mut mutated = object.to_vec();
+        write_fixture_u32(&mut mutated, flags_offset, flags | 0x0100_0000)?;
+        if let Some(count) = extended_count {
+            write_fixture_u16(&mut mutated, header.saturating_add(32), count)?;
+        }
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, mutated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::RelocationOverflow)
+        {
+            return Err(String::from(
+                "COFF admitted unsupported extended relocations",
+            ));
+        }
     }
     Ok(())
 }
@@ -46115,7 +46152,35 @@ fn check_x64_coff_relocation_types_and_spans(
             ));
         }
     }
+    check_x64_coff_span_dependent_types(source, &object, location)?;
     check_x64_coff_relocation_patch_widths(source, &object, location)
+}
+
+fn check_x64_coff_span_dependent_types(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    for kind in [0x000e, 0x000f, 0x0010] {
+        let mut mutated = object.to_vec();
+        write_fixture_u16(
+            &mut mutated,
+            location.relocation.saturating_add(8),
+            kind,
+        )?;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, mutated,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::RelocationPair)
+        {
+            return Err(format!(
+                "x64 COFF span-dependent kind {kind:#06x} admitted",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_x64_coff_relocation_patch_widths(

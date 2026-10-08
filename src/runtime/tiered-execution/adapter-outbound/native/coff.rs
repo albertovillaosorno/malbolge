@@ -54,6 +54,7 @@ const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
+const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
@@ -80,6 +81,10 @@ pub enum CoffAdmissionError {
     OptionalHeader,
     /// Required profile metadata is absent, malformed, or mismatched.
     ProfileMetadata,
+    /// Extended relocation counts are unsupported by the bounded parser.
+    RelocationOverflow,
+    /// Span-dependent x64 relocations require linker-owned pairs.
+    RelocationPair,
     /// A relocation type is undefined for the claimed COFF machine.
     RelocationType,
     /// This validator only admits Windows COFF target identities.
@@ -128,6 +133,12 @@ impl Display for CoffAdmissionError {
             },
             Self::ProfileMetadata => {
                 "COFF profile metadata is absent, malformed, or mismatched"
+            },
+            Self::RelocationOverflow => {
+                "COFF extended relocation counts are unsupported"
+            },
+            Self::RelocationPair => {
+                "COFF span-dependent relocation pairs are unsupported"
             },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
@@ -394,6 +405,11 @@ fn validate_sections(
 ) -> Result<(), CoffAdmissionError> {
     let mut text_count = 0usize;
     for section in sections {
+        // The overflow flag makes the first relocation a count record,
+        // rather than the symbol relocation parsed by this bounded reader.
+        if section.characteristics & IMAGE_SCN_LNK_NRELOC_OVFL != 0 {
+            return Err(CoffAdmissionError::RelocationOverflow);
+        }
         if section.raw_size != 0 {
             require_range(object, section.raw_start, section.raw_size)?;
         }
@@ -535,6 +551,14 @@ fn validate_symbols_and_relocations(
                 .and_then(|position| usize::try_from(position).ok())
                 .ok_or(CoffAdmissionError::Bounds)?;
             let kind = read_u16(object, checked_add(offset, 8)?)?;
+            // x64 span-dependent types require the following PAIR record.
+            // The pair is not an independent relocation and cannot be
+            // structurally admitted without owning its linker semantics.
+            if machine == IMAGE_FILE_MACHINE_AMD64
+                && matches!(kind, 0x000e..=0x0010)
+            {
+                return Err(CoffAdmissionError::RelocationPair);
+            }
             let width = relocation_patch_width(machine, kind)
                 .ok_or(CoffAdmissionError::RelocationType)?;
             if relative >= section.raw_size
@@ -567,21 +591,19 @@ fn validate_symbols_and_relocations(
 }
 
 // Width in bytes of the location patched by each defined PE/COFF relocation
-// type. ABSOLUTE and AMD64 PAIR are metadata-only and patch no section bytes.
-// Symbol closure is checked separately, including for metadata-only records.
+// type. ABSOLUTE is metadata-only and patches no section bytes. Unsupported
+// x64 span-dependent PAIR forms are rejected before this lookup.
 const fn relocation_patch_width(machine: u16, kind: u16) -> Option<usize> {
     match (machine, kind) {
-        (IMAGE_FILE_MACHINE_AMD64, 0x0000 | 0x000f)
-        | (IMAGE_FILE_MACHINE_ARM64, 0x0000) => Some(0),
+        (IMAGE_FILE_MACHINE_AMD64 | IMAGE_FILE_MACHINE_ARM64, 0x0000) => {
+            Some(0)
+        },
         (IMAGE_FILE_MACHINE_AMD64, 0x0001)
         | (IMAGE_FILE_MACHINE_ARM64, 0x000e) => Some(8),
         (IMAGE_FILE_MACHINE_AMD64, 0x000a)
         | (IMAGE_FILE_MACHINE_ARM64, 0x000d) => Some(2),
         (IMAGE_FILE_MACHINE_AMD64, 0x000c) => Some(1),
-        (
-            IMAGE_FILE_MACHINE_AMD64,
-            0x0002..=0x0009 | 0x000b | 0x000d..=0x000e | 0x0010,
-        )
+        (IMAGE_FILE_MACHINE_AMD64, 0x0002..=0x0009 | 0x000b | 0x000d)
         | (IMAGE_FILE_MACHINE_ARM64, 0x0001..=0x000c | 0x000f..=0x0011) => {
             Some(4)
         },
