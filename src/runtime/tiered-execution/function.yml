@@ -936,6 +936,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Observe finite scoped cache worker callback completions.
+  - id: part-0168
+    path: composition/tier/cache_bounded.rs
+    kind: composition
+    language: rust
+    responsibility: Bound advisory progress queues and retain drop evidence.
 projects: []
 tests: []
 graph:

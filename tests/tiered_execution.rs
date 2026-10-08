@@ -115,6 +115,8 @@ pub mod executable_cache_limits_retry_run;
 pub mod executable_cache_limits_retry_run_fallible;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_worker.rs"]
 pub mod executable_cache_limits_scoped_worker;
+#[path = "../src/runtime/tiered-execution/composition/tier/cache_bounded.rs"]
+pub mod executable_cache_limits_scoped_worker_bounded_progress;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_progress.rs"]
 pub mod executable_cache_limits_scoped_worker_progress;
 #[path = "../src/runtime/tiered-execution/composition/tier/cache_trigger.rs"]

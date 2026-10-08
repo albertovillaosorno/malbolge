@@ -1062,6 +1062,12 @@ behavior.
   join and preserve exact cancellation evidence alongside the worker result.
   Successful supervision does not request stop, and panics still revoke cursor
   authority through the existing scoped owner.
+
+  A separate opt-in bounded progress transport now caps queued observations at
+  a positive caller-owned capacity, independently of finite retry turns.
+  Nonblocking sends retain exact enqueued, full-buffer, and abandoned-receiver
+  totals after join; a lost notice never changes cursor rights or work outcome.
+  The supervisor owns the receiver and may drop it explicitly during the run.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 

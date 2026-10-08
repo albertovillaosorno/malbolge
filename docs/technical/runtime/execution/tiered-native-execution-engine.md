@@ -2413,6 +2413,19 @@ the joined worker retains separate terminal evidence. Successful supervision
 never cancels implicitly, and panic recovery still revokes in-memory cursor
 rights through the original scoped worker.
 
+A separate opt-in bounded progress adapter now accepts positive queue capacity
+and finite turn limits. It uses a nonblocking bounded channel, dropping only
+advisory notices when full or when the supervisor abandons its owned receiver.
+The joined result retains independent exact counts for notices enqueued,
+dropped while full, and dropped after receiver abandonment. An enqueue does not
+prove consumption and missing notice indices never authorize execution.
+
+Transport totals count each *returned* callback, including a returned `Err`,
+while pre-turn cancellation, cursor failure, and panics invent no completion.
+The queue holds at most the chosen capacity instead of the finite turn maximum;
+full or dropped observation never blocks the worker or retries native work.
+The original unbounded progress API remains unchanged for existing callers.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
