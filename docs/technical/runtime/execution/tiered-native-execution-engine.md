@@ -2318,8 +2318,9 @@ configured positive duration first. Cursor loss fails closed before waiting,
 and wait failure grants no ready evidence.
 
 Retained conflict-stop evidence is not reinterpreted as permanent lifecycle
-shutdown. Turn execution, cancellation, and background/async ownership remain
-separate.
+shutdown. A one-turn composition now invokes caller-owned work only after
+readiness and records completion after any returned outcome; callers may repeat
+it synchronously. Cancellation and background/async ownership remain separate.
 
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and

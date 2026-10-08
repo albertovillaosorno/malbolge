@@ -45,6 +45,12 @@ use crate::relative_wait::NativeContinuationRelativeWait;
 
 type RetryLifecycle = lifecycle::NativeExecutableCacheLimitsRetryLifecycle;
 
+/// Result of one paced caller-owned lifecycle turn.
+pub type NativeExecutableCacheLimitsRetryLifecycleTurnResult<
+    Outcome,
+    WaitError,
+> = Result<NativeExecutableCacheLimitsRetryLifecycleTurn<Outcome>, WaitError>;
+
 /// Readiness evidence produced before one explicit lifecycle turn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeExecutableCacheLimitsRetryLifecyclePacing {
@@ -53,6 +59,20 @@ pub enum NativeExecutableCacheLimitsRetryLifecyclePacing {
     /// One lifecycle turn is ready for caller-owned execution.
     Ready {
         /// Whether this readiness required the configured relative wait.
+        waited: bool,
+    },
+}
+
+/// Result of composing pacing with one caller-owned lifecycle turn.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NativeExecutableCacheLimitsRetryLifecycleTurn<Outcome> {
+    /// No safe cursor existed, so neither waiting nor turn execution occurred.
+    CursorUnavailable,
+    /// One caller-owned turn completed after optional repeat pacing.
+    Executed {
+        /// Exact caller-owned turn outcome.
+        outcome: Outcome,
+        /// Whether the turn followed the configured repeated-turn wait.
         waited: bool,
     },
 }
@@ -121,6 +141,41 @@ impl NativeExecutableCacheLimitsRetryLifecyclePacer {
     #[must_use]
     pub const fn repeat_delay_nanoseconds(&self) -> NonZeroU64 {
         self.repeat_delay_nanoseconds
+    }
+}
+
+/// Paces and executes at most one explicit caller-owned lifecycle turn.
+///
+/// Missing cursor authority returns without touching the wait dependency or
+/// invoking `turn`. Wait failure returns before `turn`. Once `turn` returns,
+/// completion is recorded even when its caller-owned outcome represents a
+/// semantic failure; the next authorized turn is therefore paced.
+///
+/// # Errors
+///
+/// Returns the exact delegated relative-wait failure before turn execution.
+pub fn execute_paced_cache_limits_retry_lifecycle_turn<Wait, Turn, Outcome>(
+    pacer: &mut NativeExecutableCacheLimitsRetryLifecyclePacer,
+    lifecycle: &mut RetryLifecycle,
+    wait: &mut Wait,
+    turn: Turn,
+) -> NativeExecutableCacheLimitsRetryLifecycleTurnResult<Outcome, Wait::Error>
+where
+    Wait: NativeContinuationRelativeWait,
+    Turn: FnOnce(&mut RetryLifecycle) -> Outcome,
+{
+    match pacer.prepare_turn(lifecycle, wait)? {
+        NativeExecutableCacheLimitsRetryLifecyclePacing::CursorUnavailable => {
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::CursorUnavailable)
+        },
+        NativeExecutableCacheLimitsRetryLifecyclePacing::Ready { waited } => {
+            let outcome = turn(lifecycle);
+            pacer.observe_turn_completed();
+            Ok(NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+                outcome,
+                waited,
+            })
+        },
     }
 }
 

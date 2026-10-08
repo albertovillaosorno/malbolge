@@ -997,8 +997,10 @@ behavior.
   retained-cursor turn is immediate, completed later turns use the configured
   positive relative delay, cursor loss avoids waiting, and wait failure grants
   no readiness. Retained conflict-stop evidence remains per-attempt evidence
-  rather than a permanent lifecycle shutdown signal. Turn execution,
-  cancellation, repeated background ownership, and asynchronous wake ownership
+  rather than a permanent lifecycle shutdown signal. One-turn composition now
+  invokes caller-owned work only after readiness, records completion after any
+  returned outcome, and can be repeated synchronously by the caller.
+  Cancellation, repeated background ownership, and asynchronous wake ownership
   remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive

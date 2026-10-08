@@ -163,3 +163,96 @@ fn failed_repeat_wait_grants_no_ready_evidence() -> Result<(), String> {
         Err(String::from("wait failure did not preserve exact request"))
     }
 }
+
+#[test]
+fn paced_turn_executes_immediate_then_waited_repeats() -> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(29)?);
+    let mut lifecycle = lifecycle_with_cursor()?;
+    let mut wait = FakeWait::default();
+    let mut calls = 0usize;
+    let first = execute_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| {
+            calls = calls.saturating_add(1);
+            31u8
+        },
+    )
+    .map_err(String::from)?;
+    let second = execute_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| {
+            calls = calls.saturating_add(1);
+            37u8
+        },
+    )
+    .map_err(String::from)?;
+    if matches!(
+        first,
+        NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+            outcome: 31,
+            waited: false,
+        }
+    ) && matches!(
+        second,
+        NativeExecutableCacheLimitsRetryLifecycleTurn::Executed {
+            outcome: 37,
+            waited: true,
+        }
+    ) && calls == 2
+        && wait.calls == [positive_u64(29)?]
+    {
+        Ok(())
+    } else {
+        Err(String::from("paced turn composition drifted"))
+    }
+}
+
+#[test]
+fn paced_turn_skips_execution_without_ready_evidence() -> Result<(), String> {
+    let mut pacer =
+        NativeExecutableCacheLimitsRetryLifecyclePacer::new(positive_u64(31)?);
+    pacer.observe_turn_completed();
+    let mut missing = RetryLifecycle::new(
+        positive_usize(32)?,
+        positive_usize(3)?,
+        RetryPolicy::return_on_contention(),
+    );
+    let mut wait = FakeWait::default();
+    let mut calls = 0usize;
+    let unavailable = execute_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut missing,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .map_err(String::from)?;
+    if unavailable
+        != NativeExecutableCacheLimitsRetryLifecycleTurn::CursorUnavailable
+        || calls != 0
+        || !wait.calls.is_empty()
+    {
+        return Err(String::from("cursorless paced turn executed work"));
+    }
+
+    let mut lifecycle = lifecycle_with_cursor()?;
+    wait.fail = true;
+    let error = execute_paced_cache_limits_retry_lifecycle_turn(
+        &mut pacer,
+        &mut lifecycle,
+        &mut wait,
+        |_lifecycle| calls = calls.saturating_add(1),
+    )
+    .err()
+    .ok_or_else(|| String::from("paced wait failure disappeared"))?;
+    if error == "wait failed" && calls == 0 && wait.calls == [positive_u64(31)?]
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed paced turn executed caller work"))
+    }
+}
