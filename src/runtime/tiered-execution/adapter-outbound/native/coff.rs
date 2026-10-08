@@ -89,6 +89,8 @@ pub enum CoffAdmissionError {
     RelocationOverflow,
     /// Span-dependent x64 relocations require linker-owned pairs.
     RelocationPair,
+    /// Relocation count and table pointer disagree about table presence.
+    RelocationPointer,
     /// A relocation type is undefined for the claimed COFF machine.
     RelocationType,
     /// This validator only admits Windows COFF target identities.
@@ -145,6 +147,9 @@ impl Display for CoffAdmissionError {
             },
             Self::RelocationPair => {
                 "COFF span-dependent relocation pairs are unsupported"
+            },
+            Self::RelocationPointer => {
+                "COFF relocation count and table pointer disagree"
             },
             Self::RelocationType => {
                 "COFF relocation type is invalid for the native machine"
@@ -426,6 +431,11 @@ fn validate_sections(
         // rather than the symbol relocation parsed by this bounded reader.
         if section.characteristics & IMAGE_SCN_LNK_NRELOC_OVFL != 0 {
             return Err(CoffAdmissionError::RelocationOverflow);
+        }
+        // A zero relocation count must not advertise an orphan pointer;
+        // likewise, real relocation records require a nonzero table pointer.
+        if (section.relocation_count == 0) != (section.relocation_start == 0) {
+            return Err(CoffAdmissionError::RelocationPointer);
         }
         if section.raw_size != 0 {
             require_range(object, section.raw_start, section.raw_size)?;

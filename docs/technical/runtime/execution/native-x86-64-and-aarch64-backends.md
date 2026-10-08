@@ -68,6 +68,10 @@ COFF line-number debugging records are not implemented by this validator.
 Both the section's line-number pointer and count must be zero; orphan pointers
 and advertised debug tables fail closed rather than bypassing layout checks.
 
+Relocation table pointers and counts must also agree about table presence:
+zero count requires zero pointer; a nonzero count requires a nonzero pointer.
+This forbids unowned relocation pointers as well as records at offset zero.
+
 Long COFF section and symbol names must also terminate inside their declared
 string-table extent; an unterminated referenced name is rejected even if its
 bytes are UTF-8 and otherwise fit in the object. Structural admission stops

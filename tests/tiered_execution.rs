@@ -46026,6 +46026,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_overlapping_storage(&source, &artifact)?;
     check_rejected_coff_section_alias(&source, &artifact)?;
     check_rejected_coff_line_numbers(&source, &artifact)?;
+    check_rejected_coff_relocation_pointer(&source, &artifact)?;
     if case.isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(&source, &artifact)?;
         check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
@@ -46136,6 +46137,31 @@ fn check_rejected_coff_line_numbers(
         {
             return Err(format!(
                 "COFF admitted line numbers: pointer={pointer}, count={count}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_relocation_pointer(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_text_header(artifact.object())?;
+    // Even with an empty table the orphan pointer cannot be interpreted
+    // as executable raw data or an independently owned relocation region.
+    for (pointer, count) in [(20u32, 0u16), (0, 1)] {
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, header.saturating_add(24), pointer)?;
+        write_fixture_u16(&mut bytes, header.saturating_add(32), count)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::RelocationPointer)
+        {
+            return Err(format!(
+                "COFF relocation pointer={pointer} count={count} accepted"
             ));
         }
     }
