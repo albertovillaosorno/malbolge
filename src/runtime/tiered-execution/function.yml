@@ -926,6 +926,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Retain fallible cache-trigger turn and wait progression.
+  - id: part-0166
+    path: composition/tier/cache_worker.rs
+    kind: composition
+    language: rust
+    responsibility: Supervise and join finite interruptible host worker turns.
 projects: []
 tests: []
 graph:

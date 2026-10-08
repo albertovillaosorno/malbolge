@@ -1031,6 +1031,14 @@ behavior.
   do not, and cancellation/cursor/limit/caller-stop outcomes remain typed. It
   creates no workers and does not automatically retry product activation errors.
 
+  One supervised finite scoped host worker now borrows lifecycle/pacer state,
+  receives cancellation through the existing request-only handle, and is always
+  joined before returning. It preserves separate worker and supervisor results,
+  uses typed spawn/panic failures, and never detaches affine lifecycle
+  ownership.
+  Unattended worker pools, durable scheduling, and mid-turn preemption remain
+  open.
+
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-
   bin-count thresholds. Successful records carry exact cumulative overflow

@@ -2359,6 +2359,18 @@ exhaustion keep their distinct terminal evidence.
 
 No callback error is retried implicitly.
 
+The first finite scoped host worker now accepts borrowed lifecycle/pacer state,
+a positive turn limit, a `Send` caller turn, and one supervisor callback.
+A fresh interruptible wait gives the supervisor a cancellation request-only
+handle while the worker owns mutable retry state. The scoped thread is joined
+before ownership returns, including if the supervisor returns immediately.
+
+The worker retains exact callback/relative-wait outcomes plus the supervisor's
+separate result, and spawn failure or worker panic is typed rather than
+fabricated as successful work. Cooperative cancellation applies only before a
+turn, not within running native or interpreter code. This is not a detached
+background scheduler, durable work queue, worker pool, or hard deadline.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact

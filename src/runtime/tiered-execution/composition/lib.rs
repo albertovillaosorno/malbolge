@@ -123,6 +123,8 @@ pub mod executable_cache_limits_retry_reason;
 pub mod executable_cache_limits_retry_run;
 #[path = "tier/cache_run_try.rs"]
 pub mod executable_cache_limits_retry_run_fallible;
+#[path = "tier/cache_worker.rs"]
+pub mod executable_cache_limits_scoped_worker;
 #[path = "tier/cache_trigger.rs"]
 pub mod executable_cache_limits_trigger_cadence;
 #[path = "tier/cache_ca.rs"]
