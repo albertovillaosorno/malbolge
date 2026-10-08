@@ -931,6 +931,11 @@ parts:
     kind: composition
     language: rust
     responsibility: Supervise and join finite interruptible host worker turns.
+  - id: part-0167
+    path: composition/tier/cache_progress.rs
+    kind: composition
+    language: rust
+    responsibility: Observe finite scoped cache worker callback completions.
 projects: []
 tests: []
 graph:

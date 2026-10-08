@@ -1050,6 +1050,12 @@ behavior.
   `Err`, preserving the original error plus exact cancellation request evidence
   separately from typed worker outcomes. Successful supervision changes no
   cancellation policy; ordinary returned errors do not revoke cursor authority.
+
+  A finite scoped progress adapter now reports each returned callback's exact
+  one-based count and continued/stop/error class to the supervisor without
+  sharing mutable cursor state or product failure values. Advisory notices use
+  a nonblocking in-memory channel limited by finite turns; a dropped receiver
+  never blocks work, and only the joined result grants terminal authority.
   Unattended worker pools, durable scheduling, and mid-turn preemption remain
   open.
 

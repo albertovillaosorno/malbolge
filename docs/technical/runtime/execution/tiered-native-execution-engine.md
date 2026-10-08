@@ -2394,6 +2394,18 @@ error does not clear cursor authority or preempt an in-progress callback, unlike
 a supervisor panic which still revokes process-local retry authority. The
 original generic supervisor entry point preserves its return semantics.
 
+An opt-in finite scoped progress adapter now emits one ordered, one-based notice
+for each returned callback, classified as continued, caller-stopped, or failed.
+Notices disclose neither the caller's stop value nor its error; only the joined
+worker result owns exact terminal evidence. The supervisor can consume notices
+and request cooperative cancellation without borrowing mutable retry state.
+
+The channel send never blocks the worker and receiver abandonment does not
+change caller-owned execution. The in-memory channel can queue at most the
+explicit finite turn limit, so callers must choose a safe resource bound.
+Disconnection proves no successful terminal outcome and must not be treated as
+cursor admission or durable completion; panics emit no invented callback notice.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
