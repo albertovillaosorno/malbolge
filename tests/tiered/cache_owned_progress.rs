@@ -1134,3 +1134,96 @@ fn pending_join_preserves_live_progress_snapshot_and_receiver_loss()
         Err(String::from("pending snapshot lost explicit receiver drop"))
     }
 }
+
+#[test]
+fn live_progress_snapshot_does_not_authorize_after_callback_panic()
+-> Result<(), String> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let mut called = 0usize;
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 3)?,
+        resources()?,
+        move |current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                entered_tx.send(()).map_err(|_error| "entry failed")?;
+                release_rx.recv().map_err(|_error| "release failed")?;
+                current.replace_expected_cursor(None);
+                resume_unwind(Box::new("second callback panic"));
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    entered_rx
+        .recv()
+        .map_err(|_error| String::from("entry missing"))?;
+    let live = handle.progress_totals();
+    release_tx
+        .send(())
+        .map_err(|_error| String::from("release missing"))?;
+    let finished = handle.join();
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if live
+        == (Totals {
+            enqueued: 1,
+            full: 0,
+            receiver_gone: 0,
+        })
+        && finished.totals == live
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::WorkerPanicked
+        )
+        && joined.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("live observation authorized panicking worker"))
+    }
+}
+
+#[test]
+fn finished_progress_try_join_keeps_exact_returned_turn_error()
+-> Result<(), String> {
+    let handle = start_owned_cache_retry_worker_with_bounded_progress(
+        limits(1, 3)?,
+        resources()?,
+        |_current| Err::<ControlFlow<&'static str>, _>("exact turn failure"),
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let finished = match handle.try_join() {
+        NativeCacheOwnedProgressTryJoin::Joined(finished) => finished,
+        NativeCacheOwnedProgressTryJoin::Pending(_pending) => {
+            return Err(String::from(
+                "finished failed worker remained pending",
+            ));
+        },
+    };
+    let joined = finished.joined.map_err(|error| format!("{error:?}"))?;
+    if finished.totals
+        == (Totals {
+            enqueued: 1,
+            full: 0,
+            receiver_gone: 0,
+        })
+        && matches!(
+            joined.terminal,
+            owned::NativeCacheOwnedWorkerTerminal::Returned(Err(
+                RunFailure::Turn {
+                    completed: 1,
+                    error: "exact turn failure"
+                }
+            ))
+        )
+        && joined.resources.lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("nonblocking join erased returned turn error"))
+    }
+}

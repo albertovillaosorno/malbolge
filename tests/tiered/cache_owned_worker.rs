@@ -848,3 +848,37 @@ fn discarding_pending_join_owner_still_cancels_and_joins() -> Result<(), String>
         ))
     }
 }
+
+#[test]
+fn completed_try_join_retains_callback_destructor_panic_and_cursor_loss()
+-> Result<(), String> {
+    let destructor = PanicWhenDropped;
+    let handle = start_owned_cache_retry_worker(
+        positive(1)?,
+        resources()?,
+        move |_current| {
+            let _keep = &destructor;
+            Ok::<_, &'static str>(ControlFlow::Break("returned before drop"))
+        },
+    )
+    .map_err(|_failure| String::from("startup failed"))?;
+    while !handle.is_finished() {
+        thread::yield_now();
+    }
+    let joined = match handle.try_join() {
+        NativeCacheOwnedWorkerTryJoin::Joined(result) => result,
+        NativeCacheOwnedWorkerTryJoin::Pending(_pending) => {
+            return Err(String::from("finished panic worker reported pending"));
+        },
+    }
+    .map_err(|error| format!("{error:?}"))?;
+    if matches!(
+        joined.terminal,
+        NativeCacheOwnedWorkerTerminal::WorkerPanicked
+    ) && joined.resources.lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("nonblocking join admitted destructor panic"))
+    }
+}
