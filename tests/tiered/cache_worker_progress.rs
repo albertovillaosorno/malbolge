@@ -281,3 +281,152 @@ fn panicking_turn_does_not_fabricate_returned_notice() -> Result<(), String> {
         Err(String::from("panic was misreported as callback completion"))
     }
 }
+
+#[test]
+fn an_in_flight_callback_never_emits_completion_progress() -> Result<(), String>
+{
+    use std::sync::mpsc::TryRecvError;
+
+    let (mut lifecycle, _default_pacer) = fixture()?;
+    let mut pacer = Pacer::new(nanos(5_000_000_000)?);
+    let (entry_tx, entry_rx) = mpsc::sync_channel::<()>(0);
+    let (release_tx, release_rx) = mpsc::sync_channel::<()>(0);
+    let result = run_scoped_cache_retry_worker_with_progress(
+        positive(3)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        move |_current| {
+            entry_tx.send(()).map_err(|_error| "entry failed")?;
+            release_rx.recv().map_err(|_error| "release failed")?;
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |cancel, notices| {
+            entry_rx.recv().map_err(|_error| "entry missing")?;
+            let premature = notices.try_recv();
+            release_tx.send(()).map_err(|_error| "release failed")?;
+            let first = notices.recv().map_err(|_error| "notice missing")?;
+            let requested =
+                cancel.cancel().map_err(|_error| "cancel failed")?;
+            Ok::<_, &'static str>((premature, first, requested))
+        },
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run == Ok(RunStop::Cancelled { completed: 1 })
+        && result.supervisor
+            == Ok((
+                Err(TryRecvError::Empty),
+                Notice {
+                    completed: 1,
+                    kind: Kind::Continued,
+                },
+                true,
+            ))
+    {
+        Ok(())
+    } else {
+        Err(String::from("notice preceded completion or cancellation"))
+    }
+}
+
+#[test]
+fn continued_then_failed_reports_exact_terminal_error() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let mut called = 0usize;
+    let result = run_scoped_cache_retry_worker_with_progress(
+        positive(4)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                Err("second callback failed")
+            } else {
+                Ok(ControlFlow::<&'static str>::Continue(()))
+            }
+        },
+        |_cancel, notices| notices.iter().collect::<Vec<_>>(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run
+        == Err(RunFailure::Turn {
+            completed: 2,
+            error: "second callback failed",
+        })
+        && result.supervisor
+            == vec![
+                Notice {
+                    completed: 1,
+                    kind: Kind::Continued,
+                },
+                Notice {
+                    completed: 2,
+                    kind: Kind::Failed,
+                },
+            ]
+        && called == 2
+        && lifecycle.expected_cursor().is_some()
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed callback lost ordered progress"))
+    }
+}
+
+#[test]
+fn worker_panic_after_one_completion_closes_stream() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let mut called = 0usize;
+    let mut observed = Vec::new();
+    let result = run_scoped_cache_retry_worker_with_progress(
+        positive(4)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |_current| {
+            called = called.saturating_add(1);
+            if called == 2 {
+                resume_unwind(Box::new("second callback panic"));
+            }
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| observed.extend(notices.iter()),
+    );
+    if matches!(
+        result,
+        Err(worker::NativeCacheScopedWorkerError::WorkerPanicked)
+    ) && lifecycle.expected_cursor().is_none()
+        && called == 2
+        && observed
+            == vec![Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            }]
+    {
+        Ok(())
+    } else {
+        Err(String::from("panicking callback retained cursor authority"))
+    }
+}
+
+#[test]
+fn cursor_loss_after_report_blocks_next_turn() -> Result<(), String> {
+    let (mut lifecycle, mut pacer) = fixture()?;
+    let result = run_scoped_cache_retry_worker_with_progress(
+        positive(4)?,
+        Resources::new(&mut lifecycle, &mut pacer),
+        |current| {
+            current.replace_expected_cursor(None);
+            Ok::<_, &'static str>(ControlFlow::<&'static str>::Continue(()))
+        },
+        |_cancel, notices| notices.iter().collect::<Vec<_>>(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    if result.run == Ok(RunStop::CursorUnavailable { completed: 1 })
+        && result.supervisor
+            == vec![Notice {
+                completed: 1,
+                kind: Kind::Continued,
+            }]
+        && lifecycle.expected_cursor().is_none()
+    {
+        Ok(())
+    } else {
+        Err(String::from("progress overrode revoked cursor authority"))
+    }
+}
