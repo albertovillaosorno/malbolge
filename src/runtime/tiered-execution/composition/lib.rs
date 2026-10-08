@@ -143,6 +143,8 @@ pub mod executable_durable_lease_retry;
 pub mod execution_cache;
 #[path = "../adapter-outbound/clock/main.rs"]
 pub mod execution_clock;
+#[path = "../adapter-outbound/wakeup/cancel.rs"]
+pub mod execution_interruptible_wait;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
 #[path = "../adapter-outbound/wakeup/main.rs"]
@@ -211,6 +213,8 @@ pub mod geometry_native_rotate_sequence;
 pub mod geometry_native_sequence;
 #[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
+#[path = "../port-outbound/interruptible_wait.rs"]
+pub mod interruptible_wait;
 #[path = "../application/jit_compilation.rs"]
 pub mod jit_compilation;
 #[path = "../port-outbound/jit_compiler.rs"]

@@ -1000,8 +1000,12 @@ behavior.
   rather than a permanent lifecycle shutdown signal. One-turn composition now
   invokes caller-owned work only after readiness, records completion after any
   returned outcome, and can be repeated synchronously by the caller.
-  Cancellation, repeated background ownership, and asynchronous wake ownership
-  remain open.
+
+  A separate interruptible relative-wait contract and standard adapter now
+  distinguish elapsed time from sticky cancellation through a condition-variable
+  predicate. It grants a cloneable cancellation request handle, but no worker,
+  scheduler loop, or mid-turn interruption authority. Pacer integration,
+  background ownership, and asynchronous wake scheduling remain open.
 
   Cumulative latency now adds an independent cache-limit signal with a positive
   sample gate and caller-owned inclusive arithmetic-mean, maximum, and overflow-

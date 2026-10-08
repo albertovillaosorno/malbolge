@@ -16,7 +16,8 @@ It must not bypass another function or architectural kind boundary.
 
 - `adapter-outbound/`: governed native/cache parts, bounded opaque-blob
   storage with cooperative conditional publication, atomic filesystem blob-pair
-  generations, standard monotonic interval timing, and blocking relative waits.
+  generations, monotonic interval timing, blocking relative waits, and
+  cooperative interruptible waits.
 - `application/`: explicit bounded opaque-blob and atomic pair persistence plus
   conditional publication use cases.
 - `composition/`: handoff plus cached/leased retry routing, semantic rebase,
@@ -33,5 +34,5 @@ It must not bypass another function or architectural kind boundary.
   installation, and exact loaded JIT guest dispatch through a caller-owned
   native runner.
 - `port-outbound/`: storage-neutral bounded/conditional blob, atomic blob-pair,
-  monotonic clock, positive relative-wait, and budget-enforcing JIT compiler
+  monotonic clock, relative-wait, interruptible-wait, and JIT compiler
   contracts.

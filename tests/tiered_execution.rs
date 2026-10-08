@@ -127,6 +127,8 @@ pub mod executable_cache_limits_window_plan;
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/clock/main.rs"]
 pub mod execution_clock;
+#[path = "../src/runtime/tiered-execution/adapter-outbound/wakeup/cancel.rs"]
+pub mod execution_interruptible_wait;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/wakeup/main.rs"]
@@ -195,6 +197,8 @@ pub mod geometry_native_rotate_sequence;
 pub mod geometry_native_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
+#[path = "../src/runtime/tiered-execution/port-outbound/interruptible_wait.rs"]
+pub mod interruptible_wait;
 #[path = "../src/runtime/tiered-execution/application/jit_compilation.rs"]
 pub mod jit_compilation;
 #[path = "../src/runtime/tiered-execution/port-outbound/jit_compiler.rs"]

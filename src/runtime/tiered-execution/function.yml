@@ -905,6 +905,17 @@ parts:
     language: rust
     responsibility: >-
       Pace explicit repeated cache-trigger lifecycle turns with relative waits.
+  - id: part-0162
+    path: port-outbound/interruptible_wait.rs
+    kind: port-outbound
+    language: rust
+    responsibility: >-
+      Separate relative wait completion from cancellation evidence.
+  - id: part-0163
+    path: adapter-outbound/wakeup/cancel.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind cooperative cancellation to standard condition waits.
 projects: []
 tests: []
 graph:

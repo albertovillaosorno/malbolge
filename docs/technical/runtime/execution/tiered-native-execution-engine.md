@@ -2322,6 +2322,14 @@ shutdown. A one-turn composition now invokes caller-owned work only after
 readiness and records completion after any returned outcome; callers may repeat
 it synchronously. Cancellation and background/async ownership remain separate.
 
+An independent interruptible relative-wait port now distinguishes timeout
+completion from sticky cooperative cancellation. The standard adapter pairs a
+wait endpoint with a cloneable request-only handle, using a mutex-protected
+predicate and condition-variable notification to avoid lost or spurious wakes.
+Poisoned synchronization and indeterminate wakes remain typed failures rather
+than fabricated completion. Lifecycle integration, mid-turn cancellation,
+background work, and asynchronous wake scheduling remain open.
+
 Cumulative latency records now provide an independent cache-limit signal with a
 positive sample gate plus caller-owned inclusive arithmetic-mean, maximum, and
 overflow-bin-count thresholds. Each successful histogram record carries exact
