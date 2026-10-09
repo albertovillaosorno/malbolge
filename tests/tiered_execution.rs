@@ -46053,6 +46053,7 @@ fn check_coff_isa_specific_mutations(
     artifact: &UntrustedNativeObjectArtifact,
     isa: HostIsa,
 ) -> Result<(), String> {
+    check_rejected_coff_ambiguous_auxiliary_section(source, artifact)?;
     if isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(source, artifact)?;
         check_x64_coff_relocation_types_and_spans(source, artifact)?;
@@ -46065,6 +46066,43 @@ fn check_coff_isa_specific_mutations(
     } else {
         check_rejected_coff_comdat_selection(source, artifact)?;
         check_rejected_coff_relocation_section(source, artifact)?;
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_ambiguous_auxiliary_section(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let sections = usize::from(read_fixture_u16(object, 2)?);
+    let header = (0..sections)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            let name = object.get(*header..header.saturating_add(8));
+            let flags = read_fixture_u32(object, header.saturating_add(36));
+            let size = read_fixture_u32(object, header.saturating_add(16));
+            name != Some(b".mbprof\0".as_slice())
+                && name != Some(b".text\0\0\0".as_slice())
+                && flags.is_ok_and(|bits| bits & 0x0000_0040 != 0)
+                && size.is_ok_and(|bytes| bytes > 0)
+        })
+        .ok_or("compiler fixture lacks initialized auxiliary section")?;
+    let offset = header.saturating_add(36);
+    let original = read_fixture_u32(object, offset)?;
+    for contradictory in [0x0000_0020u32, 0x0000_0080] {
+        let mut bytes = object.to_vec();
+        write_fixture_u32(&mut bytes, offset, original | contradictory)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!(
+                "COFF admitted auxiliary section with {contradictory:#x}"
+            ));
+        }
     }
     Ok(())
 }

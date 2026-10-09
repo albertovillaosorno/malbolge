@@ -46,6 +46,22 @@ use super::{
 };
 use crate::execution_cache::{HostIsa, HostOperatingSystem, NativeArtifactKey};
 
+const COFF_ENTRYSYMBOL_MESSAGE: &str =
+    "required native entry symbol is missing or duplicated";
+const COFF_ENTRYTARGET_MESSAGE: &str =
+    "native entry is not defined inside executable .text";
+const COFF_EXTERNALDEPENDENCY_MESSAGE: &str =
+    "COFF object references an undefined or invalid symbol";
+const COFF_EXTRAEXTERNALFUNCTION_MESSAGE: &str =
+    "COFF object exports an unexpected external function";
+const COFF_FILECHARACTERISTICS_MESSAGE: &str =
+    "COFF object claims executable-image file attributes";
+const COFF_MACHINE_MESSAGE: &str =
+    "COFF machine does not match native target identity";
+const COFF_OPTIONALHEADER_MESSAGE: &str =
+    "COFF bootstrap object must not contain an optional header";
+const COFF_PROFILEMETADATA_MESSAGE: &str =
+    "COFF profile metadata is absent, malformed, or mismatched";
 const COFF_HEADER_BYTES: usize = 20;
 const COFF_RELOCATION_BYTES: usize = 10;
 const COFF_SECTION_BYTES: usize = 40;
@@ -105,6 +121,8 @@ pub enum CoffAdmissionError {
     RelocationType,
     /// Section characteristics use the reserved alignment encoding.
     SectionAlignment,
+    /// A section claims multiple incompatible content kinds.
+    SectionContent,
     /// An auxiliary section requires unsupported linker selection semantics.
     SectionLinkage,
     /// Raw section size and file-data pointer disagree about byte ownership.
@@ -143,32 +161,16 @@ impl Display for CoffAdmissionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(match self {
             Self::Bounds => "COFF structure exceeds object bounds",
-            Self::EntrySymbol => {
-                "required native entry symbol is missing or duplicated"
-            },
-            Self::EntryTarget => {
-                "native entry is not defined inside executable .text"
-            },
-            Self::ExternalDependency => {
-                "COFF object references an undefined or invalid symbol"
-            },
-            Self::ExtraExternalFunction => {
-                "COFF object exports an unexpected external function"
-            },
-            Self::FileCharacteristics => {
-                "COFF object claims executable-image file attributes"
-            },
+            Self::EntrySymbol => COFF_ENTRYSYMBOL_MESSAGE,
+            Self::EntryTarget => COFF_ENTRYTARGET_MESSAGE,
+            Self::ExternalDependency => COFF_EXTERNALDEPENDENCY_MESSAGE,
+            Self::ExtraExternalFunction => COFF_EXTRAEXTERNALFUNCTION_MESSAGE,
+            Self::FileCharacteristics => COFF_FILECHARACTERISTICS_MESSAGE,
             Self::LayoutOverlap => "COFF file regions overlap",
             Self::LineNumbers => "COFF line-number records are unsupported",
-            Self::Machine => {
-                "COFF machine does not match native target identity"
-            },
-            Self::OptionalHeader => {
-                "COFF bootstrap object must not contain an optional header"
-            },
-            Self::ProfileMetadata => {
-                "COFF profile metadata is absent, malformed, or mismatched"
-            },
+            Self::Machine => COFF_MACHINE_MESSAGE,
+            Self::OptionalHeader => COFF_OPTIONALHEADER_MESSAGE,
+            Self::ProfileMetadata => COFF_PROFILEMETADATA_MESSAGE,
             Self::RelocationOverflow => {
                 "COFF extended relocation counts are unsupported"
             },
@@ -182,6 +184,9 @@ impl Display for CoffAdmissionError {
                 "COFF relocation type is invalid for the native machine"
             },
             Self::SectionAlignment => "COFF uses reserved section alignment",
+            Self::SectionContent => {
+                "COFF section has conflicting content kinds"
+            },
             Self::SectionLinkage => "COFF section requires linker selection",
             Self::SectionPointer => "COFF section raw-size/pointer mismatch",
             Self::SectionVirtualSize => {
@@ -494,61 +499,13 @@ fn validate_sections(
 ) -> Result<(), CoffAdmissionError> {
     let mut text_count = 0usize;
     for section in sections {
-        // Alignment codes 1..=14 are defined in PE/COFF. The all-ones
-        // code 15 is reserved, not a valid requested section alignment.
-        if section.characteristics & IMAGE_SCN_ALIGN_MASK
-            == IMAGE_SCN_ALIGN_MASK
-        {
-            return Err(CoffAdmissionError::SectionAlignment);
-        }
-        // The overflow flag makes the first relocation a count record,
-        // rather than the symbol relocation parsed by this bounded reader.
-        if section.characteristics & IMAGE_SCN_LNK_NRELOC_OVFL != 0 {
-            return Err(CoffAdmissionError::RelocationOverflow);
-        }
-        // A zero relocation count must not advertise an orphan pointer;
-        // likewise, real relocation records require a nonzero table pointer.
-        if (section.relocation_count == 0) != (section.relocation_start == 0) {
-            return Err(CoffAdmissionError::RelocationPointer);
-        }
-        // Some COFF compilers preserve an in-file raw pointer even for a
-        // zero-size section. Such a pointer owns no bytes but cannot extend
-        // outside this object. Populated sections cannot begin at byte zero.
-        if section.raw_size == 0 {
-            if section.raw_start > object.len() {
-                return Err(CoffAdmissionError::Bounds);
-            }
-        } else {
-            if section.raw_start == 0 {
-                return Err(CoffAdmissionError::SectionPointer);
-            }
-            require_range(object, section.raw_start, section.raw_size)?;
-        }
-        if section.relocation_count != 0 {
-            let bytes =
-                checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
-            require_range(object, section.relocation_start, bytes)?;
-        }
+        validate_section_storage(object, section)?;
         validate_metadata_section_flags(section)?;
         if section.name == ".text" {
             text_count = text_count.saturating_add(1);
-            let required =
-                IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
-            if section.raw_size == 0
-                || section.characteristics & required != required
-                || section.characteristics
-                    & (IMAGE_SCN_CNT_INITIALIZED_DATA
-                        | IMAGE_SCN_CNT_UNINITIALIZED_DATA
-                        | IMAGE_SCN_MEM_WRITE
-                        | IMAGE_SCN_MEM_DISCARDABLE
-                        | IMAGE_SCN_LNK_COMDAT
-                        | IMAGE_SCN_LNK_INFO
-                        | IMAGE_SCN_LNK_REMOVE)
-                    != 0
-            {
-                return Err(CoffAdmissionError::TextSection);
-            }
+            validate_required_text_section_flags(section)?;
         }
+        validate_section_content_flags(section)?;
         if section.characteristics & IMAGE_SCN_MEM_EXECUTE != 0
             && section.characteristics & IMAGE_SCN_MEM_WRITE != 0
         {
@@ -559,6 +516,84 @@ fn validate_sections(
         Ok(())
     } else {
         Err(CoffAdmissionError::TextSection)
+    }
+}
+
+fn validate_section_storage(
+    object: &[u8],
+    section: &CoffSection,
+) -> Result<(), CoffAdmissionError> {
+    // Alignment codes 1..=14 are defined in PE/COFF. The all-ones
+    // code 15 is reserved, not a valid requested section alignment.
+    if section.characteristics & IMAGE_SCN_ALIGN_MASK == IMAGE_SCN_ALIGN_MASK {
+        return Err(CoffAdmissionError::SectionAlignment);
+    }
+    // The overflow flag makes the first relocation a count record,
+    // rather than the symbol relocation parsed by this bounded reader.
+    if section.characteristics & IMAGE_SCN_LNK_NRELOC_OVFL != 0 {
+        return Err(CoffAdmissionError::RelocationOverflow);
+    }
+    // A zero relocation count must not advertise an orphan pointer;
+    // likewise, real relocation records require a nonzero table pointer.
+    if (section.relocation_count == 0) != (section.relocation_start == 0) {
+        return Err(CoffAdmissionError::RelocationPointer);
+    }
+    // Some COFF compilers preserve an in-file raw pointer even for a
+    // zero-size section. Such a pointer owns no bytes but cannot extend
+    // outside this object. Populated sections cannot begin at byte zero.
+    if section.raw_size == 0 {
+        if section.raw_start > object.len() {
+            return Err(CoffAdmissionError::Bounds);
+        }
+    } else {
+        if section.raw_start == 0 {
+            return Err(CoffAdmissionError::SectionPointer);
+        }
+        require_range(object, section.raw_start, section.raw_size)?;
+    }
+    if section.relocation_count != 0 {
+        let bytes =
+            checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
+        require_range(object, section.relocation_start, bytes)?;
+    }
+    Ok(())
+}
+
+const fn validate_required_text_section_flags(
+    section: &CoffSection,
+) -> Result<(), CoffAdmissionError> {
+    let required =
+        IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
+    let forbidden = IMAGE_SCN_CNT_INITIALIZED_DATA
+        | IMAGE_SCN_CNT_UNINITIALIZED_DATA
+        | IMAGE_SCN_MEM_WRITE
+        | IMAGE_SCN_MEM_DISCARDABLE
+        | IMAGE_SCN_LNK_COMDAT
+        | IMAGE_SCN_LNK_INFO
+        | IMAGE_SCN_LNK_REMOVE;
+    if section.raw_size == 0
+        || section.characteristics & required != required
+        || section.characteristics & forbidden != 0
+    {
+        Err(CoffAdmissionError::TextSection)
+    } else {
+        Ok(())
+    }
+}
+
+const fn validate_section_content_flags(
+    section: &CoffSection,
+) -> Result<(), CoffAdmissionError> {
+    // PE/COFF content kinds are mutually exclusive. Linker/bookkeeping
+    // sections may omit content kinds entirely.
+    let kinds = section.characteristics
+        & (IMAGE_SCN_CNT_CODE
+            | IMAGE_SCN_CNT_INITIALIZED_DATA
+            | IMAGE_SCN_CNT_UNINITIALIZED_DATA);
+    if kinds.count_ones() > 1 {
+        Err(CoffAdmissionError::SectionContent)
+    } else {
+        Ok(())
     }
 }
 
