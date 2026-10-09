@@ -47624,13 +47624,14 @@ fn check_rejected_coff_empty_association_parent(
             "COFF admitted association to unselected empty COMDAT",
         ));
     }
-    check_admitted_selected_empty_parent(source, &bytes)?;
+    check_admitted_selected_empty_parent(source, &bytes, fixture)?;
     Ok(())
 }
 
 fn check_admitted_selected_empty_parent(
     source: &execution_native::UntrustedNativeSourceArtifact,
     bytes: &[u8],
+    fixture: CoffComdatFixtureSelection,
 ) -> Result<(), String> {
     let table = usize::try_from(read_fixture_u32(bytes, 8)?)
         .map_err(|error| error.to_string())?;
@@ -47651,6 +47652,94 @@ fn check_admitted_selected_empty_parent(
             .map_err(|error| error.to_string())?;
     let _admitted = structurally_admit_coff(&artifact)
         .map_err(|error| format!("selected empty COMDAT: {error}"))?;
+    check_admitted_nested_empty_parent(source, bytes, fixture)?;
+    Ok(())
+}
+
+fn check_admitted_nested_empty_parent(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(bytes, 8)?)
+        .map_err(|error| error.to_string())?;
+    let symbol = table.saturating_add(2 * 18);
+    // Build .debug$S -> empty .data -> populated original COMDAT.
+    // The original must remain the non-associative root, not a back edge.
+    let base = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        bytes.to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    let PreparedComdatCycle {
+        bytes: mut nested,
+        second_owner,
+    } = prepare_associative_comdat_fixture(&base, fixture)?;
+    let count = usize::try_from(read_fixture_u32(&nested, 12)?)
+        .map_err(|error| error.to_string())?;
+    let debug_symbol = (0..count)
+        .map(|index| table.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            read_fixture_u16(&nested, offset.saturating_add(12))
+                == Ok(second_owner)
+                && nested.get(offset.saturating_add(17)) == Some(&1u8)
+        })
+        .ok_or("ARM64 .debug$S section symbol missing")?;
+    *nested
+        .get_mut(fixture.selection_offset)
+        .ok_or("COMDAT root selector missing")? = 2;
+    *nested
+        .get_mut(symbol.saturating_add(32))
+        .ok_or("COMDAT auxiliary selector missing")? = 5;
+    write_fixture_u16(&mut nested, symbol.saturating_add(30), fixture.owner)?;
+    write_fixture_u16(&mut nested, debug_symbol.saturating_add(30), 2)?;
+    let nested_artifact = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        nested.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _nested_admitted = structurally_admit_coff(&nested_artifact)
+        .map_err(|error| format!("valid nested empty COMDAT: {error}"))?;
+    check_rejected_invalid_empty_parent(source, &nested, symbol)?;
+    // Closing the root -> empty association makes that chain cyclic.
+    *nested
+        .get_mut(fixture.selection_offset)
+        .ok_or("COMDAT root selector missing")? = 5;
+    let cyclic =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, nested)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&cyclic)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF admitted empty-COMDAT cycle"));
+    }
+    Ok(())
+}
+
+fn check_rejected_invalid_empty_parent(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    nested: &[u8],
+    symbol: usize,
+) -> Result<(), String> {
+    // Empty associative parents must honor the same target constraints
+    // as populated parents, including bounds and non-COMDAT rejection.
+    for (number, label) in [
+        (1u16, "ordinary .text"),
+        (2u16, "self-association"),
+        (u16::MAX, "missing section"),
+    ] {
+        let mut invalid = nested.to_vec();
+        write_fixture_u16(&mut invalid, symbol.saturating_add(30), number)?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted empty {label} association"));
+        }
+    }
     Ok(())
 }
 

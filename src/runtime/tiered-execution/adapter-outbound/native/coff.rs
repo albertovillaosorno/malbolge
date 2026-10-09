@@ -862,7 +862,7 @@ fn validate_comdat_selections(
             return Err(CoffAdmissionError::SectionLinkage);
         }
     }
-    validate_comdat_empty_parents(object, parsed, table, &associations)?;
+    validate_comdat_empty_parents(object, parsed, table, &mut associations)?;
     validate_comdat_association_cycles(&associations)
 }
 
@@ -912,47 +912,92 @@ fn validate_comdat_empty_parents(
     object: &[u8],
     parsed: &ParsedCoff,
     symbol_table: usize,
-    associations: &[Option<usize>],
+    associations: &mut [Option<usize>],
 ) -> Result<(), CoffAdmissionError> {
-    for parent_index in associations.iter().flatten() {
-        let section = parsed
-            .sections
-            .get(*parent_index)
+    // Follow parents transitively, including empty associative sections.
+    // The pending/visited worklist ensures each referenced parent is checked
+    // at most once; cycles are rejected by the final three-state walk.
+    let mut pending: Vec<usize> =
+        associations.iter().flatten().copied().collect();
+    let mut visited = vec![false; associations.len()];
+    while let Some(parent_index) = pending.pop() {
+        let already_seen = visited
+            .get_mut(parent_index)
             .ok_or(CoffAdmissionError::SectionLinkage)?;
-        if section.raw_size != 0 || section.relocation_count != 0 {
+        if *already_seen {
             continue;
         }
-        // Empty COMDATs may be unselected bookkeeping, but an associative
-        // child requires a genuine, non-associative linker-selected root.
-        let number = i16::try_from(parent_index.saturating_add(1))
-            .map_err(|_error| CoffAdmissionError::SectionLinkage)?;
-        validate_comdat_first_symbol(parsed, section, number)?;
-        let symbol_index = parsed
-            .symbols
-            .iter()
-            .position(|slot| {
-                slot.as_ref()
-                    .is_some_and(|symbol| symbol.section_number == number)
-            })
-            .ok_or(CoffAdmissionError::SectionLinkage)?;
-        let symbol_offset = checked_add(
-            symbol_table,
-            checked_mul(symbol_index, COFF_SYMBOL_BYTES)?,
-        )?;
-        if read_u8(object, checked_add(symbol_offset, 17)?)? != 1 {
-            return Err(CoffAdmissionError::SectionLinkage);
-        }
-        validate_comdat_aux_geometry(object, symbol_offset, section)?;
-        validate_comdat_reserved_aux_bytes(object, symbol_offset)?;
-        let selection = read_u8(
+        *already_seen = true;
+        if let Some(next) = validate_referenced_empty_comdat_parent(
             object,
-            checked_add(symbol_offset, COFF_SYMBOL_BYTES + 14)?,
-        )?;
-        if !(1..=7).contains(&selection) || selection == 5 {
-            return Err(CoffAdmissionError::SectionLinkage);
+            parsed,
+            symbol_table,
+            parent_index,
+        )? {
+            *associations
+                .get_mut(parent_index)
+                .ok_or(CoffAdmissionError::SectionLinkage)? = Some(next);
+            pending.push(next);
         }
     }
     Ok(())
+}
+
+fn validate_referenced_empty_comdat_parent(
+    object: &[u8],
+    parsed: &ParsedCoff,
+    symbol_table: usize,
+    parent_index: usize,
+) -> Result<Option<usize>, CoffAdmissionError> {
+    let section = parsed
+        .sections
+        .get(parent_index)
+        .ok_or(CoffAdmissionError::SectionLinkage)?;
+    if section.raw_size != 0 || section.relocation_count != 0 {
+        return Ok(None);
+    }
+    // Unreferenced empty COMDATs may remain unselected bookkeeping,
+    // but any referenced one must have real selection metadata.
+    let number = i16::try_from(parent_index.saturating_add(1))
+        .map_err(|_error| CoffAdmissionError::SectionLinkage)?;
+    validate_comdat_first_symbol(parsed, section, number)?;
+    let symbol_index = parsed
+        .symbols
+        .iter()
+        .position(|slot| {
+            slot.as_ref()
+                .is_some_and(|symbol| symbol.section_number == number)
+        })
+        .ok_or(CoffAdmissionError::SectionLinkage)?;
+    let symbol_offset = checked_add(
+        symbol_table,
+        checked_mul(symbol_index, COFF_SYMBOL_BYTES)?,
+    )?;
+    if read_u8(object, checked_add(symbol_offset, 17)?)? != 1 {
+        return Err(CoffAdmissionError::SectionLinkage);
+    }
+    validate_comdat_aux_geometry(object, symbol_offset, section)?;
+    validate_comdat_reserved_aux_bytes(object, symbol_offset)?;
+    let selection =
+        read_u8(object, checked_add(symbol_offset, COFF_SYMBOL_BYTES + 14)?)?;
+    if !(1..=7).contains(&selection) {
+        return Err(CoffAdmissionError::SectionLinkage);
+    }
+    validate_comdat_association(
+        object,
+        symbol_offset,
+        (parent_index, parsed.sections.as_slice()),
+        selection,
+    )?;
+    if selection == 5 {
+        let parent = usize::from(read_u16(
+            object,
+            checked_add(symbol_offset, COFF_SYMBOL_BYTES + 12)?,
+        )?);
+        Ok(parent.checked_sub(1))
+    } else {
+        Ok(None)
+    }
 }
 
 fn validate_comdat_association_cycles(
