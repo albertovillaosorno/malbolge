@@ -47683,6 +47683,7 @@ fn check_rejected_coff_empty_association_parent(
     }
     let mut bytes = object.to_vec();
     write_fixture_u32(&mut bytes, empty.saturating_add(36), flags | 0x1000)?;
+    check_unselected_empty_comdat_auxiliary(source, &bytes)?;
     check_unreferenced_empty_comdat_selection(source, &bytes, fixture)?;
     *bytes
         .get_mut(fixture.selection_offset)
@@ -47705,6 +47706,49 @@ fn check_rejected_coff_empty_association_parent(
         ));
     }
     check_admitted_selected_empty_parent(source, &bytes, fixture)?;
+    Ok(())
+}
+
+fn check_unselected_empty_comdat_auxiliary(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(bytes, 8)?)
+        .map_err(|error| error.to_string())?;
+    let section_symbol = table.saturating_add(2 * 18);
+    let selection = section_symbol.saturating_add(32);
+    if bytes.get(selection) != Some(&0u8)
+        || bytes.get(section_symbol.saturating_add(17)) != Some(&1u8)
+    {
+        return Err(String::from("unselected empty COMDAT fixture drifted"));
+    }
+    let positive = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        bytes.to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&positive)
+        .map_err(|error| format!("unselected empty COMDAT: {error}"))?;
+    // A zero selection must not let an otherwise malformed auxiliary
+    // definition escape the object-format closure checks.
+    for (offset, label) in [
+        (section_symbol.saturating_add(18), "length"),
+        (section_symbol.saturating_add(24), "line numbers"),
+        (selection.saturating_add(1), "reserved selector"),
+        (selection.saturating_add(2), "high section number"),
+    ] {
+        let mut invalid = bytes.to_vec();
+        *invalid.get_mut(offset).ok_or("missing COFF auxiliary")? = 1;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted unselected COMDAT {label}"));
+        }
+    }
     Ok(())
 }
 

@@ -930,12 +930,22 @@ fn has_empty_comdat_selection(
         }
         let offset =
             checked_add(symbol_table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
-        if read_u8(object, checked_add(offset, 17)?)? != 0
-            && read_u8(object, checked_add(offset, COFF_SYMBOL_BYTES + 14)?)?
-                != 0
-        {
+        let aux_count = read_u8(object, checked_add(offset, 17)?)?;
+        if aux_count == 0 {
+            continue;
+        }
+        let selection =
+            read_u8(object, checked_add(offset, COFF_SYMBOL_BYTES + 14)?)?;
+        if selection != 0 {
             return Ok(true);
         }
+        // Selection zero permits compiler bookkeeping, not malformed
+        // auxiliary records with hidden geometry or reserved fields.
+        if aux_count != 1 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        validate_comdat_aux_geometry(object, offset, section)?;
+        validate_comdat_reserved_aux_bytes(object, offset)?;
     }
     Ok(false)
 }
