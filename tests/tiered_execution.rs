@@ -47181,6 +47181,60 @@ fn check_rejected_coff_comdat_selection(
     }
     check_rejected_coff_comdat_association(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
+    check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_auxiliary_geometry(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let header = 20usize.saturating_add(
+        usize::from(fixture.owner.saturating_sub(1)).saturating_mul(40),
+    );
+    let aux = fixture.selection_offset.saturating_sub(14);
+    let expected_size = read_fixture_u32(object, header.saturating_add(16))?;
+    let expected_relocs = read_fixture_u16(object, header.saturating_add(32))?;
+    let observed_size = read_fixture_u32(object, aux)?;
+    let observed_relocs = read_fixture_u16(object, aux.saturating_add(4))?;
+    let observed_lines = read_fixture_u16(object, aux.saturating_add(6))?;
+    if (observed_size, observed_relocs, observed_lines)
+        != (expected_size, expected_relocs, 0)
+    {
+        return Err(String::from(
+            "compiler COMDAT auxiliary geometry disagrees with section header",
+        ));
+    }
+    for (offset, value, label) in [
+        (aux, expected_size.saturating_add(1), "length"),
+        (
+            aux.saturating_add(4),
+            u32::from(expected_relocs.saturating_add(1)),
+            "relocations",
+        ),
+        (aux.saturating_add(6), 1, "line numbers"),
+    ] {
+        let mut bytes = object.to_vec();
+        if label == "length" {
+            write_fixture_u32(&mut bytes, offset, value)?;
+        } else {
+            write_fixture_u16(
+                &mut bytes,
+                offset,
+                u16::try_from(value).map_err(|error| error.to_string())?,
+            )?;
+        }
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted wrong COMDAT {label}"));
+        }
+    }
     Ok(())
 }
 
