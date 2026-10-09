@@ -98,7 +98,7 @@ const IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS: u32 =
     0x0400_0000 | 0x0800_0000 | 0x1000_0000;
 const IMAGE_SCN_LEGACY_LOAD_FLAGS: u32 =
     0x0000_0002 | 0x0002_0000 | 0x0004_0000 | 0x0008_0000;
-const IMAGE_SCN_UNSUPPORTED_REQUIRED_FLAGS: u32 =
+const IMAGE_SCN_UNSUPPORTED_SECTION_FLAGS: u32 =
     0x0000_0008 | 0x0000_0100 | 0x0000_8000;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
@@ -527,6 +527,9 @@ fn validate_sections(
             validate_required_text_section_flags(section)?;
         }
         validate_section_content_flags(section)?;
+        if section.characteristics & IMAGE_SCN_UNSUPPORTED_SECTION_FLAGS != 0 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
         if section.characteristics & IMAGE_SCN_MEM_EXECUTE != 0
             && section.characteristics & IMAGE_SCN_MEM_WRITE != 0
         {
@@ -591,7 +594,7 @@ const fn validate_required_text_section_flags(
         | IMAGE_SCN_MEM_DISCARDABLE
         | IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS
         | IMAGE_SCN_LEGACY_LOAD_FLAGS
-        | IMAGE_SCN_UNSUPPORTED_REQUIRED_FLAGS
+        | IMAGE_SCN_UNSUPPORTED_SECTION_FLAGS
         | IMAGE_SCN_LNK_COMDAT
         | IMAGE_SCN_LNK_INFO
         | IMAGE_SCN_LNK_REMOVE;
@@ -636,7 +639,7 @@ fn validate_metadata_section_flags(
             | IMAGE_SCN_MEM_DISCARDABLE
             | IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS
             | IMAGE_SCN_LEGACY_LOAD_FLAGS
-            | IMAGE_SCN_UNSUPPORTED_REQUIRED_FLAGS
+            | IMAGE_SCN_UNSUPPORTED_SECTION_FLAGS
             | IMAGE_SCN_MEM_EXECUTE
             | IMAGE_SCN_MEM_WRITE;
         if section.raw_size == 0

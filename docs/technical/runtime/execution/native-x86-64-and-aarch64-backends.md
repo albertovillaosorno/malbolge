@@ -81,7 +81,8 @@ memory flags because these image-loader policies have no object-level owner.
 Legacy `NOLOAD`, 16-bit/purgeable, locked, and preload flags are likewise
 unsupported on these two required loadable sections.
 Obsolete no-padding, reserved linker-OTHER, and GP-relative section bits
-are unsupported for the same two sections.
+are unsupported for the same two sections. Auxiliary sections likewise
+cannot claim these unsupported section-format or linker behaviors.
 
 All COFF sections must declare at most one of the code, initialized-data,
 and uninitialized-data content kinds. Sections with no content-kind bit remain

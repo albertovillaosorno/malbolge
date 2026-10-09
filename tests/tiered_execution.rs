@@ -46054,6 +46054,7 @@ fn check_coff_isa_specific_mutations(
     isa: HostIsa,
 ) -> Result<(), String> {
     check_rejected_coff_ambiguous_auxiliary_section(source, artifact)?;
+    check_rejected_coff_unsupported_auxiliary_flags(source, artifact)?;
     if isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(source, artifact)?;
         check_x64_coff_relocation_types_and_spans(source, artifact)?;
@@ -46070,13 +46071,11 @@ fn check_coff_isa_specific_mutations(
     Ok(())
 }
 
-fn check_rejected_coff_ambiguous_auxiliary_section(
-    source: &execution_native::UntrustedNativeSourceArtifact,
-    artifact: &UntrustedNativeObjectArtifact,
-) -> Result<(), String> {
-    let object = artifact.object();
+fn coff_fixture_populated_auxiliary_header(
+    object: &[u8],
+) -> Result<usize, String> {
     let sections = usize::from(read_fixture_u16(object, 2)?);
-    let header = (0..sections)
+    (0..sections)
         .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
         .find(|header| {
             let name = object.get(*header..header.saturating_add(8));
@@ -46087,7 +46086,44 @@ fn check_rejected_coff_ambiguous_auxiliary_section(
                 && flags.is_ok_and(|bits| bits & 0x0000_0040 != 0)
                 && size.is_ok_and(|bytes| bytes > 0)
         })
-        .ok_or("compiler fixture lacks initialized auxiliary section")?;
+        .ok_or_else(|| String::from("compiler fixture lacks auxiliary data"))
+}
+
+fn check_rejected_coff_unsupported_auxiliary_flags(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let original = read_fixture_u32(artifact.object(), offset)?;
+    for (flag, label) in [
+        (0x0000_0008u32, "obsolete no-padding"),
+        (0x0000_0100, "reserved linker other"),
+        (0x0000_8000, "unsupported GP-relative"),
+    ] {
+        if original & flag != 0 {
+            return Err(format!("compiler emitted {label} auxiliary section"));
+        }
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, offset, original | flag)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted auxiliary {label}"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_ambiguous_auxiliary_section(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let header = coff_fixture_populated_auxiliary_header(object)?;
     let offset = header.saturating_add(36);
     let original = read_fixture_u32(object, offset)?;
     for contradictory in [0x0000_0020u32, 0x0000_0080] {
