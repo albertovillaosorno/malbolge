@@ -88,6 +88,7 @@ All COFF sections must declare at most one of the code, initialized-data,
 and uninitialized-data content kinds. Sections with no content-kind bit remain
 admissible where the compiler uses them for linker or debug bookkeeping.
 Data-classified sections cannot also claim executable-memory permissions.
+Uninitialized-data sections cannot claim file-backed raw bytes.
 
 Populated initialized-data sections must advertise readable bytes.
 They cannot request legacy `NOLOAD`,
