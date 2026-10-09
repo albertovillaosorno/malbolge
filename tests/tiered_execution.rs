@@ -46045,17 +46045,26 @@ fn check_compiled_coff_case(
     check_rejected_coff_symbol_name_padding(&source, &artifact)?;
     check_rejected_coff_relocation_pointer(&source, &artifact)?;
     check_rejected_coff_raw_section_pointer(&source, &artifact)?;
-    if case.isa == HostIsa::X86_64 {
-        check_rejected_coff_mutations(&source, &artifact)?;
-        check_x64_coff_relocation_types_and_spans(&source, &artifact)?;
-        check_rejected_coff_unterminated_long_name(&source, &artifact)?;
-        check_rejected_coff_embedded_long_name(&source, &artifact)?;
-        check_rejected_coff_embedded_section_name(&source, &artifact)?;
-        check_rejected_coff_unreferenced_symbol_sections(&source, &artifact)?;
-        check_rejected_coff_unreferenced_symbol_value(&source, &artifact)?;
+    check_coff_isa_specific_mutations(&source, &artifact, case.isa)
+}
+
+fn check_coff_isa_specific_mutations(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    isa: HostIsa,
+) -> Result<(), String> {
+    if isa == HostIsa::X86_64 {
+        check_rejected_coff_mutations(source, artifact)?;
+        check_x64_coff_relocation_types_and_spans(source, artifact)?;
+        check_rejected_coff_unterminated_long_name(source, artifact)?;
+        check_rejected_coff_unreferenced_unterminated_string(source, artifact)?;
+        check_rejected_coff_embedded_long_name(source, artifact)?;
+        check_rejected_coff_embedded_section_name(source, artifact)?;
+        check_rejected_coff_unreferenced_symbol_sections(source, artifact)?;
+        check_rejected_coff_unreferenced_symbol_value(source, artifact)?;
     } else {
-        check_rejected_coff_comdat_selection(&source, &artifact)?;
-        check_rejected_coff_relocation_section(&source, &artifact)?;
+        check_rejected_coff_comdat_selection(source, artifact)?;
+        check_rejected_coff_relocation_section(source, artifact)?;
     }
     Ok(())
 }
@@ -46950,6 +46959,41 @@ fn check_rejected_coff_unreferenced_symbol_value(
                 "COFF admitted static symbol offset {invalid_value}"
             ));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unreferenced_unterminated_string(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol offset: {error}"))?;
+    let symbols = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let strings = symbol_start
+        .checked_add(symbols.saturating_mul(18))
+        .ok_or("COFF string offset overflow")?;
+    let length = read_fixture_u32(object, strings)?;
+    let end = strings
+        .checked_add(
+            usize::try_from(length).map_err(|error| error.to_string())?,
+        )
+        .ok_or("COFF string table end overflow")?;
+    if end != object.len() {
+        return Err(String::from("fixture string table is not trailing"));
+    }
+    let mut bytes = object.to_vec();
+    bytes.push(b'Q');
+    write_fixture_u32(&mut bytes, strings, length.saturating_add(1))?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered) != Err(CoffAdmissionError::Bounds) {
+        return Err(String::from(
+            "COFF admitted unterminated unreferenced string-table bytes",
+        ));
     }
     Ok(())
 }

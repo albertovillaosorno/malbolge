@@ -89,7 +89,10 @@ closed until the native adapter owns their paired linker semantics.
 
 The COFF object layout is further required to have disjoint on-disk regions
 for headers, initialized section bytes, relocation records, symbol slots, and
-long-name storage. A section cannot alias its own headers or borrow symbol or
+long-name storage. The long-name string table must end at a NUL
+terminator, even when its final entry is not referenced by any symbol.
+
+A section cannot alias its own headers or borrow symbol or
 string-table bytes as executable code. Zero-size sections own no bytes.
 Unowned trailing overlays are also rejected; an explicitly referenced
 relocation table after the string table remains owned and admissible.

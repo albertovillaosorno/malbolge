@@ -385,6 +385,15 @@ fn parse_coff(object: &[u8]) -> Result<ParsedCoff, CoffAdmissionError> {
     let string_table = checked_add(symbol_table, symbol_bytes)?;
     let string_bytes = parse_string_table_length(object, string_table)?;
     require_range(object, string_table, string_bytes)?;
+    // The table contains NUL-terminated names, including unreferenced
+    // entries. A declared trailing fragment cannot remain unterminated.
+    if string_bytes > 4
+        && object
+            .get(checked_add(string_table, string_bytes.saturating_sub(1))?)
+            != Some(&0u8)
+    {
+        return Err(CoffAdmissionError::Bounds);
+    }
     let strings = StringTable {
         bytes: string_bytes,
         start: string_table,
