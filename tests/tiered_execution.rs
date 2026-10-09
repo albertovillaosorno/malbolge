@@ -46477,6 +46477,25 @@ fn check_rejected_non_comdat_section_auxiliary(
             return Err(format!("COFF admitted malformed ordinary {label}"));
         }
     }
+    for aux_count in [2u8, 3] {
+        let mut invalid = object.to_vec();
+        *invalid
+            .get_mut(section_symbol.saturating_add(17))
+            .ok_or("ordinary section aux count missing")? = aux_count;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        let observed = structurally_admit_coff(&candidate);
+        if !matches!(
+            observed,
+            Err(CoffAdmissionError::SectionLinkage | CoffAdmissionError::Bounds)
+        ) {
+            return Err(format!(
+                "COFF ordinary aux count {aux_count}: {observed:?}",
+            ));
+        }
+    }
     Ok(())
 }
 
