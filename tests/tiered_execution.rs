@@ -47749,6 +47749,38 @@ fn check_unselected_empty_comdat_auxiliary(
             return Err(format!("COFF admitted unselected COMDAT {label}"));
         }
     }
+    check_unselected_empty_comdat_symbol_shape(source, bytes, section_symbol)?;
+    Ok(())
+}
+
+fn check_unselected_empty_comdat_symbol_shape(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
+    if read_fixture_u32(bytes, section_symbol.saturating_add(8))? != 0
+        || read_fixture_u16(bytes, section_symbol.saturating_add(14))? != 0
+    {
+        return Err(String::from("empty COMDAT symbol fixture drifted"));
+    }
+    for (offset, label) in [
+        (section_symbol.saturating_add(8), "value"),
+        (section_symbol.saturating_add(14), "type"),
+    ] {
+        let mut invalid = bytes.to_vec();
+        *invalid
+            .get_mut(offset)
+            .ok_or("empty section symbol missing")? = 1;
+        let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted unselected COMDAT {label}"));
+        }
+    }
     Ok(())
 }
 

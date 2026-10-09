@@ -118,8 +118,9 @@ Referenced empty COMDATs may themselves be associative; their entire parent
 chain is checked for valid selection and cycles.
 
 Unselected empty COMDATs with an auxiliary section-definition record must
-still declare matching length and relocation geometry, zero line numbers,
-exactly one auxiliary slot, and zero reserved auxiliary bytes.
+also have a zero-valued, null-typed primary section symbol, matching length
+and relocation geometry, zero line numbers, exactly one auxiliary slot, and
+zero reserved auxiliary bytes.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references

@@ -944,6 +944,7 @@ fn has_empty_comdat_selection(
         if aux_count != 1 {
             return Err(CoffAdmissionError::SectionLinkage);
         }
+        validate_comdat_first_symbol(parsed, section, number)?;
         validate_comdat_aux_geometry(object, offset, section)?;
         validate_comdat_reserved_aux_bytes(object, offset)?;
     }
