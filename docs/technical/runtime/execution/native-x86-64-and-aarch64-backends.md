@@ -109,10 +109,11 @@ The auxiliary section length and relocation count must match the owning
 header; the auxiliary line-number count must remain zero. The unused
 selector byte and big-object-only high section number must also be zero.
 
-Empty COMDAT sections without relocations remain admissible, matching
-legitimate pinned Clang output. When an associative section references an
-empty COMDAT parent, that parent must have valid section-definition
-selection metadata with exactly one matching static section definition.
+Unselected empty COMDAT sections without relocations remain admissible,
+matching legitimate pinned Clang output. An empty COMDAT with an explicit
+nonzero selection must satisfy the same section-definition and association
+checks as a populated COMDAT. When an associative section references an
+unselected empty parent, admission rejects its missing selection.
 Referenced empty COMDATs may themselves be associative; their entire parent
 chain is checked for valid selection and cycles.
 

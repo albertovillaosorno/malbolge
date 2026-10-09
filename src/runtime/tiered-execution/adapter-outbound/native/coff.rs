@@ -808,62 +808,136 @@ fn validate_comdat_selections(
     let table = usize_from_u32(read_u32(object, 8)?)?;
     let mut associations = vec![None; parsed.sections.len()];
     for (section_index, section) in parsed.sections.iter().enumerate() {
-        if section.characteristics & IMAGE_SCN_LNK_COMDAT == 0
-            || (section.raw_size == 0 && section.relocation_count == 0)
-        {
+        if section.characteristics & IMAGE_SCN_LNK_COMDAT == 0 {
             continue;
         }
         let number = i16::try_from(section_index.saturating_add(1))
             .map_err(|_error| CoffAdmissionError::Bounds)?;
+        if skip_unselected_empty_comdat(
+            object,
+            parsed,
+            table,
+            (section, number),
+        )? {
+            continue;
+        }
         validate_comdat_first_symbol(parsed, section, number)?;
-        let mut validated = false;
-        for (index, candidate) in parsed.symbols.iter().enumerate() {
-            let Some(symbol) = candidate else {
-                continue;
-            };
-            if symbol.section_number != number
-                || symbol.storage_class != 3
-                || symbol.name != section.name
-            {
-                continue;
-            }
-            if validated || symbol.value != 0 || symbol.symbol_type != 0 {
-                return Err(CoffAdmissionError::SectionLinkage);
-            }
-            let offset =
-                checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
-            if read_u8(object, checked_add(offset, 17)?)? != 1 {
-                return Err(CoffAdmissionError::SectionLinkage);
-            }
-            validate_comdat_aux_geometry(object, offset, section)?;
-            validate_comdat_reserved_aux_bytes(object, offset)?;
-            let selection_offset = checked_add(offset, COFF_SYMBOL_BYTES + 14)?;
-            let selection = read_u8(object, selection_offset)?;
-            if !(1..=7).contains(&selection) {
-                return Err(CoffAdmissionError::SectionLinkage);
-            }
-            validate_comdat_association(
-                object,
-                offset,
-                (section_index, parsed.sections.as_slice()),
-                selection,
-            )?;
-            if selection == 5 {
-                record_comdat_association(
-                    object,
-                    offset,
-                    section_index,
-                    &mut associations,
-                )?;
-            }
-            validated = true;
-        }
-        if !validated {
-            return Err(CoffAdmissionError::SectionLinkage);
-        }
+        validate_selected_comdat_definition(
+            object,
+            parsed,
+            (section_index, section),
+            &mut associations,
+        )?;
     }
     validate_comdat_empty_parents(object, parsed, table, &mut associations)?;
     validate_comdat_association_cycles(&associations)
+}
+
+fn validate_selected_comdat_definition(
+    object: &[u8],
+    parsed: &ParsedCoff,
+    section_identity: (usize, &CoffSection),
+    associations: &mut [Option<usize>],
+) -> Result<(), CoffAdmissionError> {
+    let (section_index, section) = section_identity;
+    let table = usize_from_u32(read_u32(object, 8)?)?;
+    let number = i16::try_from(section_index.saturating_add(1))
+        .map_err(|_error| CoffAdmissionError::Bounds)?;
+    let mut validated = false;
+    for (index, candidate) in parsed.symbols.iter().enumerate() {
+        let Some(symbol) = candidate else {
+            continue;
+        };
+        if symbol.section_number != number
+            || symbol.storage_class != 3
+            || symbol.name != section.name
+        {
+            continue;
+        }
+        if validated || symbol.value != 0 || symbol.symbol_type != 0 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        let offset =
+            checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
+        if read_u8(object, checked_add(offset, 17)?)? != 1 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        validate_comdat_aux_geometry(object, offset, section)?;
+        validate_comdat_reserved_aux_bytes(object, offset)?;
+        let selection_offset = checked_add(offset, COFF_SYMBOL_BYTES + 14)?;
+        let selection = read_u8(object, selection_offset)?;
+        if !(1..=7).contains(&selection) {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        validate_comdat_association(
+            object,
+            offset,
+            (section_index, parsed.sections.as_slice()),
+            selection,
+        )?;
+        if selection == 5 {
+            record_comdat_association(
+                object,
+                offset,
+                section_index,
+                associations,
+            )?;
+        }
+        validated = true;
+    }
+    if !validated {
+        return Err(CoffAdmissionError::SectionLinkage);
+    }
+    Ok(())
+}
+
+fn skip_unselected_empty_comdat(
+    object: &[u8],
+    parsed: &ParsedCoff,
+    symbol_table: usize,
+    section_identity: (&CoffSection, i16),
+) -> Result<bool, CoffAdmissionError> {
+    let (section, _) = section_identity;
+    if section.raw_size != 0 || section.relocation_count != 0 {
+        return Ok(false);
+    }
+    Ok(!has_empty_comdat_selection(
+        object,
+        parsed,
+        symbol_table,
+        section_identity,
+    )?)
+}
+
+fn has_empty_comdat_selection(
+    object: &[u8],
+    parsed: &ParsedCoff,
+    symbol_table: usize,
+    section_identity: (&CoffSection, i16),
+) -> Result<bool, CoffAdmissionError> {
+    let (section, number) = section_identity;
+    // Clang emits empty bookkeeping COMDATs without active selection.
+    // A nonzero selector must not bypass ordinary COMDAT validation.
+    for (index, candidate) in parsed.symbols.iter().enumerate() {
+        let Some(symbol) = candidate else {
+            continue;
+        };
+        if symbol.section_number != number
+            || symbol.name != section.name
+            || symbol.storage_class != 3
+        {
+            continue;
+        }
+        let offset =
+            checked_add(symbol_table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
+        if read_u8(object, checked_add(offset, 17)?)? != 0
+            && read_u8(object, checked_add(offset, COFF_SYMBOL_BYTES + 14)?)?
+                != 0
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn record_comdat_association(
