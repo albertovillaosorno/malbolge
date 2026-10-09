@@ -47750,6 +47750,7 @@ fn check_unselected_empty_comdat_auxiliary(
         }
     }
     check_unselected_empty_comdat_symbol_shape(source, bytes, section_symbol)?;
+    check_unselected_empty_comdat_duplicate(source, bytes, table)?;
     Ok(())
 }
 
@@ -47780,6 +47781,41 @@ fn check_unselected_empty_comdat_symbol_shape(
         {
             return Err(format!("COFF admitted unselected COMDAT {label}"));
         }
+    }
+    Ok(())
+}
+
+fn check_unselected_empty_comdat_duplicate(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    table: usize,
+) -> Result<(), String> {
+    // The pinned object also has .bss as a separate section definition.
+    // Assign its symbol to the empty .data COMDAT without changing either
+    // auxiliary selector, creating two zero-selected definitions.
+    let duplicate = table.saturating_add(4 * 18);
+    if bytes.get(duplicate..duplicate.saturating_add(8))
+        != Some(b".bss\0\0\0\0".as_slice())
+        || read_fixture_u16(bytes, duplicate.saturating_add(12))? != 3
+        || bytes.get(duplicate.saturating_add(17)) != Some(&1u8)
+    {
+        return Err(String::from("ARM64 .bss symbol fixture drifted"));
+    }
+    let mut invalid = bytes.to_vec();
+    invalid
+        .get_mut(duplicate..duplicate.saturating_add(8))
+        .ok_or("duplicate COMDAT symbol out of range")?
+        .copy_from_slice(b".data\0\0\0");
+    write_fixture_u16(&mut invalid, duplicate.saturating_add(12), 2)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted duplicate zero-selected COMDAT definitions",
+        ));
     }
     Ok(())
 }

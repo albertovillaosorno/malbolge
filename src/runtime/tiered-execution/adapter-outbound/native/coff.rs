@@ -916,6 +916,7 @@ fn has_empty_comdat_selection(
     section_identity: (&CoffSection, i16),
 ) -> Result<bool, CoffAdmissionError> {
     let (section, number) = section_identity;
+    let mut unselected_definitions = 0usize;
     // Clang emits empty bookkeeping COMDATs without active selection.
     // A nonzero selector must not bypass ordinary COMDAT validation.
     for (index, candidate) in parsed.symbols.iter().enumerate() {
@@ -942,6 +943,10 @@ fn has_empty_comdat_selection(
         // Selection zero permits compiler bookkeeping, not malformed
         // auxiliary records with hidden geometry or reserved fields.
         if aux_count != 1 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        unselected_definitions = unselected_definitions.saturating_add(1);
+        if unselected_definitions != 1 {
             return Err(CoffAdmissionError::SectionLinkage);
         }
         validate_comdat_first_symbol(parsed, section, number)?;
