@@ -47741,6 +47741,7 @@ fn check_admitted_nested_empty_parent(
     let _nested_admitted = structurally_admit_coff(&nested_artifact)
         .map_err(|error| format!("valid nested empty COMDAT: {error}"))?;
     check_rejected_invalid_empty_parent(source, &nested, symbol)?;
+    check_rejected_empty_parent_auxiliary(source, &nested, symbol)?;
     // Closing the root -> empty association makes that chain cyclic.
     *nested
         .get_mut(fixture.selection_offset)
@@ -47778,6 +47779,41 @@ fn check_rejected_invalid_empty_parent(
             != Err(CoffAdmissionError::SectionLinkage)
         {
             return Err(format!("COFF admitted empty {label} association"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_empty_parent_auxiliary(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    nested: &[u8],
+    symbol: usize,
+) -> Result<(), String> {
+    // Every referenced empty parent has the same bounded auxiliary record
+    // requirements as a populated COMDAT, even when the parent is itself
+    // associative and has a populated child.
+    for (delta, label) in [
+        (18usize, "section length"),
+        (22, "relocation count"),
+        (24, "line-number count"),
+        (32, "selection"),
+        (33, "reserved selector byte"),
+        (34, "high section number"),
+    ] {
+        let mut invalid = nested.to_vec();
+        let offset = symbol.saturating_add(delta);
+        let slot = invalid
+            .get_mut(offset)
+            .ok_or("empty COMDAT auxiliary field missing")?;
+        *slot = u8::from(delta != 32);
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted bad empty COMDAT {label}"));
         }
     }
     Ok(())
