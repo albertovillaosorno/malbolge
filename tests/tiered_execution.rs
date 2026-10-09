@@ -1705,6 +1705,11 @@ struct NativeCoffRelocationLocation {
     section_size: u32,
 }
 
+struct PreparedComdatCycle {
+    bytes: Vec<u8>,
+    second_owner: u16,
+}
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 type CollapsedNoOperationHaltArtifact =
@@ -47355,6 +47360,7 @@ fn check_rejected_coff_comdat_selection(
         }
     }
     check_rejected_coff_comdat_association(source, artifact, fixture)?;
+    check_rejected_coff_comdat_cycle(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
     check_rejected_coff_comdat_reserved_aux_bytes(source, artifact, fixture)?;
@@ -47538,6 +47544,95 @@ fn check_rejected_coff_comdat_association(
         {
             return Err(format!("COFF admitted {label} COMDAT association"));
         }
+    }
+    Ok(())
+}
+
+fn prepare_associative_comdat_fixture(
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<PreparedComdatCycle, String> {
+    let object = artifact.object();
+    // The pinned ARM64 object contains .debug$S with a populated static
+    // section-definition symbol. Promote it to COMDAT to form a second link.
+    let (second_index, second_header) = (0..fixture.section_count)
+        .map(|index| (index, 20usize.saturating_add(index.saturating_mul(40))))
+        .find(|(_index, header)| {
+            object.get(*header..header.saturating_add(8))
+                == Some(b".debug$S".as_slice())
+        })
+        .ok_or("ARM64 fixture lacks .debug$S section")?;
+    let second_owner = u16::try_from(second_index.saturating_add(1))
+        .map_err(|error| error.to_string())?;
+    let flags = read_fixture_u32(object, second_header.saturating_add(36))?;
+    if flags & 0x0000_1000 != 0
+        || read_fixture_u32(object, second_header.saturating_add(16))? == 0
+    {
+        return Err(String::from(
+            "ARM64 .debug$S is not ordinary populated data",
+        ));
+    }
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let symbol_count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    let section_symbol = (0..symbol_count)
+        .map(|index| symbol_start.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            read_fixture_u16(object, offset.saturating_add(12))
+                == Ok(second_owner)
+                && object.get(offset.saturating_add(16)) == Some(&3u8)
+                && object.get(offset.saturating_add(17)) == Some(&1u8)
+        })
+        .ok_or("ARM64 .debug$S lacks section-definition symbol")?;
+    let mut bytes = object.to_vec();
+    write_fixture_u32(
+        &mut bytes,
+        second_header.saturating_add(36),
+        flags | 0x0000_1000,
+    )?;
+    *bytes
+        .get_mut(section_symbol.saturating_add(32))
+        .ok_or("ARM64 .debug$S COMDAT selection missing")? = 5;
+    write_fixture_u16(
+        &mut bytes,
+        section_symbol.saturating_add(30),
+        fixture.owner,
+    )?;
+    Ok(PreparedComdatCycle { bytes, second_owner })
+}
+
+fn check_rejected_coff_comdat_cycle(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let PreparedComdatCycle { mut bytes, second_owner } =
+        prepare_associative_comdat_fixture(artifact, fixture)?;
+    let one_way = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        bytes.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _valid = structurally_admit_coff(&one_way).map_err(|error| {
+        format!("valid COMDAT association rejected: {error}")
+    })?;
+
+    *bytes
+        .get_mut(fixture.selection_offset)
+        .ok_or("ARM64 first COMDAT selection missing")? = 5;
+    write_fixture_u16(
+        &mut bytes,
+        fixture.selection_offset.saturating_sub(2),
+        second_owner,
+    )?;
+    let cycle =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&cycle)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF admitted cyclic COMDAT association"));
     }
     Ok(())
 }

@@ -806,6 +806,7 @@ fn validate_comdat_selections(
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
     let table = usize_from_u32(read_u32(object, 8)?)?;
+    let mut associations = vec![None; parsed.sections.len()];
     for (section_index, section) in parsed.sections.iter().enumerate() {
         if section.characteristics & IMAGE_SCN_LNK_COMDAT == 0
             || (section.raw_size == 0 && section.relocation_count == 0)
@@ -846,10 +847,63 @@ fn validate_comdat_selections(
                 (section_index, parsed.sections.as_slice()),
                 selection,
             )?;
+            if selection == 5 {
+                // The immediate parent is valid, but a chain of parents
+                // must also terminate rather than form an associative loop.
+                let parent = usize::from(read_u16(
+                    object,
+                    checked_add(offset, COFF_SYMBOL_BYTES + 12)?,
+                )?);
+                *associations
+                    .get_mut(section_index)
+                    .ok_or(CoffAdmissionError::SectionLinkage)? =
+                    parent.checked_sub(1);
+            }
             validated = true;
         }
         if !validated {
             return Err(CoffAdmissionError::SectionLinkage);
+        }
+    }
+    validate_comdat_association_cycles(&associations)
+}
+
+fn validate_comdat_association_cycles(
+    associations: &[Option<usize>],
+) -> Result<(), CoffAdmissionError> {
+    // A three-state walk visits each node at most twice, even for large
+    // acyclic association chains with many incoming edges.
+    let mut states = vec![0u8; associations.len()];
+    for start in 0..associations.len() {
+        let mut current = Some(start);
+        while let Some(index) = current {
+            match *states
+                .get(index)
+                .ok_or(CoffAdmissionError::SectionLinkage)?
+            {
+                1 => return Err(CoffAdmissionError::SectionLinkage),
+                2 => break,
+                _ => {
+                    *states
+                        .get_mut(index)
+                        .ok_or(CoffAdmissionError::SectionLinkage)? = 1;
+                },
+            }
+            current = associations.get(index).copied().flatten();
+        }
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            if *states
+                .get(index)
+                .ok_or(CoffAdmissionError::SectionLinkage)?
+                != 1
+            {
+                break;
+            }
+            *states
+                .get_mut(index)
+                .ok_or(CoffAdmissionError::SectionLinkage)? = 2;
+            cursor = associations.get(index).copied().flatten();
         }
     }
     Ok(())

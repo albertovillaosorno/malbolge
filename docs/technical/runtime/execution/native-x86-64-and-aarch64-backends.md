@@ -112,6 +112,8 @@ Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references
 are rejected without calling a linker. The referenced parent must itself
 be a COMDAT section; associating to ordinary executable `.text` is invalid.
+Associative COMDAT chains must also be acyclic; a valid immediate parent
+does not make a circular dependency admissible.
 
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
