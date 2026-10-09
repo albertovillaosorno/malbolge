@@ -68,8 +68,18 @@ const COFF_SECTION_BYTES: usize = 40;
 const COFF_SYMBOL_BYTES: usize = 18;
 const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
-// These file flags contradict either an object module or the 64-bit machine.
-const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
+// These flags describe loadable images or contradict the 64-bit machine.
+// Native object admission must not delegate image loader policy to a linker.
+const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001
+    | 0x0002
+    | 0x0010
+    | 0x0020
+    | 0x0100
+    | 0x0400
+    | 0x0800
+    | 0x1000
+    | 0x2000
+    | 0x4000;
 const IMAGE_SCN_ALIGN_MASK: u32 = 0x00f0_0000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;

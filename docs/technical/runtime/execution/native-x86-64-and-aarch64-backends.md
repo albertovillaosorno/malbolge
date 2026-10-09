@@ -49,8 +49,12 @@ debug-only, and out-of-range section references fail closed.
 
 The COFF file header must identify an object module: image-only flags such as
 `RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the
-optional-header size is zero. The `32BIT_MACHINE` flag also conflicts with the
-admitted AMD64/AArch64 identities. Relocation-free extraction shares this
+optional-header size is zero. Image-only large-address, aggressive working-set,
+removable/network-media, system, and uniprocessor-policy flags also fail
+closed. The `32BIT_MACHINE` flag conflicts with the admitted AMD64/AArch64
+identities.
+
+Relocation-free extraction shares this
 file-characteristics gate. COFF object sections also require `VirtualSize`
 to be zero rather than accepting the image-only loaded-size field.
 

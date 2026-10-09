@@ -46117,6 +46117,12 @@ fn check_rejected_coff_image_flags(
         (0x0002, "executable image"),
         (0x0100, "32-bit machine"),
         (0x2000, "DLL image"),
+        (0x0010, "aggressive working-set trim"),
+        (0x0020, "large-address executable image"),
+        (0x0400, "removable-media image"),
+        (0x0800, "network-media image"),
+        (0x1000, "system image"),
+        (0x4000, "uniprocessor system image"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler already sets {label} flag"));
@@ -66553,7 +66559,10 @@ fn verified_direct_load_image_rejects_image_flags() -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
         let original = read_fixture_u16(artifact.object(), 18)?;
-        for flag in [0x0001u16, 0x0002, 0x0100, 0x2000] {
+        for flag in [
+            0x0001u16, 0x0002, 0x0010, 0x0020, 0x0100, 0x0400, 0x0800, 0x1000,
+            0x2000, 0x4000,
+        ] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u16(&mut bytes, 18, original | flag)?;
             let result = VerifiedDirectLoadImage::from_object_for_test(
