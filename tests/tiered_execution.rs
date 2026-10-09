@@ -46333,6 +46333,8 @@ fn check_rejected_coff_linker_owned_metadata(
         (0x0200_0000, "discardable section"),
         (0x0000_0020, "code-mislabeled metadata"),
         (0x0000_0080, "uninitialized-mislabeled metadata"),
+        (0x2000_0000, "executable metadata"),
+        (0x8000_0000, "writable metadata"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler .mbprof has {label}"));
@@ -46346,6 +46348,21 @@ fn check_rejected_coff_linker_owned_metadata(
             != Err(CoffAdmissionError::ProfileMetadata)
         {
             return Err(format!("COFF admitted {label} profile metadata"));
+        }
+    }
+    for flag in [0x0000_0040u32, 0x4000_0000] {
+        if original & flag == 0 {
+            return Err(format!("compiler metadata lacks {flag:#010x}"));
+        }
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, offset, original & !flag)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::ProfileMetadata)
+        {
+            return Err(format!("COFF admitted metadata without {flag:#010x}"));
         }
     }
     Ok(())
@@ -66619,6 +66636,8 @@ fn verified_direct_load_image_rejects_linker_owned_metadata()
             0x0200_0000,
             0x0000_0020,
             0x0000_0080,
+            0x2000_0000,
+            0x8000_0000,
         ] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u32(&mut bytes, offset, original | flag)?;
@@ -66629,6 +66648,38 @@ fn verified_direct_load_image_rejects_linker_owned_metadata()
             {
                 return Err(format!(
                     "direct COFF admitted linker-owned metadata on {isa:?}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_metadata_required_flags()
+-> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let offset =
+            coff_fixture_metadata_header(artifact.object())?.saturating_add(36);
+        let original = read_fixture_u32(artifact.object(), offset)?;
+        for flag in [0x0000_0040u32, 0x4000_0000] {
+            let mut bytes = artifact.object().to_vec();
+            write_fixture_u32(&mut bytes, offset, original & !flag)?;
+            if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
+                != Err(VerifiedDirectLoadError::Object(
+                    CoffAdmissionError::ProfileMetadata,
+                ))
+            {
+                return Err(format!(
+                    "direct COFF metadata missing {flag:#010x} on {isa:?}"
                 ));
             }
         }

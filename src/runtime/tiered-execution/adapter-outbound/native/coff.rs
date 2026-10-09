@@ -529,7 +529,7 @@ fn validate_sections(
                 checked_mul(section.relocation_count, COFF_RELOCATION_BYTES)?;
             require_range(object, section.relocation_start, bytes)?;
         }
-        validate_section_linker_flags(section)?;
+        validate_metadata_section_flags(section)?;
         if section.name == ".text" {
             text_count = text_count.saturating_add(1);
             let required =
@@ -562,22 +562,28 @@ fn validate_sections(
     }
 }
 
-fn validate_section_linker_flags(
+fn validate_metadata_section_flags(
     section: &CoffSection,
 ) -> Result<(), CoffAdmissionError> {
-    // Profile identity may not be discarded, selected, or treated as linker
-    // annotations; it must remain independently loadable section data.
-    if section.name == PROFILE_METADATA_SECTION
-        && section.characteristics
-            & (IMAGE_SCN_CNT_CODE
-                | IMAGE_SCN_CNT_UNINITIALIZED_DATA
-                | IMAGE_SCN_LNK_COMDAT
-                | IMAGE_SCN_LNK_INFO
-                | IMAGE_SCN_LNK_REMOVE
-                | IMAGE_SCN_MEM_DISCARDABLE)
-            != 0
-    {
-        return Err(CoffAdmissionError::ProfileMetadata);
+    // Profile identity must remain initialized, readable, and non-writable
+    // in both structural admission and relocation-free text extraction.
+    if section.name == PROFILE_METADATA_SECTION {
+        let required = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
+        let forbidden = IMAGE_SCN_CNT_CODE
+            | IMAGE_SCN_CNT_UNINITIALIZED_DATA
+            | IMAGE_SCN_LNK_COMDAT
+            | IMAGE_SCN_LNK_INFO
+            | IMAGE_SCN_LNK_REMOVE
+            | IMAGE_SCN_MEM_DISCARDABLE
+            | IMAGE_SCN_MEM_EXECUTE
+            | IMAGE_SCN_MEM_WRITE;
+        if section.raw_size == 0
+            || section.relocation_count != 0
+            || section.characteristics & required != required
+            || section.characteristics & forbidden != 0
+        {
+            return Err(CoffAdmissionError::ProfileMetadata);
+        }
     }
     Ok(())
 }
