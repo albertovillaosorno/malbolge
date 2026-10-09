@@ -46036,6 +46036,7 @@ fn check_compiled_coff_case(
     }
     check_rejected_coff_image_flags(&source, &artifact)?;
     check_rejected_coff_unowned_tail(&source, &artifact)?;
+    check_rejected_coff_unowned_interior_bytes(&source, &artifact)?;
     check_rejected_coff_entry_symbol_type(&source, &artifact)?;
     check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
@@ -46322,6 +46323,84 @@ fn check_rejected_coff_unowned_tail(
             != Err(CoffAdmissionError::UnownedBytes)
         {
             return Err(String::from("COFF admitted unowned trailing bytes"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_unowned_interior_bytes(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    verify_coff_symbol_table_follows_sections(object, symbol_start)?;
+    let mut padded = object.to_vec();
+    padded.insert(symbol_start, 0);
+    write_fixture_u32(
+        &mut padded,
+        8,
+        u32::try_from(symbol_start.saturating_add(1))
+            .map_err(|error| error.to_string())?,
+    )?;
+    let zero_padding = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        padded.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&zero_padding)
+        .map_err(|error| format!("zero COFF padding rejected: {error}"))?;
+    *padded
+        .get_mut(symbol_start)
+        .ok_or("inserted COFF padding missing")? = 0x7f;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, padded)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::UnownedBytes)
+    {
+        return Err(String::from(
+            "COFF admitted nonzero unowned interior data",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_coff_symbol_table_follows_sections(
+    object: &[u8],
+    symbol_start: usize,
+) -> Result<(), String> {
+    let sections = usize::from(read_fixture_u16(object, 2)?);
+    // The pinned compiler places its symbol table after section payloads
+    // and relocations. Inserting a byte here preserves all earlier offsets
+    // and moves only the symbol + trailing string table.
+    for index in 0..sections {
+        let header = 20usize.saturating_add(index.saturating_mul(40));
+        let raw_start = usize::try_from(read_fixture_u32(
+            object,
+            header.saturating_add(20),
+        )?)
+        .map_err(|error| error.to_string())?;
+        let raw_size = usize::try_from(read_fixture_u32(
+            object,
+            header.saturating_add(16),
+        )?)
+        .map_err(|error| error.to_string())?;
+        let relocation_start = usize::try_from(read_fixture_u32(
+            object,
+            header.saturating_add(24),
+        )?)
+        .map_err(|error| error.to_string())?;
+        let relocations =
+            usize::from(read_fixture_u16(object, header.saturating_add(32))?);
+        if (raw_size > 0 && raw_start.saturating_add(raw_size) > symbol_start)
+            || (relocations > 0
+                && relocation_start
+                    .saturating_add(relocations.saturating_mul(10))
+                    > symbol_start)
+        {
+            return Err(String::from("compiler section data follows symbols"));
         }
     }
     Ok(())

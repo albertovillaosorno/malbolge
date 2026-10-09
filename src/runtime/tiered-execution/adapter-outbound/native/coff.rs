@@ -159,7 +159,7 @@ pub enum CoffAdmissionError {
     TargetFormat,
     /// Object does not contain one usable `.text` section.
     TextSection,
-    /// File has trailing bytes not owned by any declared COFF region.
+    /// File has nonzero interior padding or unowned trailing bytes.
     UnownedBytes,
 }
 
@@ -226,7 +226,7 @@ impl Display for CoffAdmissionError {
             Self::TextSection => {
                 "COFF object lacks one non-writable executable .text section"
             },
-            Self::UnownedBytes => "COFF object has unowned trailing bytes",
+            Self::UnownedBytes => "COFF object has unowned non-padding bytes",
         })
     }
 }
@@ -1247,11 +1247,27 @@ fn validate_coff_layout(
     }
     ranges.sort_unstable_by_key(|(start, _end)| *start);
     let mut previous_end = 0;
-    for (start, end) in ranges {
+    for &(start, end) in &ranges {
         if start < previous_end {
             return Err(CoffAdmissionError::LayoutOverlap);
         }
         previous_end = end;
+    }
+    // Overlap has priority over padding diagnostics: malformed range claims
+    // are rejected before checking any unowned interior alignment bytes.
+    let mut padding_start = 0;
+    for (start, end) in ranges {
+        // Allow ordinary compiler alignment but never allow opaque payloads
+        // between declared regions to bypass COFF structural admission.
+        if object
+            .get(padding_start..start)
+            .ok_or(CoffAdmissionError::Bounds)?
+            .iter()
+            .any(|byte| *byte != 0)
+        {
+            return Err(CoffAdmissionError::UnownedBytes);
+        }
+        padding_start = end;
     }
     // Every byte after the last owned range is an opaque, unvalidated
     // overlay. Relocation tables after the string table are already owned

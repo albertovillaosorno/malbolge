@@ -148,6 +148,8 @@ A section cannot alias its own headers or borrow symbol or
 string-table bytes as executable code. Zero-size sections own no bytes.
 Unowned trailing overlays are also rejected; an explicitly referenced
 relocation table after the string table remains owned and admissible.
+Interior gaps may hold zero-valued alignment padding, but nonzero bytes
+outside declared headers, section data, relocations, and tables are rejected.
 
 COFF line-number debugging records are not implemented by this validator.
 Section alignment uses defined PE/COFF codes only. Alignment code `15`
