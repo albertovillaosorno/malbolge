@@ -47360,6 +47360,7 @@ fn check_rejected_coff_comdat_selection(
         }
     }
     check_rejected_coff_comdat_association(source, artifact, fixture)?;
+    check_rejected_coff_empty_association_parent(source, artifact, fixture)?;
     check_rejected_coff_comdat_cycle(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
@@ -47578,6 +47579,78 @@ fn check_rejected_coff_comdat_association(
             return Err(format!("COFF admitted {label} COMDAT association"));
         }
     }
+    Ok(())
+}
+
+fn check_rejected_coff_empty_association_parent(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let object = artifact.object();
+    // The pinned ARM64 .data section owns no raw data or relocations.
+    // Adding only COMDAT's header bit must not make it an eligible parent.
+    let empty = 20usize.saturating_add(40);
+    if object.get(empty..empty.saturating_add(8))
+        != Some(b".data\0\0\0".as_slice())
+        || read_fixture_u32(object, empty.saturating_add(16))? != 0
+        || read_fixture_u16(object, empty.saturating_add(32))? != 0
+    {
+        return Err(String::from("ARM64 fixture lacks empty .data section"));
+    }
+    let flags = read_fixture_u32(object, empty.saturating_add(36))?;
+    if flags & 0x0000_1000 != 0 {
+        return Err(String::from("ARM64 .data is already COMDAT"));
+    }
+    let mut bytes = object.to_vec();
+    write_fixture_u32(&mut bytes, empty.saturating_add(36), flags | 0x1000)?;
+    *bytes
+        .get_mut(fixture.selection_offset)
+        .ok_or("COMDAT selector missing")? = 5;
+    write_fixture_u16(
+        &mut bytes,
+        fixture.selection_offset.saturating_sub(2),
+        2,
+    )?;
+    let tampered = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        bytes.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted association to unselected empty COMDAT",
+        ));
+    }
+    check_admitted_selected_empty_parent(source, &bytes)?;
+    Ok(())
+}
+
+fn check_admitted_selected_empty_parent(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(bytes, 8)?)
+        .map_err(|error| error.to_string())?;
+    // The compiler's .data section symbol occupies slot two after .text.
+    let symbol = table.saturating_add(2 * 18);
+    if read_fixture_u16(bytes, symbol.saturating_add(12))? != 2
+        || bytes.get(symbol.saturating_add(17)) != Some(&1u8)
+        || bytes.get(symbol.saturating_add(32)) != Some(&0u8)
+    {
+        return Err(String::from("ARM64 .data selector fixture drifted"));
+    }
+    let mut selected = bytes.to_vec();
+    *selected
+        .get_mut(symbol.saturating_add(32))
+        .ok_or("COMDAT auxiliary selector missing")? = 2;
+    let artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, selected)
+            .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&artifact)
+        .map_err(|error| format!("selected empty COMDAT: {error}"))?;
     Ok(())
 }
 

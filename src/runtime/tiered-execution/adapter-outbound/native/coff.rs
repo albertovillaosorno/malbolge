@@ -849,16 +849,12 @@ fn validate_comdat_selections(
                 selection,
             )?;
             if selection == 5 {
-                // The immediate parent is valid, but a chain of parents
-                // must also terminate rather than form an associative loop.
-                let parent = usize::from(read_u16(
+                record_comdat_association(
                     object,
-                    checked_add(offset, COFF_SYMBOL_BYTES + 12)?,
-                )?);
-                *associations
-                    .get_mut(section_index)
-                    .ok_or(CoffAdmissionError::SectionLinkage)? =
-                    parent.checked_sub(1);
+                    offset,
+                    section_index,
+                    &mut associations,
+                )?;
             }
             validated = true;
         }
@@ -866,7 +862,26 @@ fn validate_comdat_selections(
             return Err(CoffAdmissionError::SectionLinkage);
         }
     }
+    validate_comdat_empty_parents(object, parsed, table, &associations)?;
     validate_comdat_association_cycles(&associations)
+}
+
+fn record_comdat_association(
+    object: &[u8],
+    symbol_offset: usize,
+    section_index: usize,
+    associations: &mut [Option<usize>],
+) -> Result<(), CoffAdmissionError> {
+    // The immediate parent is valid, but a chain of parents must also
+    // terminate rather than form an associative loop.
+    let parent = usize::from(read_u16(
+        object,
+        checked_add(symbol_offset, COFF_SYMBOL_BYTES + 12)?,
+    )?);
+    *associations
+        .get_mut(section_index)
+        .ok_or(CoffAdmissionError::SectionLinkage)? = parent.checked_sub(1);
+    Ok(())
 }
 
 fn validate_comdat_first_symbol(
@@ -891,6 +906,53 @@ fn validate_comdat_first_symbol(
     } else {
         Ok(())
     }
+}
+
+fn validate_comdat_empty_parents(
+    object: &[u8],
+    parsed: &ParsedCoff,
+    symbol_table: usize,
+    associations: &[Option<usize>],
+) -> Result<(), CoffAdmissionError> {
+    for parent_index in associations.iter().flatten() {
+        let section = parsed
+            .sections
+            .get(*parent_index)
+            .ok_or(CoffAdmissionError::SectionLinkage)?;
+        if section.raw_size != 0 || section.relocation_count != 0 {
+            continue;
+        }
+        // Empty COMDATs may be unselected bookkeeping, but an associative
+        // child requires a genuine, non-associative linker-selected root.
+        let number = i16::try_from(parent_index.saturating_add(1))
+            .map_err(|_error| CoffAdmissionError::SectionLinkage)?;
+        validate_comdat_first_symbol(parsed, section, number)?;
+        let symbol_index = parsed
+            .symbols
+            .iter()
+            .position(|slot| {
+                slot.as_ref()
+                    .is_some_and(|symbol| symbol.section_number == number)
+            })
+            .ok_or(CoffAdmissionError::SectionLinkage)?;
+        let symbol_offset = checked_add(
+            symbol_table,
+            checked_mul(symbol_index, COFF_SYMBOL_BYTES)?,
+        )?;
+        if read_u8(object, checked_add(symbol_offset, 17)?)? != 1 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        validate_comdat_aux_geometry(object, symbol_offset, section)?;
+        validate_comdat_reserved_aux_bytes(object, symbol_offset)?;
+        let selection = read_u8(
+            object,
+            checked_add(symbol_offset, COFF_SYMBOL_BYTES + 14)?,
+        )?;
+        if !(1..=7).contains(&selection) || selection == 5 {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+    }
+    Ok(())
 }
 
 fn validate_comdat_association_cycles(
