@@ -803,6 +803,7 @@ fn validate_comdat_selections(
                 return Err(CoffAdmissionError::SectionLinkage);
             }
             validate_comdat_aux_geometry(object, offset, section)?;
+            validate_comdat_reserved_aux_bytes(object, offset)?;
             let selection_offset = checked_add(offset, COFF_SYMBOL_BYTES + 14)?;
             let selection = read_u8(object, selection_offset)?;
             if !(1..=7).contains(&selection) {
@@ -836,6 +837,19 @@ fn validate_comdat_aux_geometry(
         || relocations != section.relocation_count
         || line_numbers != 0
     {
+        return Err(CoffAdmissionError::SectionLinkage);
+    }
+    Ok(())
+}
+
+fn validate_comdat_reserved_aux_bytes(
+    object: &[u8],
+    symbol_offset: usize,
+) -> Result<(), CoffAdmissionError> {
+    let aux = checked_add(symbol_offset, COFF_SYMBOL_BYTES)?;
+    let unused = read_u8(object, checked_add(aux, 15)?)?;
+    let high_section = read_u16(object, checked_add(aux, 16)?)?;
+    if unused != 0 || high_section != 0 {
         return Err(CoffAdmissionError::SectionLinkage);
     }
     Ok(())

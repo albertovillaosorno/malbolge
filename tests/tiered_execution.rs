@@ -47182,6 +47182,38 @@ fn check_rejected_coff_comdat_selection(
     check_rejected_coff_comdat_association(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
+    check_rejected_coff_comdat_reserved_aux_bytes(source, artifact, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_reserved_aux_bytes(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let aux = fixture.selection_offset.saturating_sub(14);
+    if object.get(aux.saturating_add(15)) != Some(&0u8)
+        || read_fixture_u16(object, aux.saturating_add(16))? != 0
+    {
+        return Err(String::from("compiler emitted reserved COMDAT aux bits"));
+    }
+    for (offset, label) in [
+        (aux.saturating_add(15), "unused selector byte"),
+        (aux.saturating_add(16), "big-object high section index"),
+        (aux.saturating_add(17), "big-object high section index tail"),
+    ] {
+        let mut bytes = object.to_vec();
+        *bytes.get_mut(offset).ok_or("COMDAT aux outside object")? = 1;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted reserved {label}"));
+        }
+    }
     Ok(())
 }
 

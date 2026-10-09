@@ -86,8 +86,9 @@ missing section-definition selectors fail closed. Each populated COMDAT
 section-definition symbol must own exactly one auxiliary record.
 
 The auxiliary section length and relocation count must match the owning
-header; the auxiliary line-number count must remain zero. Empty COMDAT
-sections without relocations remain admissible, matching
+header; the auxiliary line-number count must remain zero. The unused
+selector byte and big-object-only high section number must also be zero.
+Empty COMDAT sections without relocations remain admissible, matching
 legitimate pinned Clang output.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
