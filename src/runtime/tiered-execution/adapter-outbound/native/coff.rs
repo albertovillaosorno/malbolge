@@ -94,6 +94,8 @@ const IMAGE_SCN_LNK_INFO: u32 = 0x0000_0200;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
 const IMAGE_SCN_LNK_REMOVE: u32 = 0x0000_0800;
 const IMAGE_SCN_MEM_DISCARDABLE: u32 = 0x0200_0000;
+const IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS: u32 =
+    0x0400_0000 | 0x0800_0000 | 0x1000_0000;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
@@ -583,6 +585,7 @@ const fn validate_required_text_section_flags(
         | IMAGE_SCN_CNT_UNINITIALIZED_DATA
         | IMAGE_SCN_MEM_WRITE
         | IMAGE_SCN_MEM_DISCARDABLE
+        | IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS
         | IMAGE_SCN_LNK_COMDAT
         | IMAGE_SCN_LNK_INFO
         | IMAGE_SCN_LNK_REMOVE;
@@ -625,6 +628,7 @@ fn validate_metadata_section_flags(
             | IMAGE_SCN_LNK_INFO
             | IMAGE_SCN_LNK_REMOVE
             | IMAGE_SCN_MEM_DISCARDABLE
+            | IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS
             | IMAGE_SCN_MEM_EXECUTE
             | IMAGE_SCN_MEM_WRITE;
         if section.raw_size == 0

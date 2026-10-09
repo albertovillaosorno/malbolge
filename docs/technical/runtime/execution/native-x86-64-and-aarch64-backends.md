@@ -75,6 +75,8 @@ data content. Likewise, `.mbprof` cannot claim code or uninitialized data
 content while presenting itself as read-only initialized identity metadata.
 These permission and required-content checks are shared with relocation-free
 COFF extraction, which cannot independently verify the key-bound metadata.
+Both `.text` and `.mbprof` also reject non-cacheable, nonpageable, and shared
+memory flags because these image-loader policies have no object-level owner.
 
 All COFF sections must declare at most one of the code, initialized-data,
 and uninitialized-data content kinds. Sections with no content-kind bit remain
