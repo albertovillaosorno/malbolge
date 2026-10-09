@@ -46115,6 +46115,10 @@ fn check_rejected_coff_image_flags(
     for (flag, label) in [
         (0x0001u16, "relocations stripped"),
         (0x0002, "executable image"),
+        (0x0004, "stripped COFF line numbers"),
+        (0x0008, "stripped COFF local symbols"),
+        (0x0040, "reserved file characteristic"),
+        (0x0080, "obsolete byte-reversal low"),
         (0x0100, "32-bit machine"),
         (0x2000, "DLL image"),
         (0x0010, "aggressive working-set trim"),
@@ -46123,6 +46127,7 @@ fn check_rejected_coff_image_flags(
         (0x0800, "network-media image"),
         (0x1000, "system image"),
         (0x4000, "uniprocessor system image"),
+        (0x8000, "obsolete byte-reversal high"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler already sets {label} flag"));
@@ -66560,8 +66565,8 @@ fn verified_direct_load_image_rejects_image_flags() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
         let original = read_fixture_u16(artifact.object(), 18)?;
         for flag in [
-            0x0001u16, 0x0002, 0x0010, 0x0020, 0x0100, 0x0400, 0x0800, 0x1000,
-            0x2000, 0x4000,
+            0x0001u16, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
+            0x0100, 0x0400, 0x0800, 0x1000, 0x2000, 0x4000, 0x8000,
         ] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u16(&mut bytes, 18, original | flag)?;
