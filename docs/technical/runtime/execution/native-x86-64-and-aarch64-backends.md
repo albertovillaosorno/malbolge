@@ -68,8 +68,10 @@ content while presenting itself as read-only initialized identity metadata.
 
 Populated auxiliary COMDAT sections require a matching static section
 symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
-missing section-definition selectors fail closed. Empty COMDAT sections with
-no relocations remain admissible, matching legitimate pinned Clang output.
+missing section-definition selectors fail closed. Each populated COMDAT
+section-definition symbol must own exactly one auxiliary record.
+Empty COMDAT sections without relocations remain admissible, matching
+legitimate pinned Clang output.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references

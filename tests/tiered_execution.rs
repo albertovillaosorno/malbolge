@@ -47114,6 +47114,35 @@ fn check_rejected_coff_comdat_selection(
         }
     }
     check_rejected_coff_comdat_association(source, artifact, fixture)?;
+    check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_auxiliary_count(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let offset = fixture.selection_offset.saturating_sub(15);
+    if artifact.object().get(offset) != Some(&1u8) {
+        return Err(String::from("compiler section definition lacks one aux"));
+    }
+    for count in [2u8, 3] {
+        let mut bytes = artifact.object().to_vec();
+        *bytes
+            .get_mut(offset)
+            .ok_or("COFF aux count out of bounds")? = count;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        let observed = structurally_admit_coff(&tampered);
+        if !matches!(
+            observed,
+            Err(CoffAdmissionError::SectionLinkage | CoffAdmissionError::Bounds)
+        ) {
+            return Err(format!("COFF aux count {count}: {observed:?}"));
+        }
+    }
     Ok(())
 }
 

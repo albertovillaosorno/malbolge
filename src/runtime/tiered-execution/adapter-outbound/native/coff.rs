@@ -743,7 +743,7 @@ fn validate_comdat_selections(
             }
             let offset =
                 checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
-            if read_u8(object, checked_add(offset, 17)?)? == 0 {
+            if read_u8(object, checked_add(offset, 17)?)? != 1 {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
             let selection_offset = checked_add(offset, COFF_SYMBOL_BYTES + 14)?;
