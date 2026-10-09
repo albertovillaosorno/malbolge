@@ -801,6 +801,44 @@ fn validate_symbol_sections(
     Ok(())
 }
 
+fn validate_non_comdat_section_auxiliaries(
+    object: &[u8],
+    parsed: &ParsedCoff,
+) -> Result<(), CoffAdmissionError> {
+    let table = usize_from_u32(read_u32(object, 8)?)?;
+    for (section_index, section) in parsed.sections.iter().enumerate() {
+        if section.characteristics & IMAGE_SCN_LNK_COMDAT != 0 {
+            continue;
+        }
+        let number = i16::try_from(section_index.saturating_add(1))
+            .map_err(|_error| CoffAdmissionError::Bounds)?;
+        for (index, candidate) in parsed.symbols.iter().enumerate() {
+            let Some(symbol) = candidate else {
+                continue;
+            };
+            if symbol.section_number != number
+                || symbol.storage_class != 3
+                || symbol.name != section.name
+            {
+                continue;
+            }
+            let offset =
+                checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
+            let aux_count = read_u8(object, checked_add(offset, 17)?)?;
+            if aux_count == 0 {
+                continue;
+            }
+            if aux_count != 1 {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
+            // Ordinary section definitions duplicate the header's geometry
+            // just as COMDAT definitions do; their selection is not active.
+            validate_comdat_aux_geometry(object, offset, section)?;
+        }
+    }
+    Ok(())
+}
+
 fn validate_comdat_selections(
     object: &[u8],
     parsed: &ParsedCoff,
@@ -1209,6 +1247,7 @@ fn validate_symbols_and_relocations(
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
     validate_symbol_sections(parsed)?;
+    validate_non_comdat_section_auxiliaries(object, parsed)?;
     validate_comdat_selections(object, parsed)?;
     let _entry_offset = required_entry_offset(parsed)?;
     let machine = read_u16(object, 0)?;

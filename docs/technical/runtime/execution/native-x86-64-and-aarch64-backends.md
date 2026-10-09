@@ -96,6 +96,12 @@ They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
+Ordinary (non-COMDAT) static section definitions with an auxiliary record
+must also agree with their section header's raw length and relocation count,
+declare zero line numbers, and own exactly one auxiliary slot. Otherwise a
+compiler object could conceal contradictory on-disk section geometry outside
+COMDAT validation.
+
 Populated auxiliary COMDAT sections require a matching static section
 symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
 missing section-definition selectors fail closed. Each populated COMDAT

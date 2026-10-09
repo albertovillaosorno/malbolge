@@ -46041,6 +46041,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_signed_section_name_offset(&source, &artifact)?;
     check_rejected_coff_section_virtual_size(&source, &artifact)?;
     check_rejected_coff_nonloadable_text(&source, &artifact)?;
+    check_rejected_non_comdat_section_auxiliary(&source, &artifact)?;
     check_rejected_coff_linker_owned_metadata(&source, &artifact)?;
     check_rejected_coff_reserved_section_alignment(&source, &artifact)?;
     check_rejected_coff_relocation_overflow(&source, &artifact)?;
@@ -46427,6 +46428,53 @@ fn check_rejected_coff_section_virtual_size(
             return Err(format!(
                 "COFF admitted object VirtualSize={virtual_size}"
             ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_section_auxiliary(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    let section_symbol = (0..count)
+        .map(|index| table.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            object.get(*offset..offset.saturating_add(8))
+                == Some(b".text\0\0\0".as_slice())
+                && read_fixture_u16(object, offset.saturating_add(12)) == Ok(1)
+                && object.get(offset.saturating_add(16)) == Some(&3u8)
+                && object.get(offset.saturating_add(17)) == Some(&1u8)
+        })
+        .ok_or("compiler fixture lacks ordinary .text section definition")?;
+    let aux = section_symbol.saturating_add(18);
+    let text = coff_fixture_text_header(object)?;
+    let raw_size = read_fixture_u32(object, text.saturating_add(16))?;
+    if read_fixture_u32(object, aux)? != raw_size {
+        return Err(String::from("ordinary COFF section length drifted"));
+    }
+    for (offset, label) in [
+        (aux, "section length"),
+        (aux.saturating_add(4), "relocations"),
+        (aux.saturating_add(6), "line numbers"),
+    ] {
+        let mut invalid = object.to_vec();
+        *invalid
+            .get_mut(offset)
+            .ok_or("section aux outside object")? ^= 1;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted malformed ordinary {label}"));
         }
     }
     Ok(())
@@ -46976,6 +47024,14 @@ fn compile_x64_coff_relocation_fixture(
         relocation_offset,
     )?;
     write_fixture_u16(&mut mutated, section_header.saturating_add(32), 1)?;
+    if object.get(symbol_table..symbol_table.saturating_add(8))
+        != Some(b".text\0\0\0".as_slice())
+        || object.get(symbol_table.saturating_add(17)) != Some(&1u8)
+        || first_symbol_section != 1
+    {
+        return Err(String::from("x64 .text definition fixture drifted"));
+    }
+    write_fixture_u16(&mut mutated, symbol_table.saturating_add(22), 1)?;
     write_fixture_u32(&mut mutated, relocation, section_address)?;
     write_fixture_u32(&mut mutated, relocation.saturating_add(4), 0)?;
     write_fixture_u16(&mut mutated, relocation.saturating_add(8), 0x0004)?;
