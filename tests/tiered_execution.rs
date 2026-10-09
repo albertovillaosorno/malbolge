@@ -47647,12 +47647,52 @@ fn check_admitted_selected_empty_parent(
     *selected
         .get_mut(symbol.saturating_add(32))
         .ok_or("COMDAT auxiliary selector missing")? = 2;
-    let artifact =
-        UntrustedNativeObjectArtifact::from_compiler_output(source, selected)
-            .map_err(|error| error.to_string())?;
+    let artifact = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        selected.clone(),
+    )
+    .map_err(|error| error.to_string())?;
     let _admitted = structurally_admit_coff(&artifact)
         .map_err(|error| format!("selected empty COMDAT: {error}"))?;
+    check_rejected_duplicate_empty_comdat_definition(source, &selected)?;
     check_admitted_nested_empty_parent(source, bytes, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_duplicate_empty_comdat_definition(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    selected: &[u8],
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(selected, 8)?)
+        .map_err(|error| error.to_string())?;
+    // Clang records .data and .bss as consecutive static section symbols.
+    // Reassign .bss to .data with an identical short name, forging a
+    // second section-definition record after the legitimate first one.
+    let duplicate = table.saturating_add(4 * 18);
+    if selected.get(duplicate..duplicate.saturating_add(8))
+        != Some(b".bss\0\0\0\0".as_slice())
+        || read_fixture_u16(selected, duplicate.saturating_add(12))? != 3
+        || selected.get(duplicate.saturating_add(16)) != Some(&3u8)
+        || selected.get(duplicate.saturating_add(17)) != Some(&1u8)
+    {
+        return Err(String::from("ARM64 .bss section symbol fixture drifted"));
+    }
+    let mut malformed = selected.to_vec();
+    malformed
+        .get_mut(duplicate..duplicate.saturating_add(8))
+        .ok_or("second section symbol outside object")?
+        .copy_from_slice(b".data\0\0\0");
+    write_fixture_u16(&mut malformed, duplicate.saturating_add(12), 2)?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, malformed)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted two empty COMDAT section definitions",
+        ));
+    }
     Ok(())
 }
 

@@ -112,8 +112,9 @@ selector byte and big-object-only high section number must also be zero.
 Empty COMDAT sections without relocations remain admissible, matching
 legitimate pinned Clang output. When an associative section references an
 empty COMDAT parent, that parent must have valid section-definition
-selection metadata. Referenced empty COMDATs may themselves be associative;
-their entire parent chain is checked for valid selection and cycles.
+selection metadata with exactly one matching static section definition.
+Referenced empty COMDATs may themselves be associative; their entire parent
+chain is checked for valid selection and cycles.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references

@@ -961,6 +961,21 @@ fn validate_referenced_empty_comdat_parent(
     let number = i16::try_from(parent_index.saturating_add(1))
         .map_err(|_error| CoffAdmissionError::SectionLinkage)?;
     validate_comdat_first_symbol(parsed, section, number)?;
+    // Populated COMDATs reject duplicate section definitions. Referenced
+    // empty COMDATs must enforce that same single-owner requirement.
+    let definitions = parsed
+        .symbols
+        .iter()
+        .flatten()
+        .filter(|symbol| {
+            symbol.section_number == number
+                && symbol.storage_class == 3
+                && symbol.name == section.name
+        })
+        .count();
+    if definitions != 1 {
+        return Err(CoffAdmissionError::SectionLinkage);
+    }
     let symbol_index = parsed
         .symbols
         .iter()
