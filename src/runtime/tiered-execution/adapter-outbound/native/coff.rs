@@ -57,6 +57,7 @@ const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001 | 0x0002 | 0x0100 | 0x2000;
 const IMAGE_SCN_ALIGN_MASK: u32 = 0x00f0_0000;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
 const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
+const IMAGE_SCN_CNT_UNINITIALIZED_DATA: u32 = 0x0000_0080;
 const IMAGE_SCN_LNK_COMDAT: u32 = 0x0000_1000;
 const IMAGE_SCN_LNK_INFO: u32 = 0x0000_0200;
 const IMAGE_SCN_LNK_NRELOC_OVFL: u32 = 0x0100_0000;
@@ -536,7 +537,9 @@ fn validate_sections(
             if section.raw_size == 0
                 || section.characteristics & required != required
                 || section.characteristics
-                    & (IMAGE_SCN_MEM_WRITE
+                    & (IMAGE_SCN_CNT_INITIALIZED_DATA
+                        | IMAGE_SCN_CNT_UNINITIALIZED_DATA
+                        | IMAGE_SCN_MEM_WRITE
                         | IMAGE_SCN_MEM_DISCARDABLE
                         | IMAGE_SCN_LNK_COMDAT
                         | IMAGE_SCN_LNK_INFO
@@ -566,7 +569,9 @@ fn validate_section_linker_flags(
     // annotations; it must remain independently loadable section data.
     if section.name == PROFILE_METADATA_SECTION
         && section.characteristics
-            & (IMAGE_SCN_LNK_COMDAT
+            & (IMAGE_SCN_CNT_CODE
+                | IMAGE_SCN_CNT_UNINITIALIZED_DATA
+                | IMAGE_SCN_LNK_COMDAT
                 | IMAGE_SCN_LNK_INFO
                 | IMAGE_SCN_LNK_REMOVE
                 | IMAGE_SCN_MEM_DISCARDABLE)
@@ -608,7 +613,10 @@ fn validate_profile_metadata(
         || metadata.relocation_count != 0
         || metadata.characteristics & required != required
         || metadata.characteristics
-            & (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_WRITE)
+            & (IMAGE_SCN_CNT_CODE
+                | IMAGE_SCN_CNT_UNINITIALIZED_DATA
+                | IMAGE_SCN_MEM_EXECUTE
+                | IMAGE_SCN_MEM_WRITE)
             != 0
     {
         return Err(CoffAdmissionError::ProfileMetadata);

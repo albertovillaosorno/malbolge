@@ -46288,6 +46288,8 @@ fn check_rejected_coff_nonloadable_text(
         (0x0000_0800, "linker discard"),
         (0x0000_1000, "COMDAT selection"),
         (0x0200_0000, "discardable section"),
+        (0x0000_0040, "data-mislabeled code"),
+        (0x0000_0080, "uninitialized-mislabeled code"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler marked .text as {label}"));
@@ -46329,6 +46331,8 @@ fn check_rejected_coff_linker_owned_metadata(
         (0x0000_0800, "linker discard"),
         (0x0000_1000, "COMDAT selection"),
         (0x0200_0000, "discardable section"),
+        (0x0000_0020, "code-mislabeled metadata"),
+        (0x0000_0080, "uninitialized-mislabeled metadata"),
     ] {
         if original & flag != 0 {
             return Err(format!("compiler .mbprof has {label}"));
@@ -66575,7 +66579,14 @@ fn verified_direct_load_image_rejects_linker_owned_metadata()
         let offset =
             coff_fixture_metadata_header(artifact.object())?.saturating_add(36);
         let original = read_fixture_u32(artifact.object(), offset)?;
-        for flag in [0x0000_0200u32, 0x0000_0800, 0x0000_1000, 0x0200_0000] {
+        for flag in [
+            0x0000_0200u32,
+            0x0000_0800,
+            0x0000_1000,
+            0x0200_0000,
+            0x0000_0020,
+            0x0000_0080,
+        ] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u32(&mut bytes, offset, original | flag)?;
             if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)
@@ -66606,7 +66617,14 @@ fn verified_direct_load_image_rejects_nonloadable_text() -> Result<(), String> {
         let header = coff_fixture_text_header(artifact.object())?;
         let offset = header.saturating_add(36);
         let original = read_fixture_u32(artifact.object(), offset)?;
-        for flag in [0x0000_0200u32, 0x0000_0800, 0x0000_1000, 0x0200_0000] {
+        for flag in [
+            0x0000_0200u32,
+            0x0000_0800,
+            0x0000_1000,
+            0x0200_0000,
+            0x0000_0040,
+            0x0000_0080,
+        ] {
             let mut bytes = artifact.object().to_vec();
             write_fixture_u32(&mut bytes, offset, original | flag)?;
             if VerifiedDirectLoadImage::from_object_for_test(&artifact, &bytes)

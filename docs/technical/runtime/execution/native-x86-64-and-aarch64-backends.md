@@ -62,6 +62,10 @@ linker-only information, discarded, or COMDAT-selected. Neither the callable
 `.text` section nor `.mbprof` can be marked `MEM_DISCARDABLE`, because both
 must remain independently available during native execution and admission.
 
+The callable `.text` cannot simultaneously claim initialized or uninitialized
+data content. Likewise, `.mbprof` cannot claim code or uninitialized data
+content while presenting itself as read-only initialized identity metadata.
+
 Populated auxiliary COMDAT sections require a matching static section
 symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
 missing section-definition selectors fail closed. Empty COMDAT sections with
