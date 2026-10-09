@@ -47203,6 +47203,41 @@ fn check_rejected_coff_comdat_selection(
     check_rejected_coff_comdat_auxiliary_count(source, artifact, fixture)?;
     check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
     check_rejected_coff_comdat_reserved_aux_bytes(source, artifact, fixture)?;
+    check_rejected_coff_comdat_symbol_header(source, artifact, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_symbol_header(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol = fixture.selection_offset.saturating_sub(32);
+    if read_fixture_u32(object, symbol.saturating_add(8))? != 0
+        || read_fixture_u16(object, symbol.saturating_add(14))? != 0
+    {
+        return Err(String::from("compiler COMDAT section symbol is not null"));
+    }
+    for (offset, label) in [
+        (symbol.saturating_add(8), "section-symbol value"),
+        (symbol.saturating_add(14), "section-symbol type"),
+    ] {
+        let mut bytes = object.to_vec();
+        if label == "section-symbol value" {
+            write_fixture_u32(&mut bytes, offset, 1)?;
+        } else {
+            write_fixture_u16(&mut bytes, offset, 0x0020)?;
+        }
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted nonzero COMDAT {label}"));
+        }
+    }
     Ok(())
 }
 

@@ -806,7 +806,7 @@ fn validate_comdat_selections(
             {
                 continue;
             }
-            if validated {
+            if validated || symbol.value != 0 || symbol.symbol_type != 0 {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
             let offset =
