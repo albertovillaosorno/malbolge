@@ -46274,6 +46274,7 @@ fn check_rejected_coff_image_flags(
         (0x0040, "reserved file characteristic"),
         (0x0080, "obsolete byte-reversal low"),
         (0x0100, "32-bit machine"),
+        (0x0200, "separately stored image debug information"),
         (0x2000, "DLL image"),
         (0x0010, "aggressive working-set trim"),
         (0x0020, "large-address executable image"),

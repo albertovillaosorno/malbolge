@@ -79,6 +79,7 @@ const IMAGE_FILE_INCOMPATIBLE_FLAGS: u16 = 0x0001
     | 0x0040
     | 0x0080
     | 0x0100
+    | 0x0200
     | 0x0400
     | 0x0800
     | 0x1000

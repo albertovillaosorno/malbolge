@@ -60,6 +60,7 @@ to be zero rather than accepting the image-only loaded-size field.
 
 The obsolete stripped-line-number, stripped-local-symbol, and byte-order
 reversal file flags are rejected as unsupported object representations.
+The image-only separately stored debug-information flag is also rejected.
 The reserved file-characteristic bit is also rejected rather than ignored.
 
 The callable `.text` section also cannot be marked as linker-only
