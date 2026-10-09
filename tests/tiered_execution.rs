@@ -46056,6 +46056,7 @@ fn check_coff_isa_specific_mutations(
     check_rejected_coff_ambiguous_auxiliary_section(source, artifact)?;
     check_rejected_coff_unsupported_auxiliary_flags(source, artifact)?;
     check_rejected_coff_executable_auxiliary_data(source, artifact)?;
+    check_rejected_coff_unloadable_auxiliary_data(source, artifact)?;
     if isa == HostIsa::X86_64 {
         check_rejected_coff_mutations(source, artifact)?;
         check_x64_coff_relocation_types_and_spans(source, artifact)?;
@@ -46088,6 +46089,31 @@ fn coff_fixture_populated_auxiliary_header(
                 && size.is_ok_and(|bytes| bytes > 0)
         })
         .ok_or_else(|| String::from("compiler fixture lacks auxiliary data"))
+}
+
+fn check_rejected_coff_unloadable_auxiliary_data(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let original = read_fixture_u32(artifact.object(), offset)?;
+    for flag in [0x0000_0002u32, 0x0002_0000, 0x0004_0000, 0x0008_0000] {
+        if original & flag != 0 {
+            return Err(format!("compiler auxiliary already has {flag:#010x}"));
+        }
+        let mut bytes = artifact.object().to_vec();
+        write_fixture_u32(&mut bytes, offset, original | flag)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!("COFF admitted auxiliary load hint {flag:#x}"));
+        }
+    }
+    Ok(())
 }
 
 fn check_rejected_coff_executable_auxiliary_data(
