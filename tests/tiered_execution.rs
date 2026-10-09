@@ -1679,6 +1679,13 @@ respond(memory_magic + b"\x03\x00")
 "#;
 
 #[derive(Clone, Copy)]
+struct CoffComdatFixtureSelection {
+    owner: u16,
+    section_count: usize,
+    selection_offset: usize,
+}
+
+#[derive(Clone, Copy)]
 struct CoffCompileCase {
     expected_machine: [u8; 2],
     isa: HostIsa,
@@ -46997,11 +47004,9 @@ fn check_rejected_coff_unterminated_long_name(
     Ok(())
 }
 
-fn check_rejected_coff_comdat_selection(
-    source: &execution_native::UntrustedNativeSourceArtifact,
-    artifact: &UntrustedNativeObjectArtifact,
-) -> Result<(), String> {
-    let object = artifact.object();
+fn coff_fixture_comdat_selection(
+    object: &[u8],
+) -> Result<CoffComdatFixtureSelection, String> {
     let sections = usize::from(read_fixture_u16(object, 2)?);
     let section_number = (0..sections)
         .find(|index| {
@@ -47026,6 +47031,20 @@ fn check_rejected_coff_comdat_selection(
         })
         .ok_or("COMDAT section lacks static section-definition symbol")?
         .saturating_add(32);
+    Ok(CoffComdatFixtureSelection {
+        owner: section_u16,
+        section_count: sections,
+        selection_offset: aux_offset,
+    })
+}
+
+fn check_rejected_coff_comdat_selection(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let fixture = coff_fixture_comdat_selection(object)?;
+    let aux_offset = fixture.selection_offset;
     let original = *object
         .get(aux_offset)
         .ok_or("COMDAT selection byte outside object")?;
@@ -47044,6 +47063,37 @@ fn check_rejected_coff_comdat_selection(
             != Err(CoffAdmissionError::SectionLinkage)
         {
             return Err(format!("COFF admitted COMDAT selection {selection}"));
+        }
+    }
+    check_rejected_coff_comdat_association(source, artifact, fixture)?;
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_association(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let number_offset = fixture.selection_offset.saturating_sub(2);
+    let missing = u16::try_from(fixture.section_count.saturating_add(1))
+        .map_err(|error| format!("COMDAT missing section index: {error}"))?;
+    for (number, label) in [
+        (0u16, "zero"),
+        (fixture.owner, "self association"),
+        (missing, "missing section"),
+    ] {
+        let mut bytes = artifact.object().to_vec();
+        *bytes
+            .get_mut(fixture.selection_offset)
+            .ok_or("selection outside COFF object")? = 5u8;
+        write_fixture_u16(&mut bytes, number_offset, number)?;
+        let tampered =
+            UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+                .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&tampered)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted {label} COMDAT association"));
         }
     }
     Ok(())

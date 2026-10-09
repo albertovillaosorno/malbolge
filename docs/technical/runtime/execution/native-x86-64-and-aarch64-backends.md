@@ -67,6 +67,10 @@ symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
 missing section-definition selectors fail closed. Empty COMDAT sections with
 no relocations remain admissible, matching legitimate pinned Clang output.
 
+Associative selection (`5`) must refer to a distinct, existing one-based
+section number; zero, self-association, and out-of-range section references
+are rejected without calling a linker.
+
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
 invalid sections.

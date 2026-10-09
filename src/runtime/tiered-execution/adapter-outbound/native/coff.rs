@@ -734,11 +734,40 @@ fn validate_comdat_selections(
             if !(1..=7).contains(&selection) {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
+            validate_comdat_association(
+                object,
+                offset,
+                (section_index, parsed.sections.len()),
+                selection,
+            )?;
             validated = true;
         }
         if !validated {
             return Err(CoffAdmissionError::SectionLinkage);
         }
+    }
+    Ok(())
+}
+
+fn validate_comdat_association(
+    object: &[u8],
+    symbol_offset: usize,
+    section_bounds: (usize, usize),
+    selection: u8,
+) -> Result<(), CoffAdmissionError> {
+    let (section_index, section_count) = section_bounds;
+    if selection != 5 {
+        return Ok(());
+    }
+    let associated = usize::from(read_u16(
+        object,
+        checked_add(symbol_offset, COFF_SYMBOL_BYTES + 12)?,
+    )?);
+    if associated == 0
+        || associated > section_count
+        || section_index.checked_add(1) == Some(associated)
+    {
+        return Err(CoffAdmissionError::SectionLinkage);
     }
     Ok(())
 }
