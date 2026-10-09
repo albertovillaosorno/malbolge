@@ -46098,7 +46098,15 @@ fn check_rejected_coff_unloadable_auxiliary_data(
     let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
     let offset = header.saturating_add(36);
     let original = read_fixture_u32(artifact.object(), offset)?;
-    for flag in [0x0000_0002u32, 0x0002_0000, 0x0004_0000, 0x0008_0000] {
+    for flag in [
+        0x0000_0002u32,
+        0x0002_0000,
+        0x0004_0000,
+        0x0008_0000,
+        0x0400_0000,
+        0x0800_0000,
+        0x1000_0000,
+    ] {
         if original & flag != 0 {
             return Err(format!("compiler auxiliary already has {flag:#010x}"));
         }
