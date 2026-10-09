@@ -47154,7 +47154,11 @@ fn check_rejected_coff_comdat_association(
     let number_offset = fixture.selection_offset.saturating_sub(2);
     let missing = u16::try_from(fixture.section_count.saturating_add(1))
         .map_err(|error| format!("COMDAT missing section index: {error}"))?;
+    if read_fixture_u32(artifact.object(), 56)? & 0x0000_1000 != 0 {
+        return Err(String::from("COFF fixture .text unexpectedly COMDAT"));
+    }
     for (number, label) in [
+        (1u16, "non-COMDAT section"),
         (0u16, "zero"),
         (fixture.owner, "self association"),
         (missing, "missing section"),

@@ -75,7 +75,8 @@ legitimate pinned Clang output.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references
-are rejected without calling a linker.
+are rejected without calling a linker. The referenced parent must itself
+be a COMDAT section; associating to ordinary executable `.text` is invalid.
 
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden

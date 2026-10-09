@@ -754,7 +754,7 @@ fn validate_comdat_selections(
             validate_comdat_association(
                 object,
                 offset,
-                (section_index, parsed.sections.len()),
+                (section_index, parsed.sections.as_slice()),
                 selection,
             )?;
             validated = true;
@@ -769,10 +769,10 @@ fn validate_comdat_selections(
 fn validate_comdat_association(
     object: &[u8],
     symbol_offset: usize,
-    section_bounds: (usize, usize),
+    section_bounds: (usize, &[CoffSection]),
     selection: u8,
 ) -> Result<(), CoffAdmissionError> {
-    let (section_index, section_count) = section_bounds;
+    let (section_index, sections) = section_bounds;
     if selection != 5 {
         return Ok(());
     }
@@ -781,8 +781,12 @@ fn validate_comdat_association(
         checked_add(symbol_offset, COFF_SYMBOL_BYTES + 12)?,
     )?);
     if associated == 0
-        || associated > section_count
         || section_index.checked_add(1) == Some(associated)
+        || sections
+            .get(associated.saturating_sub(1))
+            .is_none_or(|section| {
+                section.characteristics & IMAGE_SCN_LNK_COMDAT == 0
+            })
     {
         return Err(CoffAdmissionError::SectionLinkage);
     }
