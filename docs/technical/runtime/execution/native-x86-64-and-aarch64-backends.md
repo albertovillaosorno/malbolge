@@ -89,7 +89,8 @@ and uninitialized-data content kinds. Sections with no content-kind bit remain
 admissible where the compiler uses them for linker or debug bookkeeping.
 Data-classified sections cannot also claim executable-memory permissions.
 
-Populated initialized-data sections cannot request legacy `NOLOAD`,
+Populated initialized-data sections must advertise readable bytes.
+They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
