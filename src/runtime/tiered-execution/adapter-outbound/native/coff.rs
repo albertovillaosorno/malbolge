@@ -815,6 +815,7 @@ fn validate_comdat_selections(
         }
         let number = i16::try_from(section_index.saturating_add(1))
             .map_err(|_error| CoffAdmissionError::Bounds)?;
+        validate_comdat_first_symbol(parsed, section, number)?;
         let mut validated = false;
         for (index, candidate) in parsed.symbols.iter().enumerate() {
             let Some(symbol) = candidate else {
@@ -866,6 +867,30 @@ fn validate_comdat_selections(
         }
     }
     validate_comdat_association_cycles(&associations)
+}
+
+fn validate_comdat_first_symbol(
+    parsed: &ParsedCoff,
+    section: &CoffSection,
+    number: i16,
+) -> Result<(), CoffAdmissionError> {
+    // A correct section-definition symbol appearing later in the table
+    // cannot legitimize any preceding symbol in the same COMDAT section.
+    let first = parsed
+        .symbols
+        .iter()
+        .flatten()
+        .find(|symbol| symbol.section_number == number)
+        .ok_or(CoffAdmissionError::SectionLinkage)?;
+    if first.storage_class != 3
+        || first.name != section.name
+        || first.value != 0
+        || first.symbol_type != 0
+    {
+        Err(CoffAdmissionError::SectionLinkage)
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_comdat_association_cycles(

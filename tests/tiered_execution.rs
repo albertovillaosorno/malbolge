@@ -47365,6 +47365,7 @@ fn check_rejected_coff_comdat_selection(
     check_rejected_coff_comdat_auxiliary_geometry(source, artifact, fixture)?;
     check_rejected_coff_comdat_reserved_aux_bytes(source, artifact, fixture)?;
     check_rejected_coff_comdat_symbol_header(source, artifact, fixture)?;
+    check_rejected_coff_comdat_first_symbol(source, artifact, fixture)?;
     Ok(())
 }
 
@@ -47398,6 +47399,38 @@ fn check_rejected_coff_comdat_symbol_header(
         {
             return Err(format!("COFF admitted nonzero COMDAT {label}"));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_comdat_first_symbol(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    fixture: CoffComdatFixtureSelection,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let first = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    if object.get(first.saturating_add(16)) != Some(&3u8)
+        || read_fixture_u16(object, first.saturating_add(12))? == fixture.owner
+    {
+        return Err(String::from(
+            "compiler fixture lacks earlier static section symbol",
+        ));
+    }
+    // A valid COMDAT section definition appearing later does not repair
+    // an earlier symbol claiming to belong to that same section.
+    let mut bytes = object.to_vec();
+    write_fixture_u16(&mut bytes, first.saturating_add(12), fixture.owner)?;
+    let tampered =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&tampered)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted a late COMDAT section-definition symbol",
+        ));
     }
     Ok(())
 }

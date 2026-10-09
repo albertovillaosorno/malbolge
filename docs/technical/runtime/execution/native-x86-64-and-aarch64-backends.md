@@ -99,8 +99,11 @@ They also reject non-cacheable, nonpageable, and shared-memory policies.
 Populated auxiliary COMDAT sections require a matching static section
 symbol with a defined PE/COFF selection code (`1` through `7`). Invalid or
 missing section-definition selectors fail closed. Each populated COMDAT
-section-definition symbol must own exactly one auxiliary record. Its primary
-symbol must have a zero section-relative value and null COFF symbol type.
+section-definition symbol must own exactly one auxiliary record.
+
+Its primary symbol must have a zero section-relative value and null COFF
+symbol type. It must also precede every other symbol defined in that COMDAT
+section.
 
 The auxiliary section length and relocation count must match the owning
 header; the auxiliary line-number count must remain zero. The unused
