@@ -981,10 +981,7 @@ fn has_empty_comdat_selection(
         let Some(symbol) = candidate else {
             continue;
         };
-        if symbol.section_number != number
-            || symbol.name != section.name
-            || symbol.storage_class != 3
-        {
+        if symbol.section_number != number {
             continue;
         }
         let offset =
@@ -996,7 +993,12 @@ fn has_empty_comdat_selection(
         let selection =
             read_u8(object, checked_add(offset, COFF_SYMBOL_BYTES + 14)?)?;
         if selection != 0 {
+            // A selected empty definition cannot escape admission by
+            // disguising its name or storage class.
             return Ok(true);
+        }
+        if symbol.name != section.name || symbol.storage_class != 3 {
+            continue;
         }
         // Selection zero permits compiler bookkeeping, not malformed
         // auxiliary records with hidden geometry or reserved fields.

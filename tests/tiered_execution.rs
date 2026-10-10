@@ -48106,28 +48106,19 @@ fn check_unreferenced_empty_comdat_selection(
     if bytes.get(selector) != Some(&0u8) {
         return Err(String::from("empty COMDAT selector fixture drifted"));
     }
-    for selection in [8u8, u8::MAX] {
-        let mut invalid = bytes.to_vec();
-        *invalid.get_mut(selector).ok_or("missing empty selector")? = selection;
-        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
-            source, invalid,
-        )
-        .map_err(|error| error.to_string())?;
-        if structurally_admit_coff(&candidate)
-            != Err(CoffAdmissionError::SectionLinkage)
-        {
-            return Err(format!(
-                "COFF admitted unreferenced empty COMDAT selection {selection}",
-            ));
-        }
-    }
+    check_rejected_invalid_unreferenced_empty_selectors(
+        source, bytes, selector,
+    )?;
     let mut selected = bytes.to_vec();
     *selected.get_mut(selector).ok_or("missing empty selector")? = 2;
-    let positive =
-        UntrustedNativeObjectArtifact::from_compiler_output(source, selected)
-            .map_err(|error| error.to_string())?;
+    let positive = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        selected.clone(),
+    )
+    .map_err(|error| error.to_string())?;
     let _admitted = structurally_admit_coff(&positive)
         .map_err(|error| format!("selected empty COMDAT: {error}"))?;
+    check_rejected_disguised_empty_comdat(source, &selected, section_symbol)?;
     let mut invalid = bytes.to_vec();
     *invalid.get_mut(selector).ok_or("missing empty selector")? = 5;
     write_fixture_u16(&mut invalid, selector.saturating_sub(2), 1)?;
@@ -48158,6 +48149,61 @@ fn check_unreferenced_empty_comdat_selection(
         .map_err(|error| error.to_string())?;
     let _associative_admission = structurally_admit_coff(&valid_association)
         .map_err(|error| format!("unreferenced associative COMDAT: {error}"))?;
+    Ok(())
+}
+
+fn check_rejected_invalid_unreferenced_empty_selectors(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    selector: usize,
+) -> Result<(), String> {
+    for selection in [8u8, u8::MAX] {
+        let mut invalid = bytes.to_vec();
+        *invalid.get_mut(selector).ok_or("missing empty selector")? = selection;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!(
+                "COFF admitted unreferenced empty COMDAT selection {selection}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_disguised_empty_comdat(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    selected: &[u8],
+    symbol: usize,
+) -> Result<(), String> {
+    for label in ["name", "storage class"] {
+        let mut invalid = selected.to_vec();
+        if label == "name" {
+            invalid
+                .get_mut(symbol..symbol.saturating_add(8))
+                .ok_or("empty COMDAT symbol name missing")?
+                .copy_from_slice(b".junk\0\0\0");
+        } else {
+            *invalid
+                .get_mut(symbol.saturating_add(16))
+                .ok_or("empty COMDAT class missing")? = 2;
+        }
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!(
+                "COFF admitted disguised empty COMDAT {label}"
+            ));
+        }
+    }
     Ok(())
 }
 

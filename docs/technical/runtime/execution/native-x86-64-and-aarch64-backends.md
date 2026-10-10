@@ -123,10 +123,13 @@ selector byte and big-object-only high section number must also be zero.
 Unselected empty COMDAT sections without relocations remain admissible,
 matching legitimate pinned Clang output. An empty COMDAT with an explicit
 nonzero selection must satisfy the same section-definition and association
-checks as a populated COMDAT. When an associative section references an
-unselected empty parent, admission rejects its missing selection.
-Referenced empty COMDATs may themselves be associative; their entire parent
-chain is checked for valid selection and cycles.
+checks as a populated COMDAT. Renaming or reclassifying an auxiliary-backed
+selected empty section does not bypass selector validation.
+
+When an associative section references an unselected empty parent, admission
+rejects its missing selection. Referenced empty COMDATs may themselves be
+associative; their entire parent chain is checked for valid selection and
+cycles.
 
 Unselected empty COMDATs with an auxiliary section-definition record must
 also have a zero-valued, null-typed primary section symbol, matching length
