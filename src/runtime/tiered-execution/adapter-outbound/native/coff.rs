@@ -831,9 +831,10 @@ fn validate_non_comdat_section_auxiliaries(
             if aux_count != 1 {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
-            // Ordinary section definitions duplicate the header's geometry
-            // just as COMDAT definitions do; their selection is not active.
+            // Ordinary section definitions duplicate header geometry and
+            // must not hide unsupported big-object or reserved aux bytes.
             validate_comdat_aux_geometry(object, offset, section)?;
+            validate_comdat_reserved_aux_bytes(object, offset)?;
         }
     }
     Ok(())

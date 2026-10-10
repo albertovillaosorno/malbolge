@@ -46477,6 +46477,43 @@ fn check_rejected_non_comdat_section_auxiliary(
             return Err(format!("COFF admitted malformed ordinary {label}"));
         }
     }
+    check_rejected_non_comdat_reserved_aux_bytes(source, object, aux)?;
+    check_rejected_non_comdat_aux_counts(source, object, section_symbol)?;
+    Ok(())
+}
+
+fn check_rejected_non_comdat_reserved_aux_bytes(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    aux: usize,
+) -> Result<(), String> {
+    for (delta, label) in [
+        (15usize, "unused selector"),
+        (16, "high section number"),
+        (17, "high section number tail"),
+    ] {
+        let mut invalid = object.to_vec();
+        *invalid
+            .get_mut(aux.saturating_add(delta))
+            .ok_or("ordinary section auxiliary missing")? ^= 1;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted ordinary {label}"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_aux_counts(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
     for aux_count in [2u8, 3] {
         let mut invalid = object.to_vec();
         *invalid
