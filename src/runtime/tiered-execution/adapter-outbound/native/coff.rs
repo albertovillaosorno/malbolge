@@ -826,8 +826,14 @@ fn validate_non_comdat_section_auxiliaries(
             if aux_count == 0 {
                 continue;
             }
-            if symbol.value == 0
-                && symbol.symbol_type == 0
+            let first_in_section = !parsed
+                .symbols
+                .iter()
+                .take(index)
+                .flatten()
+                .any(|prior| prior.section_number == number);
+            if symbol.symbol_type == 0
+                && (symbol.value == 0 || first_in_section)
                 && (symbol.name != section.name || symbol.storage_class != 3)
             {
                 return Err(CoffAdmissionError::SectionLinkage);
