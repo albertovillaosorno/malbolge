@@ -826,10 +826,9 @@ fn validate_non_comdat_section_auxiliaries(
             if aux_count == 0 {
                 continue;
             }
-            if symbol.storage_class == 3
-                && symbol.value == 0
+            if symbol.value == 0
                 && symbol.symbol_type == 0
-                && symbol.name != section.name
+                && (symbol.name != section.name || symbol.storage_class != 3)
             {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
