@@ -768,9 +768,14 @@ fn required_entry_offset(
 }
 
 fn validate_symbol_sections(
+    object: &[u8],
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
-    for symbol in parsed.symbols.iter().flatten() {
+    let table = usize_from_u32(read_u32(object, 8)?)?;
+    for (symbol_index, candidate) in parsed.symbols.iter().enumerate() {
+        let Some(symbol) = candidate else {
+            continue;
+        };
         // Every symbol, including unreferenced static symbols, must carry
         // either a real one-based section or one of COFF's three sentinels:
         // UNDEFINED (0), ABSOLUTE (-1), or DEBUG (-2).
@@ -780,6 +785,23 @@ fn validate_symbol_sections(
                     .is_ok_and(|number| number > parsed.sections.len()));
         if invalid {
             return Err(CoffAdmissionError::ExternalDependency);
+        }
+        if symbol.section_number <= 0
+            && symbol.storage_class == 3
+            && symbol.value == 0
+            && symbol.symbol_type == 0
+            && parsed
+                .sections
+                .iter()
+                .any(|section| section.name == symbol.name)
+        {
+            let offset = checked_add(
+                table,
+                checked_mul(symbol_index, COFF_SYMBOL_BYTES)?,
+            )?;
+            if read_u8(object, checked_add(offset, 17)?)? != 0 {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
         }
         if symbol.section_number > 0 {
             let index = usize::try_from(symbol.section_number)
@@ -1286,7 +1308,7 @@ fn validate_symbols_and_relocations(
     object: &[u8],
     parsed: &ParsedCoff,
 ) -> Result<(), CoffAdmissionError> {
-    validate_symbol_sections(parsed)?;
+    validate_symbol_sections(object, parsed)?;
     validate_non_comdat_section_auxiliaries(object, parsed)?;
     validate_comdat_selections(object, parsed)?;
     let _entry_offset = required_entry_offset(parsed)?;

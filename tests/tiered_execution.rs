@@ -46496,6 +46496,7 @@ fn check_rejected_non_comdat_section_auxiliary(
         object,
         section_symbol,
     )?;
+    check_rejected_non_comdat_undefined_owner(source, object, section_symbol)?;
     check_rejected_non_comdat_duplicate(source, object, section_symbol)?;
     check_rejected_non_comdat_aux_counts(source, object, section_symbol)?;
     Ok(())
@@ -46619,6 +46620,31 @@ fn check_rejected_non_comdat_name_value_disguise(
         != Err(CoffAdmissionError::SectionLinkage)
     {
         return Err(String::from("COFF admitted disguised ordinary value"));
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_undefined_owner(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
+    for sentinel in [0u16, u16::MAX, u16::MAX - 1] {
+        let mut invalid = object.to_vec();
+        write_fixture_u16(
+            &mut invalid,
+            section_symbol.saturating_add(12),
+            sentinel,
+        )?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted owner sentinel {sentinel}"));
+        }
     }
     Ok(())
 }
