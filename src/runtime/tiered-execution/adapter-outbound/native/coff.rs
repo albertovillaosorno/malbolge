@@ -1000,7 +1000,15 @@ fn has_empty_comdat_selection(
         if symbol.name != section.name || symbol.storage_class != 3 {
             // Even without a selector, a null-valued, null-typed section
             // definition cannot hide malformed ownership in an aux record.
-            if symbol.value == 0 && symbol.symbol_type == 0 {
+            let first_in_section = !parsed
+                .symbols
+                .iter()
+                .take(index)
+                .flatten()
+                .any(|prior| prior.section_number == number);
+            if first_in_section
+                || (symbol.value == 0 && symbol.symbol_type == 0)
+            {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
             continue;

@@ -48025,6 +48025,11 @@ fn check_unselected_empty_comdat_auxiliary(
     }
     check_rejected_disguised_empty_comdat(source, bytes, section_symbol)?;
     check_unselected_empty_comdat_symbol_shape(source, bytes, section_symbol)?;
+    check_rejected_disguised_unselected_empty_definition(
+        source,
+        bytes,
+        section_symbol,
+    )?;
     check_unselected_empty_comdat_duplicate(source, bytes, table)?;
     Ok(())
 }
@@ -48056,6 +48061,30 @@ fn check_unselected_empty_comdat_symbol_shape(
         {
             return Err(format!("COFF admitted unselected COMDAT {label}"));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_disguised_unselected_empty_definition(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    symbol: usize,
+) -> Result<(), String> {
+    let mut invalid = bytes.to_vec();
+    invalid
+        .get_mut(symbol..symbol.saturating_add(8))
+        .ok_or("empty COMDAT name missing")?
+        .copy_from_slice(b".junk\0\0\0");
+    *invalid
+        .get_mut(symbol.saturating_add(8))
+        .ok_or("empty COMDAT value missing")? = 1;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF admitted disguised empty COMDAT"));
     }
     Ok(())
 }
