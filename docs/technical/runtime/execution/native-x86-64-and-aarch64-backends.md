@@ -97,8 +97,9 @@ They cannot request legacy `NOLOAD`,
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
 Ordinary (non-COMDAT) static section definitions with an auxiliary record
-must also agree with their section header's raw length and relocation count,
-declare zero line numbers, and own exactly one auxiliary slot. Unused
+must also have a zero-valued, null-typed primary symbol and agree with their
+section header's raw length and relocation count, declare zero line numbers,
+and own exactly one auxiliary slot. Unused
 selector and big-object-only high section-number bytes must also be zero.
 Otherwise a compiler object could conceal contradictory or unsupported
 auxiliary data outside COMDAT validation.

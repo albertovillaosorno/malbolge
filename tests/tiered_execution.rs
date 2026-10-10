@@ -1705,6 +1705,11 @@ struct NativeCoffRelocationLocation {
     section_size: u32,
 }
 
+struct CoffStaticEndLabelFixture {
+    boundary: Vec<u8>,
+    label: usize,
+}
+
 struct PreparedComdatCycle {
     bytes: Vec<u8>,
     second_owner: u16,
@@ -46478,7 +46483,40 @@ fn check_rejected_non_comdat_section_auxiliary(
         }
     }
     check_rejected_non_comdat_reserved_aux_bytes(source, object, aux)?;
+    check_rejected_non_comdat_primary_symbol(source, object, section_symbol)?;
+
     check_rejected_non_comdat_aux_counts(source, object, section_symbol)?;
+    Ok(())
+}
+
+fn check_rejected_non_comdat_primary_symbol(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    symbol: usize,
+) -> Result<(), String> {
+    if read_fixture_u32(object, symbol.saturating_add(8))? != 0
+        || read_fixture_u16(object, symbol.saturating_add(14))? != 0
+    {
+        return Err(String::from("compiler ordinary .text symbol drifted"));
+    }
+    for (offset, label) in [
+        (symbol.saturating_add(8), "value"),
+        (symbol.saturating_add(14), "type"),
+    ] {
+        let mut invalid = object.to_vec();
+        *invalid
+            .get_mut(offset)
+            .ok_or("ordinary section symbol missing")? = 1;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted ordinary section {label}"));
+        }
+    }
     Ok(())
 }
 
@@ -47375,21 +47413,25 @@ fn check_rejected_coff_unreferenced_symbol_value(
     if size == 0 || size == u32::MAX {
         return Err(String::from("COFF first static symbol has no raw extent"));
     }
-    // COFF labels at the exact end of populated storage are legitimate.
-    let mut boundary = object.to_vec();
-    write_fixture_u32(&mut boundary, symbols.saturating_add(8), size)?;
-    let end_label =
-        UntrustedNativeObjectArtifact::from_compiler_output(source, boundary)
-            .map_err(|error| error.to_string())?;
+    // A section-definition symbol is not a label. Append a separate static
+    // label before long-name storage so its one-past-end value is legal.
+    let CoffStaticEndLabelFixture { boundary, label } =
+        coff_fixture_with_static_end_label(
+            object,
+            symbols,
+            section_number,
+            size,
+        )?;
+    let end_label = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        boundary.clone(),
+    )
+    .map_err(|error| error.to_string())?;
     let _admitted_end_label = structurally_admit_coff(&end_label)
         .map_err(|error| format!("COFF one-past-end label: {error}"))?;
     for invalid_value in [size.saturating_add(1), u32::MAX] {
-        let mut bytes = object.to_vec();
-        write_fixture_u32(
-            &mut bytes,
-            symbols.saturating_add(8),
-            invalid_value,
-        )?;
+        let mut bytes = boundary.clone();
+        write_fixture_u32(&mut bytes, label.saturating_add(8), invalid_value)?;
         let tampered =
             UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
                 .map_err(|error| error.to_string())?;
@@ -47402,6 +47444,41 @@ fn check_rejected_coff_unreferenced_symbol_value(
         }
     }
     Ok(())
+}
+
+fn coff_fixture_with_static_end_label(
+    object: &[u8],
+    symbols: usize,
+    section_number: usize,
+    size: u32,
+) -> Result<CoffStaticEndLabelFixture, String> {
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    let label = symbols
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF synthetic label offset overflow")?;
+    let mut boundary = object.to_vec();
+    drop(boundary.splice(label..label, [0u8; 18]));
+    boundary
+        .get_mut(label..label.saturating_add(8))
+        .ok_or("COFF synthetic label missing")?
+        .copy_from_slice(b".label\0\0");
+    write_fixture_u16(
+        &mut boundary,
+        label.saturating_add(12),
+        u16::try_from(section_number).map_err(|error| error.to_string())?,
+    )?;
+    *boundary
+        .get_mut(label.saturating_add(16))
+        .ok_or("COFF synthetic label class missing")? = 3;
+    write_fixture_u32(
+        &mut boundary,
+        12,
+        u32::try_from(count.saturating_add(1))
+            .map_err(|error| error.to_string())?,
+    )?;
+    write_fixture_u32(&mut boundary, label.saturating_add(8), size)?;
+    Ok(CoffStaticEndLabelFixture { boundary, label })
 }
 
 fn check_rejected_coff_unreferenced_unterminated_string(

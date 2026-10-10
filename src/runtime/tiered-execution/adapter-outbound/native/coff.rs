@@ -828,7 +828,7 @@ fn validate_non_comdat_section_auxiliaries(
             if aux_count == 0 {
                 continue;
             }
-            if aux_count != 1 {
+            if aux_count != 1 || symbol.value != 0 || symbol.symbol_type != 0 {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
             // Ordinary section definitions duplicate header geometry and
