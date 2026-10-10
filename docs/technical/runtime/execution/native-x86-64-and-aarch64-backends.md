@@ -97,7 +97,8 @@ They cannot request legacy `NOLOAD`,
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
 Ordinary (non-COMDAT) section definitions with an auxiliary record must
-use static storage class and a zero-valued, null-typed primary symbol;
+match the owning section name, use static storage class, and have a
+zero-valued, null-typed primary symbol;
 its geometry must agree with the
 section header's raw length and relocation count, declare zero line numbers,
 and own exactly one auxiliary slot. No ordinary section may have two

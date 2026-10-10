@@ -817,13 +817,23 @@ fn validate_non_comdat_section_auxiliaries(
             let Some(symbol) = candidate else {
                 continue;
             };
-            if symbol.section_number != number || symbol.name != section.name {
+            if symbol.section_number != number {
                 continue;
             }
             let offset =
                 checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
             let aux_count = read_u8(object, checked_add(offset, 17)?)?;
             if aux_count == 0 {
+                continue;
+            }
+            if symbol.storage_class == 3
+                && symbol.value == 0
+                && symbol.symbol_type == 0
+                && symbol.name != section.name
+            {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
+            if symbol.name != section.name {
                 continue;
             }
             if has_definition

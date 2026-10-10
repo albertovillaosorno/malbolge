@@ -46485,6 +46485,7 @@ fn check_rejected_non_comdat_section_auxiliary(
     check_rejected_non_comdat_reserved_aux_bytes(source, object, aux)?;
     check_rejected_non_comdat_primary_symbol(source, object, section_symbol)?;
     check_rejected_non_comdat_storage_class(source, object, section_symbol)?;
+    check_rejected_non_comdat_mismatched_name(source, object, section_symbol)?;
     check_rejected_non_comdat_duplicate(source, object, section_symbol)?;
     check_rejected_non_comdat_aux_counts(source, object, section_symbol)?;
     Ok(())
@@ -46537,6 +46538,29 @@ fn check_rejected_non_comdat_storage_class(
         != Err(CoffAdmissionError::SectionLinkage)
     {
         return Err(String::from("COFF admitted external section definition"));
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_mismatched_name(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
+    let mut invalid = object.to_vec();
+    invalid
+        .get_mut(section_symbol..section_symbol.saturating_add(8))
+        .ok_or("ordinary section name missing")?
+        .copy_from_slice(b".junk\0\0\0");
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted mismatched section definition",
+        ));
     }
     Ok(())
 }
