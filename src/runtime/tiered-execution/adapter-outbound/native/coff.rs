@@ -841,6 +841,11 @@ fn validate_non_comdat_section_auxiliaries(
             // must not hide unsupported big-object or reserved aux bytes.
             validate_comdat_aux_geometry(object, offset, section)?;
             validate_comdat_reserved_aux_bytes(object, offset)?;
+            if read_u8(object, checked_add(offset, COFF_SYMBOL_BYTES + 14)?)?
+                != 0
+            {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
         }
     }
     Ok(())

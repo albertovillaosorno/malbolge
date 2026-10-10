@@ -46525,8 +46525,12 @@ fn check_rejected_non_comdat_reserved_aux_bytes(
     object: &[u8],
     aux: usize,
 ) -> Result<(), String> {
+    if object.get(aux.saturating_add(14)) != Some(&0u8) {
+        return Err(String::from("compiler ordinary section is selected"));
+    }
     for (delta, label) in [
-        (15usize, "unused selector"),
+        (14usize, "COMDAT selection"),
+        (15, "unused selector"),
         (16, "high section number"),
         (17, "high section number tail"),
     ] {
