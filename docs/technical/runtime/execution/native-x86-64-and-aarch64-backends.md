@@ -96,8 +96,9 @@ They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
-Ordinary (non-COMDAT) static section definitions with an auxiliary record
-must also have a zero-valued, null-typed primary symbol and agree with their
+Ordinary (non-COMDAT) section definitions with an auxiliary record must
+use static storage class and a zero-valued, null-typed primary symbol;
+its geometry must agree with the
 section header's raw length and relocation count, declare zero line numbers,
 and own exactly one auxiliary slot. No ordinary section may have two
 matching auxiliary section definitions. Unused selector and big-object-only

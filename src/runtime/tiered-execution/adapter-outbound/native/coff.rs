@@ -817,10 +817,7 @@ fn validate_non_comdat_section_auxiliaries(
             let Some(symbol) = candidate else {
                 continue;
             };
-            if symbol.section_number != number
-                || symbol.storage_class != 3
-                || symbol.name != section.name
-            {
+            if symbol.section_number != number || symbol.name != section.name {
                 continue;
             }
             let offset =
@@ -831,6 +828,7 @@ fn validate_non_comdat_section_auxiliaries(
             }
             if has_definition
                 || aux_count != 1
+                || symbol.storage_class != 3
                 || symbol.value != 0
                 || symbol.symbol_type != 0
             {
