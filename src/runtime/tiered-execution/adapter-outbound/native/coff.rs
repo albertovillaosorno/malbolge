@@ -790,10 +790,6 @@ fn validate_symbol_sections(
             && symbol.storage_class == 3
             && symbol.value == 0
             && symbol.symbol_type == 0
-            && parsed
-                .sections
-                .iter()
-                .any(|section| section.name == symbol.name)
         {
             let offset = checked_add(
                 table,

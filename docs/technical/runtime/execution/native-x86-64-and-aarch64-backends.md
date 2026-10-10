@@ -108,8 +108,8 @@ Combined name and storage-class disguises of a null-valued, null-typed
 definition fail closed. The first null-typed auxiliary-backed symbol cannot
 also hide its section ownership by changing both name and value.
 
-An auxiliary-backed static section definition cannot escape into UNDEFINED,
-ABSOLUTE, or DEBUG section sentinels. Unused
+An auxiliary-backed null-valued, null-typed static symbol cannot use
+UNDEFINED, ABSOLUTE, or DEBUG section sentinels, even with a forged name. Unused
 selector and big-object-only high section-number bytes, and the COMDAT
 selection byte, must be zero.
 Otherwise a compiler object could conceal contradictory or unsupported

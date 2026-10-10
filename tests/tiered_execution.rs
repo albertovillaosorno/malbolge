@@ -46629,21 +46629,32 @@ fn check_rejected_non_comdat_undefined_owner(
     object: &[u8],
     section_symbol: usize,
 ) -> Result<(), String> {
-    for sentinel in [0u16, u16::MAX, u16::MAX - 1] {
-        let mut invalid = object.to_vec();
-        write_fixture_u16(
-            &mut invalid,
-            section_symbol.saturating_add(12),
-            sentinel,
-        )?;
-        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
-            source, invalid,
-        )
-        .map_err(|error| error.to_string())?;
-        if structurally_admit_coff(&candidate)
-            != Err(CoffAdmissionError::SectionLinkage)
-        {
-            return Err(format!("COFF admitted owner sentinel {sentinel}"));
+    for renamed in [false, true] {
+        for sentinel in [0u16, u16::MAX, u16::MAX - 1] {
+            let mut invalid = object.to_vec();
+            if renamed {
+                invalid
+                    .get_mut(section_symbol..section_symbol.saturating_add(8))
+                    .ok_or("ordinary section name missing")?
+                    .copy_from_slice(b".junk\0\0\0");
+            }
+            write_fixture_u16(
+                &mut invalid,
+                section_symbol.saturating_add(12),
+                sentinel,
+            )?;
+            let candidate =
+                UntrustedNativeObjectArtifact::from_compiler_output(
+                    source, invalid,
+                )
+                .map_err(|error| error.to_string())?;
+            if structurally_admit_coff(&candidate)
+                != Err(CoffAdmissionError::SectionLinkage)
+            {
+                return Err(format!(
+                    "COFF admitted owner sentinel {sentinel} renamed={renamed}",
+                ));
+            }
         }
     }
     Ok(())
