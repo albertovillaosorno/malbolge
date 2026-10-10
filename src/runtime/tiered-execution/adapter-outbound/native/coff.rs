@@ -812,6 +812,7 @@ fn validate_non_comdat_section_auxiliaries(
         }
         let number = i16::try_from(section_index.saturating_add(1))
             .map_err(|_error| CoffAdmissionError::Bounds)?;
+        let mut has_definition = false;
         for (index, candidate) in parsed.symbols.iter().enumerate() {
             let Some(symbol) = candidate else {
                 continue;
@@ -828,9 +829,14 @@ fn validate_non_comdat_section_auxiliaries(
             if aux_count == 0 {
                 continue;
             }
-            if aux_count != 1 || symbol.value != 0 || symbol.symbol_type != 0 {
+            if has_definition
+                || aux_count != 1
+                || symbol.value != 0
+                || symbol.symbol_type != 0
+            {
                 return Err(CoffAdmissionError::SectionLinkage);
             }
+            has_definition = true;
             // Ordinary section definitions duplicate header geometry and
             // must not hide unsupported big-object or reserved aux bytes.
             validate_comdat_aux_geometry(object, offset, section)?;

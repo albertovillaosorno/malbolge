@@ -46484,7 +46484,7 @@ fn check_rejected_non_comdat_section_auxiliary(
     }
     check_rejected_non_comdat_reserved_aux_bytes(source, object, aux)?;
     check_rejected_non_comdat_primary_symbol(source, object, section_symbol)?;
-
+    check_rejected_non_comdat_duplicate(source, object, section_symbol)?;
     check_rejected_non_comdat_aux_counts(source, object, section_symbol)?;
     Ok(())
 }
@@ -46543,6 +46543,42 @@ fn check_rejected_non_comdat_reserved_aux_bytes(
         {
             return Err(format!("COFF admitted ordinary {label}"));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_duplicate(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    let append = table
+        .checked_add(count.saturating_mul(18))
+        .ok_or("ordinary symbol table end overflow")?;
+    let definition = object
+        .get(section_symbol..section_symbol.saturating_add(36))
+        .ok_or("ordinary section definition missing")?;
+    let mut bytes = object.to_vec();
+    drop(bytes.splice(append..append, definition.iter().copied()));
+    write_fixture_u32(
+        &mut bytes,
+        12,
+        u32::try_from(count.saturating_add(2))
+            .map_err(|error| error.to_string())?,
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted duplicate ordinary section definitions",
+        ));
     }
     Ok(())
 }
