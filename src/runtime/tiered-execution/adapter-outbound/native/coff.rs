@@ -998,6 +998,11 @@ fn has_empty_comdat_selection(
             return Ok(true);
         }
         if symbol.name != section.name || symbol.storage_class != 3 {
+            // Even without a selector, a null-valued, null-typed section
+            // definition cannot hide malformed ownership in an aux record.
+            if symbol.value == 0 && symbol.symbol_type == 0 {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
             continue;
         }
         // Selection zero permits compiler bookkeeping, not malformed

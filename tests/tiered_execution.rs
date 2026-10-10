@@ -48023,6 +48023,7 @@ fn check_unselected_empty_comdat_auxiliary(
             return Err(format!("COFF admitted unselected COMDAT {label}"));
         }
     }
+    check_rejected_disguised_empty_comdat(source, bytes, section_symbol)?;
     check_unselected_empty_comdat_symbol_shape(source, bytes, section_symbol)?;
     check_unselected_empty_comdat_duplicate(source, bytes, table)?;
     Ok(())

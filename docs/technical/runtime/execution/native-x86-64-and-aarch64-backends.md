@@ -134,8 +134,9 @@ cycles.
 Unselected empty COMDATs with an auxiliary section-definition record must
 also have a zero-valued, null-typed primary section symbol, matching length
 and relocation geometry, zero line numbers, exactly one auxiliary slot, and
-zero reserved auxiliary bytes. Duplicate zero-selected section definitions
-are rejected.
+zero reserved auxiliary bytes. Renaming or changing the storage class of a
+null-valued, null-typed auxiliary-backed section definition also fails closed.
+Duplicate zero-selected section definitions are rejected.
 
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references
