@@ -105,8 +105,10 @@ and own exactly one auxiliary slot. No ordinary section may have two
 matching auxiliary section definitions.
 
 Combined name and storage-class disguises of a null-valued, null-typed
-definition fail closed. The first null-typed auxiliary-backed symbol cannot
-also hide its section ownership by changing both name and value.
+definition fail closed. The first auxiliary-backed symbol cannot hide
+its ordinary section ownership by changing its name together with its
+value or symbol type.
+The validator uses a single forward symbol pass for that ownership check.
 
 An auxiliary-backed null-valued, null-typed static or external symbol
 cannot use UNDEFINED, ABSOLUTE, or DEBUG section sentinels. Altering

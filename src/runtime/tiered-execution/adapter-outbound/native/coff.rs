@@ -831,6 +831,7 @@ fn validate_non_comdat_section_auxiliaries(
         let number = i16::try_from(section_index.saturating_add(1))
             .map_err(|_error| CoffAdmissionError::Bounds)?;
         let mut has_definition = false;
+        let mut seen_in_section = false;
         for (index, candidate) in parsed.symbols.iter().enumerate() {
             let Some(symbol) = candidate else {
                 continue;
@@ -838,20 +839,16 @@ fn validate_non_comdat_section_auxiliaries(
             if symbol.section_number != number {
                 continue;
             }
+            let first_in_section = !seen_in_section;
+            seen_in_section = true;
             let offset =
                 checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
             let aux_count = read_u8(object, checked_add(offset, 17)?)?;
             if aux_count == 0 {
                 continue;
             }
-            let first_in_section = !parsed
-                .symbols
-                .iter()
-                .take(index)
-                .flatten()
-                .any(|prior| prior.section_number == number);
-            if symbol.symbol_type == 0
-                && (symbol.value == 0 || first_in_section)
+            if (first_in_section
+                || (symbol.value == 0 && symbol.symbol_type == 0))
                 && (symbol.name != section.name || symbol.storage_class != 3)
             {
                 return Err(CoffAdmissionError::SectionLinkage);

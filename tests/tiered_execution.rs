@@ -46530,6 +46530,7 @@ fn check_rejected_non_comdat_primary_symbol(
             return Err(format!("COFF admitted ordinary section {label}"));
         }
     }
+    check_rejected_non_comdat_name_type_disguise(source, object, symbol)?;
     Ok(())
 }
 
@@ -46620,6 +46621,28 @@ fn check_rejected_non_comdat_name_value_disguise(
         != Err(CoffAdmissionError::SectionLinkage)
     {
         return Err(String::from("COFF admitted disguised ordinary value"));
+    }
+    Ok(())
+}
+
+fn check_rejected_non_comdat_name_type_disguise(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    object: &[u8],
+    section_symbol: usize,
+) -> Result<(), String> {
+    let mut invalid = object.to_vec();
+    invalid
+        .get_mut(section_symbol..section_symbol.saturating_add(8))
+        .ok_or("ordinary section name missing")?
+        .copy_from_slice(b".junk\0\0\0");
+    write_fixture_u16(&mut invalid, section_symbol.saturating_add(14), 0x20)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF admitted disguised ordinary type"));
     }
     Ok(())
 }
