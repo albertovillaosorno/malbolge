@@ -49087,6 +49087,11 @@ fn check_rejected_coff_relocation_geometry(
         artifact,
         location.relocation,
     )?;
+    check_rejected_code_relocation_to_unselected_bss_comdat(
+        source,
+        artifact,
+        location.relocation,
+    )?;
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)?;
@@ -49268,6 +49273,62 @@ fn check_rejected_coff_overlapping_code_relocations(
         != Err(CoffAdmissionError::RelocationOverlap)
     {
         return Err(String::from("COFF admitted overlapping code relocations"));
+    }
+    Ok(())
+}
+
+fn check_rejected_code_relocation_to_unselected_bss_comdat(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    relocation: usize,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let empty = 20usize.saturating_add(40);
+    let flags = read_fixture_u32(object, empty.saturating_add(36))?;
+    if object.get(empty..empty.saturating_add(8))
+        != Some(b".data\0\0\0".as_slice())
+        || read_fixture_u32(object, empty.saturating_add(16))? != 0
+        || flags & 0x40 == 0
+    {
+        return Err(String::from("empty COMDAT BSS fixture drifted"));
+    }
+    let mut bytes = object.to_vec();
+    write_fixture_u32(
+        &mut bytes,
+        empty.saturating_add(36),
+        flags & !0x40 | 0x80 | 0x1000,
+    )?;
+    let positive = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        bytes.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&positive)
+        .map_err(|error| format!("unselected empty BSS COMDAT: {error}"))?;
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let selection = table.saturating_add(2 * 18 + 32);
+    if bytes.get(selection) != Some(&0u8) {
+        return Err(String::from("empty BSS COMDAT selection drifted"));
+    }
+    let mut selected = bytes.clone();
+    *selected
+        .get_mut(selection)
+        .ok_or("COMDAT selector missing")? = 1;
+    write_fixture_u32(&mut selected, relocation.saturating_add(4), 2)?;
+    let selected_object =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, selected)
+            .map_err(|error| error.to_string())?;
+    let _selected = structurally_admit_coff(&selected_object)
+        .map_err(|error| format!("selected empty BSS relocation: {error}"))?;
+    write_fixture_u32(&mut bytes, relocation.saturating_add(4), 2)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF code referenced unselected BSS COMDAT"));
     }
     Ok(())
 }

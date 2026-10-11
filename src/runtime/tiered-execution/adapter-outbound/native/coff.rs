@@ -1388,7 +1388,9 @@ fn validate_symbols_and_relocations(
             if !defined {
                 return Err(CoffAdmissionError::ExternalDependency);
             }
-            validate_executable_relocation_target(parsed, section, symbol)?;
+            validate_executable_relocation_target(
+                object, parsed, section, symbol,
+            )?;
         }
         validate_relocation_spans(&mut patch_spans)?;
     }
@@ -1410,6 +1412,7 @@ fn validate_relocation_spans(
 }
 
 fn validate_executable_relocation_target(
+    object: &[u8],
     parsed: &ParsedCoff,
     source_section: &CoffSection,
     symbol: &CoffSymbol,
@@ -1426,6 +1429,20 @@ fn validate_executable_relocation_target(
         .sections
         .get(index.saturating_sub(1))
         .ok_or(CoffAdmissionError::ExternalDependency)?;
+    // An unselected empty COMDAT may be retained as compiler bookkeeping,
+    // but executable code must not relocate to a non-selected definition.
+    if target.characteristics & IMAGE_SCN_LNK_COMDAT != 0
+        && target.raw_size == 0
+        && target.relocation_count == 0
+    {
+        let table = usize_from_u32(read_u32(object, 8)?)?;
+        let _association = validate_referenced_empty_comdat_parent(
+            object,
+            parsed,
+            table,
+            index.saturating_sub(1),
+        )?;
+    }
     if target.name == PROFILE_METADATA_SECTION
         || target.characteristics
             & (IMAGE_SCN_CNT_CODE

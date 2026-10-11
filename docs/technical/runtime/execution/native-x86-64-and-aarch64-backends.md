@@ -120,6 +120,9 @@ subject to ordinary COFF symbol closure rather than executable residency.
 Code-origin relocations require targets to advertise a code, initialized-data,
 or BSS content kind. They reject zero-byte targets without a BSS content kind;
 only zero-fill storage can own a loadable empty section.
+
+Code-origin references to empty BSS COMDATs also require explicit valid
+selection, instead of treating unselected bookkeeping as a defined target.
 Code-origin relocations cannot reference `.mbprof` identity metadata; only
 admission reads those key-bound bytes, not executable native instructions.
 
