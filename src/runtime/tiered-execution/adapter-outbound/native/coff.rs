@@ -1428,8 +1428,13 @@ fn validate_executable_relocation_target(
         .sections
         .get(index.saturating_sub(1))
         .ok_or(CoffAdmissionError::ExternalDependency)?;
-    if (target.raw_size == 0
-        && target.characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA == 0)
+    if target.characteristics
+        & (IMAGE_SCN_CNT_CODE
+            | IMAGE_SCN_CNT_INITIALIZED_DATA
+            | IMAGE_SCN_CNT_UNINITIALIZED_DATA)
+        == 0
+        || (target.raw_size == 0
+            && target.characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA == 0)
         || target.characteristics
             & (IMAGE_SCN_MEM_DISCARDABLE
                 | IMAGE_SCN_LNK_INFO

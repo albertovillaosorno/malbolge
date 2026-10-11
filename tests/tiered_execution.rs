@@ -49052,19 +49052,36 @@ fn check_rejected_coff_relocation_section(
         symbol_offset,
         nonexistent_section,
     )?;
-    check_rejected_code_relocation_to_discardable(
-        source,
-        artifact,
-        relocation,
-        section_header,
-    )?;
-    check_rejected_code_relocation_to_empty_data(source, artifact, relocation)?;
     let location = NativeCoffRelocationLocation {
         relocation,
         section_address,
         section_header,
         section_size,
     };
+    check_rejected_coff_relocation_geometry(source, artifact, location)
+}
+
+fn check_rejected_coff_relocation_geometry(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    check_rejected_code_relocation_to_discardable(
+        source,
+        artifact,
+        location.relocation,
+        location.section_header,
+    )?;
+    check_rejected_code_relocation_to_empty_data(
+        source,
+        artifact,
+        location.relocation,
+    )?;
+    check_rejected_code_relocation_to_unclassified(
+        source,
+        artifact,
+        location.relocation,
+    )?;
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)?;
@@ -49113,6 +49130,55 @@ fn check_rejected_coff_overlapping_code_relocations(
         != Err(CoffAdmissionError::RelocationOverlap)
     {
         return Err(String::from("COFF admitted overlapping code relocations"));
+    }
+    Ok(())
+}
+
+fn check_rejected_code_relocation_to_unclassified(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    relocation: usize,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_index = discardable_coff_symbol_index(object)?;
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let symbol_offset = table.saturating_add(symbol_index.saturating_mul(18));
+    let number = usize::from(read_fixture_u16(
+        object,
+        symbol_offset.saturating_add(12),
+    )?);
+    if number == 0 {
+        return Err(String::from("COFF unclassified target is undefined"));
+    }
+    let section =
+        20usize.saturating_add(number.saturating_sub(1).saturating_mul(40));
+    let flags = read_fixture_u32(object, section.saturating_add(36))?;
+    if flags & 0x40 == 0
+        || read_fixture_u32(object, section.saturating_add(16))? == 0
+    {
+        return Err(String::from("COFF fixture target is not populated data"));
+    }
+    let unclassified_flags =
+        flags & !(0x40 | 0x0200_0000 | 0x0000_0200 | 0x0000_0800);
+    let mut invalid = object.to_vec();
+    write_fixture_u32(
+        &mut invalid,
+        section.saturating_add(36),
+        unclassified_flags,
+    )?;
+    write_fixture_u32(
+        &mut invalid,
+        relocation.saturating_add(4),
+        u32::try_from(symbol_index).map_err(|error| error.to_string())?,
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::ExternalDependency)
+    {
+        return Err(String::from("COFF code referenced unclassified data"));
     }
     Ok(())
 }
