@@ -71032,6 +71032,31 @@ fn native_process_call_wire_rejects_malformed_framing() -> Result<(), String> {
 }
 
 #[test]
+fn native_process_call_wire_rejects_partial_response_words()
+-> Result<(), String> {
+    let (request, expected) = native_process_call_wire_fixture()?;
+    let response = applied_native_process_response(&request, expected)?;
+    let complete = encode_native_process_call_response(&request, &response)
+        .map_err(|error| error.to_string())?;
+    for partial_words in [0usize, 1, 3] {
+        let end = NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES
+            .checked_add(partial_words)
+            .ok_or("response prefix overflow")?;
+        let truncated = complete
+            .get(..end)
+            .ok_or("response fixture shorter than a partial word")?;
+        if decode_native_process_call_response(truncated, &request)
+            != Err(NativeProcessCallWireError::ReadFailure)
+        {
+            return Err(format!(
+                "process wire admitted {partial_words} partial word bytes"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_call_wire_bounds_untrusted_request_lengths()
 -> Result<(), String> {
     let (request, _expected) = native_process_call_wire_fixture()?;

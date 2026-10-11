@@ -408,6 +408,10 @@ A distinct single-resident lease cache
   `u64::MAX` memory, input, and output counts fail as typed overflow rather
   than causing capacity overflow or oversized reservation.
 
+  Response word decoding also checks the complete memory byte span before
+  allocating the request-sized vector. Partial response-memory fixtures cover
+  fail-closed framing before reserve.
+
   Response payload allocation is bounded from the original admitted request,
   not child-controlled capacity fields; malformed identity, flags, shape,
   truncation, and trailing bytes fail closed. The codec itself owns no process

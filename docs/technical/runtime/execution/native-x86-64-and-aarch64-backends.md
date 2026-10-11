@@ -755,10 +755,14 @@ a 74-byte prefix before memory/output payloads; response allocation bounds are
 derived from the original request rather than child-reported capacities. The
 request decoder also checks overflow and the exact full frame length before
 allocating its attacker-declared memory/input/output payloads; even a
-`u64::MAX` word count cannot trigger unchecked allocation. The codec rejects
-malformed magic, zero mapping identity, noncanonical pointer flags, shape drift,
-truncation, and trailing bytes without spawning a process or gaining semantic
-authority.
+`u64::MAX` word count cannot trigger unchecked allocation.
+
+The response word reader likewise checks the complete request-sized memory span
+before reserving the output vector, even if the child omitted all memory bytes.
+Truncated response-word fixtures bind this preallocation policy. The codec
+rejects malformed magic, zero mapping identity, noncanonical pointer flags,
+shape drift, truncation, and trailing bytes without spawning a process or
+gaining semantic authority.
 
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
 verified artifact target, rejects program drift, and denies the deoptimization

@@ -178,9 +178,16 @@ impl<'bytes> WireReader<'bytes> {
         &mut self,
         count: usize,
     ) -> Result<Vec<u32>, NativeProcessCallWireError> {
+        // A response count comes from the original request, but a malformed
+        // response can still omit the entire payload. Check available bytes
+        // before reserving the full decoded vector.
+        let size = count
+            .checked_mul(size_of::<u32>())
+            .ok_or(NativeProcessCallWireError::CounterOverflow)?;
+        let bytes = self.take(size)?;
         let mut words = Vec::with_capacity(count);
-        for _word in 0..count {
-            words.push(self.u32()?);
+        for &chunk in bytes.as_chunks::<{ size_of::<u32>() }>().0 {
+            words.push(u32::from_le_bytes(chunk));
         }
         Ok(words)
     }
