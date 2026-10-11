@@ -46069,6 +46069,7 @@ fn check_coff_isa_specific_mutations(
     check_rejected_coff_unsupported_auxiliary_flags(source, artifact)?;
     check_rejected_coff_executable_auxiliary_data(source, artifact)?;
     check_rejected_coff_executable_unclassified_section(source, artifact)?;
+    check_rejected_coff_nonloadable_code_section(source, artifact)?;
     check_rejected_coff_unloadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_unreadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_file_backed_uninitialized_data(source, artifact)?;
@@ -46243,6 +46244,35 @@ fn check_rejected_coff_executable_unclassified_section(
         != Err(CoffAdmissionError::SectionContent)
     {
         return Err(String::from("COFF admitted unclassified executable"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_nonloadable_code_section(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let flags = read_fixture_u32(artifact.object(), offset)?;
+    for (altered, label) in [
+        (flags & !0x0000_0040 | 0x0000_0020, "non-executable"),
+        (
+            flags & !(0x0000_0040 | 0x4000_0000) | 0x0000_0020 | 0x2000_0000,
+            "unreadable",
+        ),
+    ] {
+        let mut invalid = artifact.object().to_vec();
+        write_fixture_u32(&mut invalid, offset, altered)?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!("COFF admitted {label} auxiliary code"));
+        }
     }
     Ok(())
 }

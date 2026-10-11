@@ -622,6 +622,10 @@ const fn validate_section_content_flags(
         || kinds.count_ones() > 1
         || (kinds & IMAGE_SCN_CNT_CODE == 0
             && section.characteristics & IMAGE_SCN_MEM_EXECUTE != 0)
+        || (kinds & IMAGE_SCN_CNT_CODE != 0
+            && section.characteristics
+                & (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ)
+                != (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ))
         || (kinds & IMAGE_SCN_CNT_INITIALIZED_DATA != 0
             && section.raw_size != 0
             && section.characteristics & IMAGE_SCN_MEM_READ == 0)

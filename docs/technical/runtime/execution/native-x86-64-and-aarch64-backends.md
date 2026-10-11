@@ -90,6 +90,8 @@ and uninitialized-data content kinds. Sections with no content-kind bit remain
 admissible where the compiler uses them for linker or debug bookkeeping.
 Executable-memory permissions require a section to declare code content;
 linker bookkeeping without a content kind cannot silently become executable.
+Conversely, every code-classified section must be both readable and
+executable, not just the required callable `.text` section.
 
 Data-classified sections cannot also claim executable-memory permissions.
 Uninitialized-data sections cannot claim file-backed raw bytes.
