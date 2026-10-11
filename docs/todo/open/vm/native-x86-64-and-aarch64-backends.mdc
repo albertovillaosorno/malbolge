@@ -462,6 +462,10 @@ A distinct single-resident lease cache
   for acceptance; later hardware execution failures remain compatibility
   defects to fix.
 
+  Host-real POSIX worker framing regressions now exercise partial outer
+  headers, incomplete announced payloads, unknown protocol tags, and short
+  call messages. Each exits without a response or guest-state publication.
+
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
   Clang conformance evidence passes without performing syscalls or native calls.

@@ -276,11 +276,13 @@ use std::convert::Infallible;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::io::Write as _;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::process::{Command, id as process_id};
+use std::process::{Command, Stdio, id as process_id};
 use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
@@ -69854,6 +69856,60 @@ fn native_process_posix_worker_fixture(
         },
     };
     Ok((directory, NativeProcessHost::new(session)))
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_frame(
+    worker: &Path,
+    payload: &[u8],
+    expected_exit: i32,
+) -> Result<(), String> {
+    let mut child = Command::new(worker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("cannot spawn raw POSIX worker: {error}"))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or("raw POSIX worker did not expose stdin")?;
+    stdin
+        .write_all(payload)
+        .map_err(|error| format!("cannot send malformed frame: {error}"))?;
+    drop(stdin);
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("cannot reap raw POSIX worker: {error}"))?;
+    if output.status.code() != Some(expected_exit) || !output.stdout.is_empty()
+    {
+        return Err(format!("raw POSIX worker malformed frame: {output:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_malformed_outer_frames()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("malformed_frames")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| {
+        assert_posix_worker_rejects_frame(&worker, b"\x03\x00", 2)?;
+        let mut truncated_payload = 9u64.to_le_bytes().to_vec();
+        truncated_payload.extend_from_slice(b"MBNPC1\0\0");
+        assert_posix_worker_rejects_frame(&worker, &truncated_payload, 2)?;
+        let mut unknown_protocol = 8u64.to_le_bytes().to_vec();
+        unknown_protocol.extend_from_slice(b"UNKNOWN!");
+        assert_posix_worker_rejects_frame(&worker, &unknown_protocol, 3)?;
+        let mut incomplete_call = 8u64.to_le_bytes().to_vec();
+        incomplete_call.extend_from_slice(b"MBNPC1\0\0");
+        assert_posix_worker_rejects_frame(&worker, &incomplete_call, 3)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

@@ -849,6 +849,11 @@ direct-output artifact through the complete process host; the exact
 `memory[5]:94->57`, output append `0xa8`, and `C/D:5/7->6/8` transition is
 accepted before release.
 
+Independent host-real malformed-frame tests now launch the POSIX worker with
+partial headers, truncated declared payloads, unknown protocol tags, and short
+native-call requests. Each terminates with the specified framing/dispatch error
+and emits no response bytes, without publishing any guest execution state.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
