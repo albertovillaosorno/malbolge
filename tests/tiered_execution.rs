@@ -49085,7 +49085,124 @@ fn check_rejected_coff_relocation_geometry(
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)?;
-    check_rejected_coff_overlapping_code_relocations(source, artifact)
+    check_rejected_coff_overlapping_code_relocations(source, artifact)?;
+    check_rejected_coff_overlapping_data_relocations(source, artifact)
+}
+
+fn check_rejected_coff_overlapping_data_relocations(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let mut positive_bytes = artifact.object().to_vec();
+    let object = artifact.object();
+    let code_header = 20usize;
+    let debug_header = (0..usize::from(read_fixture_u16(object, 2)?))
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|header| {
+            object.get(*header..header.saturating_add(8))
+                == Some(b".debug$S".as_slice())
+        })
+        .ok_or("COFF fixture lacks debug data")?;
+    let code_count = read_fixture_u16(object, code_header.saturating_add(32))?;
+    if code_count != 2
+        || read_fixture_u16(object, debug_header.saturating_add(32))? != 0
+        || read_fixture_u32(object, debug_header.saturating_add(16))? < 24
+    {
+        return Err(String::from("COFF relocation transfer fixture drifted"));
+    }
+    let first = transfer_coff_relocations_to_debug(
+        &mut positive_bytes,
+        debug_header,
+        code_count,
+    )?;
+    let second = first.saturating_add(10);
+    let origin = read_fixture_u32(object, debug_header.saturating_add(12))?;
+    write_fixture_u32(&mut positive_bytes, first, origin)?;
+    // The two four-byte compiler patches are adjacent, not overlapping.
+    write_fixture_u32(&mut positive_bytes, second, origin.saturating_add(4))?;
+    let positive = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        positive_bytes.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&positive)
+        .map_err(|error| format!("valid data relocation fixture: {error}"))?;
+    check_valid_zero_width_data_relocation(
+        source,
+        &positive_bytes,
+        (first, second, origin),
+    )?;
+    write_fixture_u32(&mut positive_bytes, second, origin)?;
+    let negative = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        positive_bytes,
+    )
+    .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&negative)
+        != Err(CoffAdmissionError::RelocationOverlap)
+    {
+        return Err(String::from("COFF admitted overlapping data relocations"));
+    }
+    Ok(())
+}
+
+fn transfer_coff_relocations_to_debug(
+    bytes: &mut [u8],
+    debug_header: usize,
+    code_count: u16,
+) -> Result<usize, String> {
+    let code_header = 20usize;
+    let relocation_start =
+        read_fixture_u32(bytes, code_header.saturating_add(24))?;
+    write_fixture_u32(bytes, code_header.saturating_add(24), 0)?;
+    write_fixture_u16(bytes, code_header.saturating_add(32), 0)?;
+    write_fixture_u32(
+        bytes,
+        debug_header.saturating_add(24),
+        relocation_start,
+    )?;
+    write_fixture_u16(bytes, debug_header.saturating_add(32), code_count)?;
+    change_coff_section_aux_relocations(bytes, 1, 0)?;
+    change_coff_section_aux_relocations(bytes, 6, code_count)?;
+    usize::try_from(relocation_start).map_err(|error| error.to_string())
+}
+
+fn check_valid_zero_width_data_relocation(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+    positions: (usize, usize, u32),
+) -> Result<(), String> {
+    let (first, second, origin) = positions;
+    let mut zero_width = bytes.to_vec();
+    write_fixture_u16(&mut zero_width, first.saturating_add(8), 0)?;
+    write_fixture_u32(&mut zero_width, second, origin)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, zero_width)
+            .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&candidate).map_err(|error| {
+        format!("zero-width data relocation rejected: {error}")
+    })?;
+    Ok(())
+}
+
+fn change_coff_section_aux_relocations(
+    bytes: &mut [u8],
+    number: u16,
+    relocations: u16,
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(bytes, 8)?)
+        .map_err(|error| error.to_string())?;
+    let count = usize::try_from(read_fixture_u32(bytes, 12)?)
+        .map_err(|error| error.to_string())?;
+    let symbol = (0..count)
+        .map(|index| table.saturating_add(index.saturating_mul(18)))
+        .find(|offset| {
+            read_fixture_u16(bytes, offset.saturating_add(12)) == Ok(number)
+                && bytes.get(offset.saturating_add(16)) == Some(&3u8)
+                && bytes.get(offset.saturating_add(17)) == Some(&1u8)
+        })
+        .ok_or("COFF source section lacks auxiliary definition")?;
+    write_fixture_u16(bytes, symbol.saturating_add(22), relocations)
 }
 
 fn check_rejected_coff_overlapping_code_relocations(

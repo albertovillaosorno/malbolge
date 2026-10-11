@@ -121,9 +121,9 @@ Code-origin relocations require targets to advertise a code, initialized-data,
 or BSS content kind. They reject zero-byte targets without a BSS content kind;
 only zero-fill storage can own a loadable empty section.
 
-Nonempty executable relocation patches must not overlap in section-relative
-bytes; zero-width metadata relocations do not claim patch bytes. Debug and
-linker relocation records retain their own separately validated semantics.
+Nonempty relocation patches cannot overlap within any COFF section, including
+compiler debug-data sections. Zero-width metadata relocations claim no patch
+bytes and remain valid. Relocation spans are checked section-relative.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 
