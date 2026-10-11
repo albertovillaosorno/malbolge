@@ -49058,6 +49058,7 @@ fn check_rejected_coff_relocation_section(
         relocation,
         section_header,
     )?;
+    check_rejected_code_relocation_to_empty_data(source, artifact, relocation)?;
     let location = NativeCoffRelocationLocation {
         relocation,
         section_address,
@@ -49112,6 +49113,41 @@ fn check_rejected_coff_overlapping_code_relocations(
         != Err(CoffAdmissionError::RelocationOverlap)
     {
         return Err(String::from("COFF admitted overlapping code relocations"));
+    }
+    Ok(())
+}
+
+fn check_rejected_code_relocation_to_empty_data(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    relocation: usize,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section = 20usize.saturating_add(40);
+    if object.get(section..section.saturating_add(8))
+        != Some(b".data\0\0\0".as_slice())
+        || read_fixture_u32(object, section.saturating_add(16))? != 0
+        || read_fixture_u32(object, section.saturating_add(36))? & 0x80 != 0
+    {
+        return Err(String::from("COFF fixture lacks zero-byte data"));
+    }
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let symbol = table.saturating_add(2 * 18);
+    if read_fixture_u16(object, symbol.saturating_add(12))? != 2
+        || object.get(symbol.saturating_add(16)) != Some(&3u8)
+    {
+        return Err(String::from("COFF empty data symbol drifted"));
+    }
+    let mut invalid = object.to_vec();
+    write_fixture_u32(&mut invalid, relocation.saturating_add(4), 2)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::ExternalDependency)
+    {
+        return Err(String::from("COFF code referenced zero-byte data"));
     }
     Ok(())
 }
