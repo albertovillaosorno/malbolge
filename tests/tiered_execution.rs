@@ -47639,6 +47639,9 @@ fn check_rejected_coff_unreferenced_symbol_value(
     .map_err(|error| error.to_string())?;
     let _admitted_end_label = structurally_admit_coff(&end_label)
         .map_err(|error| format!("COFF one-past-end label: {error}"))?;
+    check_rejected_coff_impossible_function_geometry(
+        source, &boundary, label, sections,
+    )?;
     for invalid_value in [size.saturating_add(1), u32::MAX] {
         let mut bytes = boundary.clone();
         write_fixture_u32(&mut bytes, label.saturating_add(8), invalid_value)?;
@@ -47651,6 +47654,44 @@ fn check_rejected_coff_unreferenced_symbol_value(
             return Err(format!(
                 "COFF admitted static symbol offset {invalid_value}"
             ));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_impossible_function_geometry(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    boundary: &[u8],
+    label: usize,
+    sections: usize,
+) -> Result<(), String> {
+    let mut end_function = boundary.to_vec();
+    write_fixture_u16(&mut end_function, label.saturating_add(14), 0x20)?;
+    let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        end_function,
+    )
+    .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from("COFF admitted end-of-text function"));
+    }
+    if sections >= 2 {
+        let mut data_function = boundary.to_vec();
+        write_fixture_u16(&mut data_function, label.saturating_add(12), 2)?;
+        write_fixture_u16(&mut data_function, label.saturating_add(14), 0x20)?;
+        write_fixture_u32(&mut data_function, label.saturating_add(8), 0)?;
+        let data_candidate =
+            UntrustedNativeObjectArtifact::from_compiler_output(
+                source,
+                data_function,
+            )
+            .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&data_candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(String::from("COFF admitted data-section function"));
         }
     }
     Ok(())
@@ -48390,6 +48431,7 @@ fn check_admitted_selected_empty_parent(
         .map_err(|error| format!("selected empty COMDAT: {error}"))?;
     check_rejected_duplicate_empty_comdat_definition(source, &selected)?;
     check_rejected_disguised_selected_empty_sibling(source, &selected)?;
+    check_rejected_empty_comdat_function_sibling(source, &selected)?;
     check_admitted_nested_empty_parent(source, bytes, fixture)?;
     Ok(())
 }
@@ -48467,6 +48509,34 @@ fn check_rejected_disguised_selected_empty_sibling(
                 "COFF admitted sibling with modified value={modified_value}",
             ));
         }
+    }
+    Ok(())
+}
+
+fn check_rejected_empty_comdat_function_sibling(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    selected: &[u8],
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(selected, 8)?)
+        .map_err(|error| error.to_string())?;
+    let sibling = table.saturating_add(4 * 18);
+    if selected.get(sibling..sibling.saturating_add(8))
+        != Some(b".bss\0\0\0\0".as_slice())
+    {
+        return Err(String::from("COFF .bss sibling fixture drifted"));
+    }
+    let mut invalid = selected.to_vec();
+    write_fixture_u16(&mut invalid, sibling.saturating_add(12), 2)?;
+    write_fixture_u16(&mut invalid, sibling.saturating_add(14), 0x20)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionLinkage)
+    {
+        return Err(String::from(
+            "COFF admitted auxiliary function in empty selected COMDAT",
+        ));
     }
     Ok(())
 }

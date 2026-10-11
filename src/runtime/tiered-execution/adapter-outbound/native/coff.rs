@@ -806,6 +806,15 @@ fn validate_symbol_sections(
                 .sections
                 .get(index.saturating_sub(1))
                 .ok_or(CoffAdmissionError::ExternalDependency)?;
+            // A function definition must identify an actual executable byte,
+            // not an empty COMDAT or a data/debug-only section.
+            if symbol.symbol_type & IMAGE_SYM_DTYPE_FUNCTION != 0
+                && (section.characteristics & IMAGE_SCN_CNT_CODE == 0
+                    || section.characteristics & IMAGE_SCN_MEM_EXECUTE == 0
+                    || usize_from_u32(symbol.value)? >= section.raw_size)
+            {
+                return Err(CoffAdmissionError::SectionLinkage);
+            }
             // BSS and other zero-raw-size sections may contain logical
             // symbols beyond the empty file extent. Populated sections do
             // have a concrete bound, including one-past-end labels.

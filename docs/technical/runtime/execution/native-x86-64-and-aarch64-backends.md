@@ -166,6 +166,10 @@ be a COMDAT section; associating to ordinary executable `.text` is invalid.
 Associative COMDAT chains must also be acyclic; a valid immediate parent
 does not make a circular dependency admissible.
 
+Defined function-typed symbols must designate an actual byte of executable
+code, never an empty COMDAT section or data-only storage. Such malformed
+symbols cannot acquire a function body merely through auxiliary records.
+
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden
 invalid sections.
