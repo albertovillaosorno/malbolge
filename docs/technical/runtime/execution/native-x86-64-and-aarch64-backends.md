@@ -102,8 +102,10 @@ They cannot request legacy `NOLOAD`,
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
 Populated code-classified auxiliary sections reject the same legacy loader
-hints and image-only memory policies. A code-kind section does not gain
-loadable-object semantics by leaving the callable `.text` section unchanged.
+hints and image-only memory policies. They cannot be marked linker-only
+information or removed before linking, since neither supplies executable code.
+A code-kind section does not gain loadable-object semantics by leaving the
+callable `.text` section unchanged.
 
 Ordinary (non-COMDAT) section definitions with an auxiliary record must
 match the owning section name, use static storage class, and have a

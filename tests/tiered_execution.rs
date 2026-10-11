@@ -46319,6 +46319,19 @@ fn check_rejected_coff_code_loader_policies(
             return Err(format!("COFF admitted code with load flag {flag:#x}"));
         }
     }
+    for flag in [0x0000_0200u32, 0x0000_0800] {
+        let mut invalid = positive_bytes.clone();
+        write_fixture_u32(&mut invalid, offset, code_flags | flag)?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!("COFF admitted linker-only code {flag:#x}"));
+        }
+    }
     Ok(())
 }
 
