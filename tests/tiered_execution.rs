@@ -48418,6 +48418,16 @@ fn check_rejected_empty_initialized_loader_flags(
     {
         return Err(String::from("empty initialized .data fixture drifted"));
     }
+    let mut unreadable = bytes.to_vec();
+    write_fixture_u32(&mut unreadable, offset, flags & !0x4000_0000)?;
+    let unreadable_candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, unreadable)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&unreadable_candidate)
+        != Err(CoffAdmissionError::SectionContent)
+    {
+        return Err(String::from("COFF admitted unreadable empty .data"));
+    }
     for flag in [
         0x0000_0002u32,
         0x0002_0000,

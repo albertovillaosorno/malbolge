@@ -102,7 +102,8 @@ those bits have no object-level loading authority.
 
 Initialized-data sections, including empty COMDAT bookkeeping sections,
 reject obsolete load hints and image-only memory policies regardless of raw
-size. Populated initialized-data sections must advertise readable bytes.
+size. Every initialized-data section must be readable, including the empty
+compiler bookkeeping COMDATs with no file-backed bytes.
 They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
