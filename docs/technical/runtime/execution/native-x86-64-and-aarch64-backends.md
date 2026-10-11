@@ -129,6 +129,10 @@ admission reads those key-bound bytes, not executable native instructions.
 Nonempty relocation patches cannot overlap within any COFF section, including
 compiler debug-data sections. Zero-width metadata relocations claim no patch
 bytes and remain valid. Relocation spans are checked section-relative.
+
+ARM64 branch, page-relative, and immediate relocations in code sections must
+patch four-byte-aligned instruction offsets. Relocations in data and debug
+sections retain their separate width rules without instruction alignment.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 

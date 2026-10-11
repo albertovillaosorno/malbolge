@@ -133,6 +133,8 @@ pub enum CoffAdmissionError {
     OptionalHeader,
     /// Required profile metadata is absent, malformed, or mismatched.
     ProfileMetadata,
+    /// ARM64 instruction relocations must target aligned instruction words.
+    RelocationAlignment,
     /// Extended relocation counts are unsupported by the bounded parser.
     RelocationOverflow,
     /// Two nonempty relocation patches overlap in one section.
@@ -196,6 +198,9 @@ impl Display for CoffAdmissionError {
             Self::OptionalHeader => COFF_OPTIONALHEADER_MESSAGE,
             Self::ProfileMetadata => COFF_PROFILEMETADATA_MESSAGE,
             Self::RelocationOverlap => "COFF relocation patches overlap",
+            Self::RelocationAlignment => {
+                "COFF ARM64 instruction relocation is unaligned"
+            },
             Self::RelocationOverflow => {
                 "COFF extended relocation counts are unsupported"
             },
@@ -1368,6 +1373,9 @@ fn validate_symbols_and_relocations(
             if relative >= section.raw_size || patch_end > section.raw_size {
                 return Err(CoffAdmissionError::Bounds);
             }
+            validate_arm64_instruction_relocation_alignment(
+                machine, section, kind, relative,
+            )?;
             if width > 0 {
                 patch_spans.push((relative, patch_end));
             }
@@ -1395,6 +1403,28 @@ fn validate_symbols_and_relocations(
         validate_relocation_spans(&mut patch_spans)?;
     }
     Ok(())
+}
+
+const fn validate_arm64_instruction_relocation_alignment(
+    machine: u16,
+    section: &CoffSection,
+    kind: u16,
+    relative: usize,
+) -> Result<(), CoffAdmissionError> {
+    // Only ARM64 code instruction patches require word alignment. Debug and
+    // ordinary data relocations retain separate structural width rules.
+    if machine == IMAGE_FILE_MACHINE_ARM64
+        && section.characteristics & IMAGE_SCN_CNT_CODE != 0
+        && matches!(
+            kind,
+            0x0003..=0x0007 | 0x0009..=0x000b | 0x000f..=0x0010
+        )
+        && relative & 3 != 0
+    {
+        Err(CoffAdmissionError::RelocationAlignment)
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_relocation_spans(

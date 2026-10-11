@@ -49095,8 +49095,99 @@ fn check_rejected_coff_relocation_geometry(
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)?;
+    check_rejected_arm64_instruction_relocation_alignment(
+        source, artifact, location,
+    )?;
     check_rejected_coff_overlapping_code_relocations(source, artifact)?;
     check_rejected_coff_overlapping_data_relocations(source, artifact)
+}
+
+fn check_rejected_arm64_instruction_relocation_alignment(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    location: NativeCoffRelocationLocation,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let original_address = read_fixture_u32(object, location.relocation)?;
+    let address = original_address
+        .checked_add(32)
+        .ok_or("ARM64 relocation test offset overflow")?;
+    if address & 3 != 0 || location.section_size < 40 {
+        return Err(String::from("ARM64 relocation alignment fixture drifted"));
+    }
+    for instruction_kind in [
+        0x0003u16, 0x0004, 0x0005, 0x0006, 0x0007, 0x0009, 0x000a, 0x000b,
+        0x000f, 0x0010,
+    ] {
+        let mut aligned = object.to_vec();
+        write_fixture_u16(
+            &mut aligned,
+            location.relocation.saturating_add(8),
+            instruction_kind,
+        )?;
+        write_fixture_u32(&mut aligned, location.relocation, address)?;
+        let admitted = UntrustedNativeObjectArtifact::from_compiler_output(
+            source,
+            aligned.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let _valid = structurally_admit_coff(&admitted).map_err(|error| {
+            format!("aligned ARM64 relocation {instruction_kind:#x}: {error}")
+        })?;
+        check_rejected_arm64_misaligned_variants(
+            source,
+            &aligned,
+            location.relocation,
+            (instruction_kind, address),
+        )?;
+    }
+    // Ordinary data relocations may patch unaligned code byte windows.
+    let mut data_patch = object.to_vec();
+    write_fixture_u16(
+        &mut data_patch,
+        location.relocation.saturating_add(8),
+        1,
+    )?;
+    write_fixture_u32(
+        &mut data_patch,
+        location.relocation,
+        address.saturating_add(1),
+    )?;
+    let admitted =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, data_patch)
+            .map_err(|error| error.to_string())?;
+    let _valid_data = structurally_admit_coff(&admitted)
+        .map_err(|error| format!("ARM64 data-style patch: {error}"))?;
+    Ok(())
+}
+
+fn check_rejected_arm64_misaligned_variants(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    aligned: &[u8],
+    relocation: usize,
+    kind_and_address: (u16, u32),
+) -> Result<(), String> {
+    let (instruction_kind, address) = kind_and_address;
+    for misalignment in [1u32, 2, 3] {
+        let mut invalid = aligned.to_vec();
+        write_fixture_u32(
+            &mut invalid,
+            relocation,
+            address.saturating_add(misalignment),
+        )?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::RelocationAlignment)
+        {
+            return Err(format!(
+                "ARM64 {instruction_kind:#x} at +{misalignment}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_rejected_coff_overlapping_data_relocations(
