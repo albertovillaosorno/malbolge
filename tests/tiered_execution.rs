@@ -49132,16 +49132,32 @@ fn check_rejected_coff_overlapping_data_relocations(
         &positive_bytes,
         (first, second, origin),
     )?;
-    write_fixture_u32(&mut positive_bytes, second, origin)?;
-    let negative = UntrustedNativeObjectArtifact::from_compiler_output(
+    check_rejected_data_relocation_overlaps(
         source,
-        positive_bytes,
+        &positive_bytes,
+        second,
+        origin,
     )
-    .map_err(|error| error.to_string())?;
-    if structurally_admit_coff(&negative)
-        != Err(CoffAdmissionError::RelocationOverlap)
-    {
-        return Err(String::from("COFF admitted overlapping data relocations"));
+}
+
+fn check_rejected_data_relocation_overlaps(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    positive_bytes: &[u8],
+    second: usize,
+    origin: u32,
+) -> Result<(), String> {
+    for offset in [0u32, 2] {
+        let mut invalid = positive_bytes.to_vec();
+        write_fixture_u32(&mut invalid, second, origin.saturating_add(offset))?;
+        let negative = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&negative)
+            != Err(CoffAdmissionError::RelocationOverlap)
+        {
+            return Err(format!("COFF admitted data overlap at +{offset}"));
+        }
     }
     Ok(())
 }
