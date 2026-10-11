@@ -113,6 +113,10 @@ image-only memory policies even when they have zero raw bytes. They cannot
 be marked linker-only information, removed before linking, or declared
 memory-discardable, since none provides persistent executable code.
 Discardable compiler debug data remains admissible as non-code storage.
+
+Relocations originating in executable code cannot depend on discardable,
+linker-only, or linker-removed sections; debug-origin relocations remain
+subject to ordinary COFF symbol closure rather than executable residency.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 

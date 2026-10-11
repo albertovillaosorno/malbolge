@@ -1382,9 +1382,39 @@ fn validate_symbols_and_relocations(
             if !defined {
                 return Err(CoffAdmissionError::ExternalDependency);
             }
+            validate_executable_relocation_target(parsed, section, symbol)?;
         }
     }
     Ok(())
+}
+
+fn validate_executable_relocation_target(
+    parsed: &ParsedCoff,
+    source_section: &CoffSection,
+    symbol: &CoffSymbol,
+) -> Result<(), CoffAdmissionError> {
+    // Debug relocations are not subject to executable residency checks.
+    if source_section.characteristics & IMAGE_SCN_CNT_CODE == 0
+        || symbol.section_number <= 0
+    {
+        return Ok(());
+    }
+    let index = usize::try_from(symbol.section_number)
+        .map_err(|_error| CoffAdmissionError::Bounds)?;
+    let target = parsed
+        .sections
+        .get(index.saturating_sub(1))
+        .ok_or(CoffAdmissionError::ExternalDependency)?;
+    if target.characteristics
+        & (IMAGE_SCN_MEM_DISCARDABLE
+            | IMAGE_SCN_LNK_INFO
+            | IMAGE_SCN_LNK_REMOVE)
+        != 0
+    {
+        Err(CoffAdmissionError::ExternalDependency)
+    } else {
+        Ok(())
+    }
 }
 
 // Width in bytes of the location patched by each defined PE/COFF relocation

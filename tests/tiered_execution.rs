@@ -49052,6 +49052,12 @@ fn check_rejected_coff_relocation_section(
         symbol_offset,
         nonexistent_section,
     )?;
+    check_rejected_code_relocation_to_discardable(
+        source,
+        artifact,
+        relocation,
+        section_header,
+    )?;
     let location = NativeCoffRelocationLocation {
         relocation,
         section_address,
@@ -49061,6 +49067,65 @@ fn check_rejected_coff_relocation_section(
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)
+}
+
+fn check_rejected_code_relocation_to_discardable(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    relocation: usize,
+    section_header: usize,
+) -> Result<(), String> {
+    let object = artifact.object();
+    if read_fixture_u32(object, section_header.saturating_add(36))?
+        & 0x0000_0020
+        == 0
+    {
+        return Ok(());
+    }
+    let Some(target_index) = discardable_coff_symbol_index(object)? else {
+        return Ok(());
+    };
+    let mut invalid = object.to_vec();
+    write_fixture_u32(
+        &mut invalid,
+        relocation.saturating_add(4),
+        u32::try_from(target_index).map_err(|error| error.to_string())?,
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::ExternalDependency)
+    {
+        return Err(String::from("COFF code referenced discardable debug"));
+    }
+    Ok(())
+}
+
+fn discardable_coff_symbol_index(
+    object: &[u8],
+) -> Result<Option<usize>, String> {
+    let sections = usize::from(read_fixture_u16(object, 2)?);
+    let discarded = (0..sections).find(|index| {
+        let header = 20usize.saturating_add(index.saturating_mul(40));
+        read_fixture_u32(object, header.saturating_add(36))
+            .is_ok_and(|flags| flags & 0x0200_0000 != 0)
+    });
+    let Some(discarded_section) = discarded else {
+        return Ok(None);
+    };
+    let section_number = u16::try_from(discarded_section.saturating_add(1))
+        .map_err(|error| error.to_string())?;
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    Ok((0..count).find(|index| {
+        let offset = table.saturating_add(index.saturating_mul(18));
+        read_fixture_u16(object, offset.saturating_add(12))
+            == Ok(section_number)
+            && object.get(offset.saturating_add(16)) == Some(&3u8)
+    }))
 }
 
 fn check_rejected_coff_relocation_symbols(
