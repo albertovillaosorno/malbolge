@@ -152,6 +152,9 @@ The first auxiliary-backed symbol in an empty COMDAT cannot hide its
 section identity by changing its name and value together. Duplicate
 zero-selected section definitions are rejected.
 
+The first-symbol check tracks ownership during one forward scan of the
+symbol table.
+
 Associative selection (`5`) must refer to a distinct, existing one-based
 section number; zero, self-association, and out-of-range section references
 are rejected without calling a linker. The referenced parent must itself

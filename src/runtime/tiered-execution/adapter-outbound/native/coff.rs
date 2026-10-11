@@ -995,6 +995,7 @@ fn has_empty_comdat_selection(
 ) -> Result<bool, CoffAdmissionError> {
     let (section, number) = section_identity;
     let mut unselected_definitions = 0usize;
+    let mut seen_in_section = false;
     // Clang emits empty bookkeeping COMDATs without active selection.
     // A nonzero selector must not bypass ordinary COMDAT validation.
     for (index, candidate) in parsed.symbols.iter().enumerate() {
@@ -1004,6 +1005,8 @@ fn has_empty_comdat_selection(
         if symbol.section_number != number {
             continue;
         }
+        let first_in_section = !seen_in_section;
+        seen_in_section = true;
         let offset =
             checked_add(symbol_table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
         let aux_count = read_u8(object, checked_add(offset, 17)?)?;
@@ -1020,12 +1023,6 @@ fn has_empty_comdat_selection(
         if symbol.name != section.name || symbol.storage_class != 3 {
             // Even without a selector, a null-valued, null-typed section
             // definition cannot hide malformed ownership in an aux record.
-            let first_in_section = !parsed
-                .symbols
-                .iter()
-                .take(index)
-                .flatten()
-                .any(|prior| prior.section_number == number);
             if first_in_section
                 || (symbol.value == 0 && symbol.symbol_type == 0)
             {
