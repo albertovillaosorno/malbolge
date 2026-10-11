@@ -88,6 +88,9 @@ cannot claim these unsupported section-format or linker behaviors.
 All COFF sections must declare at most one of the code, initialized-data,
 and uninitialized-data content kinds. Sections with no content-kind bit remain
 admissible where the compiler uses them for linker or debug bookkeeping.
+Executable-memory permissions require a section to declare code content;
+linker bookkeeping without a content kind cannot silently become executable.
+
 Data-classified sections cannot also claim executable-memory permissions.
 Uninitialized-data sections cannot claim file-backed raw bytes.
 

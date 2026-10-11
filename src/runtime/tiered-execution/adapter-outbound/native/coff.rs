@@ -618,11 +618,9 @@ const fn validate_section_content_flags(
         & (IMAGE_SCN_CNT_CODE
             | IMAGE_SCN_CNT_INITIALIZED_DATA
             | IMAGE_SCN_CNT_UNINITIALIZED_DATA);
-    let data_kinds =
-        IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_CNT_UNINITIALIZED_DATA;
     if (kinds & IMAGE_SCN_CNT_UNINITIALIZED_DATA != 0 && section.raw_size != 0)
         || kinds.count_ones() > 1
-        || (kinds & data_kinds != 0
+        || (kinds & IMAGE_SCN_CNT_CODE == 0
             && section.characteristics & IMAGE_SCN_MEM_EXECUTE != 0)
         || (kinds & IMAGE_SCN_CNT_INITIALIZED_DATA != 0
             && section.raw_size != 0

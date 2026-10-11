@@ -46068,6 +46068,7 @@ fn check_coff_isa_specific_mutations(
     check_rejected_coff_ambiguous_auxiliary_section(source, artifact)?;
     check_rejected_coff_unsupported_auxiliary_flags(source, artifact)?;
     check_rejected_coff_executable_auxiliary_data(source, artifact)?;
+    check_rejected_coff_executable_unclassified_section(source, artifact)?;
     check_rejected_coff_unloadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_unreadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_file_backed_uninitialized_data(source, artifact)?;
@@ -46215,6 +46216,33 @@ fn check_rejected_coff_executable_auxiliary_data(
         != Err(CoffAdmissionError::SectionContent)
     {
         return Err(String::from("COFF admitted executable auxiliary data"));
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_executable_unclassified_section(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let flags = read_fixture_u32(artifact.object(), offset)?;
+    if flags & 0x0000_0040 == 0 {
+        return Err(String::from("compiler auxiliary lacks data kind"));
+    }
+    let mut invalid = artifact.object().to_vec();
+    write_fixture_u32(
+        &mut invalid,
+        offset,
+        flags & !(0x0000_0040 | 0x8000_0000) | 0x2000_0000,
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::SectionContent)
+    {
+        return Err(String::from("COFF admitted unclassified executable"));
     }
     Ok(())
 }
