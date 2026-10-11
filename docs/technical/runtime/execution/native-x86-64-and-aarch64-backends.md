@@ -105,8 +105,9 @@ They also reject non-cacheable, nonpageable, and shared-memory policies.
 
 Code-classified auxiliary sections reject the same legacy loader hints and
 image-only memory policies even when they have zero raw bytes. They cannot
-be marked linker-only information or removed before linking, since neither
-supplies executable code.
+be marked linker-only information, removed before linking, or declared
+memory-discardable, since none provides persistent executable code.
+Discardable compiler debug data remains admissible as non-code storage.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 

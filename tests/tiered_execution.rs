@@ -46285,7 +46285,7 @@ fn check_rejected_coff_code_loader_policies(
     let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
     let offset = header.saturating_add(36);
     let flags = read_fixture_u32(artifact.object(), offset)?;
-    let code_flags = flags & !(0x0000_0040 | 0x8000_0000)
+    let code_flags = flags & !(0x0000_0040 | 0x0200_0000 | 0x8000_0000)
         | 0x0000_0020
         | 0x2000_0000
         | 0x4000_0000;
@@ -46319,7 +46319,7 @@ fn check_rejected_coff_code_loader_policies(
             return Err(format!("COFF admitted code with load flag {flag:#x}"));
         }
     }
-    for flag in [0x0000_0200u32, 0x0000_0800] {
+    for flag in [0x0000_0200u32, 0x0000_0800, 0x0200_0000] {
         let mut invalid = positive_bytes.clone();
         write_fixture_u32(&mut invalid, offset, code_flags | flag)?;
         let candidate = UntrustedNativeObjectArtifact::from_compiler_output(

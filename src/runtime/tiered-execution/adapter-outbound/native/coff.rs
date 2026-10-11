@@ -627,7 +627,9 @@ const fn validate_section_content_flags(
                 & (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ)
                 != (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ)
                 || section.characteristics
-                    & (IMAGE_SCN_LNK_INFO | IMAGE_SCN_LNK_REMOVE)
+                    & (IMAGE_SCN_LNK_INFO
+                        | IMAGE_SCN_LNK_REMOVE
+                        | IMAGE_SCN_MEM_DISCARDABLE)
                     != 0))
         || (kinds & IMAGE_SCN_CNT_INITIALIZED_DATA != 0
             && section.raw_size != 0
