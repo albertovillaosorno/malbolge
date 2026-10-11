@@ -49080,11 +49080,9 @@ fn check_rejected_code_relocation_to_discardable(
         & 0x0000_0020
         == 0
     {
-        return Ok(());
+        return Err(String::from("COFF fixture lacks code relocation"));
     }
-    let Some(target_index) = discardable_coff_symbol_index(object)? else {
-        return Ok(());
-    };
+    let target_index = discardable_coff_symbol_index(object)?;
     let mut invalid = object.to_vec();
     write_fixture_u32(
         &mut invalid,
@@ -49102,30 +49100,29 @@ fn check_rejected_code_relocation_to_discardable(
     Ok(())
 }
 
-fn discardable_coff_symbol_index(
-    object: &[u8],
-) -> Result<Option<usize>, String> {
+fn discardable_coff_symbol_index(object: &[u8]) -> Result<usize, String> {
     let sections = usize::from(read_fixture_u16(object, 2)?);
     let discarded = (0..sections).find(|index| {
         let header = 20usize.saturating_add(index.saturating_mul(40));
         read_fixture_u32(object, header.saturating_add(36))
             .is_ok_and(|flags| flags & 0x0200_0000 != 0)
     });
-    let Some(discarded_section) = discarded else {
-        return Ok(None);
-    };
+    let discarded_section =
+        discarded.ok_or("compiler COFF lacks discardable section")?;
     let section_number = u16::try_from(discarded_section.saturating_add(1))
         .map_err(|error| error.to_string())?;
     let table = usize::try_from(read_fixture_u32(object, 8)?)
         .map_err(|error| error.to_string())?;
     let count = usize::try_from(read_fixture_u32(object, 12)?)
         .map_err(|error| error.to_string())?;
-    Ok((0..count).find(|index| {
-        let offset = table.saturating_add(index.saturating_mul(18));
-        read_fixture_u16(object, offset.saturating_add(12))
-            == Ok(section_number)
-            && object.get(offset.saturating_add(16)) == Some(&3u8)
-    }))
+    (0..count)
+        .find(|index| {
+            let offset = table.saturating_add(index.saturating_mul(18));
+            read_fixture_u16(object, offset.saturating_add(12))
+                == Ok(section_number)
+                && object.get(offset.saturating_add(16)) == Some(&3u8)
+        })
+        .ok_or_else(|| String::from("COFF discardable section has no symbol"))
 }
 
 fn check_rejected_coff_relocation_symbols(
