@@ -46629,7 +46629,9 @@ fn check_rejected_non_comdat_undefined_owner(
     object: &[u8],
     section_symbol: usize,
 ) -> Result<(), String> {
-    for renamed in [false, true] {
+    for (renamed, external) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
         for sentinel in [0u16, u16::MAX, u16::MAX - 1] {
             let mut invalid = object.to_vec();
             if renamed {
@@ -46637,6 +46639,11 @@ fn check_rejected_non_comdat_undefined_owner(
                     .get_mut(section_symbol..section_symbol.saturating_add(8))
                     .ok_or("ordinary section name missing")?
                     .copy_from_slice(b".junk\0\0\0");
+            }
+            if external {
+                *invalid
+                    .get_mut(section_symbol.saturating_add(16))
+                    .ok_or("ordinary section storage class missing")? = 2;
             }
             write_fixture_u16(
                 &mut invalid,
@@ -46652,7 +46659,7 @@ fn check_rejected_non_comdat_undefined_owner(
                 != Err(CoffAdmissionError::SectionLinkage)
             {
                 return Err(format!(
-                    "COFF admitted owner sentinel {sentinel} renamed={renamed}",
+                    "COFF sentinel {sentinel} rename={renamed} ext={external}",
                 ));
             }
         }
