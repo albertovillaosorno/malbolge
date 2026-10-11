@@ -403,6 +403,11 @@ A distinct single-resident lease cache
 
   The `MBNPC1` process-call wire contract now frames that transfer in
   little-endian bytes with stable 77-byte request and 74-byte response prefixes.
+  Request decoding now rejects overflowed or incomplete declared payloads
+  before allocating untrusted word counts. A caught-panic regression proves
+  `u64::MAX` memory, input, and output counts fail as typed overflow rather
+  than causing capacity overflow or oversized reservation.
+
   Response payload allocation is bounded from the original admitted request,
   not child-controlled capacity fields; malformed identity, flags, shape,
   truncation, and trailing bytes fail closed. The codec itself owns no process

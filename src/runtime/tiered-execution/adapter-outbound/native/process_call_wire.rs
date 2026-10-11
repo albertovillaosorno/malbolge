@@ -207,6 +207,20 @@ pub fn decode_native_process_call_request(
     let memory_words = usize_from_u64(state.memory_words())?;
     let input_len = usize_from_u64(state.input_len())?;
     let output_capacity = usize_from_u64(state.output_capacity())?;
+    // This request is untrusted: never reserve the declared word count before
+    // establishing that the complete payload fits inside the received frame.
+    let expected = payload_byte_len(
+        NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES,
+        memory_words,
+        input_len,
+        output_capacity,
+    )?;
+    if bytes.len() < expected {
+        return Err(NativeProcessCallWireError::ReadFailure);
+    }
+    if bytes.len() > expected {
+        return Err(NativeProcessCallWireError::TrailingBytes);
+    }
     let memory = reader.words(memory_words)?;
     let input = reader.take(input_len)?.to_vec();
     let output = reader.take(output_capacity)?.to_vec();

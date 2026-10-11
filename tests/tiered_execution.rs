@@ -277,7 +277,7 @@ use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::panic::resume_unwind;
+use std::panic::{catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::process::{Command, id as process_id};
@@ -71029,6 +71029,35 @@ fn native_process_call_wire_rejects_malformed_framing() -> Result<(), String> {
     } else {
         Err(String::from("process wire malformed framing was admitted"))
     }
+}
+
+#[test]
+fn native_process_call_wire_bounds_untrusted_request_lengths()
+-> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let original = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    // The first declared payload size begins after magic, mapping, and entry.
+    // Each untrusted count must be checked against the frame before Vec
+    // capacity is derived from that count.
+    for offset in [24usize, 32, 40] {
+        let mut bytes = original.clone();
+        bytes
+            .get_mut(offset..offset.saturating_add(8))
+            .ok_or("request capacity field missing")?
+            .copy_from_slice(&u64::MAX.to_le_bytes());
+        let decoded =
+            catch_unwind(|| decode_native_process_call_request(&bytes));
+        if !matches!(
+            decoded,
+            Ok(Err(NativeProcessCallWireError::CounterOverflow))
+        ) {
+            return Err(format!(
+                "unbounded request count at {offset}: {decoded:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn applied_native_process_response(
