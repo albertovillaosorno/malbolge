@@ -169,6 +169,8 @@ does not make a circular dependency admissible.
 Defined function-typed symbols must designate an actual byte of executable
 code, never an empty COMDAT section or data-only storage. Such malformed
 symbols cannot acquire a function body merely through auxiliary records.
+Static function symbols also cannot claim the undefined, absolute, or debug
+section-number sentinels in place of an executable definition.
 
 Unreferenced symbols are also checked for valid one-based section numbers or
 the three COFF-defined sentinels (`0`, `-1`, `-2`), preventing hidden

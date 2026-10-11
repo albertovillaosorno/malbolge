@@ -787,6 +787,12 @@ fn validate_symbol_sections(
             return Err(CoffAdmissionError::ExternalDependency);
         }
         if symbol.section_number <= 0
+            && symbol.storage_class == 3
+            && symbol.symbol_type & IMAGE_SYM_DTYPE_FUNCTION != 0
+        {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        if symbol.section_number <= 0
             && matches!(symbol.storage_class, 2 | 3)
             && symbol.value == 0
             && symbol.symbol_type == 0

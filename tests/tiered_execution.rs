@@ -47694,6 +47694,31 @@ fn check_rejected_coff_impossible_function_geometry(
             return Err(String::from("COFF admitted data-section function"));
         }
     }
+    for sentinel in [0u16, u16::MAX, u16::MAX - 1] {
+        let mut sentinel_function = boundary.to_vec();
+        write_fixture_u16(
+            &mut sentinel_function,
+            label.saturating_add(12),
+            sentinel,
+        )?;
+        write_fixture_u32(&mut sentinel_function, label.saturating_add(8), 0)?;
+        write_fixture_u16(
+            &mut sentinel_function,
+            label.saturating_add(14),
+            0x20,
+        )?;
+        let sentinel_candidate =
+            UntrustedNativeObjectArtifact::from_compiler_output(
+                source,
+                sentinel_function,
+            )
+            .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&sentinel_candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!("COFF admitted function sentinel {sentinel}"));
+        }
+    }
     Ok(())
 }
 
