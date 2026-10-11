@@ -96,14 +96,17 @@ executable, not just the required callable `.text` section.
 Data-classified sections cannot also claim executable-memory permissions.
 Uninitialized-data sections cannot claim file-backed raw bytes.
 
-Populated initialized-data sections must advertise readable bytes.
+Initialized-data sections, including empty COMDAT bookkeeping sections,
+reject obsolete load hints and image-only memory policies regardless of raw
+size. Populated initialized-data sections must advertise readable bytes.
 They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
-Populated code-classified auxiliary sections reject the same legacy loader
-hints and image-only memory policies. They cannot be marked linker-only
-information or removed before linking, since neither supplies executable code.
+Code-classified auxiliary sections reject the same legacy loader hints and
+image-only memory policies even when they have zero raw bytes. They cannot
+be marked linker-only information or removed before linking, since neither
+supplies executable code.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 

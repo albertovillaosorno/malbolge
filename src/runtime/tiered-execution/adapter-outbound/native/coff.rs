@@ -633,7 +633,6 @@ const fn validate_section_content_flags(
             && section.raw_size != 0
             && section.characteristics & IMAGE_SCN_MEM_READ == 0)
         || (kinds & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_CNT_INITIALIZED_DATA) != 0
-            && section.raw_size != 0
             && section.characteristics
                 & (IMAGE_SCN_LEGACY_LOAD_FLAGS
                     | IMAGE_SCN_MEM_IMAGE_POLICY_FLAGS)

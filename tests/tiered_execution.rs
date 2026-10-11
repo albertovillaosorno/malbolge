@@ -48310,6 +48310,7 @@ fn check_unselected_empty_comdat_auxiliary(
     .map_err(|error| error.to_string())?;
     let _admitted = structurally_admit_coff(&positive)
         .map_err(|error| format!("unselected empty COMDAT: {error}"))?;
+    check_rejected_empty_initialized_loader_flags(source, bytes)?;
     // A zero selection must not let an otherwise malformed auxiliary
     // definition escape the object-format closure checks.
     for (offset, label) in [
@@ -48338,6 +48339,46 @@ fn check_unselected_empty_comdat_auxiliary(
         section_symbol,
     )?;
     check_unselected_empty_comdat_duplicate(source, bytes, table)?;
+    Ok(())
+}
+
+fn check_rejected_empty_initialized_loader_flags(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let header = 20usize.saturating_add(40);
+    let offset = header.saturating_add(36);
+    let flags = read_fixture_u32(bytes, offset)?;
+    if bytes.get(header..header.saturating_add(8))
+        != Some(b".data\0\0\0".as_slice())
+        || read_fixture_u32(bytes, header.saturating_add(16))? != 0
+        || flags & 0x0000_0040 == 0
+    {
+        return Err(String::from("empty initialized .data fixture drifted"));
+    }
+    for flag in [
+        0x0000_0002u32,
+        0x0002_0000,
+        0x0004_0000,
+        0x0008_0000,
+        0x0400_0000,
+        0x0800_0000,
+        0x1000_0000,
+    ] {
+        let mut invalid = bytes.to_vec();
+        write_fixture_u32(&mut invalid, offset, flags | flag)?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!(
+                "COFF admitted empty initialized loader flag {flag:#x}",
+            ));
+        }
+    }
     Ok(())
 }
 
