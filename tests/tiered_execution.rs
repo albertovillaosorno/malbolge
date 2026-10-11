@@ -48389,6 +48389,7 @@ fn check_admitted_selected_empty_parent(
     let _admitted = structurally_admit_coff(&artifact)
         .map_err(|error| format!("selected empty COMDAT: {error}"))?;
     check_rejected_duplicate_empty_comdat_definition(source, &selected)?;
+    check_rejected_disguised_selected_empty_sibling(source, &selected)?;
     check_admitted_nested_empty_parent(source, bytes, fixture)?;
     Ok(())
 }
@@ -48426,6 +48427,46 @@ fn check_rejected_duplicate_empty_comdat_definition(
         return Err(String::from(
             "COFF admitted two empty COMDAT section definitions",
         ));
+    }
+    Ok(())
+}
+
+fn check_rejected_disguised_selected_empty_sibling(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    selected: &[u8],
+) -> Result<(), String> {
+    let table = usize::try_from(read_fixture_u32(selected, 8)?)
+        .map_err(|error| error.to_string())?;
+    let sibling = table.saturating_add(4 * 18);
+    if selected.get(sibling..sibling.saturating_add(8))
+        != Some(b".bss\0\0\0\0".as_slice())
+        || read_fixture_u16(selected, sibling.saturating_add(12))? != 3
+        || selected.get(sibling.saturating_add(17)) != Some(&1u8)
+        || selected.get(sibling.saturating_add(32)) != Some(&0u8)
+    {
+        return Err(String::from(
+            "selected empty COMDAT sibling fixture drifted",
+        ));
+    }
+    // Both null-valued and forged nonzero-valued auxiliary siblings must
+    // not disguise the owner of the already-selected empty .data COMDAT.
+    for modified_value in [false, true] {
+        let mut invalid = selected.to_vec();
+        write_fixture_u16(&mut invalid, sibling.saturating_add(12), 2)?;
+        if modified_value {
+            write_fixture_u32(&mut invalid, sibling.saturating_add(8), 1)?;
+        }
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionLinkage)
+        {
+            return Err(format!(
+                "COFF admitted sibling with modified value={modified_value}",
+            ));
+        }
     }
     Ok(())
 }

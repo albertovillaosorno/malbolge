@@ -926,18 +926,26 @@ fn validate_selected_comdat_definition(
         let Some(symbol) = candidate else {
             continue;
         };
-        if symbol.section_number != number
-            || symbol.storage_class != 3
-            || symbol.name != section.name
-        {
+        if symbol.section_number != number {
             continue;
-        }
-        if validated || symbol.value != 0 || symbol.symbol_type != 0 {
-            return Err(CoffAdmissionError::SectionLinkage);
         }
         let offset =
             checked_add(table, checked_mul(index, COFF_SYMBOL_BYTES)?)?;
-        if read_u8(object, checked_add(offset, 17)?)? != 1 {
+        let aux_count = read_u8(object, checked_add(offset, 17)?)?;
+        if aux_count != 0
+            && symbol.symbol_type == 0
+            && (symbol.storage_class != 3 || symbol.name != section.name)
+        {
+            return Err(CoffAdmissionError::SectionLinkage);
+        }
+        if symbol.storage_class != 3 || symbol.name != section.name {
+            continue;
+        }
+        if validated
+            || symbol.value != 0
+            || symbol.symbol_type != 0
+            || aux_count != 1
+        {
             return Err(CoffAdmissionError::SectionLinkage);
         }
         validate_comdat_aux_geometry(object, offset, section)?;
