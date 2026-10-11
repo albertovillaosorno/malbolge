@@ -135,6 +135,8 @@ pub enum CoffAdmissionError {
     ProfileMetadata,
     /// Extended relocation counts are unsupported by the bounded parser.
     RelocationOverflow,
+    /// Two nonempty executable relocation patches overlap in one section.
+    RelocationOverlap,
     /// Span-dependent x64 relocations require linker-owned pairs.
     RelocationPair,
     /// Relocation count and table pointer disagree about table presence.
@@ -193,6 +195,9 @@ impl Display for CoffAdmissionError {
             Self::Machine => COFF_MACHINE_MESSAGE,
             Self::OptionalHeader => COFF_OPTIONALHEADER_MESSAGE,
             Self::ProfileMetadata => COFF_PROFILEMETADATA_MESSAGE,
+            Self::RelocationOverlap => {
+                "COFF executable relocation patches overlap"
+            },
             Self::RelocationOverflow => {
                 "COFF extended relocation counts are unsupported"
             },
@@ -1334,6 +1339,7 @@ fn validate_symbols_and_relocations(
     let _entry_offset = required_entry_offset(parsed)?;
     let machine = read_u16(object, 0)?;
     for section in &parsed.sections {
+        let mut code_spans = Vec::new();
         for relocation_index in 0..section.relocation_count {
             let offset = checked_add(
                 section.relocation_start,
@@ -1358,12 +1364,14 @@ fn validate_symbols_and_relocations(
             }
             let width = relocation_patch_width(machine, kind)
                 .ok_or(CoffAdmissionError::RelocationType)?;
-            if relative >= section.raw_size
-                || relative
-                    .checked_add(width)
-                    .is_none_or(|end| end > section.raw_size)
-            {
+            let patch_end = relative
+                .checked_add(width)
+                .ok_or(CoffAdmissionError::Bounds)?;
+            if relative >= section.raw_size || patch_end > section.raw_size {
                 return Err(CoffAdmissionError::Bounds);
+            }
+            if width > 0 && section.characteristics & IMAGE_SCN_CNT_CODE != 0 {
+                code_spans.push((relative, patch_end));
             }
             let symbol_index =
                 usize_from_u32(read_u32(object, checked_add(offset, 4)?)?)?;
@@ -1384,6 +1392,21 @@ fn validate_symbols_and_relocations(
             }
             validate_executable_relocation_target(parsed, section, symbol)?;
         }
+        validate_code_relocation_spans(&mut code_spans)?;
+    }
+    Ok(())
+}
+
+fn validate_code_relocation_spans(
+    spans: &mut [(usize, usize)],
+) -> Result<(), CoffAdmissionError> {
+    spans.sort_unstable_by_key(|(start, _end)| *start);
+    let mut previous_end = 0;
+    for &(start, end) in spans.iter() {
+        if start < previous_end {
+            return Err(CoffAdmissionError::RelocationOverlap);
+        }
+        previous_end = end;
     }
     Ok(())
 }

@@ -49066,7 +49066,54 @@ fn check_rejected_coff_relocation_section(
     };
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
-    check_rejected_coff_relocation_spans(source, artifact, location)
+    check_rejected_coff_relocation_spans(source, artifact, location)?;
+    check_rejected_coff_overlapping_code_relocations(source, artifact)
+}
+
+fn check_rejected_coff_overlapping_code_relocations(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section_count = usize::from(read_fixture_u16(object, 2)?);
+    let section = (0..section_count).find(|index| {
+        let header = 20usize.saturating_add(index.saturating_mul(40));
+        read_fixture_u32(object, header.saturating_add(36))
+            .is_ok_and(|bits| bits & 0x0000_0020 != 0)
+            && read_fixture_u16(object, header.saturating_add(32))
+                .is_ok_and(|relocations| relocations >= 2)
+    });
+    let section_index = section.ok_or("COFF lacks multiply relocated code")?;
+    let header = 20usize.saturating_add(section_index.saturating_mul(40));
+    let start =
+        usize::try_from(read_fixture_u32(object, header.saturating_add(24))?)
+            .map_err(|error| error.to_string())?;
+    let relocation_count =
+        usize::from(read_fixture_u16(object, header.saturating_add(32))?);
+    let records: Vec<usize> = (0..relocation_count)
+        .map(|index| start.saturating_add(index.saturating_mul(10)))
+        .filter(|offset| {
+            read_fixture_u16(object, offset.saturating_add(8))
+                .is_ok_and(|kind| kind != 0)
+        })
+        .take(2)
+        .collect();
+    let first = *records.first().ok_or("COFF code relocation missing")?;
+    let second = *records
+        .get(1)
+        .ok_or("COFF second code relocation missing")?;
+    let mut invalid = object.to_vec();
+    let address = read_fixture_u32(object, first)?;
+    write_fixture_u32(&mut invalid, second, address)?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::RelocationOverlap)
+    {
+        return Err(String::from("COFF admitted overlapping code relocations"));
+    }
+    Ok(())
 }
 
 fn check_rejected_code_relocation_to_discardable(

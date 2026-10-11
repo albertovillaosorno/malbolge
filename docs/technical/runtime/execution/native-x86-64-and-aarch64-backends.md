@@ -117,6 +117,10 @@ Discardable compiler debug data remains admissible as non-code storage.
 Relocations originating in executable code cannot depend on discardable,
 linker-only, or linker-removed sections; debug-origin relocations remain
 subject to ordinary COFF symbol closure rather than executable residency.
+
+Nonempty executable relocation patches must not overlap in section-relative
+bytes; zero-width metadata relocations do not claim patch bytes. Debug and
+linker relocation records retain their own separately validated semantics.
 A code-kind section does not gain loadable-object semantics by leaving the
 callable `.text` section unchanged.
 
