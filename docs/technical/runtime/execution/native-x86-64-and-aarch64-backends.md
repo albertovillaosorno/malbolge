@@ -120,6 +120,8 @@ subject to ordinary COFF symbol closure rather than executable residency.
 Code-origin relocations require targets to advertise a code, initialized-data,
 or BSS content kind. They reject zero-byte targets without a BSS content kind;
 only zero-fill storage can own a loadable empty section.
+Code-origin relocations cannot reference `.mbprof` identity metadata; only
+admission reads those key-bound bytes, not executable native instructions.
 
 Nonempty relocation patches cannot overlap within any COFF section, including
 compiler debug-data sections. Zero-width metadata relocations claim no patch

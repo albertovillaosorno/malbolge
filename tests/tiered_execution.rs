@@ -49082,6 +49082,11 @@ fn check_rejected_coff_relocation_geometry(
         artifact,
         location.relocation,
     )?;
+    check_rejected_code_relocation_to_profile_metadata(
+        source,
+        artifact,
+        location.relocation,
+    )?;
     check_rejected_coff_relocation_addresses(source, artifact, location)?;
     check_rejected_coff_relocation_types(source, artifact, location)?;
     check_rejected_coff_relocation_spans(source, artifact, location)?;
@@ -49263,6 +49268,55 @@ fn check_rejected_coff_overlapping_code_relocations(
         != Err(CoffAdmissionError::RelocationOverlap)
     {
         return Err(String::from("COFF admitted overlapping code relocations"));
+    }
+    Ok(())
+}
+
+fn check_rejected_code_relocation_to_profile_metadata(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+    relocation: usize,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section_number = (0..usize::from(read_fixture_u16(object, 2)?))
+        .find(|index| {
+            let offset = 20usize.saturating_add(index.saturating_mul(40));
+            object.get(offset..offset.saturating_add(8))
+                == Some(b".mbprof\0".as_slice())
+        })
+        .ok_or("compiler COFF lacks profile metadata")?
+        .saturating_add(1);
+    let table = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| error.to_string())?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| error.to_string())?;
+    let symbol_index = (0..count)
+        .find(|index| {
+            let offset = table.saturating_add(index.saturating_mul(18));
+            read_fixture_u16(object, offset.saturating_add(12))
+                == u16::try_from(section_number)
+                    .map_err(|error| error.to_string())
+                    .as_ref()
+                    .copied()
+                    .map_err(Clone::clone)
+                && object.get(offset.saturating_add(16)) == Some(&3u8)
+        })
+        .ok_or("compiler COFF lacks profile metadata symbol")?;
+    let mut invalid = object.to_vec();
+    write_fixture_u32(
+        &mut invalid,
+        relocation.saturating_add(4),
+        u32::try_from(symbol_index).map_err(|error| error.to_string())?,
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, invalid)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate)
+        != Err(CoffAdmissionError::ExternalDependency)
+    {
+        return Err(String::from(
+            "COFF code relocation referenced identity section",
+        ));
     }
     Ok(())
 }
