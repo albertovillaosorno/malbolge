@@ -46070,6 +46070,7 @@ fn check_coff_isa_specific_mutations(
     check_rejected_coff_executable_auxiliary_data(source, artifact)?;
     check_rejected_coff_executable_unclassified_section(source, artifact)?;
     check_rejected_coff_nonloadable_code_section(source, artifact)?;
+    check_rejected_coff_code_loader_policies(source, artifact)?;
     check_rejected_coff_unloadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_unreadable_auxiliary_data(source, artifact)?;
     check_rejected_coff_file_backed_uninitialized_data(source, artifact)?;
@@ -46272,6 +46273,50 @@ fn check_rejected_coff_nonloadable_code_section(
             != Err(CoffAdmissionError::SectionContent)
         {
             return Err(format!("COFF admitted {label} auxiliary code"));
+        }
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_code_loader_policies(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let header = coff_fixture_populated_auxiliary_header(artifact.object())?;
+    let offset = header.saturating_add(36);
+    let flags = read_fixture_u32(artifact.object(), offset)?;
+    let code_flags = flags & !(0x0000_0040 | 0x8000_0000)
+        | 0x0000_0020
+        | 0x2000_0000
+        | 0x4000_0000;
+    let mut positive_bytes = artifact.object().to_vec();
+    write_fixture_u32(&mut positive_bytes, offset, code_flags)?;
+    let positive = UntrustedNativeObjectArtifact::from_compiler_output(
+        source,
+        positive_bytes.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let _admitted = structurally_admit_coff(&positive)
+        .map_err(|error| format!("valid auxiliary code rejected: {error}"))?;
+    for flag in [
+        0x0000_0002u32,
+        0x0002_0000,
+        0x0004_0000,
+        0x0008_0000,
+        0x0400_0000,
+        0x0800_0000,
+        0x1000_0000,
+    ] {
+        let mut invalid = positive_bytes.clone();
+        write_fixture_u32(&mut invalid, offset, code_flags | flag)?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!("COFF admitted code with load flag {flag:#x}"));
         }
     }
     Ok(())

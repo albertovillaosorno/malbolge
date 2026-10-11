@@ -101,6 +101,10 @@ They cannot request legacy `NOLOAD`,
 16-bit/purgeable, locked, or preload treatment from an image loader.
 They also reject non-cacheable, nonpageable, and shared-memory policies.
 
+Populated code-classified auxiliary sections reject the same legacy loader
+hints and image-only memory policies. A code-kind section does not gain
+loadable-object semantics by leaving the callable `.text` section unchanged.
+
 Ordinary (non-COMDAT) section definitions with an auxiliary record must
 match the owning section name, use static storage class, and have a
 zero-valued, null-typed primary symbol;
