@@ -94,7 +94,9 @@ Conversely, every code-classified section must be both readable and
 executable, not just the required callable `.text` section.
 
 Data-classified sections cannot also claim executable-memory permissions.
-Uninitialized-data sections cannot claim file-backed raw bytes.
+Uninitialized-data sections cannot claim file-backed raw bytes. Even empty
+`.bss` sections must reject legacy loader hints and image-only memory policies;
+those bits have no object-level loading authority.
 
 Initialized-data sections, including empty COMDAT bookkeeping sections,
 reject obsolete load hints and image-only memory policies regardless of raw

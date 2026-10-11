@@ -46084,6 +46084,7 @@ fn check_coff_isa_specific_mutations(
         check_rejected_coff_unreferenced_symbol_sections(source, artifact)?;
         check_rejected_coff_unreferenced_symbol_value(source, artifact)?;
     } else {
+        check_rejected_coff_uninitialized_loader_flags(source, artifact)?;
         check_rejected_coff_comdat_selection(source, artifact)?;
         check_rejected_coff_relocation_section(source, artifact)?;
     }
@@ -46106,6 +46107,53 @@ fn coff_fixture_populated_auxiliary_header(
                 && size.is_ok_and(|bytes| bytes > 0)
         })
         .ok_or_else(|| String::from("compiler fixture lacks auxiliary data"))
+}
+
+fn check_rejected_coff_uninitialized_loader_flags(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let section_count = usize::from(read_fixture_u16(object, 2)?);
+    let header = (0..section_count)
+        .map(|index| 20usize.saturating_add(index.saturating_mul(40)))
+        .find(|offset| {
+            object.get(*offset..offset.saturating_add(8))
+                == Some(b".bss\0\0\0\0".as_slice())
+        })
+        .ok_or("compiler lacks .bss section")?;
+    let flags = read_fixture_u32(object, header.saturating_add(36))?;
+    if flags & 0x0000_0080 == 0
+        || read_fixture_u32(object, header.saturating_add(16))? != 0
+    {
+        return Err(String::from("compiler .bss fixture drifted"));
+    }
+    for flag in [
+        0x0000_0002u32,
+        0x0002_0000,
+        0x0004_0000,
+        0x0008_0000,
+        0x0400_0000,
+        0x0800_0000,
+        0x1000_0000,
+    ] {
+        let mut invalid = object.to_vec();
+        write_fixture_u32(
+            &mut invalid,
+            header.saturating_add(36),
+            flags | flag,
+        )?;
+        let candidate = UntrustedNativeObjectArtifact::from_compiler_output(
+            source, invalid,
+        )
+        .map_err(|error| error.to_string())?;
+        if structurally_admit_coff(&candidate)
+            != Err(CoffAdmissionError::SectionContent)
+        {
+            return Err(format!("COFF admitted .bss loader flag {flag:#x}"));
+        }
+    }
+    Ok(())
 }
 
 fn check_rejected_coff_file_backed_uninitialized_data(
