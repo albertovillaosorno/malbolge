@@ -70895,6 +70895,53 @@ fn native_process_memory_wire_bounds_copy_response_from_request()
 }
 
 #[test]
+fn native_process_memory_wire_preflights_copied_code_frames()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let request = requests
+        .iter()
+        .find(|request| {
+            matches!(request, NativeProcessMemoryRequest::Copy { .. })
+        })
+        .ok_or("process memory copy fixture missing")?;
+    let mut request_trailing = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    request_trailing.extend_from_slice(&[0x42, 0x43]);
+    if decode_native_process_memory_request(&request_trailing)
+        != Err(NativeProcessMemoryWireError::TrailingBytes)
+    {
+        return Err(String::from(
+            "process memory accepted trailing copy input",
+        ));
+    }
+    let response = native_process_memory_success_response(request, executable);
+    let response_frame =
+        encode_native_process_memory_response(request, &response)
+            .map_err(|error| error.to_string())?;
+    let mut response_trailing = response_frame.clone();
+    response_trailing.extend_from_slice(&[0x42, 0x43]);
+    let short_end = response_frame
+        .len()
+        .checked_sub(1)
+        .ok_or("process memory response fixture empty")?;
+    let short_response = response_frame
+        .get(..short_end)
+        .ok_or("process memory short response unavailable")?;
+    if decode_native_process_memory_response(&response_trailing, request)
+        != Err(NativeProcessMemoryWireError::TrailingBytes)
+        || decode_native_process_memory_response(short_response, request)
+            != Err(NativeProcessMemoryWireError::ReadFailure)
+        || decode_native_process_memory_response(&response_frame, request)
+            != Ok(response)
+    {
+        return Err(String::from(
+            "process memory copy response framing drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_round_trips_failure() -> Result<(), String> {
     let (_executable, requests) = native_process_memory_wire_fixture()?;
     for request in requests {

@@ -262,8 +262,14 @@ pub fn decode_native_process_memory_request(
         COMMAND_COPY => {
             let mapping = decode_mapping_report(&mut reader)?;
             let code_len = usize_from_u64(reader.u64()?)?;
-            let code = reader.take(code_len)?.to_vec().into_boxed_slice();
-            NativeProcessMemoryRequest::Copy { code, mapping }
+            let code = reader.take(code_len)?;
+            // A trailing byte cannot turn an otherwise valid copy into a
+            // request-sized allocation before the framing check rejects it.
+            reader.finish()?;
+            NativeProcessMemoryRequest::Copy {
+                code: code.to_vec().into_boxed_slice(),
+                mapping,
+            }
         },
         COMMAND_PROTECT => NativeProcessMemoryRequest::Protect(
             decode_mapping_report(&mut reader)?,
@@ -311,6 +317,17 @@ pub fn decode_native_process_memory_response(
             Ok(response)
         },
         OUTCOME_SUCCESS => {
+            // Verify the entire request-bounded successful frame before
+            // allocating copied-code evidence. Failed responses have their
+            // own fixed 14-byte framing and must not use this limit.
+            let expected =
+                native_process_memory_success_response_byte_len(request)?;
+            if bytes.len() < expected {
+                return Err(NativeProcessMemoryWireError::ReadFailure);
+            }
+            if bytes.len() > expected {
+                return Err(NativeProcessMemoryWireError::TrailingBytes);
+            }
             let response = decode_success_response(&mut reader, request)?;
             reader.finish()?;
             Ok(response)
@@ -421,16 +438,21 @@ pub fn native_process_memory_request_byte_len(
 pub fn native_process_memory_response_byte_limit(
     request: &NativeProcessMemoryRequest,
 ) -> Result<usize, NativeProcessMemoryWireError> {
-    let success = match request {
+    Ok(native_process_memory_success_response_byte_len(request)?.max(14))
+}
+
+fn native_process_memory_success_response_byte_len(
+    request: &NativeProcessMemoryRequest,
+) -> Result<usize, NativeProcessMemoryWireError> {
+    match request {
         NativeProcessMemoryRequest::Allocate(_)
-        | NativeProcessMemoryRequest::Protect(_) => 35,
+        | NativeProcessMemoryRequest::Protect(_) => Ok(35),
         NativeProcessMemoryRequest::Copy { code, .. } => 26usize
             .checked_add(code.len())
-            .ok_or(NativeProcessMemoryWireError::CounterOverflow)?,
-        NativeProcessMemoryRequest::Release(_) => 10,
-        NativeProcessMemoryRequest::Synchronize(_) => 34,
-    };
-    Ok(success.max(14))
+            .ok_or(NativeProcessMemoryWireError::CounterOverflow),
+        NativeProcessMemoryRequest::Release(_) => Ok(10),
+        NativeProcessMemoryRequest::Synchronize(_) => Ok(34),
+    }
 }
 
 fn decode_address(
