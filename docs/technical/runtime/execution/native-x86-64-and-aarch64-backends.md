@@ -827,8 +827,11 @@ little-endian command protocol for writable allocation, exact code copy, RX
 protection, instruction synchronization, and release. Mapping/address/length/
 permission reports and copied bytes remain untrusted evidence; the existing safe
 lifecycle still owns every identity, W^X, range, capacity, and byte-exact
-admission check. Copy response size derives from the original copy request, and
-child failures carry only an opaque `u32` platform code. No syscall or mapping
+admission check.
+
+Copy response size derives from the original copy request, while failure
+encoding reserves only its 14-byte prefix regardless of copy size. Child
+failures carry only an opaque `u32` platform code. No syscall or mapping
 ownership is implemented by this codec.
 
 `native/process_host.rs` now binds both MBNPM1 and MBNPC1 to the retained

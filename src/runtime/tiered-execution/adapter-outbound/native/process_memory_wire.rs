@@ -370,8 +370,16 @@ pub fn encode_native_process_memory_response(
     request: &NativeProcessMemoryRequest,
     response: &NativeProcessMemoryResponse,
 ) -> Result<Vec<u8>, NativeProcessMemoryWireError> {
-    let mut bytes =
-        Vec::with_capacity(native_process_memory_response_byte_limit(request)?);
+    // A remote failure always carries only a 14-byte response. Reserving the
+    // maximum successful copy response here wastes request-sized memory on an
+    // error, potentially exhausting the worker before it reports the failure.
+    let capacity =
+        if matches!(response, NativeProcessMemoryResponse::Failure(_)) {
+            14
+        } else {
+            native_process_memory_response_byte_limit(request)?
+        };
+    let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(&NATIVE_PROCESS_MEMORY_WIRE_MAGIC);
     bytes.push(request.command_tag());
     if let NativeProcessMemoryResponse::Failure(code) = response {

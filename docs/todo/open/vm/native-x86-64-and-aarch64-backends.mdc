@@ -435,6 +435,9 @@ A distinct single-resident lease cache
   synchronize, and release commands over that session. Returned mapping, range,
   permission, and copied-byte fields remain untrusted evidence for the existing
   lifecycle checks; copy response allocation is bounded by the original request.
+  Failure encoding now reserves only its fixed 14-byte frame, rather than the
+  full potential successful copy payload. A 4096-byte copy request has a
+  measured over-reservation regression without changing failure evidence.
 
   `NativeProcessHost` now implements the executable-memory adapter through one
   retained session and MBNPM1. Deterministic child evidence covers the complete

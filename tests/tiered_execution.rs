@@ -70793,6 +70793,36 @@ fn native_process_memory_success_response(
 }
 
 #[test]
+fn native_process_memory_wire_failure_does_not_reserve_copy_payload()
+-> Result<(), String> {
+    let (executable, _requests) = native_process_memory_wire_fixture()?;
+    let mapping = NativeExecutableMappingReport::new(
+        executable.mapping_id(),
+        executable.base_address(),
+        4096,
+        NativeExecutablePermission::ReadWrite,
+    );
+    let request = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90; 4096].into_boxed_slice(),
+        mapping,
+    };
+    let failure = NativeProcessMemoryResponse::Failure(77);
+    let encoded = encode_native_process_memory_response(&request, &failure)
+        .map_err(|error| error.to_string())?;
+    let decoded = decode_native_process_memory_response(&encoded, &request)
+        .map_err(|error| error.to_string())?;
+    if encoded.len() == 14 && encoded.capacity() < 128 && decoded == failure {
+        Ok(())
+    } else {
+        Err(format!(
+            "copy failure reserved {} bytes for a {}-byte frame",
+            encoded.capacity(),
+            encoded.len()
+        ))
+    }
+}
+
+#[test]
 fn native_process_memory_wire_round_trips_every_command() -> Result<(), String>
 {
     let (executable, requests) = native_process_memory_wire_fixture()?;
