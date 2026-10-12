@@ -812,8 +812,12 @@ through the later native call.
 `native/process_session.rs` now retains one configured child process across
 multiple bounded byte exchanges. Each request and response uses an outer
 little-endian `u64` payload length; child-announced response size is checked
-against the caller limit before allocation, and any I/O, truncation, or size
-failure poisons and terminates the session. Deterministic workers prove one
+against both the host's allocatable vector length and the caller limit before
+allocation. Lengths above `isize::MAX` fail as typed `ResponseLength` errors,
+not capacity-overflow panics, even with an unlimited caller bound.
+
+Any I/O, truncation, or size failure poisons and terminates the session.
+Deterministic workers prove one
 child survives multiple exchanges and that oversized/truncated responses fail
 closed. The session does not interpret MBNPC1 or yet implement executable-memory
 commands or the foreign call itself.

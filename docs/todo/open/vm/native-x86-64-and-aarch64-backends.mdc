@@ -427,6 +427,9 @@ A distinct single-resident lease cache
   multiple length-framed exchanges. Response lengths are bounded before
   allocation, transport/framing failure poisons and terminates the session, and
   deterministic workers cover reuse plus oversized/truncated responses.
+  An adversarial child-announced `2^63` response length also fails as typed
+  `ResponseLength` without a capacity-overflow panic, even if the caller's
+  response limit is `usize::MAX`; the session remains poisoned.
 
   The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
   synchronize, and release commands over that session. Returned mapping, range,

@@ -279,7 +279,7 @@ use std::io::ErrorKind;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::io::Write as _;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::panic::{catch_unwind, resume_unwind};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::process::{Command, Stdio, id as process_id};
@@ -1431,6 +1431,19 @@ request = sys.stdin.buffer.read(length)
 if len(request) != length:
     raise SystemExit(3)
 sys.stdout.buffer.write((1024).to_bytes(8, "little"))
+sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_SESSION_IMPOSSIBLE_LENGTH_WORKER: &str = r#"
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write(((1 << 63)).to_bytes(8, "little"))
 sys.stdout.buffer.flush()
 "#;
 
@@ -70640,6 +70653,29 @@ fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
     } else {
         Ok(())
     }
+}
+
+#[test]
+fn native_process_session_rejects_unallocatable_response_length()
+-> Result<(), String> {
+    let mut session = native_process_session_python(
+        NATIVE_PROCESS_SESSION_IMPOSSIBLE_LENGTH_WORKER,
+    )?;
+    // A maximum caller limit must not turn a forged child length into
+    // Vec's capacity-overflow panic (or leave the session unpoisoned).
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        session.exchange(b"request", usize::MAX)
+    }));
+    if !matches!(result, Ok(Err(NativeProcessSessionError::ResponseLength)))
+        || !session.poisoned()
+        || session.exchange(b"again", usize::MAX)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(format!(
+            "unallocatable response did not poison: {result:?}"
+        ));
+    }
+    Ok(())
 }
 
 #[test]

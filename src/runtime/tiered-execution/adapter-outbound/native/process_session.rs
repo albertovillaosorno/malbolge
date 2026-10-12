@@ -210,6 +210,11 @@ impl NativeProcessSession {
         let announced = u64::from_le_bytes(length);
         let response_len = usize::try_from(announced)
             .map_err(|_error| NativeProcessSessionError::ResponseLength)?;
+        // A u64 can fit usize while exceeding Rust's maximum Vec capacity.
+        // Reject that child-supplied length before a zero-initialized reserve.
+        if response_len > isize::MAX.unsigned_abs() {
+            return Err(NativeProcessSessionError::ResponseLength);
+        }
         if response_len > response_limit {
             return Err(NativeProcessSessionError::ResponseTooLarge);
         }
