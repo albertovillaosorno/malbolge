@@ -1434,6 +1434,20 @@ sys.stdout.buffer.write((1024).to_bytes(8, "little"))
 sys.stdout.buffer.flush()
 "#;
 
+const NATIVE_PROCESS_SESSION_UNALLOCATABLE_WORKER: &str = r#"
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(3)
+# Fits a 64-bit usize and is below isize::MAX, but no host can reserve 4 EiB.
+sys.stdout.buffer.write((1 << 62).to_bytes(8, "little"))
+sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_SESSION_IMPOSSIBLE_LENGTH_WORKER: &str = r#"
 import sys
 header = sys.stdin.buffer.read(8)
@@ -70653,6 +70667,32 @@ fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
     } else {
         Ok(())
     }
+}
+
+#[test]
+fn native_process_session_rejects_unreservable_response_length()
+-> Result<(), String> {
+    let mut session = native_process_session_python(
+        NATIVE_PROCESS_SESSION_UNALLOCATABLE_WORKER,
+    )?;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        session.exchange(b"request", usize::MAX)
+    }));
+    let expected = if usize::BITS == 64 {
+        NativeProcessSessionError::ResponseAllocation
+    } else {
+        NativeProcessSessionError::ResponseLength
+    };
+    if !matches!(result, Ok(Err(error)) if error == expected)
+        || !session.poisoned()
+        || session.exchange(b"again", usize::MAX)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(format!(
+            "unreservable response did not poison: {result:?}"
+        ));
+    }
+    Ok(())
 }
 
 #[test]

@@ -431,6 +431,9 @@ A distinct single-resident lease cache
   An adversarial child-announced `2^63` response length also fails as typed
   `ResponseLength` without a capacity-overflow panic, even if the caller's
   response limit is `usize::MAX`; the session remains poisoned.
+  A separately representable 4-EiB response length now returns a typed
+  `ResponseAllocation` failure through fallible reservation, again poisoning
+  the child session instead of aborting the parent on allocation failure.
 
   The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
   synchronize, and release commands over that session. Returned mapping, range,

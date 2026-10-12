@@ -57,6 +57,8 @@ pub enum NativeProcessSessionError {
     Read(ErrorKind),
     /// Request byte length cannot be represented by the session frame.
     RequestLength,
+    /// Child announced a response buffer that this host cannot allocate.
+    ResponseAllocation,
     /// Announced response length cannot be represented by this host.
     ResponseLength,
     /// Child announced a response larger than the caller-provided bound.
@@ -218,7 +220,14 @@ impl NativeProcessSession {
         if response_len > response_limit {
             return Err(NativeProcessSessionError::ResponseTooLarge);
         }
-        let mut response = vec![0; response_len];
+        // Even representable lengths can exceed the host's available virtual
+        // memory. A fallible reservation keeps a hostile child from aborting
+        // the parent process on allocation failure.
+        let mut response = Vec::new();
+        response
+            .try_reserve_exact(response_len)
+            .map_err(|_error| NativeProcessSessionError::ResponseAllocation)?;
+        response.resize(response_len, 0);
         self.stdout
             .read_exact(&mut response)
             .map_err(|error| NativeProcessSessionError::Read(error.kind()))?;

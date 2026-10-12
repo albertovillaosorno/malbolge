@@ -818,6 +818,11 @@ against both the host's allocatable vector length and the caller limit before
 allocation. Lengths above `isize::MAX` fail as typed `ResponseLength` errors,
 not capacity-overflow panics, even with an unlimited caller bound.
 
+Even smaller representable lengths can exceed available host address space.
+Response buffers now use fallible exact reservation, returning typed
+`ResponseAllocation` rather than aborting on failed allocation. A child that
+announces a 4-EiB response exercises this rejection without reading payload.
+
 Any I/O, truncation, or size failure poisons and terminates the session.
 Deterministic workers prove one
 child survives multiple exchanges and that oversized/truncated responses fail
