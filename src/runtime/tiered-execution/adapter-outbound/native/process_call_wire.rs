@@ -267,6 +267,22 @@ pub fn decode_native_process_call_response(
     let pointers_unchanged = decode_pointer_flag(reader.u8()?)?;
     let memory_words = request.memory().len();
     let output_capacity = request.output().len();
+    // Both payload sizes originate in the request. A malicious child can
+    // return all memory words but omit output bytes (or append trailing
+    // bytes); reject the complete malformed frame before allocating a word
+    // vector whose size was determined by the original request.
+    let expected = payload_byte_len(
+        NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES,
+        memory_words,
+        0,
+        output_capacity,
+    )?;
+    if bytes.len() < expected {
+        return Err(NativeProcessCallWireError::ReadFailure);
+    }
+    if bytes.len() > expected {
+        return Err(NativeProcessCallWireError::TrailingBytes);
+    }
     let memory = reader.words(memory_words)?;
     let output = reader.take(output_capacity)?.to_vec();
     reader.finish()?;

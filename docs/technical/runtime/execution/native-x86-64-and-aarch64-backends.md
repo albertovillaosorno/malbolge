@@ -759,7 +759,9 @@ allocating its attacker-declared memory/input/output payloads; even a
 
 The response word reader likewise checks the complete request-sized memory span
 before reserving the output vector, even if the child omitted all memory bytes.
-Truncated response-word fixtures bind this preallocation policy. The codec
+Truncated response-word fixtures bind this preallocation policy. The
+response decoder also checks the entire request-bounded frame before allocating
+memory words, including the output suffix and any trailing bytes. The codec
 rejects malformed magic, zero mapping identity, noncanonical pointer flags,
 shape drift, truncation, and trailing bytes without spawning a process or
 gaining semantic authority.

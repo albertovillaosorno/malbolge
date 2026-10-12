@@ -71179,6 +71179,39 @@ fn native_process_call_wire_rejects_partial_response_words()
 }
 
 #[test]
+fn native_process_call_wire_preflights_complete_response_frame()
+-> Result<(), String> {
+    let (request, expected) = native_process_call_wire_fixture()?;
+    let response = applied_native_process_response(&request, expected)?;
+    let encoded = encode_native_process_call_response(&request, &response)
+        .map_err(|error| error.to_string())?;
+    let memory_end = NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES
+        .checked_add(request.memory().len().saturating_mul(size_of::<u32>()))
+        .ok_or("process wire memory length overflow")?;
+    if memory_end >= encoded.len() {
+        return Err(String::from("process wire response has no output suffix"));
+    }
+    let missing_output = encoded
+        .get(..memory_end)
+        .ok_or("process wire memory segment absent")?;
+    if decode_native_process_call_response(missing_output, &request)
+        != Err(NativeProcessCallWireError::ReadFailure)
+    {
+        return Err(String::from("process wire accepted absent output suffix"));
+    }
+    let mut trailing = encoded.clone();
+    trailing.extend_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+    if decode_native_process_call_response(&trailing, &request)
+        != Err(NativeProcessCallWireError::TrailingBytes)
+        || decode_native_process_call_response(&encoded, &request)
+            != Ok(response)
+    {
+        return Err(String::from("process wire full-frame boundary drifted"));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_call_wire_bounds_untrusted_request_lengths()
 -> Result<(), String> {
     let (request, _expected) = native_process_call_wire_fixture()?;
