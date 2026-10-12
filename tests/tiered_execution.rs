@@ -70833,6 +70833,39 @@ fn native_process_memory_success_response(
 }
 
 #[test]
+fn native_process_memory_wire_rejects_success_shape_before_encoding()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let copy = requests
+        .iter()
+        .find(|request| {
+            matches!(request, NativeProcessMemoryRequest::Copy { .. })
+        })
+        .ok_or("native process shape copy fixture missing")?;
+    let allocate = requests.first().ok_or("native process allocate missing")?;
+    let mismatched =
+        native_process_memory_success_response(allocate, executable);
+    let wrong_length =
+        NativeProcessMemoryResponse::Copy(NativeExecutableCodeCopyReport::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            vec![0xcc, 0x90],
+        ));
+    if encode_native_process_memory_response(copy, &mismatched)
+        != Err(NativeProcessMemoryWireError::ResponseShape)
+        || encode_native_process_memory_response(copy, &wrong_length)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+        || encode_native_process_memory_response(allocate, &wrong_length)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        return Err(String::from(
+            "native process memory encoded drifted successful response shape",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_failure_does_not_reserve_copy_payload()
 -> Result<(), String> {
     let (executable, _requests) = native_process_memory_wire_fixture()?;

@@ -840,6 +840,10 @@ Copy response size derives from the original copy request, while failure
 encoding reserves only its 14-byte prefix regardless of copy size. Child
 failures carry only an opaque `u32` platform code.
 
+Successful response encoding validates the command/response variant and copy
+length before reserving any bytes. Drifted success evidence returns typed
+`ResponseShape` without allocating the request-sized copy buffer.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.

@@ -445,6 +445,9 @@ A distinct single-resident lease cache
   measured over-reservation regression without changing failure evidence.
   Copy requests and successful copy responses also check their complete frame
   before allocating owned code buffers; truncated or trailing bytes fail closed.
+  Success response encoding now preflights variant and copied-byte shape before
+  reserving the original request's byte limit; malformed success evidence
+  fails with typed `ResponseShape` rather than allocating before rejection.
 
   `NativeProcessHost` now implements the executable-memory adapter through one
   retained session and MBNPM1. Deterministic child evidence covers the complete

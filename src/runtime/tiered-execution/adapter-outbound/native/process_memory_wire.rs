@@ -394,6 +394,9 @@ pub fn encode_native_process_memory_response(
         if matches!(response, NativeProcessMemoryResponse::Failure(_)) {
             14
         } else {
+            // No error-shaped success may reserve request-sized copy storage.
+            // Reject drifted variants and copy lengths before allocation.
+            validate_success_response_shape(request, response)?;
             native_process_memory_response_byte_limit(request)?
         };
     let mut bytes = Vec::with_capacity(capacity);
@@ -558,6 +561,35 @@ const fn encode_permission(permission: NativeExecutablePermission) -> u8 {
     match permission {
         NativeExecutablePermission::ReadExecute => 0,
         NativeExecutablePermission::ReadWrite => 1,
+    }
+}
+
+fn validate_success_response_shape(
+    request: &NativeProcessMemoryRequest,
+    response: &NativeProcessMemoryResponse,
+) -> Result<(), NativeProcessMemoryWireError> {
+    match (request, response) {
+        (
+            NativeProcessMemoryRequest::Allocate(_),
+            NativeProcessMemoryResponse::Allocate(_),
+        )
+        | (
+            NativeProcessMemoryRequest::Protect(_),
+            NativeProcessMemoryResponse::Protect(_),
+        )
+        | (
+            NativeProcessMemoryRequest::Release(_),
+            NativeProcessMemoryResponse::Release,
+        )
+        | (
+            NativeProcessMemoryRequest::Synchronize(_),
+            NativeProcessMemoryResponse::Synchronize(_),
+        ) => Ok(()),
+        (
+            NativeProcessMemoryRequest::Copy { code, .. },
+            NativeProcessMemoryResponse::Copy(report),
+        ) if code.len() == report.copied_code().len() => Ok(()),
+        _ => Err(NativeProcessMemoryWireError::ResponseShape),
     }
 }
 
