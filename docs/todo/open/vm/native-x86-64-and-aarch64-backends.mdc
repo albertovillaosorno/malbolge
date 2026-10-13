@@ -506,9 +506,9 @@ A distinct single-resident lease cache
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 
-  A host-real MBNPC1 call with a valid RX mapping but entry offset exactly
-  equal to mapped length returns invalid-argument evidence with all guest
-  buffers unchanged; the same retained child can still release that mapping.
+  Host-real MBNPC1 calls to RX mappings with entry offsets at mapped length,
+  one byte beyond, or `u64::MAX` reject without mutating buffers or state;
+  the same retained child can still release the mapping.
 
   Host-real mapping-table coverage now exceeds the first four-entry allocation
   table, removes an interior mapping, and proves all surviving mapping IDs

@@ -933,9 +933,9 @@ Each remote command fails; exact synchronization then succeeds for the retained
 mapping before final release. Partial and foreign-range cache sync fail closed.
 
 A host-real call-bound regression attempts to invoke a sealed RX mapping with
-its entry offset exactly equal to the mapped byte length. The child returns
-native invalid-argument status, preserving memory, output, state, and pointer
-identity; that same process then releases the mapping without transport loss.
+its entry offset at the mapped byte length, one byte beyond, or `u64::MAX`.
+The child returns invalid-argument status without changing memory, output,
+state, or pointer identity; that child then releases the mapping normally.
 
 Six concurrent POSIX mappings now exercise the worker's dynamic mapping-table
 growth and middle-entry removal. Every survivor remains individually writable

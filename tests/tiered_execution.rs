@@ -70597,26 +70597,29 @@ fn assert_posix_worker_rejects_out_of_range_native_call(
         .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
     let end = u64::try_from(executable.mapped_len())
         .map_err(|error| error.to_string())?;
-    bytes
-        .get_mut(16..24)
-        .ok_or("out-of-range call offset field absent")?
-        .copy_from_slice(&end.to_le_bytes());
+    let past_end = end.checked_add(1).ok_or("mapping length overflowed")?;
     let limit = native_process_call_response_byte_limit(&request)
         .map_err(|error| error.to_string())?;
-    let response = session
-        .exchange(&bytes, limit)
-        .map_err(|error| format!("invalid entry exchange: {error:?}"))?;
-    let result = decode_native_process_call_response(&response, &request)
-        .map_err(|error| error.to_string())?;
-    if result.mapping_id() != executable.mapping_id()
-        || result.raw_status() != 2i32
-        || result.memory() != request.memory()
-        || result.output() != request.output()
-        || result.state() != request.state()
-        || !result.pointers_unchanged()
-        || session.poisoned()
-    {
-        return Err(String::from("out-of-range POSIX call mutated state"));
+    for offset in [end, past_end, u64::MAX] {
+        bytes
+            .get_mut(16..24)
+            .ok_or("out-of-range call offset field absent")?
+            .copy_from_slice(&offset.to_le_bytes());
+        let response = session
+            .exchange(&bytes, limit)
+            .map_err(|error| format!("invalid entry exchange: {error:?}"))?;
+        let result = decode_native_process_call_response(&response, &request)
+            .map_err(|error| error.to_string())?;
+        if result.mapping_id() != executable.mapping_id()
+            || result.raw_status() != 2i32
+            || result.memory() != request.memory()
+            || result.output() != request.output()
+            || result.state() != request.state()
+            || !result.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from("out-of-range POSIX call mutated state"));
+        }
     }
     Ok(())
 }
