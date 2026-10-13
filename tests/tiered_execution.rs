@@ -70100,6 +70100,106 @@ fn posix_worker_memory_exchange(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_memory_frame_length(
+    session: &mut NativeProcessSession,
+    request: &NativeProcessMemoryRequest,
+    failure_code: u32,
+) -> Result<(), String> {
+    let bytes = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    let mut truncated = bytes.clone();
+    let _last = truncated
+        .pop()
+        .ok_or("native memory command cannot be empty")?;
+    let mut trailing = bytes;
+    trailing.push(0xff);
+    for invalid in [truncated, trailing] {
+        let response = session
+            .exchange(&invalid, 14)
+            .map_err(|error| format!("malformed memory exchange: {error:?}"))?;
+        if decode_native_process_memory_response(&response, request)
+            != Ok(NativeProcessMemoryResponse::Failure(failure_code))
+            || session.poisoned()
+        {
+            return Err(String::from("native memory framing lost command"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_preserves_session_after_bad_memory_frames(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    let allocation = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping,
+    };
+    let protect = NativeProcessMemoryRequest::Protect(mapping);
+    let release = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(mapping),
+    );
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            mapping.mapping_id(),
+            mapping.base_address(),
+            mapping.mapped_len(),
+        ),
+    );
+    for (request, failure_code) in [
+        (&allocation, 1u32),
+        (&copy, 2),
+        (&protect, 1),
+        (&release, 2),
+        (&sync, 1),
+    ] {
+        assert_posix_worker_rejects_memory_frame_length(
+            session,
+            request,
+            failure_code,
+        )?;
+    }
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("malformed frames broke valid code copy"));
+    };
+    if report.copied_code() != [0x90] {
+        return Err(String::from("malformed frames changed code copy"));
+    }
+    posix_worker_release(session, mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_malformed_memory_frame_lengths()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("invalid_memory_frame_lengths")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("memory frame spawn: {error:?}"))?;
+        assert_posix_worker_preserves_session_after_bad_memory_frames(
+            &mut session,
+        )
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_recovers_after_rejected_memory_command()
 -> Result<(), String> {

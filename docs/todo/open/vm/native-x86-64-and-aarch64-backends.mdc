@@ -483,6 +483,9 @@ A distinct single-resident lease cache
   child can still process a valid allocation and release without poisoning.
   Unknown inner MBNPM1 command tags likewise return the exact failure frame
   and preserve the retained session for subsequent valid commands.
+
+  Truncated and trailing-byte frames for all five memory commands also
+  return command-specific failures; later copy and release remain valid.
   A separate unmapped MBNPC1 call returns native invalid-argument evidence
   without changing buffers or pointer identity, and the same child remains
   available for a subsequent allocation and release. A separately allocated
