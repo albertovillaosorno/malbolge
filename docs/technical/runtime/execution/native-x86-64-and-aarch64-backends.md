@@ -923,6 +923,11 @@ synchronization with a forged start, truncated range, or unknown mapping ID.
 Each remote command fails; exact synchronization then succeeds for the retained
 mapping before final release. Partial and foreign-range cache sync fail closed.
 
+A host-real call-bound regression attempts to invoke a sealed RX mapping with
+its entry offset exactly equal to the mapped byte length. The child returns
+native invalid-argument status, preserving memory, output, state, and pointer
+identity; that same process then releases the mapping without transport loss.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

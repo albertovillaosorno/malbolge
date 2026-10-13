@@ -70537,6 +70537,76 @@ fn native_process_posix_worker_rejects_forged_sync_geometry()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_out_of_range_native_call(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("out-of-range call mapping field absent")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let end = u64::try_from(executable.mapped_len())
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(16..24)
+        .ok_or("out-of-range call offset field absent")?
+        .copy_from_slice(&end.to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let response = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("invalid entry exchange: {error:?}"))?;
+    let result = decode_native_process_call_response(&response, &request)
+        .map_err(|error| error.to_string())?;
+    if result.mapping_id() != executable.mapping_id()
+        || result.raw_status() != 2i32
+        || result.memory() != request.memory()
+        || result.output() != request.output()
+        || result.state() != request.state()
+        || !result.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("out-of-range POSIX call mutated state"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_out_of_range_entry_offset()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("out_of_range_entry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("invalid entry spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("invalid entry seal failed"));
+        };
+        assert_posix_worker_rejects_out_of_range_native_call(
+            &mut session,
+            executable,
+        )?;
+        posix_worker_release(&mut session, executable)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

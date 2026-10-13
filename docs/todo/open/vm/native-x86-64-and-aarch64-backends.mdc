@@ -506,6 +506,10 @@ A distinct single-resident lease cache
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 
+  A host-real MBNPC1 call with a valid RX mapping but entry offset exactly
+  equal to mapped length returns invalid-argument evidence with all guest
+  buffers unchanged; the same retained child can still release that mapping.
+
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.
