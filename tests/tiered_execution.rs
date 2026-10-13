@@ -70562,6 +70562,78 @@ fn assert_posix_worker_rejects_forged_protect_geometry(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_denies_forged_permission(
+    session: &mut NativeProcessSession,
+    request: &NativeProcessMemoryRequest,
+    failure_code: u32,
+) -> Result<(), String> {
+    let valid = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    for permission_tag in [0u8, 255] {
+        let mut forged = valid.clone();
+        *forged.get_mut(33).ok_or("native permission field absent")? =
+            permission_tag;
+        let returned = session.exchange(&forged, 14).map_err(|error| {
+            format!("forged permission exchange: {error:?}")
+        })?;
+        if decode_native_process_memory_response(&returned, request)
+            != Ok(NativeProcessMemoryResponse::Failure(failure_code))
+            || session.poisoned()
+        {
+            return Err(String::from("forged permission changed RW mapping"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_recovers_from_forged_permission(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping: writable,
+    };
+    assert_posix_worker_denies_forged_permission(session, &copy, 2)?;
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("valid copy failed after forged permission"));
+    };
+    if report.copied_code() != [0x90] {
+        return Err(String::from("valid copy drift after forged permission"));
+    }
+    let protect = NativeProcessMemoryRequest::Protect(writable);
+    assert_posix_worker_denies_forged_permission(session, &protect, 1)?;
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(session, &protect)?
+    else {
+        return Err(String::from("valid RX seal failed after forged tag"));
+    };
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_permission_tags()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_permission_tags")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("permission test spawn: {error:?}"))?;
+        assert_posix_worker_recovers_from_forged_permission(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_rejects_forged_protect_geometry()
 -> Result<(), String> {

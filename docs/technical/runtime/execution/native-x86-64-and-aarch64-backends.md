@@ -947,6 +947,11 @@ The same forged base and truncated length are also rejected by RW-to-RX
 protection in a host-real fixture. The mapping stays writable, allowing a
 subsequent exact code copy and release on the same unpoisoned child session.
 
+A separate host-real permission-tag regression forges read-execute and unknown
+permission values in code-copy and protection commands. The worker rejects
+both tags without modifying a writable mapping; exact copy and RX sealing
+then succeed on the retained child before clean release.
+
 A further host-real regression seals a mapping and attempts instruction-cache
 synchronization with a forged start, truncated range, or unknown mapping ID.
 Each remote command fails; exact synchronization then succeeds for the retained

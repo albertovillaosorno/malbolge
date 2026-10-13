@@ -504,6 +504,9 @@ A distinct single-resident lease cache
   Forged base and length fields on RX-protect also fail while the mapping
   remains writable for a valid code copy and later release.
 
+  Read-execute or unknown permission tags in copy and protect commands also
+  fail closed, followed by valid copy, RX transition, and release.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 
