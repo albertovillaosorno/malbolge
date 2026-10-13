@@ -70290,6 +70290,64 @@ fn native_process_posix_worker_rejects_sync_before_rx_and_repeat_seal()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_recycled_mapping_identity(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let stale = posix_worker_allocate(session)?;
+    posix_worker_release(session, stale)?;
+    let live = posix_worker_allocate(session)?;
+    if stale.mapping_id() == live.mapping_id() {
+        return Err(String::from("POSIX worker recycled native mapping ID"));
+    }
+    let stale_release = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(stale),
+    );
+    if posix_worker_memory_exchange(session, &stale_release)?
+        != NativeProcessMemoryResponse::Failure(2)
+    {
+        return Err(String::from("POSIX worker released stale mapping"));
+    }
+    let stale_protect = NativeProcessMemoryRequest::Protect(stale);
+    if posix_worker_memory_exchange(session, &stale_protect)?
+        != NativeProcessMemoryResponse::Failure(1)
+    {
+        return Err(String::from("POSIX worker protected stale mapping"));
+    }
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping: live,
+    };
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("stale mapping corrupted live RW ownership"));
+    };
+    if report.copied_code() != [0x90] || session.poisoned() {
+        return Err(String::from("live mapping copy drifted after stale use"));
+    }
+    posix_worker_release(session, live)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_refuses_recycled_mapping_identity()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("stale_mapping_identity")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("stale mapping spawn: {error:?}"))?;
+        assert_posix_worker_rejects_recycled_mapping_identity(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

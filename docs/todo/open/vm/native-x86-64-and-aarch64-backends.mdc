@@ -495,6 +495,10 @@ A distinct single-resident lease cache
   Sync also fails before RX, a second RX protection request fails closed, and
   an exact full-range sync succeeds only after sealing; release remains valid.
 
+  Host-real stale-ID coverage verifies that releasing a mapping and then
+  allocating again never authorizes stale release or RX-protect commands,
+  regardless of address reuse; the new mapping remains writable and releasable.
+
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.

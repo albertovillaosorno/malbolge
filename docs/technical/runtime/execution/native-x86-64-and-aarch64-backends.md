@@ -904,10 +904,10 @@ remains writable and denies a second protect operation after it becomes RX.
 Once sealed, full-range synchronization returns the exact expected report and
 the retained worker releases the executable mapping without losing its session.
 
-A second transition regression rejects cache synchronization while the mapping
-remains writable and denies a second protect operation after it becomes RX.
-Once sealed, full-range synchronization returns the exact expected report and
-the retained worker releases the executable mapping without losing its session.
+A host-real stale-identity regression releases one allocation, creates another,
+and proves the original mapping ID cannot release or protect the new mapping,
+even when the OS reuses its address. A valid RW copy and final release still
+succeed for the new ID without poisoning the retained child transport.
 
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
