@@ -490,6 +490,9 @@ A distinct single-resident lease cache
   and preserved buffers, then releases successfully; executable permission
   remains a mandatory precondition inside the child worker.
 
+  A separate host-real fixture now transitions a RW mapping to RX and verifies
+  a later copied-code request is rejected, with a healthy session and release.
+
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.

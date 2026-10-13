@@ -894,6 +894,11 @@ a valid call frame with that mapping ID. The child returns invalid-argument
 status without executing bytes or changing state, memory, output, or pointer
 identity, then releases the same mapping over the healthy session.
 
+A separate host-real RX regression protects a writable mapping as executable,
+then attempts to copy new code into it. The worker returns a typed protocol
+failure without writing into the sealed mapping or losing the retained child;
+the same RX mapping can still be released normally.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

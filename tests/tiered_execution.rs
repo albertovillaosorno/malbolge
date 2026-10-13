@@ -70037,6 +70037,22 @@ fn assert_posix_worker_allocates_and_releases(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_memory_exchange(
+    session: &mut NativeProcessSession,
+    request: &NativeProcessMemoryRequest,
+) -> Result<NativeProcessMemoryResponse, String> {
+    let bytes = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_memory_response_byte_limit(request)
+        .map_err(|error| error.to_string())?;
+    let response = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("native memory exchange: {error:?}"))?;
+    decode_native_process_memory_response(&response, request)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_recovers_after_rejected_memory_command()
 -> Result<(), String> {
@@ -70150,6 +70166,57 @@ fn native_process_posix_worker_rejects_writable_mapping_execution()
         let mapping = posix_worker_allocate(&mut session)?;
         assert_posix_worker_rejects_writable_call(&mut session, mapping)?;
         posix_worker_release(&mut session, mapping)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_copy_after_rx(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let protect = NativeProcessMemoryRequest::Protect(writable);
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(session, &protect)?
+    else {
+        return Err(String::from("POSIX worker did not protect native code"));
+    };
+    if executable.mapping_id() != writable.mapping_id()
+        || executable.base_address() != writable.base_address()
+        || executable.mapped_len() != writable.mapped_len()
+        || executable.permissions() != NativeExecutablePermission::ReadExecute
+    {
+        return Err(String::from("POSIX worker RX mapping identity drifted"));
+    }
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping: executable,
+    };
+    let rejected = posix_worker_memory_exchange(session, &copy)?;
+    if rejected != NativeProcessMemoryResponse::Failure(2) || session.poisoned()
+    {
+        return Err(String::from(
+            "POSIX worker allowed a code write into RX mapping",
+        ));
+    }
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_refuses_copy_after_rx_protection()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("rx_copy_rejection")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("RX copy worker spawn: {error:?}"))?;
+        assert_posix_worker_rejects_copy_after_rx(&mut session)
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
