@@ -945,7 +945,9 @@ once the table is empty. A separate regression forges a copied-code length of
 the same mapping without session poisoning.
 
 Host-real allocation validation also rejects zero mapped length, zero
-alignment, and RX-only allocation permissions before creating a mapping.
+alignment, non-power-of-two alignment, and RX-only allocation permissions
+before creating a mapping. Both POSIX and Windows child handlers explicitly
+require power-of-two alignment before reserving executable storage.
 A separate full-copy boundary fixture rejects 65 bytes for a 64-byte RW
 mapping while admitting a later exact 64-byte copy and release on the same
 unpoisoned child process.

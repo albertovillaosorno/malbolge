@@ -515,8 +515,9 @@ A distinct single-resident lease cache
   still support exact code copies and releases. A forged `u64::MAX` copied-code
   length also fails without losing a valid follow-on copy and mapping release.
 
-  Invalid MBNPM1 allocation fields (zero length, zero alignment, RX-only
-  permission) now return fixed failure evidence before a valid same-session
+  Invalid MBNPM1 allocation fields (zero length, zero alignment,
+  non-power-of-two alignment, RX-only permission) now return fixed failure
+  evidence before a valid same-session
   allocate/release. A 65-byte copy into a 64-byte RW mapping fails; an exact
   64-byte copy succeeds afterward, followed by release.
 

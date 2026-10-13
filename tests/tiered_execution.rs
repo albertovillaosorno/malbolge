@@ -70679,11 +70679,21 @@ fn assert_posix_worker_rejects_invalid_allocate_fields(
         .get_mut(17..25)
         .ok_or("native allocation alignment field missing")?
         .fill(0);
+    let mut non_power_two_alignment = valid.clone();
+    non_power_two_alignment
+        .get_mut(17..25)
+        .ok_or("native allocation alignment field missing")?
+        .copy_from_slice(&3u64.to_le_bytes());
     let mut wrong_permission = valid;
     *wrong_permission
         .get_mut(25)
         .ok_or("native allocation permission missing")? = 2;
-    for malformed in [zero_length, zero_alignment, wrong_permission] {
+    for malformed in [
+        zero_length,
+        zero_alignment,
+        non_power_two_alignment,
+        wrong_permission,
+    ] {
         let returned = session.exchange(&malformed, 14).map_err(|error| {
             format!("invalid allocation exchange: {error:?}")
         })?;

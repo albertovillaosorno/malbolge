@@ -358,6 +358,7 @@ static int mb_worker_handle_allocate(
             mb_native_process_read_u64(&request[17]), &alignment)
         || byte_len == 0U
         || alignment == 0U
+        || (alignment & (alignment - 1U)) != 0U
         || request[25] != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
