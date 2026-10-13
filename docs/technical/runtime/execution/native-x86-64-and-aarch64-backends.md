@@ -902,6 +902,13 @@ state, memory, output, and pointer identity; that retained child then allocates
 and releases memory successfully. A missing mapping cannot invoke foreign code
 or corrupt the subsequent session.
 
+Both C workers now check native-call input and output progress counters against
+the transmitted capacities before invoking an RX entry. A host-real POSIX
+regression reproduced the prior failure with a trap-byte mapping, then verifies
+that counters just beyond capacity or at `u64::MAX` return invalid-argument
+status with unchanged buffers and a healthy session. Valid code remains under
+independent semantic verification by the Rust host.
+
 A host-real W^X regression also allocates one still-writable mapping and sends
 a valid call frame with that mapping ID. The child returns invalid-argument
 status without executing bytes or changing state, memory, output, or pointer

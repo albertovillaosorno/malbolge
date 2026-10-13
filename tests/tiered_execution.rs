@@ -71044,6 +71044,94 @@ fn native_process_posix_worker_dispatch_failure_is_session_local()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_call_progress(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("native call mapping identity field missing")?
+        .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let input_past_end = request.state().input_len().saturating_add(1);
+    let output_past_end = request.state().output_capacity().saturating_add(1);
+    for (offset, value) in [
+        (48usize, input_past_end),
+        (56, output_past_end),
+        (48, u64::MAX),
+        (56, u64::MAX),
+    ] {
+        let mut forged = encoded.clone();
+        let field_end =
+            offset.checked_add(8).ok_or("progress offset overflow")?;
+        forged
+            .get_mut(offset..field_end)
+            .ok_or("native progress field missing")?
+            .copy_from_slice(&value.to_le_bytes());
+        let frame = session
+            .exchange(&forged, limit)
+            .map_err(|error| format!("invalid progress exchange: {error:?}"))?;
+        let response = decode_native_process_call_response(&frame, &request)
+            .map_err(|error| error.to_string())?;
+        if response.raw_status() != 2i32
+            || response.mapping_id() != mapping.mapping_id()
+            || response.memory() != request.memory()
+            || response.output() != request.output()
+            || !response.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from("POSIX worker called invalid progress"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_refuses_out_of_bounds_call_progress()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("invalid_call_progress")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("invalid progress spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: vec![0x0f, 0x0b].into_boxed_slice(),
+            mapping: writable,
+        };
+        let NativeProcessMemoryResponse::Copy(copied) =
+            posix_worker_memory_exchange(&mut session, &copy)?
+        else {
+            return Err(String::from("invalid progress trap was not copied"));
+        };
+        if copied.copied_code() != [0x0f, 0x0b] {
+            return Err(String::from("invalid progress trap byte drift"));
+        }
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("invalid progress RX seal failed"));
+        };
+        assert_posix_worker_rejects_call_progress(&mut session, executable)?;
+        posix_worker_release(&mut session, executable)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

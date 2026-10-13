@@ -762,7 +762,9 @@ static int mb_worker_handle_call(
     int raw_status = MB_NATIVE_INVALID_ARGUMENT;
     if (mapping != NULL
         && mapping->permission == MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
-        && entry_offset < mapping->len) {
+        && entry_offset < mapping->len
+        && state.input_consumed <= state.input_len
+        && state.output_len <= state.output_capacity) {
         void *entry_address = &mapping->base[entry_offset];
         mb_native_entry_fn entry = NULL;
         static_assert(
