@@ -73236,6 +73236,40 @@ fn assert_native_process_shape_rejections(
     )
 }
 
+fn assert_native_process_progress_rejections(
+    invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    request: &NativeProcessCallRequest,
+) -> Result<(), String> {
+    let input_overrun = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request
+            .state()
+            .with_input_consumed(request.state().input_len().saturating_add(1)),
+        (request.memory().to_vec(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &input_overrun,
+        NativeProcessCallResponseError::StateInputConsumed,
+    )?;
+    let output_overrun = NativeProcessCallResponse::new(
+        request.mapping_id(),
+        request.state().with_output_len(
+            request.state().output_capacity().saturating_add(1),
+        ),
+        (request.memory().to_vec(), request.output().to_vec()),
+        (NativeRegionStatus::GuardMiss.code(), true),
+    );
+    assert_native_process_response_rejected(
+        invocation,
+        request,
+        &output_overrun,
+        NativeProcessCallResponseError::StateOutputLength,
+    )
+}
+
 #[test]
 fn native_process_call_response_rejects_structural_drift_before_mutation()
 -> Result<(), String> {
@@ -73260,6 +73294,7 @@ fn native_process_call_response_rejects_structural_drift_before_mutation()
     let request = invocation.process_request();
     assert_native_process_identity_rejections(&mut invocation, &request)?;
     assert_native_process_shape_rejections(&mut invocation, &request)?;
+    assert_native_process_progress_rejections(&mut invocation, &request)?;
     invocation.abort();
     if memory == native_verified_output_memory() && output == [0x10, 0, 0] {
         Ok(())

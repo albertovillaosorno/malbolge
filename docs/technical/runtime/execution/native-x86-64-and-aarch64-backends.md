@@ -856,6 +856,12 @@ free call exchange, and release. MBNPC1 responses are request-bounded, then
 structurally applied before the existing semantic completion verifier runs;
 mapping drift is rejected before caller mutation.
 
+Response admission now also rejects an input-consumed cursor beyond the
+original input length or an output length beyond its original capacity. These
+failures precede copying any returned memory, output, or scalar state into
+caller-owned buffers. Hostile-response fixtures prove both overflow paths
+leave the caller's original state unchanged.
+
 Deterministic persistent workers prove the complete load/call/release
 transaction plus remote-memory and call-response rejection paths.
 

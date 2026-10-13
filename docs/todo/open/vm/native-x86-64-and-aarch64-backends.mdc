@@ -398,7 +398,10 @@ A distinct single-resident lease cache
   invocation into owned scalar state plus memory/input/output. Responses must
   preserve mapping identity, immutable capacities, buffer shape, and child
   pointer integrity before caller buffers change; existing semantic completion
-  remains authoritative. Process framing is implemented below, while concrete
+  remains authoritative. The structural response gate also rejects returned
+  input/output progress beyond original capacities before mutating caller
+  buffers, with explicit input-cursor and output-length failure evidence.
+  Process framing is implemented below, while concrete
   OS ownership remains isolated behind the process host.
 
   The `MBNPC1` process-call wire contract now frames that transfer in

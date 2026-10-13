@@ -53,12 +53,16 @@ pub enum NativeProcessCallResponseError {
     OutputLength,
     /// The child observed mutation of one reconstructed raw pointer.
     PointerIntegrity,
+    /// The returned input cursor exceeds its immutable input capacity.
+    StateInputConsumed,
     /// The returned immutable input capacity drifted.
     StateInputLength,
     /// The returned immutable guest-memory capacity drifted.
     StateMemoryWords,
     /// The returned immutable output capacity drifted.
     StateOutputCapacity,
+    /// The returned output length exceeds its immutable output capacity.
+    StateOutputLength,
 }
 
 /// Pointer-free scalar state transported to or from a native host process.
@@ -110,6 +114,9 @@ impl Display for NativeProcessCallResponseError {
             Self::PointerIntegrity => {
                 "native process response pointer integrity failed"
             },
+            Self::StateInputConsumed => {
+                "native process response input cursor exceeds capacity"
+            },
             Self::StateInputLength => {
                 "native process response input capacity drifted"
             },
@@ -118,6 +125,9 @@ impl Display for NativeProcessCallResponseError {
             },
             Self::StateOutputCapacity => {
                 "native process response output capacity drifted"
+            },
+            Self::StateOutputLength => {
+                "native process response output length exceeds capacity"
             },
         })
     }

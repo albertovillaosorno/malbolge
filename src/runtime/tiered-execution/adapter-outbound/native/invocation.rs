@@ -5493,6 +5493,12 @@ const fn validate_process_response_state(
     if observed.output_capacity() != expected.output_capacity() {
         return Err(NativeProcessCallResponseError::StateOutputCapacity);
     }
+    if observed.input_consumed() > expected.input_len() {
+        return Err(NativeProcessCallResponseError::StateInputConsumed);
+    }
+    if observed.output_len() > expected.output_capacity() {
+        return Err(NativeProcessCallResponseError::StateOutputLength);
+    }
     Ok(())
 }
 
