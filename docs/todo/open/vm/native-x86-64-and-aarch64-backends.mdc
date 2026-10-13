@@ -525,6 +525,9 @@ A distinct single-resident lease cache
   still runs with empty or fully consumed one-byte input and leaves a clean
   releasable mapping.
 
+  A real native guard-miss entry also accepts an MBNPC1 call with zero memory
+  words, zero input, and zero output, preserving pointer identity and release.
+
   Host-real mapping-table coverage now exceeds the first four-entry allocation
   table, removes an interior mapping, and proves all surviving mapping IDs
   still support exact code copies and releases. A forged `u64::MAX` copied-code

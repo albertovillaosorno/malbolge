@@ -921,6 +921,11 @@ one-byte input fully consumed. It retains the original buffers and releases
 the mapping. Rejection uses strict overflow comparisons, not an overly broad
 denial of valid end-of-buffer progress.
 
+A separate real POSIX call transfers zero guest-memory words, zero input, and
+zero output capacity to a guard-miss stub. The worker reconstructs empty
+buffers without changing pointer identities, returns the exact 74-byte call
+response, and releases the RX mapping on the retained child.
+
 A host-real W^X regression also allocates one still-writable mapping and sends
 a valid call frame with that mapping ID. The child returns invalid-argument
 status without executing bytes or changing state, memory, output, or pointer

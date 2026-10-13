@@ -71457,6 +71457,93 @@ fn assert_posix_worker_exact_progress_response(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_admits_empty_transfer_buffers(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let code = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copy) =
+        posix_worker_memory_exchange(session, &code)?
+    else {
+        return Err(String::from("empty-buffer native stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("empty-buffer native stub RX failed"));
+    };
+    assert_posix_worker_empty_call_response(session, executable)?;
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_empty_call_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (template, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&template)
+        .map_err(|error| error.to_string())?;
+    bytes.truncate(NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES);
+    bytes
+        .get_mut(8..16)
+        .ok_or("empty call mapping field missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    for offset in [24usize, 32, 40, 48, 56] {
+        let end = offset.checked_add(8).ok_or("empty call offset overflow")?;
+        bytes
+            .get_mut(offset..end)
+            .ok_or("empty call transfer field missing")?
+            .fill(0);
+    }
+    let request = decode_native_process_call_request(&bytes)
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("empty transfer exchange: {error:?}"))?;
+    let decoded = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    if decoded.raw_status() != 1i32
+        || decoded.mapping_id() != executable.mapping_id()
+        || decoded.state() != request.state()
+        || !decoded.memory().is_empty()
+        || !decoded.output().is_empty()
+        || !decoded.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("empty native call transfer drifted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_admits_empty_transfer_buffers()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("empty_transfer_buffers")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("empty transfer spawn: {error:?}"))?;
+        assert_posix_worker_admits_empty_transfer_buffers(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_admits_exact_capacity_progress()
 -> Result<(), String> {
