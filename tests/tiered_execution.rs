@@ -70768,6 +70768,121 @@ fn native_process_posix_worker_bounds_code_copy_at_mapping_length()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_compacts_mapping_table(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    // Six live mappings force the child mapping table past its first
+    // four-entry capacity, and releasing an interior slot shifts entries.
+    let mut mappings = Vec::new();
+    for _ in 0..6usize {
+        let mapping = posix_worker_allocate(session)?;
+        if mappings
+            .iter()
+            .any(|previous: &NativeExecutableMappingReport| {
+                previous.mapping_id() == mapping.mapping_id()
+            })
+        {
+            return Err(String::from("POSIX worker reused a live mapping ID"));
+        }
+        mappings.push(mapping);
+    }
+    let middle = mappings.remove(2);
+    posix_worker_release(session, middle)?;
+    for mapping in &mappings {
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: vec![0x90].into_boxed_slice(),
+            mapping: *mapping,
+        };
+        let NativeProcessMemoryResponse::Copy(report) =
+            posix_worker_memory_exchange(session, &copy)?
+        else {
+            return Err(String::from(
+                "POSIX worker lost live mapping after table compaction",
+            ));
+        };
+        if report.mapping_id() != mapping.mapping_id()
+            || report.copied_code() != [0x90]
+        {
+            return Err(String::from(
+                "POSIX worker changed mapping after table compaction",
+            ));
+        }
+    }
+    for mapping in mappings {
+        posix_worker_release(session, mapping)?;
+    }
+    if session.poisoned() {
+        return Err(String::from("POSIX worker mapping table poisoned"));
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_retains_mappings_after_table_compaction()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("mapping_table_compaction")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("mapping table spawn: {error:?}"))?;
+        assert_posix_worker_compacts_mapping_table(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_forged_copy_length(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping,
+    };
+    let forged =
+        posix_worker_forged_mapping_exchange(session, &copy, 34, u64::MAX)?;
+    if forged != NativeProcessMemoryResponse::Failure(2) || session.poisoned() {
+        return Err(String::from("POSIX worker admitted forged copy length"));
+    }
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("POSIX worker lost valid copy after failure"));
+    };
+    if report.mapping_id() != mapping.mapping_id()
+        || report.copied_code() != [0x90]
+    {
+        return Err(String::from("POSIX worker copy recovery drifted"));
+    }
+    posix_worker_release(session, mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_copy_byte_length()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_copy_byte_length")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("forged copy length spawn: {error:?}"))?;
+        assert_posix_worker_rejects_forged_copy_length(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

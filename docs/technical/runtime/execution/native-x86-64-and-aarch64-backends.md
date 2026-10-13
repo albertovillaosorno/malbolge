@@ -937,6 +937,13 @@ its entry offset exactly equal to the mapped byte length. The child returns
 native invalid-argument status, preserving memory, output, state, and pointer
 identity; that same process then releases the mapping without transport loss.
 
+Six concurrent POSIX mappings now exercise the worker's dynamic mapping-table
+growth and middle-entry removal. Every survivor remains individually writable
+and releasable after compaction; the retained child admits another allocation
+once the table is empty. A separate regression forges a copied-code length of
+`u64::MAX`, rejects it as a remote failure, then copies valid bytes and releases
+the same mapping without session poisoning.
+
 Host-real allocation validation also rejects zero mapped length, zero
 alignment, and RX-only allocation permissions before creating a mapping.
 A separate full-copy boundary fixture rejects 65 bytes for a 64-byte RW
