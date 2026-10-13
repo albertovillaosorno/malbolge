@@ -889,6 +889,11 @@ state, memory, output, and pointer identity; that retained child then allocates
 and releases memory successfully. A missing mapping cannot invoke foreign code
 or corrupt the subsequent session.
 
+A host-real W^X regression also allocates one still-writable mapping and sends
+a valid call frame with that mapping ID. The child returns invalid-argument
+status without executing bytes or changing state, memory, output, or pointer
+identity, then releases the same mapping over the healthy session.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

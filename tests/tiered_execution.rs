@@ -69972,9 +69972,9 @@ fn assert_posix_worker_memory_failure_session(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn assert_posix_worker_allocates_and_releases(
+fn posix_worker_allocate(
     session: &mut NativeProcessSession,
-) -> Result<(), String> {
+) -> Result<NativeExecutableMappingReport, String> {
     let allocate = NativeProcessMemoryRequest::Allocate(
         NativeExecutableAllocationRequest::new(
             64,
@@ -70001,6 +70001,14 @@ fn assert_posix_worker_allocates_and_releases(
             "native worker recovery mapping geometry drifted",
         ));
     }
+    Ok(mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_release(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), String> {
     let release = NativeProcessMemoryRequest::Release(
         NativeExecutableReleaseRequest::from_mapping(mapping),
     );
@@ -70018,6 +70026,14 @@ fn assert_posix_worker_allocates_and_releases(
         ));
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_allocates_and_releases(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    posix_worker_release(session, mapping)
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -70076,6 +70092,64 @@ fn native_process_posix_worker_rejects_unmapped_call_and_recovers()
             ));
         }
         assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_writable_call(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    if request.entry_offset() >= mapping.mapped_len() {
+        return Err(String::from("writable call offset exceeds mapping"));
+    }
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    let mapping_id = bytes
+        .get_mut(8..16)
+        .ok_or("writable native call mapping field absent")?;
+    mapping_id.copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("writable call exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    if response.raw_status() != 2i32
+        || response.mapping_id() != mapping.mapping_id()
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from(
+            "writable POSIX native mapping became executable",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_writable_mapping_execution()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("writable_call_rejection")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("writable call spawn: {error:?}"))?;
+        let mapping = posix_worker_allocate(&mut session)?;
+        assert_posix_worker_rejects_writable_call(&mut session, mapping)?;
+        posix_worker_release(&mut session, mapping)
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);

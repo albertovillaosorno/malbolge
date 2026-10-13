@@ -485,7 +485,10 @@ A distinct single-resident lease cache
   and preserve the retained session for subsequent valid commands.
   A separate unmapped MBNPC1 call returns native invalid-argument evidence
   without changing buffers or pointer identity, and the same child remains
-  available for a subsequent allocation and release.
+  available for a subsequent allocation and release. A separately allocated
+  writable mapping likewise refuses native calls with invalid-argument status
+  and preserved buffers, then releases successfully; executable permission
+  remains a mandatory precondition inside the child worker.
 
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
