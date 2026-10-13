@@ -515,6 +515,10 @@ A distinct single-resident lease cache
   still support exact code copies and releases. A forged `u64::MAX` copied-code
   length also fails without losing a valid follow-on copy and mapping release.
 
+  A two-mapping host-real fixture seals only one mapping as RX, confirms code
+  copy fails there but remains valid on the independent RW mapping, and
+  confirms cache sync admits RX only. The same child releases both mappings.
+
   Invalid MBNPM1 allocation fields (zero length, zero alignment,
   non-power-of-two alignment, RX-only permission) now return fixed failure
   evidence before a valid same-session

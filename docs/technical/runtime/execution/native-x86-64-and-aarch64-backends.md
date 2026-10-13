@@ -944,6 +944,11 @@ once the table is empty. A separate regression forges a copied-code length of
 `u64::MAX`, rejects it as a remote failure, then copies valid bytes and releases
 the same mapping without session poisoning.
 
+A separate two-mapping POSIX regression seals only the first mapping as RX.
+Code copy fails on that executable mapping but succeeds on the still-RW second
+mapping, while full-range synchronization succeeds only for RX. Both mappings
+are then released and a fresh allocation remains available on the same child.
+
 Host-real allocation validation also rejects zero mapped length, zero
 alignment, non-power-of-two alignment, and RX-only allocation permissions
 before creating a mapping. Both POSIX and Windows child handlers explicitly

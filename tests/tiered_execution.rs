@@ -70896,6 +70896,112 @@ fn native_process_posix_worker_rejects_forged_copy_byte_length()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_seals_only_target_mapping(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let first = posix_worker_allocate(session)?;
+    let second = posix_worker_allocate(session)?;
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(first),
+        )?
+    else {
+        return Err(String::from("POSIX worker failed independent RX seal"));
+    };
+    assert_posix_worker_independent_code_copy(session, executable, second)?;
+    assert_posix_worker_sync_permissions(session, executable, second)?;
+    posix_worker_release(session, executable)?;
+    posix_worker_release(session, second)?;
+    if session.poisoned() {
+        return Err(String::from(
+            "POSIX worker cross-mapping session poisoned",
+        ));
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_independent_code_copy(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+    writable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let first_copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping: executable,
+    };
+    if posix_worker_memory_exchange(session, &first_copy)?
+        != NativeProcessMemoryResponse::Failure(2)
+    {
+        return Err(String::from("POSIX worker allowed copy into RX mapping"));
+    }
+    let second_copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xcc].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(session, &second_copy)?
+    else {
+        return Err(String::from("POSIX worker sealed unrelated RW mapping"));
+    };
+    if copied.mapping_id() != writable.mapping_id()
+        || copied.copied_code() != [0xcc]
+    {
+        return Err(String::from("POSIX worker cross-mapping copy drifted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_sync_permissions(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+    writable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    for (mapping, expected_rx) in [(executable, true), (writable, false)] {
+        let request = NativeProcessMemoryRequest::Synchronize(
+            NativeInstructionSyncRequest::new(
+                mapping.mapping_id(),
+                mapping.base_address(),
+                mapping.mapped_len(),
+            ),
+        );
+        let response = posix_worker_memory_exchange(session, &request)?;
+        let accepted =
+            matches!(response, NativeProcessMemoryResponse::Synchronize(_));
+        if accepted != expected_rx {
+            return Err(String::from(
+                "POSIX worker shared RX state across mappings",
+            ));
+        }
+        if !expected_rx && response != NativeProcessMemoryResponse::Failure(2) {
+            return Err(String::from("POSIX worker RW sync failure drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_keeps_rx_permissions_per_mapping()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("independent_mapping_permissions")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("mapping permissions spawn: {error:?}"))?;
+        assert_posix_worker_seals_only_target_mapping(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {
