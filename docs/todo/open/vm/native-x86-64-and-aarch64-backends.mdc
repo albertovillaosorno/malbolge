@@ -481,6 +481,9 @@ A distinct single-resident lease cache
   A host-real POSIX worker recovery fixture also verifies that an invalid
   MBNPM1 allocate command returns fixed failure evidence while the retained
   child can still process a valid allocation and release without poisoning.
+  A separate unmapped MBNPC1 call returns native invalid-argument evidence
+  without changing buffers or pointer identity, and the same child remains
+  available for a subsequent allocation and release.
 
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short

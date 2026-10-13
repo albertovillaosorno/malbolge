@@ -881,6 +881,12 @@ command, checks the exact remote failure response, and then allocates and
 releases a valid mapping through that same persistent POSIX child. Rejected
 memory commands do not silently desynchronize or poison a healthy transport.
 
+Another host-real regression sends a well-formed MBNPC1 call for an absent
+mapping. The child returns the native invalid-argument status with unchanged
+state, memory, output, and pointer identity; that retained child then allocates
+and releases memory successfully. A missing mapping cannot invoke foreign code
+or corrupt the subsequent session.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

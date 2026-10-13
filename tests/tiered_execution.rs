@@ -69959,6 +69959,55 @@ fn assert_posix_worker_memory_failure_session(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_allocates_and_releases(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let allocate = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let allocation = encode_native_process_memory_request(&allocate)
+        .map_err(|error| error.to_string())?;
+    let allocation_limit = native_process_memory_response_byte_limit(&allocate)
+        .map_err(|error| error.to_string())?;
+    let allocated = session
+        .exchange(&allocation, allocation_limit)
+        .map_err(|error| format!("recovered allocation: {error:?}"))?;
+    let response = decode_native_process_memory_response(&allocated, &allocate)
+        .map_err(|error| error.to_string())?;
+    let NativeProcessMemoryResponse::Allocate(mapping) = response else {
+        return Err(String::from(
+            "native worker recovery did not allocate mapping",
+        ));
+    };
+    if mapping.mapped_len() != 64 || session.poisoned() {
+        return Err(String::from(
+            "native worker recovery mapping geometry drifted",
+        ));
+    }
+    let release = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(mapping),
+    );
+    let release_bytes = encode_native_process_memory_request(&release)
+        .map_err(|error| error.to_string())?;
+    let released = session
+        .exchange(&release_bytes, 14)
+        .map_err(|error| format!("recovered release: {error:?}"))?;
+    if decode_native_process_memory_response(&released, &release)
+        != Ok(NativeProcessMemoryResponse::Release)
+        || session.poisoned()
+    {
+        return Err(String::from(
+            "native worker recovery failed to release mapping",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_recovers_after_rejected_memory_command()
 -> Result<(), String> {
@@ -69971,51 +70020,49 @@ fn native_process_posix_worker_recovers_after_rejected_memory_command()
                 |error| format!("native worker recovery spawn: {error:?}"),
             )?;
         assert_posix_worker_memory_failure_session(&mut session)?;
-        let allocate = NativeProcessMemoryRequest::Allocate(
-            NativeExecutableAllocationRequest::new(
-                64,
-                16,
-                NativeExecutablePermission::ReadWrite,
-            ),
-        );
-        let allocation = encode_native_process_memory_request(&allocate)
+        assert_posix_worker_allocates_and_releases(&mut session)?;
+        Ok(())
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_unmapped_call_and_recovers()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("unmapped_call_recovery")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("unmapped call spawn: {error:?}"))?;
+        let (request, _expected) = native_process_call_wire_fixture()?;
+        let encoded = encode_native_process_call_request(&request)
             .map_err(|error| error.to_string())?;
-        let allocation_limit =
-            native_process_memory_response_byte_limit(&allocate)
-                .map_err(|error| error.to_string())?;
-        let allocated = session
-            .exchange(&allocation, allocation_limit)
-            .map_err(|error| format!("recovered allocation: {error:?}"))?;
-        let response =
-            decode_native_process_memory_response(&allocated, &allocate)
-                .map_err(|error| error.to_string())?;
-        let NativeProcessMemoryResponse::Allocate(mapping) = response else {
-            return Err(String::from(
-                "native worker recovery did not allocate mapping",
-            ));
-        };
-        if mapping.mapped_len() != 64 || session.poisoned() {
-            return Err(String::from(
-                "native worker recovery mapping geometry drifted",
-            ));
-        }
-        let release = NativeProcessMemoryRequest::Release(
-            NativeExecutableReleaseRequest::from_mapping(mapping),
-        );
-        let release_bytes = encode_native_process_memory_request(&release)
+        let limit = native_process_call_response_byte_limit(&request)
             .map_err(|error| error.to_string())?;
-        let released = session
-            .exchange(&release_bytes, 14)
-            .map_err(|error| format!("recovered release: {error:?}"))?;
-        if decode_native_process_memory_response(&released, &release)
-            != Ok(NativeProcessMemoryResponse::Release)
+        let frame = session
+            .exchange(&encoded, limit)
+            .map_err(|error| format!("unmapped call transport: {error:?}"))?;
+        let response = decode_native_process_call_response(&frame, &request)
+            .map_err(|error| error.to_string())?;
+        if response.raw_status() != 2i32
+            || response.mapping_id() != request.mapping_id()
+            || response.state() != request.state()
+            || response.memory() != request.memory()
+            || response.output() != request.output()
+            || !response.pointers_unchanged()
             || session.poisoned()
         {
             return Err(String::from(
-                "native worker recovery failed to release mapping",
+                "unmapped POSIX call mutated buffers or lost session",
             ));
         }
-        Ok(())
+        assert_posix_worker_allocates_and_releases(&mut session)
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
