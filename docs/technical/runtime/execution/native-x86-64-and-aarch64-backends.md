@@ -876,6 +876,10 @@ partial headers, truncated declared payloads, unknown protocol tags, and short
 native-call requests. Each terminates with the specified framing/dispatch error
 and emits no response bytes, without publishing any guest execution state.
 
+The framing regression also rejects an announced `u64::MAX` byte length
+without payload as a read failure, and a zero-length payload as an unknown
+protocol. Neither case emits a response or grants native-call authority.
+
 A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
 forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
 trailing-byte call payloads fail the same dispatch boundary. Each child exits

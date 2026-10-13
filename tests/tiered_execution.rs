@@ -69923,6 +69923,8 @@ fn native_process_posix_worker_rejects_malformed_outer_frames()
     let worker = directory.join("native-process-worker-posix");
     let result = (|| {
         assert_posix_worker_rejects_frame(&worker, b"\x03\x00", 2)?;
+        assert_posix_worker_rejects_frame(&worker, &u64::MAX.to_le_bytes(), 2)?;
+        assert_posix_worker_rejects_frame(&worker, &0u64.to_le_bytes(), 3)?;
         let mut truncated_payload = 9u64.to_le_bytes().to_vec();
         truncated_payload.extend_from_slice(b"MBNPC1\0\0");
         assert_posix_worker_rejects_frame(&worker, &truncated_payload, 2)?;
