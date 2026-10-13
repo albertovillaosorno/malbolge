@@ -519,6 +519,10 @@ A distinct single-resident lease cache
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.
 
+  A host-real MBNPC1 payload-shape regression also rejects `u64::MAX` guest
+  memory, input, or output count fields and truncated or trailing payloads.
+  No malformed call publishes response or guest-state evidence.
+
   A tracked C23 process-protocol header now mirrors the reviewed MBNPM1/MBNPC1
   magic, tags, fixed sizes, offsets, and little-endian helpers. Strict pinned-
   Clang conformance evidence passes without performing syscalls or native calls.

@@ -876,6 +876,11 @@ partial headers, truncated declared payloads, unknown protocol tags, and short
 native-call requests. Each terminates with the specified framing/dispatch error
 and emits no response bytes, without publishing any guest execution state.
 
+A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
+forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
+trailing-byte call payloads fail the same dispatch boundary. Each child exits
+with no response or native guest-state publication.
+
 A separate host-real regression sends a structurally malformed MBNPM1 allocate
 command, checks the exact remote failure response, and then allocates and
 releases a valid mapping through that same persistent POSIX child. Rejected

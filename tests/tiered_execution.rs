@@ -69940,6 +69940,51 @@ fn native_process_posix_worker_rejects_malformed_outer_frames()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_call_payload(
+    worker: &Path,
+    payload: &[u8],
+) -> Result<(), String> {
+    let payload_len =
+        u64::try_from(payload.len()).map_err(|error| error.to_string())?;
+    let mut frame = payload_len.to_le_bytes().to_vec();
+    frame.extend_from_slice(payload);
+    assert_posix_worker_rejects_frame(worker, &frame, 3)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_call_payload_shapes()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_call_shape")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let (request, _expected) = native_process_call_wire_fixture()?;
+        let valid = encode_native_process_call_request(&request)
+            .map_err(|error| error.to_string())?;
+        for offset in [24usize, 32, 40] {
+            let mut forged = valid.clone();
+            forged
+                .get_mut(offset..offset + 8)
+                .ok_or("native call capacity offset absent")?
+                .copy_from_slice(&u64::MAX.to_le_bytes());
+            assert_posix_worker_rejects_call_payload(&worker, &forged)?;
+        }
+        let mut trailing = valid.clone();
+        trailing.push(0xff);
+        assert_posix_worker_rejects_call_payload(&worker, &trailing)?;
+        let truncated = valid
+            .get(..valid.len() - 1)
+            .ok_or("native call cannot truncate payload")?;
+        assert_posix_worker_rejects_call_payload(&worker, truncated)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_memory_failure_session(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
