@@ -498,6 +498,8 @@ A distinct single-resident lease cache
   Host-real stale-ID coverage verifies that releasing a mapping and then
   allocating again never authorizes stale release or RX-protect commands,
   regardless of address reuse; the new mapping remains writable and releasable.
+  A live mapping also rejects forged base/length fields on release while its
+  original mapping identity still permits clean release on the same child.
 
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short

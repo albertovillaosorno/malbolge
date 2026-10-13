@@ -909,6 +909,11 @@ and proves the original mapping ID cannot release or protect the new mapping,
 even when the OS reuses its address. A valid RW copy and final release still
 succeed for the new ID without poisoning the retained child transport.
 
+Host-real forged-geometry requests also try to release an active mapping with
+a correct ID but an incremented base address or reduced mapped length. Both
+are rejected as remote mapping failures, preserving the real allocation for
+exact release by its original geometry.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

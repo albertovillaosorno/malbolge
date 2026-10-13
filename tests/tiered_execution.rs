@@ -70348,6 +70348,73 @@ fn native_process_posix_worker_refuses_recycled_mapping_identity()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_forged_mapping_exchange(
+    session: &mut NativeProcessSession,
+    request: &NativeProcessMemoryRequest,
+    field_offset: usize,
+    forged_value: u64,
+) -> Result<NativeProcessMemoryResponse, String> {
+    let mut bytes = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    let field_end = field_offset
+        .checked_add(8)
+        .ok_or("forged native mapping offset overflowed")?;
+    bytes
+        .get_mut(field_offset..field_end)
+        .ok_or("forged native mapping field is absent")?
+        .copy_from_slice(&forged_value.to_le_bytes());
+    let limit = native_process_memory_response_byte_limit(request)
+        .map_err(|error| error.to_string())?;
+    let received = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("forged mapping exchange: {error:?}"))?;
+    decode_native_process_memory_response(&received, request)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_forged_mapping_geometry(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    let release = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(mapping),
+    );
+    let forged_base = u64::try_from(mapping.base_address().get())
+        .map_err(|error| error.to_string())?
+        .checked_add(1)
+        .ok_or("native mapping base cannot advance")?;
+    if posix_worker_forged_mapping_exchange(session, &release, 17, forged_base)?
+        != NativeProcessMemoryResponse::Failure(2)
+        || posix_worker_forged_mapping_exchange(session, &release, 25, 63)?
+            != NativeProcessMemoryResponse::Failure(2)
+        || session.poisoned()
+    {
+        return Err(String::from("forged geometry released POSIX mapping"));
+    }
+    posix_worker_release(session, mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_mapping_geometry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_mapping_geometry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("forged mapping spawn: {error:?}"))?;
+        assert_posix_worker_rejects_forged_mapping_geometry(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {
