@@ -70346,6 +70346,14 @@ fn assert_posix_worker_rejects_recycled_mapping_identity(
     if stale.mapping_id() == live.mapping_id() {
         return Err(String::from("POSIX worker recycled native mapping ID"));
     }
+    assert_posix_worker_rejects_stale_memory(session, stale)?;
+    assert_posix_worker_rejects_stale_call_on_live_mapping(session, stale, live)
+}
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_stale_memory(
+    session: &mut NativeProcessSession,
+    stale: NativeExecutableMappingReport,
+) -> Result<(), String> {
     let stale_release = NativeProcessMemoryRequest::Release(
         NativeExecutableReleaseRequest::from_mapping(stale),
     );
@@ -70360,6 +70368,15 @@ fn assert_posix_worker_rejects_recycled_mapping_identity(
     {
         return Err(String::from("POSIX worker protected stale mapping"));
     }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_stale_call_on_live_mapping(
+    session: &mut NativeProcessSession,
+    stale: NativeExecutableMappingReport,
+    live: NativeExecutableMappingReport,
+) -> Result<(), String> {
     let copy = NativeProcessMemoryRequest::Copy {
         code: vec![0x90].into_boxed_slice(),
         mapping: live,
@@ -70372,7 +70389,57 @@ fn assert_posix_worker_rejects_recycled_mapping_identity(
     if report.copied_code() != [0x90] || session.poisoned() {
         return Err(String::from("live mapping copy drifted after stale use"));
     }
-    posix_worker_release(session, live)
+    let trap = NativeProcessMemoryRequest::Copy {
+        code: vec![0x0f, 0x0b].into_boxed_slice(),
+        mapping: live,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &trap)?
+    else {
+        return Err(String::from("stale-call trap was not installed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(live),
+        )?
+    else {
+        return Err(String::from("stale-call trap was not sealed"));
+    };
+    assert_posix_worker_denies_stale_native_call(session, stale)?;
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_denies_stale_native_call(
+    session: &mut NativeProcessSession,
+    stale: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("stale call identity field missing")?
+        .copy_from_slice(&stale.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("stale call transport: {error:?}"))?;
+    let response = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    if response.mapping_id() != stale.mapping_id()
+        || response.raw_status() != 2i32
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("stale mapping reached new native entry"));
+    }
+    Ok(())
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

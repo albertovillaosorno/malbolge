@@ -933,8 +933,10 @@ the retained worker releases the executable mapping without losing its session.
 
 A host-real stale-identity regression releases one allocation, creates another,
 and proves the original mapping ID cannot release or protect the new mapping,
-even when the OS reuses its address. A valid RW copy and final release still
-succeed for the new ID without poisoning the retained child transport.
+even when the OS reuses its address. A valid RW copy succeeds for the new ID,
+then a deliberate native trap installed in the new RX mapping cannot be
+executed through a stale MBNPC1 call ID. The child returns invalid-argument
+status with intact guest buffers and releases the live mapping normally.
 
 Host-real forged-geometry requests also try to release an active mapping with
 a correct ID but an incremented base address or reduced mapped length. Both
