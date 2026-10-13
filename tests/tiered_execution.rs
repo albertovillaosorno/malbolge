@@ -70467,6 +70467,76 @@ fn native_process_posix_worker_rejects_forged_protect_geometry()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_forged_sync_geometry(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let protect = NativeProcessMemoryRequest::Protect(writable);
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(session, &protect)?
+    else {
+        return Err(String::from("POSIX worker did not seal sync mapping"));
+    };
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    let forged_start = u64::try_from(executable.base_address().get())
+        .map_err(|error| error.to_string())?
+        .checked_add(1)
+        .ok_or("native mapping start cannot advance")?;
+    let forged_id = executable
+        .mapping_id()
+        .get()
+        .checked_add(1)
+        .ok_or("native mapping ID cannot advance")?;
+    for (offset, value) in [(17usize, forged_start), (25, 63), (9, forged_id)] {
+        if posix_worker_forged_mapping_exchange(session, &sync, offset, value)?
+            != NativeProcessMemoryResponse::Failure(2)
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "POSIX worker admitted partial cache sync",
+            ));
+        }
+    }
+    let NativeProcessMemoryResponse::Synchronize(report) =
+        posix_worker_memory_exchange(session, &sync)?
+    else {
+        return Err(String::from("POSIX worker rejected full-range sync"));
+    };
+    let expected_start = executable.base_address();
+    if report.start_address() != expected_start
+        || report.byte_len() != executable.mapped_len()
+    {
+        return Err(String::from("full-range POSIX sync report drifted"));
+    }
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_sync_geometry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_sync_geometry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("forged sync spawn: {error:?}"))?;
+        assert_posix_worker_rejects_forged_sync_geometry(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

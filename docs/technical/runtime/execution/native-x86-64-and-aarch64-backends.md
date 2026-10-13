@@ -918,6 +918,11 @@ The same forged base and truncated length are also rejected by RW-to-RX
 protection in a host-real fixture. The mapping stays writable, allowing a
 subsequent exact code copy and release on the same unpoisoned child session.
 
+A further host-real regression seals a mapping and attempts instruction-cache
+synchronization with a forged start, truncated range, or unknown mapping ID.
+Each remote command fails; exact synchronization then succeeds for the retained
+mapping before final release. Partial and foreign-range cache sync fail closed.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
