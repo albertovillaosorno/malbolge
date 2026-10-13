@@ -70607,6 +70607,120 @@ fn native_process_posix_worker_rejects_out_of_range_entry_offset()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_invalid_allocate_fields(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let request = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let valid = encode_native_process_memory_request(&request)
+        .map_err(|error| error.to_string())?;
+    let mut zero_length = valid.clone();
+    zero_length
+        .get_mut(9..17)
+        .ok_or("native allocation length field missing")?
+        .fill(0);
+    let mut zero_alignment = valid.clone();
+    zero_alignment
+        .get_mut(17..25)
+        .ok_or("native allocation alignment field missing")?
+        .fill(0);
+    let mut wrong_permission = valid;
+    *wrong_permission
+        .get_mut(25)
+        .ok_or("native allocation permission missing")? = 2;
+    for malformed in [zero_length, zero_alignment, wrong_permission] {
+        let returned = session.exchange(&malformed, 14).map_err(|error| {
+            format!("invalid allocation exchange: {error:?}")
+        })?;
+        if decode_native_process_memory_response(&returned, &request)
+            != Ok(NativeProcessMemoryResponse::Failure(1))
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "POSIX worker admitted invalid allocation geometry",
+            ));
+        }
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_invalid_allocate_fields()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("invalid_allocate_fields")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("invalid allocation spawn: {error:?}"))?;
+        assert_posix_worker_rejects_invalid_allocate_fields(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_bounds_code_copy(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    let too_large = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90; 65].into_boxed_slice(),
+        mapping,
+    };
+    if posix_worker_memory_exchange(session, &too_large)?
+        != NativeProcessMemoryResponse::Failure(2)
+        || session.poisoned()
+    {
+        return Err(String::from("POSIX worker copied beyond mapped length"));
+    }
+    let exact = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90; 64].into_boxed_slice(),
+        mapping,
+    };
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &exact)?
+    else {
+        return Err(String::from("POSIX worker lost exact writable copy"));
+    };
+    if report.copied_code() != [0x90; 64]
+        || report.mapping_id() != mapping.mapping_id()
+        || session.poisoned()
+    {
+        return Err(String::from("POSIX worker exact copy evidence drifted"));
+    }
+    posix_worker_release(session, mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_bounds_code_copy_at_mapping_length()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("copy_length_boundary")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("copy bounds spawn: {error:?}"))?;
+        assert_posix_worker_bounds_code_copy(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

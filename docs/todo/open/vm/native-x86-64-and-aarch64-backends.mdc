@@ -510,6 +510,11 @@ A distinct single-resident lease cache
   equal to mapped length returns invalid-argument evidence with all guest
   buffers unchanged; the same retained child can still release that mapping.
 
+  Invalid MBNPM1 allocation fields (zero length, zero alignment, RX-only
+  permission) now return fixed failure evidence before a valid same-session
+  allocate/release. A 65-byte copy into a 64-byte RW mapping fails; an exact
+  64-byte copy succeeds afterward, followed by release.
+
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.

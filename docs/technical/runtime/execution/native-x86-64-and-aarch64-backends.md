@@ -928,6 +928,12 @@ its entry offset exactly equal to the mapped byte length. The child returns
 native invalid-argument status, preserving memory, output, state, and pointer
 identity; that same process then releases the mapping without transport loss.
 
+Host-real allocation validation also rejects zero mapped length, zero
+alignment, and RX-only allocation permissions before creating a mapping.
+A separate full-copy boundary fixture rejects 65 bytes for a 64-byte RW
+mapping while admitting a later exact 64-byte copy and release on the same
+unpoisoned child process.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,
