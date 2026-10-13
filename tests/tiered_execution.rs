@@ -71525,6 +71525,101 @@ fn assert_posix_worker_empty_call_response(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_reports_native_pointer_replacement(
+    session: &mut NativeProcessSession,
+    native_code: &[u8],
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: native_code.to_vec().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("pointer replacement stub was not copied"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("pointer replacement stub was not sealed"));
+    };
+    assert_posix_worker_pointer_replacement_response(session, executable)?;
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_pointer_replacement_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("pointer replacement mapping ID missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("pointer replacement exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    if response.mapping_id() != executable.mapping_id()
+        || response.raw_status() != 1i32
+        || response.pointers_unchanged()
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || session.poisoned()
+    {
+        return Err(String::from(
+            "POSIX worker lost pointer-mutation evidence",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_reports_native_pointer_mutation()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("pointer_mutation_evidence")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("pointer mutation spawn: {error:?}"))?;
+        // Windows-x64 ABI: RCX carries the native region state pointer.
+        // Mutate memory (offset 0), input (16), or output (40) only.
+        for (field_offset, replacement) in [(0u8, 0u8), (16, 1), (40, 0)] {
+            let mut bytes = if field_offset == 0 {
+                vec![0x48, 0xc7, 0x01]
+            } else {
+                vec![0x48, 0xc7, 0x41, field_offset]
+            };
+            bytes.extend_from_slice(&[replacement, 0, 0, 0]);
+            bytes.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+            assert_posix_worker_reports_native_pointer_replacement(
+                &mut session,
+                &bytes,
+            )?;
+        }
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_admits_empty_transfer_buffers()
 -> Result<(), String> {

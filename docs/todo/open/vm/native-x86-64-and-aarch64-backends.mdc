@@ -493,6 +493,10 @@ A distinct single-resident lease cache
   and preserved buffers, then releases successfully; executable permission
   remains a mandatory precondition inside the child worker.
 
+  Three host-real x86-64 pointer-mutation stubs now overwrite the memory,
+  input, or output pointer. The worker reports pointer-integrity failure but
+  transports only its original buffers and remains releasable afterward.
+
   A separate host-real fixture now transitions a RW mapping to RX and verifies
   a later copied-code request is rejected, with a healthy session and release.
   Sync also fails before RX, a second RX protection request fails closed, and

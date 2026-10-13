@@ -907,6 +907,12 @@ state, memory, output, and pointer identity; that retained child then allocates
 and releases memory successfully. A missing mapping cannot invoke foreign code
 or corrupt the subsequent session.
 
+A host-real x86-64 pointer-integrity regression also invokes three deliberately
+mutating native stubs: each replaces the memory, input, or output pointer in
+its reconstructed ABI state. The worker sets the pointer-change flag while
+serializing memory and output through its original owned buffers, then
+releases each RX mapping without losing the retained child session.
+
 Both C workers now check native-call input and output progress counters against
 the transmitted capacities before invoking an RX entry. A host-real POSIX
 regression reproduced the prior failure with a trap-byte mapping, then verifies
