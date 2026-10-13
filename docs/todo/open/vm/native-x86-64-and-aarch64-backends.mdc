@@ -514,8 +514,9 @@ A distinct single-resident lease cache
   output-length counters exceed their transferred capacities. A host-real
   regression reproduces the former trap-byte execution and now confirms four
   forged progress cases fail without invocation or session loss.
-  A non-mutating native guard-miss stub at the exact input/output capacity
-  limits still runs successfully and leaves a clean releasable mapping.
+  A non-mutating native guard-miss stub at exact input/output capacity limits
+  still runs with empty or fully consumed one-byte input and leaves a clean
+  releasable mapping.
 
   Host-real mapping-table coverage now exceeds the first four-entry allocation
   table, removes an interior mapping, and proves all surviving mapping IDs

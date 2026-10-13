@@ -71176,20 +71176,43 @@ fn assert_posix_worker_exact_progress_response(
         .copy_from_slice(&request.state().output_capacity().to_le_bytes());
     let limit = native_process_call_response_byte_limit(&request)
         .map_err(|error| error.to_string())?;
-    let response = session
-        .exchange(&frame, limit)
-        .map_err(|error| format!("valid progress exchange: {error:?}"))?;
-    let decoded = decode_native_process_call_response(&response, &request)
-        .map_err(|error| error.to_string())?;
-    if decoded.raw_status() != 1i32
-        || decoded.state().input_consumed() != request.state().input_len()
-        || decoded.state().output_len() != request.state().output_capacity()
-        || decoded.memory() != request.memory()
-        || decoded.output() != request.output()
-        || !decoded.pointers_unchanged()
-        || session.poisoned()
-    {
-        return Err(String::from("valid progress native call was rejected"));
+    for input_len in [0u64, 1] {
+        let mut candidate = frame.clone();
+        candidate
+            .get_mut(32..40)
+            .ok_or("valid input length field missing")?
+            .copy_from_slice(&input_len.to_le_bytes());
+        candidate
+            .get_mut(48..56)
+            .ok_or("valid input progress field missing")?
+            .copy_from_slice(&input_len.to_le_bytes());
+        if input_len != 0 {
+            let input_offset = request
+                .memory()
+                .len()
+                .checked_mul(4)
+                .and_then(|count| count.checked_add(77))
+                .ok_or("valid input payload offset overflow")?;
+            candidate.insert(input_offset, 0x7f);
+        }
+        let response = session
+            .exchange(&candidate, limit)
+            .map_err(|error| format!("valid progress exchange: {error:?}"))?;
+        let decoded = decode_native_process_call_response(&response, &request)
+            .map_err(|error| error.to_string())?;
+        if decoded.raw_status() != 1i32
+            || decoded.state().input_consumed() != input_len
+            || decoded.state().input_len() != input_len
+            || decoded.state().output_len() != request.state().output_capacity()
+            || decoded.memory() != request.memory()
+            || decoded.output() != request.output()
+            || !decoded.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "valid progress native call was rejected",
+            ));
+        }
     }
     Ok(())
 }
