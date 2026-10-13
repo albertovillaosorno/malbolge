@@ -880,6 +880,10 @@ The framing regression also rejects an announced `u64::MAX` byte length
 without payload as a read failure, and a zero-length payload as an unknown
 protocol. Neither case emits a response or grants native-call authority.
 
+A separate host-real isolation regression runs two independent POSIX children.
+Sending an unknown outer protocol poisons and terminates only the first child;
+the sibling session remains able to allocate and release native memory.
+
 A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
 forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
 trailing-byte call payloads fail the same dispatch boundary. Each child exits

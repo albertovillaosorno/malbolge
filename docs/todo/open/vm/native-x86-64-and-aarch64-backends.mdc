@@ -533,6 +533,10 @@ A distinct single-resident lease cache
   lengths and zero-length frames with their distinct failure exit codes,
   without emitting any response bytes.
 
+  Two simultaneous real POSIX children now verify an unknown outer protocol
+  poisons only the failed process session; a sibling still allocates and
+  releases memory without losing its transport.
+
   A host-real MBNPC1 payload-shape regression also rejects `u64::MAX` guest
   memory, input, or output count fields and truncated or trailing payloads.
   No malformed call publishes response or guest-state evidence.

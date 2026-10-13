@@ -71002,6 +71002,48 @@ fn native_process_posix_worker_keeps_rx_permissions_per_mapping()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_sibling_survives_dispatch_failure(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("broken worker spawn: {error:?}"))?;
+    let mut healthy = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("healthy worker spawn: {error:?}"))?;
+    if !matches!(
+        failed.exchange(b"UNKNOWN!", 14),
+        Err(NativeProcessSessionError::Read(_))
+    ) || !failed.poisoned()
+        || failed.exchange(b"MBNPM1\0\0\0", 14)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(String::from("malformed child did not poison session"));
+    }
+    assert_posix_worker_allocates_and_releases(&mut healthy)?;
+    if healthy.poisoned() {
+        return Err(String::from(
+            "POSIX sibling lost transport after malformed worker exit",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_dispatch_failure_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("sibling_failure_isolation")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = assert_posix_worker_sibling_survives_dispatch_failure(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {
