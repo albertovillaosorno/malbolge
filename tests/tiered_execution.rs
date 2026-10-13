@@ -69940,6 +69940,90 @@ fn native_process_posix_worker_rejects_malformed_outer_frames()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_memory_failure_session(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    // The command magic/tag is valid, but the allocate body is absent.
+    // A protocol failure response must leave the session synchronized.
+    let invalid = b"MBNPM1\0\0\0";
+    let rejected = session
+        .exchange(invalid, 14)
+        .map_err(|error| format!("invalid memory command: {error:?}"))?;
+    let expected = [b"MBNPM1\0\0".as_slice(), &[0, 1, 1, 0, 0, 0]].concat();
+    if rejected != expected || session.poisoned() {
+        return Err(String::from(
+            "native worker lost memory command synchronization",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_recovers_after_rejected_memory_command()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("invalid_memory_recovery")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session =
+            NativeProcessSessionConfig::new(worker).spawn().map_err(
+                |error| format!("native worker recovery spawn: {error:?}"),
+            )?;
+        assert_posix_worker_memory_failure_session(&mut session)?;
+        let allocate = NativeProcessMemoryRequest::Allocate(
+            NativeExecutableAllocationRequest::new(
+                64,
+                16,
+                NativeExecutablePermission::ReadWrite,
+            ),
+        );
+        let allocation = encode_native_process_memory_request(&allocate)
+            .map_err(|error| error.to_string())?;
+        let allocation_limit =
+            native_process_memory_response_byte_limit(&allocate)
+                .map_err(|error| error.to_string())?;
+        let allocated = session
+            .exchange(&allocation, allocation_limit)
+            .map_err(|error| format!("recovered allocation: {error:?}"))?;
+        let response =
+            decode_native_process_memory_response(&allocated, &allocate)
+                .map_err(|error| error.to_string())?;
+        let NativeProcessMemoryResponse::Allocate(mapping) = response else {
+            return Err(String::from(
+                "native worker recovery did not allocate mapping",
+            ));
+        };
+        if mapping.mapped_len() != 64 || session.poisoned() {
+            return Err(String::from(
+                "native worker recovery mapping geometry drifted",
+            ));
+        }
+        let release = NativeProcessMemoryRequest::Release(
+            NativeExecutableReleaseRequest::from_mapping(mapping),
+        );
+        let release_bytes = encode_native_process_memory_request(&release)
+            .map_err(|error| error.to_string())?;
+        let released = session
+            .exchange(&release_bytes, 14)
+            .map_err(|error| format!("recovered release: {error:?}"))?;
+        if decode_native_process_memory_response(&released, &release)
+            != Ok(NativeProcessMemoryResponse::Release)
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "native worker recovery failed to release mapping",
+            ));
+        }
+        Ok(())
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

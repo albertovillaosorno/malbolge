@@ -478,6 +478,10 @@ A distinct single-resident lease cache
   for acceptance; later hardware execution failures remain compatibility
   defects to fix.
 
+  A host-real POSIX worker recovery fixture also verifies that an invalid
+  MBNPM1 allocate command returns fixed failure evidence while the retained
+  child can still process a valid allocation and release without poisoning.
+
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.
