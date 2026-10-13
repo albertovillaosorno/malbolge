@@ -71132,6 +71132,88 @@ fn native_process_posix_worker_refuses_out_of_bounds_call_progress()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_admits_exact_progress(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    // The isolated test stub returns native guard-miss without state writes.
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("valid progress entry was not copied"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("valid progress entry was not sealed"));
+    };
+    assert_posix_worker_exact_progress_response(session, executable)?;
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_exact_progress_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut frame = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    frame
+        .get_mut(8..16)
+        .ok_or("valid progress mapping field missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    frame
+        .get_mut(56..64)
+        .ok_or("valid progress output field missing")?
+        .copy_from_slice(&request.state().output_capacity().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let response = session
+        .exchange(&frame, limit)
+        .map_err(|error| format!("valid progress exchange: {error:?}"))?;
+    let decoded = decode_native_process_call_response(&response, &request)
+        .map_err(|error| error.to_string())?;
+    if decoded.raw_status() != 1i32
+        || decoded.state().input_consumed() != request.state().input_len()
+        || decoded.state().output_len() != request.state().output_capacity()
+        || decoded.memory() != request.memory()
+        || decoded.output() != request.output()
+        || !decoded.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("valid progress native call was rejected"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_admits_exact_capacity_progress()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("exact_capacity_progress")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("exact progress spawn: {error:?}"))?;
+        assert_posix_worker_admits_exact_progress(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

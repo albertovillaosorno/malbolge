@@ -909,6 +909,12 @@ that counters just beyond capacity or at `u64::MAX` return invalid-argument
 status with unchanged buffers and a healthy session. Valid code remains under
 independent semantic verification by the Rust host.
 
+A complementary host-real call uses a non-mutating guard-miss test stub with
+input consumed exactly equal to input length and output length exactly equal
+to capacity. The worker invokes that RX entry, retains the original buffers,
+and releases the same mapping. Rejection uses strict overflow comparisons,
+not an overly broad denial of valid end-of-buffer progress.
+
 A host-real W^X regression also allocates one still-writable mapping and sends
 a valid call frame with that mapping ID. The child returns invalid-argument
 status without executing bytes or changing state, memory, output, or pointer
