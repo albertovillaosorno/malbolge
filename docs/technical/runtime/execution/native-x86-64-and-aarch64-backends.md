@@ -880,6 +880,8 @@ A separate host-real regression sends a structurally malformed MBNPM1 allocate
 command, checks the exact remote failure response, and then allocates and
 releases a valid mapping through that same persistent POSIX child. Rejected
 memory commands do not silently desynchronize or poison a healthy transport.
+The same session now also checks an unknown inner MBNPM1 command tag: the worker
+returns a command-tagged failure frame and retains synchronization.
 
 Another host-real regression sends a well-formed MBNPC1 call for an absent
 mapping. The child returns the native invalid-argument status with unchanged

@@ -69955,6 +69955,19 @@ fn assert_posix_worker_memory_failure_session(
             "native worker lost memory command synchronization",
         ));
     }
+    // Unknown inner command tags are also reported, not confused with an
+    // unknown outer protocol or a poisoned transport.
+    let unknown = b"MBNPM1\0\0\xff";
+    let returned = session
+        .exchange(unknown, 14)
+        .map_err(|error| format!("unknown memory command: {error:?}"))?;
+    let unknown_response =
+        [b"MBNPM1\0\0".as_slice(), &[255, 1, 1, 0, 0, 0]].concat();
+    if returned != unknown_response || session.poisoned() {
+        return Err(String::from(
+            "native worker lost unknown command synchronization",
+        ));
+    }
     Ok(())
 }
 
