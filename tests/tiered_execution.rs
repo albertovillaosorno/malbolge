@@ -70225,6 +70225,71 @@ fn native_process_posix_worker_refuses_copy_after_rx_protection()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_requires_rx_for_sync(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let sync_request = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            writable.mapping_id(),
+            writable.base_address(),
+            writable.mapped_len(),
+        ),
+    );
+    if posix_worker_memory_exchange(session, &sync_request)?
+        != NativeProcessMemoryResponse::Failure(2)
+    {
+        return Err(String::from("POSIX worker synchronized writable memory"));
+    }
+    let protect = NativeProcessMemoryRequest::Protect(writable);
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(session, &protect)?
+    else {
+        return Err(String::from("POSIX worker RX transition failed"));
+    };
+    if posix_worker_memory_exchange(
+        session,
+        &NativeProcessMemoryRequest::Protect(executable),
+    )? != NativeProcessMemoryResponse::Failure(1)
+    {
+        return Err(String::from("POSIX worker admitted repeated RX seal"));
+    }
+    let NativeProcessMemoryResponse::Synchronize(report) =
+        posix_worker_memory_exchange(session, &sync_request)?
+    else {
+        return Err(String::from("POSIX worker RX synchronization failed"));
+    };
+    let expected_start = executable.base_address();
+    if report.mapping_id() != executable.mapping_id()
+        || report.start_address() != expected_start
+        || report.byte_len() != executable.mapped_len()
+        || session.poisoned()
+    {
+        return Err(String::from("POSIX worker RX sync shape drifted"));
+    }
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_sync_before_rx_and_repeat_seal()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("rx_sync_transition")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("RX sync worker spawn: {error:?}"))?;
+        assert_posix_worker_requires_rx_for_sync(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {

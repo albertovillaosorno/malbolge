@@ -492,6 +492,8 @@ A distinct single-resident lease cache
 
   A separate host-real fixture now transitions a RW mapping to RX and verifies
   a later copied-code request is rejected, with a healthy session and release.
+  Sync also fails before RX, a second RX protection request fails closed, and
+  an exact full-range sync succeeds only after sealing; release remains valid.
 
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short
