@@ -914,6 +914,10 @@ a correct ID but an incremented base address or reduced mapped length. Both
 are rejected as remote mapping failures, preserving the real allocation for
 exact release by its original geometry.
 
+The same forged base and truncated length are also rejected by RW-to-RX
+protection in a host-real fixture. The mapping stays writable, allowing a
+subsequent exact code copy and release on the same unpoisoned child session.
+
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle
 through `VirtualAlloc`, exact copy, `VirtualProtect(PAGE_EXECUTE_READ)`,

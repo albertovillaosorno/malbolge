@@ -500,6 +500,8 @@ A distinct single-resident lease cache
   regardless of address reuse; the new mapping remains writable and releasable.
   A live mapping also rejects forged base/length fields on release while its
   original mapping identity still permits clean release on the same child.
+  Forged base and length fields on RX-protect also fail while the mapping
+  remains writable for a valid code copy and later release.
 
   Host-real POSIX worker framing regressions now exercise partial outer
   headers, incomplete announced payloads, unknown protocol tags, and short

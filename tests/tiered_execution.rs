@@ -70415,6 +70415,58 @@ fn native_process_posix_worker_rejects_forged_mapping_geometry()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_forged_protect_geometry(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let mapping = posix_worker_allocate(session)?;
+    let request = NativeProcessMemoryRequest::Protect(mapping);
+    let forged_base = u64::try_from(mapping.base_address().get())
+        .map_err(|error| error.to_string())?
+        .checked_add(1)
+        .ok_or("native mapping base cannot advance")?;
+    if posix_worker_forged_mapping_exchange(session, &request, 17, forged_base)?
+        != NativeProcessMemoryResponse::Failure(1)
+        || posix_worker_forged_mapping_exchange(session, &request, 25, 63)?
+            != NativeProcessMemoryResponse::Failure(1)
+        || session.poisoned()
+    {
+        return Err(String::from("forged protect sealed POSIX mapping"));
+    }
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0x90].into_boxed_slice(),
+        mapping,
+    };
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("forged protect lost writable mapping"));
+    };
+    if report.copied_code() != [0x90] || session.poisoned() {
+        return Err(String::from("forged protect changed live code copy"));
+    }
+    posix_worker_release(session, mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_forged_protect_geometry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("forged_protect_geometry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("forged protect spawn: {error:?}"))?;
+        assert_posix_worker_rejects_forged_protect_geometry(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_host_real_posix_worker_releases_writable_mapping()
 -> Result<(), String> {
