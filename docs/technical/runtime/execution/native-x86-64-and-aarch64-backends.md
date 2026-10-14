@@ -1321,6 +1321,11 @@ The controlled allocation-failure shim also returns a high-bit Win32 error
 its failure response. The mapping count, next ID, and reservation count
 remain unchanged, and both the ordinary and sanitizer-hosted tests pass.
 
+The Windows host simulation now assigns separate input, output, heap, and
+process handles and checks the 32-bit `GetStdHandle` selector values.
+Wrong-channel reads and writes, bad heap handles, and invalid process handles
+fail in their mock APIs rather than silently passing the lifecycle tests.
+
 The host simulation now exercises the complete Windows worker process loop,
 not only its individual handlers. Clean stream EOF exits successfully, while
 an unrecognized second frame, a truncated header, or interrupted response

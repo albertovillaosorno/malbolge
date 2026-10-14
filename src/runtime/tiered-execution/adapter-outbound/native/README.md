@@ -147,6 +147,9 @@ The worker explicitly pins `DWORD`/`BOOL` widths to 32 bits on all hosts.
 A simulated oversized transfer confirms Win32 counts are capped to one DWORD
 before a failed I/O return, without allocating a multi-gigabyte buffer.
 
+Win32 host simulation assigns distinct read, write, heap, and process handles
+and rejects mismatched channels instead of treating them as interchangeable.
+
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance
 harness checks exact fixed sizes, tags, magic bytes, call-field offsets,

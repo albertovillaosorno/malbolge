@@ -75,7 +75,10 @@ static int fail_next_call_response;
 static int fail_next_invalid_call_response;
 static int fail_next_release;
 static int fail_next_sync;
-static char mock_handle;
+static char mock_input_handle;
+static char mock_output_handle;
+static char mock_process_handle;
+static char mock_heap_handle;
 static const mb_u8 *mock_read_source;
 static mb_u8 *mock_dynamic_wire;
 static size_t mock_read_len;
@@ -94,18 +97,24 @@ static int mock_fail_write;
 static int mock_write_overreport;
 static size_t mock_fail_write_after = (size_t)-1;
 
-mb_win_handle GetCurrentProcess(void) { return &mock_handle; }
+mb_win_handle GetCurrentProcess(void) { return &mock_process_handle; }
 mb_win_dword GetLastError(void) { return mock_read_error; }
-mb_win_handle GetProcessHeap(void) { return &mock_handle; }
+mb_win_handle GetProcessHeap(void) { return &mock_heap_handle; }
 mb_win_handle GetStdHandle(mb_win_dword kind)
 {
-    (void)kind;
-    return &mock_handle;
+    if (kind == MB_WIN_STD_INPUT_HANDLE) {
+        return &mock_input_handle;
+    }
+    if (kind == MB_WIN_STD_OUTPUT_HANDLE) {
+        return &mock_output_handle;
+    }
+    return NULL;
 }
 void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 {
-    (void)heap;
-    (void)flags;
+    if (heap != &mock_heap_handle || flags != 0U) {
+        return NULL;
+    }
     if (len == 74U && fail_next_invalid_call_response != 0) {
         fail_next_invalid_call_response = 0;
         return NULL;
@@ -137,8 +146,9 @@ void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 }
 void *HeapReAlloc(mb_win_handle heap, mb_win_dword flags, void *ptr, size_t len)
 {
-    (void)heap;
-    (void)flags;
+    if (heap != &mock_heap_handle || flags != 0U) {
+        return NULL;
+    }
     if (fail_next_heap_realloc != 0) {
         fail_next_heap_realloc = 0;
         return NULL;
@@ -147,8 +157,9 @@ void *HeapReAlloc(mb_win_handle heap, mb_win_dword flags, void *ptr, size_t len)
 }
 mb_win_bool HeapFree(mb_win_handle heap, mb_win_dword flags, void *ptr)
 {
-    (void)heap;
-    (void)flags;
+    if (heap != &mock_heap_handle || flags != 0U) {
+        return 0;
+    }
     free(ptr);
     return 1;
 }
@@ -156,8 +167,11 @@ mb_win_bool ReadFile(
     mb_win_handle handle, void *buffer, mb_win_dword len,
     mb_win_dword *read, void *overlapped)
 {
-    (void)handle;
     (void)overlapped;
+    if (handle != &mock_input_handle) {
+        *read = 0U;
+        return 0;
+    }
     mock_last_read_request = len;
     if (mock_read_overreport != 0) {
         mock_read_overreport = 0;
@@ -198,8 +212,11 @@ mb_win_bool WriteFile(
     mb_win_handle handle, const void *buffer, mb_win_dword len,
     mb_win_dword *written, void *overlapped)
 {
-    (void)handle;
     (void)overlapped;
+    if (handle != &mock_output_handle) {
+        *written = 0U;
+        return 0;
+    }
     mock_last_write_request = len;
     if (mock_write_overreport != 0) {
         mock_write_overreport = 0;
@@ -320,7 +337,9 @@ mb_win_bool VirtualFree(void *address, size_t len, mb_win_dword flags)
 mb_win_bool FlushInstructionCache(
     mb_win_handle process, const void *address, size_t len)
 {
-    (void)process;
+    if (process != &mock_process_handle) {
+        return 0;
+    }
     last_sync_address = address;
     last_sync_len = len;
     if (fail_next_sync != 0) {
@@ -1269,16 +1288,29 @@ static int check_win32_dword_transfer_chunks(void)
     mock_fail_read_after = 0U;
     mock_read_pos = 0U;
     mock_last_read_request = 0U;
-    if (mb_worker_read_exact(&mock_handle, &byte, huge, 0) != -1
+    if (mb_worker_read_exact(&mock_input_handle, &byte, huge, 0) != -1
         || mock_last_read_request != MB_WIN_DWORD_MAX) {
         return 1;
     }
     mock_fail_write = 1;
     mock_fail_write_after = (size_t)-1;
     mock_last_write_request = 0U;
-    if (mb_worker_write_exact(&mock_handle, &byte, huge) != 0
+    if (mb_worker_write_exact(&mock_output_handle, &byte, huge) != 0
         || mock_last_write_request != MB_WIN_DWORD_MAX) {
         return 2;
+    }
+    if (mb_worker_read_exact(&mock_output_handle, &byte, 1U, 0) != -1
+        || mb_worker_write_exact(&mock_input_handle, &byte, 1U) != 0
+        || GetStdHandle(0U) != NULL) {
+        return 3;
+    }
+    const size_t syncs_before = sync_count;
+    if (HeapAlloc(&mock_input_handle, 0U, 16U) != NULL
+        || HeapReAlloc(&mock_output_handle, 0U, NULL, 16U) != NULL
+        || HeapFree(&mock_process_handle, 0U, NULL) != 0
+        || FlushInstructionCache(&mock_heap_handle, &byte, 1U) != 0
+        || sync_count != syncs_before) {
+        return 4;
     }
     return 0;
 }

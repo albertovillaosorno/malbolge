@@ -712,6 +712,10 @@ A distinct single-resident lease cache
   the same unsigned 32-bit failure code without consuming a mapping ID or
   leaking an allocation; the host sanitizer fixture checks buffer cleanup.
 
+  The controlled Win32 simulation distinguishes input, output, heap, and
+  process handles and checks exact 32-bit standard-handle selectors; wrong-
+  handle transfer and invalid selector attempts are rejected.
+
   Overreported `ReadFile` byte counts no longer impersonate clean EOF on the
   first header read. Controlled shims verify invalid read or write counts
   fail closed, preserving the Windows framing trust boundary.
