@@ -71269,6 +71269,73 @@ fn assert_posix_worker_sibling_survives_dispatch_failure(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_native_fault_is_session_local(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("native fault child spawn: {error:?}"))?;
+    let mut healthy = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("fault sibling spawn: {error:?}"))?;
+    let writable = posix_worker_allocate(&mut failed)?;
+    let trap = NativeProcessMemoryRequest::Copy {
+        code: vec![0x0f, 0x0b].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(&mut failed, &trap)?
+    else {
+        return Err(String::from("native fault trap copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            &mut failed,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("native fault trap RX seal failed"));
+    };
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("native fault mapping ID missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    if !matches!(
+        failed.exchange(&bytes, limit),
+        Err(NativeProcessSessionError::Read(ErrorKind::UnexpectedEof))
+    ) || !failed.poisoned()
+        || failed.exchange(&bytes, limit)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(String::from("native fault did not isolate child"));
+    }
+    assert_posix_worker_allocates_and_releases(&mut healthy)?;
+    if healthy.poisoned() {
+        return Err(String::from("native fault poisoned healthy sibling"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_native_fault_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("native_fault_isolation")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = assert_posix_worker_native_fault_is_session_local(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_dispatch_failure_is_session_local()
 -> Result<(), String> {

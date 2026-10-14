@@ -890,6 +890,11 @@ A separate host-real isolation regression runs two independent POSIX children.
 Sending an unknown outer protocol poisons and terminates only the first child;
 the sibling session remains able to allocate and release native memory.
 
+A further two-child regression invokes `ud2` trap bytes from an executable
+mapping, exercising a real illegal-instruction fault rather than a framing
+failure. Only the executing worker terminates and poisons its session; the
+independent child still allocates and releases memory successfully.
+
 A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
 forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
 trailing-byte call payloads fail the same dispatch boundary. Each child exits
