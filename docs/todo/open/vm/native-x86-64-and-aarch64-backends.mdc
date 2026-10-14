@@ -544,6 +544,10 @@ A distinct single-resident lease cache
   on alternating call IDs. Releasing one disables only its native entry,
   while the other remains callable and releasable on the retained child.
 
+  Independent POSIX worker processes may reuse the same numeric mapping ID.
+  A two-child fixture verifies each identical ID selects process-local code;
+  release, reallocation, and call behavior remain independent per child.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 

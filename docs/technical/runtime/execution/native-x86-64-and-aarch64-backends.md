@@ -1036,6 +1036,12 @@ separate return-code stubs (`GuardMiss` and unverified `Applied`). Alternating
 native-call mapping IDs always selects the matching stub. Releasing the first
 mapping invalidates only its ID; the second remains executable and releasable.
 
+A separate two-process fixture deliberately obtains the same mapping ID in
+each independent POSIX child, but installs distinct raw-status stubs. Every
+interleaved call dispatches to its own child's code. Releasing one child's
+mapping does not disable the other, and a fresh mapping in the first child
+receives a non-recycled ID before both sessions release cleanly.
+
 A further host-real regression seals a mapping and attempts instruction-cache
 synchronization with a forged start, truncated range, or unknown mapping ID.
 Each remote command fails; exact synchronization then succeeds for the retained

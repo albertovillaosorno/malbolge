@@ -71278,6 +71278,55 @@ fn assert_posix_worker_dispatches_two_live_executable_mappings(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_scopes_identical_mapping_ids_per_child(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut first = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("first isolated child spawn: {error:?}"))?;
+    let mut second = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("second isolated child spawn: {error:?}"))?;
+    let first_rx = posix_worker_install_status_entry(&mut first, 1)?;
+    let second_rx = posix_worker_install_status_entry(&mut second, 0)?;
+    if first_rx.mapping_id() != second_rx.mapping_id() {
+        return Err(String::from("child-local mapping IDs were not reused"));
+    }
+    for _ in 0..3usize {
+        assert_posix_worker_call_dispatch_status(&mut first, first_rx, 1)?;
+        assert_posix_worker_call_dispatch_status(&mut second, second_rx, 0)?;
+    }
+    posix_worker_release(&mut first, first_rx)?;
+    assert_posix_worker_call_dispatch_status(&mut first, first_rx, 2)?;
+    assert_posix_worker_call_dispatch_status(&mut second, second_rx, 0)?;
+    let first_replacement = posix_worker_install_status_entry(&mut first, 1)?;
+    if first_replacement.mapping_id() == first_rx.mapping_id() {
+        return Err(String::from("first child reused released identity"));
+    }
+    assert_posix_worker_call_dispatch_status(&mut first, first_replacement, 1)?;
+    assert_posix_worker_call_dispatch_status(&mut second, second_rx, 0)?;
+    posix_worker_release(&mut first, first_replacement)?;
+    posix_worker_release(&mut second, second_rx)?;
+    assert_posix_worker_allocates_and_releases(&mut first)?;
+    assert_posix_worker_allocates_and_releases(&mut second)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_mapping_ids_are_child_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("child_local_mapping_identity")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result =
+        assert_posix_worker_scopes_identical_mapping_ids_per_child(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_dispatches_two_live_executable_mappings()
 -> Result<(), String> {
