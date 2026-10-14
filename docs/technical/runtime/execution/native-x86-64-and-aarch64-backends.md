@@ -878,6 +878,12 @@ over MBNPC1; Rust semantic completion rejects every non-atomic miss as the
 appropriate state, memory, or output violation, restores caller buffers, and
 leaves each mapping releasable on the retained child.
 
+The same real-worker rollback fixture now also changes the output cursor
+from one to two within capacity, or replaces `Running` with the normative
+`HaltInstruction` termination tag. Both are structurally valid state fields,
+but neither may be committed by a failed native guard; Rust rejects both as
+`NonAppliedMutation(State)` and preserves the original caller snapshot.
+
 A complementary host-real success-forgery regression invokes a native entry
 that returns `Applied` while leaving the required register, memory, and output
 transition incomplete. The semantic verifier rejects that false status as

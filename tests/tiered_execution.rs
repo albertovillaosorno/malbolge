@@ -1776,6 +1776,8 @@ struct PreparedComdatCycle {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+type PosixWorkerGuardMissStubs = [(Vec<u8>, NativeRegionMutationSurface); 7];
 type CollapsedNoOperationHaltArtifact =
     en::VerifiedRegisterMaskedNoOperationHaltNativeObjectArtifact;
 type CollapsedNoOperationPairArtifact =
@@ -73084,10 +73086,8 @@ fn assert_posix_worker_rolls_back_mutating_guard_miss(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn assert_posix_worker_native_guard_miss_rollback(
-    session: &mut NativeProcessSession,
-) -> Result<(), String> {
-    let stubs = [
+fn posix_worker_mutating_guard_miss_stubs() -> PosixWorkerGuardMissStubs {
+    [
         (
             vec![
                 0x48, 0x8b, 0x01, 0xc7, 0x00, 123, 0, 0, 0, 0xb8, 1, 0, 0, 0,
@@ -73113,7 +73113,24 @@ fn assert_posix_worker_native_guard_miss_rollback(
             vec![0x83, 0x71, 0x48, 1, 0xb8, 1, 0, 0, 0, 0xc3],
             NativeRegionMutationSurface::State,
         ),
-    ];
+        (
+            // Advance output_len to two, within capacity, on GuardMiss.
+            vec![0x48, 0xc7, 0x41, 0x38, 2, 0, 0, 0, 0xb8, 1, 0, 0, 0, 0xc3],
+            NativeRegionMutationSurface::State,
+        ),
+        (
+            // Set normative HaltInstruction, then return GuardMiss.
+            vec![0xc6, 0x41, 0x4c, 1, 0xb8, 1, 0, 0, 0, 0xc3],
+            NativeRegionMutationSurface::State,
+        ),
+    ]
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_native_guard_miss_rollback(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let stubs = posix_worker_mutating_guard_miss_stubs();
     for (case_index, (code, surface)) in stubs.into_iter().enumerate() {
         let writable = posix_worker_allocate(session)?;
         let request = NativeProcessMemoryRequest::Copy {

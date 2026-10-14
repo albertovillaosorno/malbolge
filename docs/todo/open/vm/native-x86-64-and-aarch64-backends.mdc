@@ -409,6 +409,10 @@ A distinct single-resident lease cache
   Semantic verification rejects each non-atomic miss and restores caller
   buffers, while the retained child can release and allocate normally.
 
+  Valid-looking changes to output progress or the normative halt tag are
+  likewise rejected on `GuardMiss` as state mutation, without committing
+  any caller state or poisoning the worker.
+
   A host-real false `Applied` native stub also fails semantic verification
   without the required transition; caller buffers roll back and the child
   remains available for release and a new mapping. An unknown native status
