@@ -1178,6 +1178,12 @@ RW bytes and ID intact; failed sync encoding retains RX ownership and permits
 a later exact retry; failed release response encoding removes the mapping and
 frees its backing reservation once. None publishes a success frame.
 
+A distinct Win32 `VirtualAlloc` failure fixture verifies platform-error
+propagation, including the explicit internal fallback when `GetLastError`
+returns zero. Neither failed request consumes a mapping ID nor creates a
+reservation. Retrying succeeds with the original next ID, and release frees
+the only newly allocated backing region exactly once.
+
 The simulation additionally injects one failed `VirtualProtect` and one
 failed `VirtualFree` for an aligned mapping. The failed protection preserves
 RW copy authority, the failed release preserves table ownership, and both

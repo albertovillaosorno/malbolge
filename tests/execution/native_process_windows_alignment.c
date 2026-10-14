@@ -61,6 +61,7 @@ static int recycle_next_release;
 static void *recycled_allocation;
 static void *recycled_base;
 static size_t recycled_len;
+static int fail_next_virtual_alloc;
 static int fail_next_protect;
 static int unexpected_old_protect;
 static int fail_next_heap_realloc;
@@ -220,6 +221,10 @@ mb_win_bool WriteFile(
 void *VirtualAlloc(
     void *address, size_t len, mb_win_dword flags, mb_win_dword protect)
 {
+    if (fail_next_virtual_alloc != 0) {
+        fail_next_virtual_alloc = 0;
+        return NULL;
+    }
     if (address != NULL || flags != (MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT)
         || protect != MB_WIN_PAGE_READWRITE
         || reservation_count >= 96U || len > 1048576U) {
@@ -2166,6 +2171,76 @@ static int check_process_loop_cleanup(int scenario)
     return valid && multi_valid && lifecycle_valid ? 0 : 1;
 }
 
+static int check_virtual_alloc_failure_is_retryable(
+    struct mb_worker_state *worker)
+{
+    mb_u8 request[33] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    const size_t reservations_before = reservation_count;
+    const size_t releases_before = release_count;
+    const mb_u64 id_before = worker->next_id;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mock_read_error = 5UL;
+    fail_next_virtual_alloc = 1;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10]) != 5U
+        || fail_next_virtual_alloc != 0
+        || worker->count != 0U || worker->next_id != id_before
+        || reservation_count != reservations_before
+        || release_count != releases_before) {
+        mb_worker_free(response);
+        return 1;
+    }
+    mb_worker_free(response);
+    // Even missing GetLastError evidence must return a nonzero failure tag.
+    mock_read_error = 0UL;
+    fail_next_virtual_alloc = 1;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_PLATFORM_FAILURE
+        || worker->count != 0U || worker->next_id != id_before
+        || reservation_count != reservations_before
+        || release_count != releases_before) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    mock_read_error = 5UL;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || mb_native_process_read_u64(&response[10]) != id_before
+        || worker->next_id != id_before + 1U
+        || worker->count != 1U) {
+        mb_worker_free(response);
+        return 2;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker->count != 0U || reservation_count != reservations_before + 1U
+        || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        return 3;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
 {
     mb_u8 request[34] = {0};
@@ -2343,6 +2418,10 @@ int main(void)
     const int stale = check_stale_id_with_recycled_base(&worker);
     if (stale != 0) {
         return 57 + stale;
+    }
+    const int alloc_failure = check_virtual_alloc_failure_is_retryable(&worker);
+    if (alloc_failure != 0) {
+        return 100 + alloc_failure;
     }
     const int rejected_sync = check_rejected_rx_sync_ranges(&worker);
     if (rejected_sync != 0) {

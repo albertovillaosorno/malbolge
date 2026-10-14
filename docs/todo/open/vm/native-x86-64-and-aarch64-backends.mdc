@@ -609,6 +609,11 @@ A distinct single-resident lease cache
   and release removes the mapping and frees backing exactly once. No success
   frame is fabricated after response-buffer allocation failure.
 
+  Simulated `VirtualAlloc` failures return the exact platform code or the
+  nonzero internal fallback when Win32 supplies no error. They do not consume
+  a mapping ID or create a reservation, and a valid retry succeeds and frees
+  its sole backing region exactly once.
+
   Simulated `VirtualProtect` and `VirtualFree` failures leave the mapping
   writable or still owned, respectively. Retried operations succeed without
   losing the aligned backing reservation or corrupting table state.
