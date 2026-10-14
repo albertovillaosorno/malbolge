@@ -1159,6 +1159,12 @@ overflow before allocation, and cleanup of a still-live mapping during worker
 teardown. Mock `VirtualFree` accepts only original allocation bases, so these
 checks exercise backing ownership, but they are not native Windows execution.
 
+An extended simulation grows the Windows mapping table to six concurrent
+128-KiB-aligned reservations, removes an interior mapping, then copies, seals,
+and synchronizes each survivor. Worker teardown invokes `VirtualFree` only on
+the original backing bases for all five remaining mappings, including entries
+shifted during compaction. Native Windows execution remains a separate gap.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.

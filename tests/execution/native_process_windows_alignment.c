@@ -50,7 +50,7 @@ struct mb_mock_reservation {
     int released;
 };
 
-static struct mb_mock_reservation reservations[8];
+static struct mb_mock_reservation reservations[16];
 static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
@@ -110,7 +110,7 @@ void *VirtualAlloc(
 {
     if (address != NULL || flags != (MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT)
         || protect != MB_WIN_PAGE_READWRITE
-        || reservation_count >= 8U || len > 1048576U) {
+        || reservation_count >= 16U || len > 1048576U) {
         return NULL;
     }
     const size_t total = len + 262144U;
@@ -267,6 +267,78 @@ static int check_teardown_releases_backing(struct mb_worker_state *worker)
     return worker->count == 0U && release_count == 3U ? 0 : 2;
 }
 
+static int check_compaction_and_teardown(struct mb_worker_state *worker)
+{
+    mb_u64 ids[6] = {0};
+    mb_u64 addresses[6] = {0};
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t releases_before = release_count;
+    const size_t protects_before = protect_count;
+    const size_t syncs_before = sync_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    for (size_t i = 0U; i < 6U; ++i) {
+        mb_native_process_write_u64(&request[9], 64U);
+        mb_native_process_write_u64(&request[17], 131072U);
+        if (!mb_worker_handle_allocate(worker, request, 26U,
+                &response, &len)
+            || len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            return 1;
+        }
+        ids[i] = mb_native_process_read_u64(&response[10]);
+        addresses[i] = mb_native_process_read_u64(&response[18]);
+        mb_worker_free(response);
+        if ((addresses[i] & 131071U) != 0U
+            || ids[i] == 0U || worker->count != i + 1U) {
+            return 2;
+        }
+    }
+    // Releasing the middle slot moves later mapping metadata in-place.
+    mb_native_process_write_u64(&request[9], ids[2]);
+    mb_native_process_write_u64(&request[17], addresses[2]);
+    mb_native_process_write_u64(&request[25], 64U);
+    if (!mb_worker_handle_release(worker, request, 33U, &response, &len)
+        || worker->count != 5U) {
+        return 3;
+    }
+    mb_worker_free(response);
+    for (size_t i = 0U; i < 6U; ++i) {
+        if (i == 2U) {
+            continue;
+        }
+        mb_native_process_write_u64(&request[9], ids[i]);
+        mb_native_process_write_u64(&request[17], addresses[i]);
+        mb_native_process_write_u64(&request[25], 64U);
+        request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&request[34], 6U);
+        memcpy(&request[42], "ABCDEF", 6U);
+        if (!mb_worker_handle_copy(worker, request, 48U, &response, &len)
+            || len != 32U
+            || memcmp(&response[26], "ABCDEF", 6U) != 0) {
+            return 4;
+        }
+        mb_worker_free(response);
+        if (!mb_worker_handle_protect(worker, request, 34U,
+                &response, &len)
+            || len != 35U) {
+            return 5;
+        }
+        mb_worker_free(response);
+        if (!mb_worker_handle_sync(worker, request, 33U, &response, &len)
+            || len != 34U) {
+            return 6;
+        }
+        mb_worker_free(response);
+    }
+    // Process teardown must release the original bases for all survivors.
+    mb_worker_release_all(worker);
+    return worker->count == 0U && release_count == releases_before + 6U
+        && protect_count == protects_before + 5U
+        && sync_count == syncs_before + 5U ? 0 : 7;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -287,6 +359,13 @@ int main(void)
     if (reservation_count != 3U || release_count != 3U
         || protect_count != 2U || sync_count != 2U) {
         return 9;
+    }
+    if (check_compaction_and_teardown(&worker) != 0) {
+        return 10;
+    }
+    if (reservation_count != 9U || release_count != 9U
+        || protect_count != 7U || sync_count != 7U) {
+        return 11;
     }
     return 0;
 }
