@@ -1162,6 +1162,11 @@ code copy, RX protection, and full-range cache synchronization on all eight,
 then releases in scrambled order. Every surviving ID retains its address,
 length, RX status, and successful synchronization after table compaction.
 
+While all eight Windows mappings are live, the same fixture forges 48 cache
+synchronization and release requests. It combines each valid ID with another
+mapping's base address, length, or both; every mixed-geometry request fails
+without synchronizing or freeing any reservation, before legitimate releases.
+
 A separate two-mapping POSIX regression seals only the first mapping as RX.
 Code copy fails on that executable mapping but succeeds on the still-RW second
 mapping, while full-range synchronization succeeds only for RX. Both mappings

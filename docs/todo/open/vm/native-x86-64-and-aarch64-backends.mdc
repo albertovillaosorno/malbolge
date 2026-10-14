@@ -584,6 +584,10 @@ A distinct single-resident lease cache
   surviving IDs continue to synchronize their exact full code range until
   the last original backing reservation is released.
 
+  Forty-eight deliberately forged release/sync requests mix each live
+  Windows mapping ID with another mapping's base, size, or both. All fail
+  without altering mapping count, synchronization, or release ownership.
+
   Distinct simultaneous RX mappings now expose separate raw native statuses
   on alternating call IDs. Releasing one disables only its native entry,
   while the other remains callable and releasable on the retained child.

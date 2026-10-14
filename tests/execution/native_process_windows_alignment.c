@@ -2943,6 +2943,55 @@ static int check_mixed_geometry_survivors(
     return worker->count == live ? 0 : 3;
 }
 
+static int check_mixed_geometry_forgery(
+    struct mb_worker_state *worker,
+    const mb_u64 ids[8],
+    const mb_u64 bases[8],
+    const size_t sizes[8])
+{
+    mb_u8 request[33] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t release_before = release_count;
+    const size_t sync_before = sync_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    for (size_t index = 0U; index < 8U; ++index) {
+        const size_t other = (index + 1U) % 8U;
+        for (size_t geometry = 0U; geometry < 3U; ++geometry) {
+            const mb_u64 base = geometry == 1U
+                ? bases[index] : bases[other];
+            const mb_u64 size = geometry == 0U
+                ? (mb_u64)sizes[index] : (mb_u64)sizes[other];
+            mb_native_process_write_u64(&request[9], ids[index]);
+            mb_native_process_write_u64(&request[17], base);
+            mb_native_process_write_u64(&request[25], size);
+            for (size_t command = 0U; command < 2U; ++command) {
+                const int synced = command == 0U;
+                request[8] = synced != 0
+                    ? MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE
+                    : MB_NATIVE_PROCESS_MEMORY_RELEASE;
+                const int handled = synced != 0
+                    ? mb_worker_handle_sync(
+                        worker, request, sizeof(request), &response, &len)
+                    : mb_worker_handle_release(
+                        worker, request, sizeof(request), &response, &len);
+                if (!handled || response == NULL
+                    || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+                    || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+                    || worker->count != 8U
+                    || release_count != release_before
+                    || sync_count != sync_before) {
+                    mb_worker_free(response);
+                    return 1;
+                }
+                mb_worker_free(response);
+                response = NULL;
+            }
+        }
+    }
+    return 0;
+}
+
 static int check_mixed_geometry_table(struct mb_worker_state *worker)
 {
     const size_t sizes[8] = {
@@ -3011,6 +3060,9 @@ static int check_mixed_geometry_table(struct mb_worker_state *worker)
     if (check_mixed_geometry_survivors(
             worker, ids, bases, sizes, released) != 0) {
         return 6;
+    }
+    if (check_mixed_geometry_forgery(worker, ids, bases, sizes) != 0) {
+        return 11;
     }
     for (size_t index = 0U; index < 8U; ++index) {
         const size_t i = order[index];
