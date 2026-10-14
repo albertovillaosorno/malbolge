@@ -1156,6 +1156,11 @@ Each copies a native return stub, seals, synchronizes, and dispatches before
 mappings are released in a scrambled order. Every surviving ID still executes
 its own stub after each release; the same child can allocate again afterward.
 
+That POSIX fixture now also denies each mixed-ID synchronization while all
+eight varied mappings remain live. After every scrambled release it rejects
+stale memory commands and native-call dispatch on the former ID, while each
+remaining mapping still executes its own valid entry on the retained worker.
+
 An independent Win32-shim fixture now retains eight mixed-size mappings,
 from 64 to 16,384 bytes and alignment from 1 to 256 KiB. It performs exact
 code copy, RX protection, and full-range cache synchronization on all eight,

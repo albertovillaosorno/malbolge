@@ -71963,6 +71963,39 @@ fn posix_worker_install_mixed_geometry_entry(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_denies_mixed_geometry_sync(
+    session: &mut NativeProcessSession,
+    mappings: &[NativeExecutableMappingReport],
+) -> Result<(), String> {
+    for (mapping, other) in mappings
+        .iter()
+        .zip(mappings.iter().cycle().skip(1))
+        .take(mappings.len())
+    {
+        let sync = NativeProcessMemoryRequest::Synchronize(
+            NativeInstructionSyncRequest::new(
+                mapping.mapping_id(),
+                mapping.base_address(),
+                mapping.mapped_len(),
+            ),
+        );
+        if posix_worker_forged_mapping_exchange(
+            session,
+            &sync,
+            9,
+            other.mapping_id().get(),
+        )? != NativeProcessMemoryResponse::Failure(2)
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "mixed native mapping geometry admitted forged sync",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_retains_mixed_geometry_entries(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
@@ -71990,10 +72023,13 @@ fn assert_posix_worker_retains_mixed_geometry_entries(
         )?;
         mappings.push(executable);
     }
+    assert_posix_worker_denies_mixed_geometry_sync(session, &mappings)?;
     let mut live = [true; 8];
     for index in [3usize, 0, 5, 1, 7, 2, 4, 6] {
         let released = *mappings.get(index).ok_or("mixed mapping absent")?;
         posix_worker_release(session, released)?;
+        assert_posix_worker_rejects_stale_memory(session, released)?;
+        assert_posix_worker_denies_stale_native_call(session, released)?;
         *live.get_mut(index).ok_or("mixed live slot absent")? = false;
         for (other, mapping) in mappings.iter().enumerate() {
             if live.get(other).copied().ok_or("mixed live bit absent")? {

@@ -584,6 +584,10 @@ A distinct single-resident lease cache
   surviving IDs continue to synchronize their exact full code range until
   the last original backing reservation is released.
 
+  The host-real POSIX mixed-geometry fixture rejects cross-ID sync before
+  release, then denies stale memory operations and native calls after every
+  removal without disrupting live entries on the retained child.
+
   Forty-eight deliberately forged release/sync requests mix each live
   Windows mapping ID with another mapping's base, size, or both. All fail
   without altering mapping count, synchronization, or release ownership.
