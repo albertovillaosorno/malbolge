@@ -563,6 +563,10 @@ A distinct single-resident lease cache
   byte zero and a non-mutating guard miss at offset 16. Calling the latter
   keeps the session healthy and leaves later release/reallocation available.
 
+  Another RX fixture enters a full six-byte stub at the final mapped bytes
+  (58–63 of 64), rejects entry at the mapped end, and retains cleanup and
+  child reuse without executing the trap at byte zero.
+
   A two-page POSIX mapping copies and seals a code image across byte 4,096,
   synchronizes the full RX range, then enters a guard-miss stub on page two
   while a trap remains at page one. Session release and reuse still succeed.

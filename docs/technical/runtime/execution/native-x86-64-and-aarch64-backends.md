@@ -1058,6 +1058,11 @@ Invoking offset 16 returns the expected native status and unchanged buffers,
 proving the worker uses the selected byte address rather than the map base.
 That same child releases and reallocates normally.
 
+The exact upper-entry fixture fills a 64-byte executable mapping with a trap
+at byte zero and a six-byte guard-miss stub at offsets 58–63. Executing at
+byte 58 succeeds with unchanged buffers; offset 64 and later offsets are
+rejected without execution, and the child remains releasable and reusable.
+
 A larger RX-mapping fixture uses 8,192 bytes and copies code through the
 4,096-byte page boundary, leaving a trap at the base and a guard-miss entry
 at offset 4,096. After whole-range instruction-cache synchronization, the

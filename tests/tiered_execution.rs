@@ -71099,6 +71099,63 @@ fn native_process_posix_worker_invokes_nonzero_native_entry_offset()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_enters_last_complete_stub(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let mut code = vec![0x90u8; 64];
+    code.get_mut(..2)
+        .ok_or("upper-bound trap bytes missing")?
+        .copy_from_slice(&[0x0f, 0x0b]);
+    code.get_mut(58..64)
+        .ok_or("last complete entry bytes missing")?
+        .copy_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.clone().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("last complete entry copy failed"));
+    };
+    if copied.copied_code() != code {
+        return Err(String::from("last complete entry copy drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("last complete entry RX seal failed"));
+    };
+    assert_posix_worker_nonzero_entry_response(session, executable, 58)?;
+    assert_posix_worker_rejects_out_of_range_native_call(session, executable)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_enters_last_complete_native_stub()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("last_complete_entry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("last entry spawn: {error:?}"))?;
+        assert_posix_worker_enters_last_complete_stub(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn posix_worker_install_second_page_entry(
     session: &mut NativeProcessSession,
 ) -> Result<NativeExecutableMappingReport, String> {
