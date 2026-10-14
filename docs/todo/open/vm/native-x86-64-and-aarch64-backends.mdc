@@ -554,6 +554,11 @@ A distinct single-resident lease cache
   regardless of address reuse. A trap-bearing RX mapping also cannot be entered
   through the released ID, and its live identity still permits clean release.
 
+  Both workers now reject AArch64 entry offsets not divisible by four while
+  retaining x86-64 byte-entry behavior. The host-run Windows handler fixture
+  checks the AArch64 denial rule in both normal and sanitized configurations;
+  actual AArch64 instruction execution remains unclaimed.
+
   The same stale-ID rejection now covers successive 64-KiB-aligned backing
   reservations, preserving only the current mapping's copy, RX, and release
   rights even when underlying address storage is recycled.

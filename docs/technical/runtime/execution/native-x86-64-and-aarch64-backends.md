@@ -1119,6 +1119,13 @@ at byte zero and a six-byte guard-miss stub at offsets 58–63. Executing at
 byte 58 succeeds with unchanged buffers; offset 64 and later offsets are
 rejected without execution, and the child remains releasable and reusable.
 
+A shared worker pre-dispatch check rejects misaligned AArch64 entry offsets
+before invoking an executable mapping. Native AArch64 instruction slots
+require four-byte alignment; x86-64 still permits byte-addressable entries.
+A dual-mode Windows-handler simulation checks offsets one through three under
+an AArch64 admission configuration, including sanitized host test runs; the
+AArch64 worker objects still cross-compile, without hardware execution claims.
+
 A larger RX-mapping fixture uses 8,192 bytes and copies code through the
 4,096-byte page boundary, leaving a trap at the base and a guard-miss entry
 at offset 4,096. After whole-range instruction-cache synchronization, the

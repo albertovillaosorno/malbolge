@@ -198,10 +198,14 @@ def run_command(
     reason="Win32 API simulation requires Linux x86-64 host",
 )
 @pytest.mark.parametrize("sanitized", [False, True], ids=["c23", "asan-ubsan"])
+@pytest.mark.parametrize(
+    "arm64_entry_alignment", [False, True], ids=["x86-entry", "arm64-entry"]
+)
 def test_native_process_windows_alignment_simulation(
     tmp_path: Path,
     *,
     sanitized: bool,
+    arm64_entry_alignment: bool,
 ) -> None:
     """Run simulated Win32 worker handlers with and without sanitizers."""
     assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
@@ -211,6 +215,7 @@ def test_native_process_windows_alignment_simulation(
             str(CLANG),
             "-std=c23",
             *STRICT_WARNINGS,
+            *(("-D__aarch64__=1",) if arm64_entry_alignment else ()),
             *((
                 "-O1",
                 "-g",

@@ -1247,6 +1247,16 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         return 11;
     }
     mb_native_process_write_u64(&request[8], id);
+#if defined(__aarch64__)
+    // Run with the ARM64 admission rule, but retain the host x64 C stub.
+    for (mb_u64 misaligned = 1U; misaligned < 4U; ++misaligned) {
+        mb_native_process_write_u64(&request[16], misaligned);
+        if (check_native_call_shape(
+                worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+            return 32;
+        }
+    }
+#endif
     mb_native_process_write_u64(&request[16], 64U);
     if (check_native_call_shape(
             worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
@@ -2553,6 +2563,19 @@ static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
 
 int main(void)
 {
+#if defined(__aarch64__)
+    if (mb_native_entry_offset_aligned(0U) == 0
+        || mb_native_entry_offset_aligned(4U) == 0
+        || mb_native_entry_offset_aligned(1U) != 0
+        || mb_native_entry_offset_aligned(3U) != 0) {
+        return 35;
+    }
+#else
+    if (mb_native_entry_offset_aligned(1U) == 0
+        || mb_native_entry_offset_aligned(3U) == 0) {
+        return 35;
+    }
+#endif
     struct mb_worker_state worker = {.next_id = 1U};
     const int first = check_mapping_lifecycle(&worker);
     if (first != 0) {

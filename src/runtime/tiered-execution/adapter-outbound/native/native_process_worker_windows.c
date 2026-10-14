@@ -911,6 +911,7 @@ static int mb_worker_handle_call(
     if (mapping != NULL
         && mapping->permission == MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
         && entry_offset < mapping->len
+        && mb_native_entry_offset_aligned(entry_offset)
         && state.input_consumed <= state.input_len
         && state.output_len <= state.output_capacity
         && state.termination <= MB_NATIVE_TERMINATION_NON_GRAPHICAL_CELL) {

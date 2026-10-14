@@ -136,6 +136,11 @@ The pinned Linux x86-64 test compiles and runs this handler both normally and
 with AddressSanitizer/UndefinedBehaviorSanitizer instrumentation. Host-real
 AArch64 and Windows execution remain open.
 
+Both worker entry handlers deny misaligned AArch64 instruction offsets before
+calling native code. The host Windows simulation checks that admission rule
+with the AArch64 preprocessor target selected; cross-compilation, rather than
+host execution, remains the AArch64 object compatibility evidence.
+
 The host simulation also drives partial Win32 pipe transfers, exact framed
 request/response lengths, truncated frames, and clean versus partial-header
 EOF classification. These mocks do not establish real Windows pipe behavior.

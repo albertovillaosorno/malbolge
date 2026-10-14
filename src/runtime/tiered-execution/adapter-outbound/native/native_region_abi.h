@@ -102,6 +102,18 @@ static_assert(offsetof(struct mb_native_region_state, data_pointer) == 72U,
 static_assert(offsetof(struct mb_native_region_state, termination) == 76U,
     "native call-state termination offset drifted");
 
+// AArch64 instructions occupy fixed four-byte slots; x86-64 native
+// entries may start at any byte in a verified executable mapping.
+static inline int mb_native_entry_offset_aligned(size_t entry_offset)
+{
+#if defined(__aarch64__)
+    return (entry_offset & 3U) == 0U;
+#else
+    (void)entry_offset;
+    return 1;
+#endif
+}
+
 #if defined(MB_NATIVE_POSIX_WINDOWS_X64_BRIDGE)
 typedef int (__attribute__((ms_abi)) *mb_native_entry_fn)(
     struct mb_native_region_state *);
