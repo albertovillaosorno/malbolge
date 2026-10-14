@@ -587,6 +587,10 @@ A distinct single-resident lease cache
   A two-child fixture verifies each identical ID selects process-local code;
   release, reallocation, and call behavior remain independent per child.
 
+  Controlled Windows workers likewise reject mixed IDs and geometry from
+  two simultaneously live over-aligned mappings for copy, RX protection,
+  release, and cache sync. Both remain independently operable afterward.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 

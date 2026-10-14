@@ -1318,6 +1318,12 @@ worker tables with different backing addresses. Releasing the first leaves
 the second fully writable, sealable, synchronizable, and releasable; the first
 can allocate a fresh ID two without affecting its sibling's ownership.
 
+A further host-simulated Windows table owns two simultaneous 128-KiB-aligned
+mappings with distinct IDs and backing addresses. Mixing one ID with the
+other mapping's geometry fails copy, RX protection, release, and RX cache sync
+without mutating either mapping or releasing either reservation. Both mappings
+then copy, seal, synchronize, and release independently with their own IDs.
+
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large
 memory/input/output lengths, and too few words or bytes for the frame.

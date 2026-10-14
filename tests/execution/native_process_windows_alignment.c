@@ -1861,6 +1861,128 @@ static int check_malformed_memory_commands(struct mb_worker_state *worker)
     return check_mapping_lifecycle(worker) == 0 ? 0 : 21;
 }
 
+static int check_mixed_live_mapping_ids(struct mb_worker_state *worker)
+{
+    mb_u8 request[43] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    mb_u64 ids[2] = {0};
+    mb_u64 bases[2] = {0};
+    const size_t protects_before = protect_count;
+    const size_t syncs_before = sync_count;
+    const size_t releases_before = release_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    for (size_t index = 0U; index < 2U; ++index) {
+        if (!mb_worker_handle_allocate(worker, request, 26U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 1;
+        }
+        ids[index] = mb_native_process_read_u64(&response[10]);
+        bases[index] = mb_native_process_read_u64(&response[18]);
+        mb_worker_free(response);
+        memset(worker->mappings[index].base,
+            index == 0U ? 'A' : 'B', 64U);
+    }
+    if (ids[0] == ids[1] || bases[0] == bases[1]) {
+        return 2;
+    }
+    mb_native_process_write_u64(&request[9], ids[1]);
+    mb_native_process_write_u64(&request[17], bases[0]);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 1U);
+    request[42] = 'Z';
+    for (size_t case_index = 0U; case_index < 3U; ++case_index) {
+        size_t request_len = 33U;
+        mb_u32 failure = MB_WORKER_MAPPING_NOT_FOUND;
+        switch (case_index) {
+        case 0U:
+            request[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+            request_len = 43U;
+            break;
+        case 1U:
+            request[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+            request_len = 34U;
+            failure = MB_WORKER_INVALID_REQUEST;
+            break;
+        default:
+            request[8] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+            break;
+        }
+        if (check_invalid_memory_command(worker, request,
+                request_len, failure) != 0
+            || worker->count != 2U
+            || protect_count != protects_before
+            || sync_count != syncs_before
+            || release_count != releases_before
+            || worker->mappings[0].base[0] != 'A'
+            || worker->mappings[1].base[0] != 'B') {
+            return (int)(case_index + 3U);
+        }
+    }
+    for (size_t index = 0U; index < 2U; ++index) {
+        mb_native_process_write_u64(&request[9], ids[index]);
+        mb_native_process_write_u64(&request[17], bases[index]);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+        if (!mb_worker_handle_copy(worker, request, 43U,
+                &response, &response_len)
+            || response_len != 27U || response[26] != 'Z') {
+            mb_worker_free(response);
+            return 7;
+        }
+        mb_worker_free(response);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+        if (!mb_worker_handle_protect(worker, request, 34U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 8;
+        }
+        mb_worker_free(response);
+    }
+    mb_native_process_write_u64(&request[9], ids[1]);
+    mb_native_process_write_u64(&request[17], bases[0]);
+    request[8] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+    if (check_invalid_memory_command(worker, request, 33U,
+            MB_WORKER_MAPPING_NOT_FOUND) != 0
+        || sync_count != syncs_before
+        || worker->count != 2U) {
+        return 9;
+    }
+    for (size_t index = 0U; index < 2U; ++index) {
+        mb_native_process_write_u64(&request[9], ids[index]);
+        mb_native_process_write_u64(&request[17], bases[index]);
+        if (!mb_worker_handle_sync(worker, request, 33U,
+                &response, &response_len)
+            || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 10;
+        }
+        mb_worker_free(response);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+        if (!mb_worker_handle_release(worker, request, 33U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 11;
+        }
+        mb_worker_free(response);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+    }
+    return worker->count == 0U
+        && protect_count == protects_before + 2U
+        && sync_count == syncs_before + 2U
+        && release_count == releases_before + 2U ? 0 : 12;
+}
+
 static int check_stale_id_with_recycled_base(
     struct mb_worker_state *worker)
 {
@@ -2647,6 +2769,10 @@ int main(void)
     const int independent = check_independent_worker_mapping_ids();
     if (independent != 0) {
         return 75 + independent;
+    }
+    const int mixed = check_mixed_live_mapping_ids(&worker);
+    if (mixed != 0) {
+        return 120 + mixed;
     }
     const int stale = check_stale_id_with_recycled_base(&worker);
     if (stale != 0) {
