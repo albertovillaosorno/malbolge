@@ -130,7 +130,11 @@ controlled Win32 shims, including 128-KiB alignment from an unaligned
 harness invokes the Windows MBNPC1 handler using Clang `ms_abi` host stubs.
 This checks Microsoft x64 native-entry argument passing, returned state, and
 malformed progress denial, but not Windows kernel APIs or full native Windows
-execution. Host-real AArch64 and Windows execution remain open.
+execution.
+
+The pinned Linux x86-64 test compiles and runs this handler both normally and
+with AddressSanitizer/UndefinedBehaviorSanitizer instrumentation. Host-real
+AArch64 and Windows execution remain open.
 
 The host simulation also drives partial Win32 pipe transfers, exact framed
 request/response lengths, truncated frames, and clean versus partial-header

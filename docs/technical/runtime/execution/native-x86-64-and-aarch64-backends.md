@@ -1209,6 +1209,11 @@ handler against Clang `ms_abi` C entries on Linux x86-64. Its MBNPC1 response
 captures one changed memory word, input/output cursor progress, an output byte,
 register updates, exact buffer lengths, and unchanged pointer identity.
 
+The pinned host test now runs the complete simulated Win32 handler suite both
+as plain C23 and under AddressSanitizer/UndefinedBehaviorSanitizer. Instrumented
+runs cover the same over-aligned backing ownership, MS x64 entry calls, pointer
+drift, framing failures, and resource cleanup without sanitizer findings.
+
 The same Windows-handler simulation now invokes a native C entry with zero
 memory words and empty input/output buffers. All three reconstructed pointers
 are null, and the response has only its fixed header. A zero-capacity call
@@ -1217,7 +1222,8 @@ with a nonzero input or output cursor is rejected without entering the stub.
 The same fixture denies dispatch for non-RX or unknown mappings, out-of-range
 entry offsets, impossible I/O cursors, and unsupported termination tags.
 Request bytes remain intact, and the denied calls never execute the host
-entry. This exercises handler framing, not Windows ABI or guest semantics.
+entry. This checks the Microsoft x64 entry ABI on Linux, not actual Windows
+kernel behavior or independently verified guest semantics.
 
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large

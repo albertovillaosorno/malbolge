@@ -196,8 +196,13 @@ def run_command(
     or platform.machine().lower() not in X86_64_HOST_NAMES,
     reason="Win32 API simulation requires Linux x86-64 host",
 )
-def test_native_process_windows_alignment_simulation(tmp_path: Path) -> None:
-    """Run simulated Win32 over-alignment and backing-release handlers."""
+@pytest.mark.parametrize("sanitized", [False, True], ids=["c23", "asan-ubsan"])
+def test_native_process_windows_alignment_simulation(
+    tmp_path: Path,
+    *,
+    sanitized: bool,
+) -> None:
+    """Run simulated Win32 worker handlers with and without sanitizers."""
     assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
     executable = tmp_path / "native-process-windows-alignment"
     compiled = run_command(
@@ -205,6 +210,12 @@ def test_native_process_windows_alignment_simulation(tmp_path: Path) -> None:
             str(CLANG),
             "-std=c23",
             *STRICT_WARNINGS,
+            *((
+                "-O1",
+                "-g",
+                "-fno-omit-frame-pointer",
+                "-fsanitize=address,undefined",
+            ) if sanitized else ()),
             f"-I{NATIVE_INCLUDE}",
             str(WINDOWS_ALIGNMENT_HARNESS),
             "-o",
