@@ -991,6 +991,12 @@ output-length cursors to one. Its `GuardMiss` result preserves guest memory,
 reports the exact changed output byte, and retains all three reconstructed
 pointer identities before normal mapping release and session reuse.
 
+A second real entry uses nonzero native cursors: with two input bytes and one
+output byte already committed, it reads `input[1]`, appends to `output[1]`,
+and advances both cursors from one to two. The returned MBNPC1 response keeps
+the original output prefix, untouched guest memory, and all pointer identities
+before clean release and reuse.
+
 A separate real POSIX call transfers zero guest-memory words, zero input, and
 zero output capacity to a guard-miss stub. The worker reconstructs empty
 buffers without changing pointer identities, returns the exact 74-byte call

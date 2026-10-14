@@ -593,6 +593,10 @@ A distinct single-resident lease cache
   output, and advances both progress cursors. MBNPC1 returns exact modified
   output with intact pointer identity and independent child recovery.
 
+  A further native entry consumes the second input byte and appends it at a
+  nonzero output cursor. Both cursors advance once without changing the
+  already-committed output prefix or guest memory.
+
   A real native guard-miss entry also accepts an MBNPC1 call with zero memory
   words, zero input, and zero output, preserving pointer identity and release.
 

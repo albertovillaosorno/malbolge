@@ -72076,6 +72076,119 @@ fn assert_posix_worker_admits_normative_termination_tags(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_advances_nonzero_transfer_cursors(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    // RCX holds the ABI state. Read input[input_consumed], write
+    // output[output_len], then increment both 64-bit progress counters.
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![
+            0x48, 0x8b, 0x41, 0x10, 0x48, 0x03, 0x41, 0x20, 0x8a, 0x10, 0x48,
+            0x8b, 0x41, 0x28, 0x48, 0x03, 0x41, 0x38, 0x88, 0x10, 0x48, 0xff,
+            0x41, 0x20, 0x48, 0xff, 0x41, 0x38, 0xb8, 1, 0, 0, 0, 0xc3,
+        ]
+        .into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("offset transfer stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("offset transfer stub RX seal failed"));
+    };
+    assert_posix_worker_nonzero_transfer_response(session, executable)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_nonzero_transfer_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (template, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&template)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("offset transfer mapping ID absent")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    encoded
+        .get_mut(32..40)
+        .ok_or("offset transfer input capacity absent")?
+        .copy_from_slice(&2u64.to_le_bytes());
+    encoded
+        .get_mut(48..56)
+        .ok_or("offset transfer input cursor absent")?
+        .copy_from_slice(&1u64.to_le_bytes());
+    encoded
+        .get_mut(56..64)
+        .ok_or("offset transfer output cursor absent")?
+        .copy_from_slice(&1u64.to_le_bytes());
+    let input_offset = template
+        .memory()
+        .len()
+        .checked_mul(4)
+        .and_then(|len| {
+            len.checked_add(NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES)
+        })
+        .ok_or("offset transfer input position overflow")?;
+    for byte in [0xb3u8, 0x7f] {
+        encoded.insert(input_offset, byte);
+    }
+    let request = decode_native_process_call_request(&encoded)
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let framed = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("offset native exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&framed, &request)
+        .map_err(|error| error.to_string())?;
+    if request.input() != [0x7f, 0xb3]
+        || request.output() != [0x10, 0, 0]
+        || response.raw_status() != 1i32
+        || response.mapping_id() != executable.mapping_id()
+        || response.state()
+            != request.state().with_input_consumed(2).with_output_len(2)
+        || response.memory() != request.memory()
+        || response.output() != [0x10, 0xb3, 0]
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("offset native transfer shape drifted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_advances_nonzero_native_io_cursors()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("native_offset_transfer")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("offset transfer spawn: {error:?}"))?;
+        assert_posix_worker_advances_nonzero_transfer_cursors(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_transfers_input_into_output(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
