@@ -168,6 +168,7 @@ struct mb_worker_mapping {
     mb_u64 id;
     mb_u8 *base;
     size_t len;
+    mb_u8 *reservation;
     enum mb_native_process_memory_permission permission;
 };
 
@@ -287,7 +288,10 @@ static void mb_worker_remove_mapping(
 static void mb_worker_release_all(struct mb_worker_state *worker)
 {
     for (size_t index = 0U; index < worker->count; ++index) {
-        (void)VirtualFree(worker->mappings[index].base, 0U, MB_WIN_MEM_RELEASE);
+        (void)VirtualFree(
+            worker->mappings[index].reservation,
+            0U,
+            MB_WIN_MEM_RELEASE);
     }
     mb_worker_free(worker->mappings);
     worker->mappings = NULL;
@@ -366,28 +370,31 @@ static int mb_worker_handle_allocate(
             response,
             response_len);
     }
-    void *memory = VirtualAlloc(
+    size_t reservation_len = 0U;
+    if (!mb_worker_add_size(byte_len, alignment - 1U, &reservation_len)) {
+        return mb_worker_memory_failure(
+            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
+            MB_WORKER_ALLOCATION_FAILURE,
+            response,
+            response_len);
+    }
+    void *reservation = VirtualAlloc(
         NULL,
-        byte_len,
+        reservation_len,
         MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT,
         MB_WIN_PAGE_READWRITE);
-    if (memory == NULL) {
+    if (reservation == NULL) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             mb_worker_platform_code(),
             response,
             response_len);
     }
-    if (((mb_uintptr)memory % alignment) != 0U) {
-        (void)VirtualFree(memory, 0U, MB_WIN_MEM_RELEASE);
-        return mb_worker_memory_failure(
-            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
-            MB_WORKER_ALIGNMENT_FAILURE,
-            response,
-            response_len);
-    }
+    const size_t remainder = (size_t)((mb_uintptr)reservation % alignment);
+    const size_t leading = remainder == 0U ? 0U : alignment - remainder;
+    mb_u8 *memory = (mb_u8 *)reservation + leading;
     if (!mb_worker_reserve_mapping(worker)) {
-        (void)VirtualFree(memory, 0U, MB_WIN_MEM_RELEASE);
+        (void)VirtualFree(reservation, 0U, MB_WIN_MEM_RELEASE);
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             MB_WORKER_ALLOCATION_FAILURE,
@@ -395,7 +402,7 @@ static int mb_worker_handle_allocate(
             response_len);
     }
     if (worker->next_id == 0U) {
-        (void)VirtualFree(memory, 0U, MB_WIN_MEM_RELEASE);
+        (void)VirtualFree(reservation, 0U, MB_WIN_MEM_RELEASE);
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             MB_WORKER_ALLOCATION_FAILURE,
@@ -409,6 +416,7 @@ static int mb_worker_handle_allocate(
     mapping->id = id;
     mapping->base = memory;
     mapping->len = byte_len;
+    mapping->reservation = reservation;
     mapping->permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
     worker->count += 1U;
 
@@ -630,7 +638,10 @@ static int mb_worker_handle_release(
             response,
             response_len);
     }
-    if (VirtualFree(mapping->base, 0U, MB_WIN_MEM_RELEASE) == MB_WIN_FALSE) {
+    if (VirtualFree(
+            mapping->reservation,
+            0U,
+            MB_WIN_MEM_RELEASE) == MB_WIN_FALSE) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_RELEASE,
             mb_worker_platform_code(),

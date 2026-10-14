@@ -1124,8 +1124,13 @@ teardown while exposing only the requested aligned code range.
 A host-real regression reproduces rejection of 64-KiB alignment before the
 fix and checks eight simultaneous aligned mappings through copy, RX protection,
 native dispatch, and independent release. Reservation-length overflow rejects
-without creating a mapping or poisoning the retained child. Windows alignment
-continues to follow its explicit platform allocation/failure contract.
+without creating a mapping or poisoning the retained child.
+
+The Windows worker now mirrors checked over-reservation: it exposes an aligned
+subrange of a committed `VirtualAlloc` reservation and keeps the original base
+for `VirtualFree` in both explicit release and child teardown. Native Windows
+execution remains unverified on this host; pinned x86-64 and AArch64 COFF
+cross-compilation checks that the worker stays warning-clean and CRT-free.
 
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then

@@ -577,6 +577,11 @@ A distinct single-resident lease cache
   aligned multi-page mapping executes from byte 8,192 after full-range
   synchronization and releases its original reservation cleanly.
 
+  Windows now likewise over-reserves with checked arithmetic and retains the
+  original `VirtualAlloc` base for full release. Both Windows ISA objects
+  still cross-compile with the pinned CRT-free import contract; native Windows
+  execution remains an explicitly separate compatibility follow-up.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.
