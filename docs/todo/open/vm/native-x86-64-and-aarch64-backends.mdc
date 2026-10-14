@@ -618,6 +618,10 @@ A distinct single-resident lease cache
   error codes 38/109 mean clean EOF only before any header bytes are received;
   after a partial header the worker rejects the transport framing.
 
+  Overreported `ReadFile` byte counts no longer impersonate clean EOF on the
+  first header read. Controlled shims verify invalid read or write counts
+  fail closed, preserving the Windows framing trust boundary.
+
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.

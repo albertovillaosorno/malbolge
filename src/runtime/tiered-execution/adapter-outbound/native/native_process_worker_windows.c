@@ -990,7 +990,10 @@ static int mb_worker_read_exact(
             }
             return -1;
         }
-        if (count == 0U || count > chunk) {
+        if (count > chunk) {
+            return -1;
+        }
+        if (count == 0U) {
             return clean_eof_allowed != 0 && read == 0U ? 0 : -1;
         }
         read += (size_t)count;

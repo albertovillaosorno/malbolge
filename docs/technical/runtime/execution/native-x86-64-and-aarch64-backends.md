@@ -1195,6 +1195,11 @@ first header byte; the same errors after partial header input fail closed.
 This verifies Windows transport control flow under mocks, not Windows kernel
 pipe behavior on an actual Windows host.
 
+An adversarial fake `ReadFile` that reports more bytes than requested exposed
+a classification bug: the worker previously treated that impossible count
+at header start as clean EOF. Only a genuine zero-byte read now admits clean
+EOF; overreported reads and writes fail closed without accepting a frame.
+
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing
