@@ -865,11 +865,12 @@ leave the caller's original state unchanged.
 Deterministic persistent workers prove the complete load/call/release
 transaction plus remote-memory and call-response rejection paths.
 
-A host-real verifier-rollback fixture runs two native stubs that mutate a guest
-memory word or output byte before returning `GuardMiss`. The worker reports
-those real mutations over MBNPC1, but the existing semantic completion checker
-rejects each non-atomic miss and restores the original caller buffers. The
-retained child can still release the mappings and handle later allocations.
+A host-real verifier-rollback fixture runs native stubs that mutate guest
+memory, output, or one of the accumulator, code-pointer, and data-pointer
+registers before returning `GuardMiss`. The worker reports the real mutation
+over MBNPC1; Rust semantic completion rejects every non-atomic miss as the
+appropriate state, memory, or output violation, restores caller buffers, and
+leaves each mapping releasable on the retained child.
 
 A complementary host-real success-forgery regression invokes a native entry
 that returns `Applied` while leaving the required register, memory, and output

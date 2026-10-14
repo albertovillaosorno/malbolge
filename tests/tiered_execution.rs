@@ -72863,6 +72863,31 @@ fn native_process_posix_worker_survives_mutated_native_scalar_capacities()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_guard_miss_mutation_matches(
+    response: &NativeProcessCallResponse,
+    request: &NativeProcessCallRequest,
+    expected_surface: NativeRegionMutationSurface,
+) -> bool {
+    match expected_surface {
+        NativeRegionMutationSurface::State => {
+            response.state() != request.state()
+                && response.memory() == request.memory()
+                && response.output() == request.output()
+        },
+        NativeRegionMutationSurface::Memory => {
+            response.state() == request.state()
+                && response.memory() != request.memory()
+                && response.output() == request.output()
+        },
+        NativeRegionMutationSurface::Output => {
+            response.state() == request.state()
+                && response.memory() == request.memory()
+                && response.output() != request.output()
+        },
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rolls_back_mutating_guard_miss(
     session: &mut NativeProcessSession,
     executable: NativeExecutableMappingReport,
@@ -72891,25 +72916,18 @@ fn assert_posix_worker_rolls_back_mutating_guard_miss(
         NativeRegionBuffers::new(&mut memory, &input, &mut output),
     )?;
     let request = invocation.process_request();
-    let mut bytes = encode_native_process_call_request(&request)
-        .map_err(|error| error.to_string())?;
-    bytes
-        .get_mut(16..24)
-        .ok_or("guard-miss entry offset absent")?
-        .fill(0);
-    let limit = native_process_call_response_byte_limit(&request)
-        .map_err(|error| error.to_string())?;
-    let received = session
-        .exchange(&bytes, limit)
-        .map_err(|error| format!("guard-miss exchange: {error:?}"))?;
-    let response = decode_native_process_call_response(&received, &request)
-        .map_err(|error| error.to_string())?;
+    let response =
+        posix_worker_verified_scalar_response(session, executable, &request)?;
+    let changed_surface = posix_worker_guard_miss_mutation_matches(
+        &response,
+        &request,
+        expected_surface,
+    );
     if response.raw_status() != 1i32
         || !response.pointers_unchanged()
-        || (response.memory() == request.memory()
-            && response.output() == request.output())
+        || !changed_surface
     {
-        return Err(String::from("native guard miss did not change buffers"));
+        return Err(String::from("native guard miss mutation shape drifted"));
     }
     let raw = invocation
         .apply_process_response(&response)
@@ -72948,8 +72966,20 @@ fn assert_posix_worker_native_guard_miss_rollback(
             ],
             NativeRegionMutationSurface::Output,
         ),
+        (
+            vec![0x83, 0x71, 0x40, 1, 0xb8, 1, 0, 0, 0, 0xc3],
+            NativeRegionMutationSurface::State,
+        ),
+        (
+            vec![0x83, 0x71, 0x44, 1, 0xb8, 1, 0, 0, 0, 0xc3],
+            NativeRegionMutationSurface::State,
+        ),
+        (
+            vec![0x83, 0x71, 0x48, 1, 0xb8, 1, 0, 0, 0, 0xc3],
+            NativeRegionMutationSurface::State,
+        ),
     ];
-    for (code, surface) in stubs {
+    for (case_index, (code, surface)) in stubs.into_iter().enumerate() {
         let writable = posix_worker_allocate(session)?;
         let request = NativeProcessMemoryRequest::Copy {
             code: code.into_boxed_slice(),
@@ -72970,7 +73000,8 @@ fn assert_posix_worker_native_guard_miss_rollback(
         };
         assert_posix_worker_rolls_back_mutating_guard_miss(
             session, executable, surface,
-        )?;
+        )
+        .map_err(|error| format!("guard-miss case {case_index}: {error}"))?;
         posix_worker_release(session, executable)?;
     }
     assert_posix_worker_allocates_and_releases(session)

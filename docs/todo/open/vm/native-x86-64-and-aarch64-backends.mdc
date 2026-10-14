@@ -404,8 +404,9 @@ A distinct single-resident lease cache
   Process framing is implemented below, while concrete OS ownership remains
   isolated behind the process host.
 
-  Real native guard-miss stubs now mutate a guest memory word or output byte.
-  The semantic verifier rejects these non-atomic misses and restores caller
+  Real native guard-miss stubs now mutate guest memory, output, and each
+  scalar machine register (accumulator, code pointer, or data pointer).
+  Semantic verification rejects each non-atomic miss and restores caller
   buffers, while the retained child can release and allocate normally.
 
   A host-real false `Applied` native stub also fails semantic verification
