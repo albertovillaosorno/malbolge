@@ -875,7 +875,9 @@ A complementary host-real success-forgery regression invokes a native entry
 that returns `Applied` while leaving the required register, memory, and output
 transition incomplete. The semantic verifier rejects that false status as
 `AppliedObservation`, restores the original caller buffers, and retains the
-same worker for cleanup and subsequent allocation.
+same worker for cleanup and subsequent allocation. A second stub returns
+an unknown native status (`9`), which is rejected as an explicit status error
+with the same rollback and retained-worker recovery.
 
 `native/native_process_worker_posix.c` now supplies the first concrete child
 implementation. On Linux x86-64 it allocates anonymous RW mappings, copies exact

@@ -71904,9 +71904,35 @@ fn assert_posix_worker_native_guard_miss_rollback(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn assert_posix_worker_rejects_false_native_applied(
+fn posix_worker_unverified_status_rejected(
+    completion: Result<
+        NativeRegionInvocationOutcome,
+        VerifiedDirectInvocationError,
+    >,
+    expected_status: i32,
+) -> bool {
+    match expected_status {
+        0i32 => {
+            completion
+                == Err(VerifiedDirectInvocationError::Invocation(
+                    NativeRegionInvocationError::AppliedObservation,
+                ))
+        },
+        9i32 => matches!(
+            completion,
+            Err(VerifiedDirectInvocationError::Invocation(
+                NativeRegionInvocationError::Status(error),
+            )) if error.code() == 9i32
+        ),
+        _ => false,
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_unverified_native_status(
     session: &mut NativeProcessSession,
     executable: NativeExecutableMappingReport,
+    expected_status: i32,
 ) -> Result<(), String> {
     let program = native_verified_output_program()?;
     let artifact = select_verified_direct_native(
@@ -71944,7 +71970,7 @@ fn assert_posix_worker_rejects_false_native_applied(
         .map_err(|error| format!("false Applied exchange: {error:?}"))?;
     let response = decode_native_process_call_response(&bytes, &request)
         .map_err(|error| error.to_string())?;
-    if response.raw_status() != 0i32
+    if response.raw_status() != expected_status
         || response.state() != request.state()
         || response.memory() != request.memory()
         || response.output() != request.output()
@@ -71955,10 +71981,10 @@ fn assert_posix_worker_rejects_false_native_applied(
     let raw = invocation
         .apply_process_response(&response)
         .map_err(|error| error.to_string())?;
-    if invocation.complete(raw)
-        != Err(VerifiedDirectInvocationError::Invocation(
-            NativeRegionInvocationError::AppliedObservation,
-        ))
+    let completion = invocation.complete(raw);
+    let rejected =
+        posix_worker_unverified_status_rejected(completion, expected_status);
+    if !rejected
         || memory != native_verified_output_memory()
         || output != [0x10, 0, 0]
         || session.poisoned()
@@ -71970,7 +71996,7 @@ fn assert_posix_worker_rejects_false_native_applied(
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
-fn native_process_posix_worker_rolls_back_false_native_applied()
+fn native_process_posix_worker_rejects_false_applied_and_unknown_status()
 -> Result<(), String> {
     let (directory, host) =
         native_process_posix_worker_fixture("false_native_applied")?;
@@ -71979,29 +72005,32 @@ fn native_process_posix_worker_rolls_back_false_native_applied()
         let mut session = NativeProcessSessionConfig::new(worker)
             .spawn()
             .map_err(|error| format!("false Applied spawn: {error:?}"))?;
-        let writable = posix_worker_allocate(&mut session)?;
-        let request = NativeProcessMemoryRequest::Copy {
-            code: vec![0xb8, 0, 0, 0, 0, 0xc3].into_boxed_slice(),
-            mapping: writable,
-        };
-        let NativeProcessMemoryResponse::Copy(_report) =
-            posix_worker_memory_exchange(&mut session, &request)?
-        else {
-            return Err(String::from("false Applied stub copy failed"));
-        };
-        let NativeProcessMemoryResponse::Protect(executable) =
-            posix_worker_memory_exchange(
+        for status in [0u8, 9] {
+            let writable = posix_worker_allocate(&mut session)?;
+            let request = NativeProcessMemoryRequest::Copy {
+                code: vec![0xb8, status, 0, 0, 0, 0xc3].into_boxed_slice(),
+                mapping: writable,
+            };
+            let NativeProcessMemoryResponse::Copy(_report) =
+                posix_worker_memory_exchange(&mut session, &request)?
+            else {
+                return Err(String::from("unverified native stub copy failed"));
+            };
+            let NativeProcessMemoryResponse::Protect(executable) =
+                posix_worker_memory_exchange(
+                    &mut session,
+                    &NativeProcessMemoryRequest::Protect(writable),
+                )?
+            else {
+                return Err(String::from("unverified native RX seal failed"));
+            };
+            assert_posix_worker_rejects_unverified_native_status(
                 &mut session,
-                &NativeProcessMemoryRequest::Protect(writable),
-            )?
-        else {
-            return Err(String::from("false Applied stub RX seal failed"));
-        };
-        assert_posix_worker_rejects_false_native_applied(
-            &mut session,
-            executable,
-        )?;
-        posix_worker_release(&mut session, executable)?;
+                executable,
+                i32::from(status),
+            )?;
+            posix_worker_release(&mut session, executable)?;
+        }
         assert_posix_worker_allocates_and_releases(&mut session)
     })();
     drop(host);

@@ -410,7 +410,8 @@ A distinct single-resident lease cache
 
   A host-real false `Applied` native stub also fails semantic verification
   without the required transition; caller buffers roll back and the child
-  remains available for release and a new mapping.
+  remains available for release and a new mapping. An unknown native status
+  (`9`) is likewise rejected without losing that clean recovery.
 
   The `MBNPC1` process-call wire contract now frames that transfer in
   little-endian bytes with stable 77-byte request and 74-byte response prefixes.
