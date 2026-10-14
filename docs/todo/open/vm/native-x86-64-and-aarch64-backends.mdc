@@ -659,6 +659,10 @@ A distinct single-resident lease cache
   address for a new 128-KiB-aligned mapping. Stale IDs cannot copy, protect,
   release, or dispatch into the new owner despite address equality.
 
+  Two independent simulated Windows worker tables can both issue numeric
+  mapping ID one without sharing authority. Release in the first leaves copy,
+  sealing, synchronization, and release intact in the second worker.
+
   Simulated mapping-ID exhaustion issues `u64::MAX` only once. Further Windows
   allocations fail before creating any new platform reservation, while the
   last live mapping stays writable and releasable without recycling zero.

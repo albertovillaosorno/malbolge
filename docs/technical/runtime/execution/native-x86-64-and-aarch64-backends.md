@@ -1240,6 +1240,11 @@ address after release into a new 128-KiB-aligned mapping. The stale mapping
 ID cannot copy, protect, release, or dispatch native code through the reused
 address, while the new ID retains ordinary copy and release authority.
 
+An independent-state Windows simulation issues mapping ID one in each of two
+worker tables with different backing addresses. Releasing the first leaves
+the second fully writable, sealable, synchronizable, and releasable; the first
+can allocate a fresh ID two without affecting its sibling's ownership.
+
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large
 memory/input/output lengths, and too few words or bytes for the frame.

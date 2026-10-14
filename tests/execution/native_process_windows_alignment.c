@@ -1607,6 +1607,91 @@ static int check_stale_id_with_recycled_base(
     return 0;
 }
 
+static int check_independent_worker_mapping_ids(void)
+{
+    struct mb_worker_state first = {.next_id = 1U};
+    struct mb_worker_state second = {.next_id = 1U};
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(&first, request, 26U,
+            &response, &len) || len != 35U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 first_id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 first_base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    if (!mb_worker_handle_allocate(&second, request, 26U,
+            &response, &len) || len != 35U) {
+        mb_worker_free(response);
+        return 2;
+    }
+    const mb_u64 second_id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 second_base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    if (first_id != 1U || second_id != 1U
+        || first_base == second_base) {
+        return 3;
+    }
+    mb_native_process_write_u64(&request[9], first_id);
+    mb_native_process_write_u64(&request[17], first_base);
+    mb_native_process_write_u64(&request[25], 64U);
+    if (!mb_worker_handle_release(&first, request, 33U,
+            &response, &len) || len != 10U || first.count != 0U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[17], second_base);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "UVWXYZ", 6U);
+    if (!mb_worker_handle_copy(&second, request, 48U,
+            &response, &len) || len != 32U
+        || memcmp(&response[26], "UVWXYZ", 6U) != 0) {
+        mb_worker_free(response);
+        return 5;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_protect(&second, request, 34U,
+            &response, &len) || len != 35U
+        || response[34] != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        mb_worker_free(response);
+        return 6;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_sync(&second, request, 33U,
+            &response, &len) || len != 34U) {
+        mb_worker_free(response);
+        return 7;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(&second, request, 33U,
+            &response, &len) || len != 10U || second.count != 0U) {
+        mb_worker_free(response);
+        return 8;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(&first, request, 26U,
+            &response, &len) || len != 35U
+        || mb_native_process_read_u64(&response[10]) != 2U) {
+        mb_worker_free(response);
+        return 9;
+    }
+    mb_worker_free(response);
+    mb_worker_release_all(&first);
+    mb_worker_release_all(&second);
+    return first.count == 0U && second.count == 0U ? 0 : 10;
+}
+
 static int check_mapping_id_exhaustion(struct mb_worker_state *worker)
 {
     mb_u8 request[48] = {0};
@@ -1922,6 +2007,10 @@ int main(void)
     const int memory_failures = check_malformed_memory_commands(&worker);
     if (memory_failures != 0) {
         return 40 + memory_failures;
+    }
+    const int independent = check_independent_worker_mapping_ids();
+    if (independent != 0) {
+        return 75 + independent;
     }
     const int stale = check_stale_id_with_recycled_base(&worker);
     if (stale != 0) {
