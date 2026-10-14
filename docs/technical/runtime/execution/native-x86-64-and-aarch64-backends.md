@@ -1024,6 +1024,11 @@ live mapping's original address and length. The POSIX worker rejects mixed-ID
 copy, RX-protect, release, and cache-sync commands; both mappings retain their
 separate code-copy, protection, synchronization, and release authority.
 
+A distinct host-real dispatch regression keeps two RX mappings alive with
+separate return-code stubs (`GuardMiss` and unverified `Applied`). Alternating
+native-call mapping IDs always selects the matching stub. Releasing the first
+mapping invalidates only its ID; the second remains executable and releasable.
+
 A further host-real regression seals a mapping and attempts instruction-cache
 synchronization with a forged start, truncated range, or unknown mapping ID.
 Each remote command fails; exact synchronization then succeeds for the retained

@@ -536,6 +536,10 @@ A distinct single-resident lease cache
   one mapping's identity with the other's geometry. Copy, protect, release,
   and sync all fail; valid distinct code copies and lifecycle operations work.
 
+  Distinct simultaneous RX mappings now expose separate raw native statuses
+  on alternating call IDs. Releasing one disables only its native entry,
+  while the other remains callable and releasable on the retained child.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 

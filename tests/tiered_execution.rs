@@ -71098,6 +71098,111 @@ fn native_process_posix_worker_invokes_nonzero_native_entry_offset()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_status_entry(
+    session: &mut NativeProcessSession,
+    status: u8,
+) -> Result<NativeExecutableMappingReport, String> {
+    let writable = posix_worker_allocate(session)?;
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, status, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(report) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("dispatch stub copy failed"));
+    };
+    if report.mapping_id() != writable.mapping_id()
+        || report.copied_code() != [0xb8, status, 0, 0, 0, 0xc3]
+    {
+        return Err(String::from("dispatch stub copy identity drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("dispatch stub RX transition failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_call_dispatch_status(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+    raw_status: i32,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("dispatch mapping ID missing")?
+        .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let framed = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("native dispatch exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&framed, &request)
+        .map_err(|error| error.to_string())?;
+    if response.raw_status() != raw_status
+        || response.mapping_id() != mapping.mapping_id()
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("native dispatch selected wrong mapping"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_dispatches_two_live_executable_mappings(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let guard_miss = posix_worker_install_status_entry(session, 1)?;
+    let applied = posix_worker_install_status_entry(session, 0)?;
+    if guard_miss.mapping_id() == applied.mapping_id() {
+        return Err(String::from("dispatch mapping IDs aliased"));
+    }
+    for _ in 0..3usize {
+        assert_posix_worker_call_dispatch_status(session, guard_miss, 1)?;
+        assert_posix_worker_call_dispatch_status(session, applied, 0)?;
+    }
+    posix_worker_release(session, guard_miss)?;
+    assert_posix_worker_call_dispatch_status(session, guard_miss, 2)?;
+    assert_posix_worker_call_dispatch_status(session, applied, 0)?;
+    posix_worker_release(session, applied)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_dispatches_two_live_executable_mappings()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("two_live_rx_dispatch")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("two RX dispatch spawn: {error:?}"))?;
+        assert_posix_worker_dispatches_two_live_executable_mappings(
+            &mut session,
+        )
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_rejects_out_of_range_entry_offset()
 -> Result<(), String> {
