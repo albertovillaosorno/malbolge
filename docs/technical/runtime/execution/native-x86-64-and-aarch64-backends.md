@@ -1221,6 +1221,12 @@ output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing
 buffers; none of the substituted pointers is trusted for response bytes.
 
+A hostile simulated entry now also replaces all five buffer-size and progress
+fields with `u64::MAX` after modifying one memory word and output byte. The
+Windows worker reports the untrusted scalar changes but bounds its encoded
+payload by the pre-call allocations (one word and three output bytes). This
+proves post-call scalar corruption cannot enlarge the worker response frame.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.

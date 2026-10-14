@@ -638,6 +638,11 @@ A distinct single-resident lease cache
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.
 
+  A hostile Windows handler entry now sets every post-call length and cursor
+  to `u64::MAX`; the worker returns those untrusted scalars but only the
+  original one-word memory and three-byte output payload. Response geometry
+  never follows mutated native counts.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.
