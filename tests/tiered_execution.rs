@@ -72590,7 +72590,7 @@ fn native_process_posix_worker_rolls_back_invalid_exit_termination()
         let writable = posix_worker_allocate(&mut session)?;
         // mov byte ptr [rcx + 76], 255; mov eax, Applied; ret
         let copy = NativeProcessMemoryRequest::Copy {
-            code: vec![0xc6, 0x41, 0x4c, 0xff, 0xb8, 0, 0, 0, 0, 0, 0xc3]
+            code: vec![0xc6, 0x41, 0x4c, 0xff, 0xb8, 0, 0, 0, 0, 0xc3]
                 .into_boxed_slice(),
             mapping: writable,
         };
