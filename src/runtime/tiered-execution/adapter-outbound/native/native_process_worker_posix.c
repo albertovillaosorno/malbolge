@@ -257,6 +257,13 @@ static int mb_worker_handle_allocate(
             response,
             response_len);
     }
+    if (worker->next_id == 0U) {
+        return mb_worker_memory_failure(
+            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
+            MB_WORKER_ALLOCATION_FAILURE,
+            response,
+            response_len);
+    }
     size_t reservation_len = 0U;
     if (!mb_worker_add_size(byte_len, alignment - 1U, &reservation_len)) {
         return mb_worker_memory_failure(
@@ -283,14 +290,6 @@ static int mb_worker_handle_allocate(
     const size_t leading = remainder == 0U ? 0U : alignment - remainder;
     mb_u8 *memory = (mb_u8 *)reservation + leading;
     if (!mb_worker_reserve_mapping(worker)) {
-        (void)munmap(reservation, reservation_len);
-        return mb_worker_memory_failure(
-            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
-            MB_WORKER_ALLOCATION_FAILURE,
-            response,
-            response_len);
-    }
-    if (worker->next_id == 0U) {
         (void)munmap(reservation, reservation_len);
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,

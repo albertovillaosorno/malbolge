@@ -1286,6 +1286,81 @@ static int check_malformed_memory_commands(struct mb_worker_state *worker)
     return check_mapping_lifecycle(worker) == 0 ? 0 : 21;
 }
 
+static int check_mapping_id_exhaustion(struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    const size_t reservations_before = reservation_count;
+    const size_t releases_before = release_count;
+    const mb_u64 last_id = (mb_u64)-1;
+    worker->next_id = last_id;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(
+            worker, request, 26U, &response, &response_len)
+        || response_len != 35U
+        || mb_native_process_read_u64(&response[10]) != last_id
+        || worker->next_id != 0U || worker->count != 1U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    if (!mb_worker_handle_allocate(
+            worker, request, 26U, &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker->count != 1U || worker->next_id != 0U
+        || reservation_count != reservations_before + 1U
+        || release_count != releases_before) {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], last_id);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "ABCDEF", 6U);
+    if (!mb_worker_handle_copy(
+            worker, request, 48U, &response, &response_len)
+        || response_len != 32U
+        || memcmp(&response[26], "ABCDEF", 6U) != 0) {
+        mb_worker_free(response);
+        return 3;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(
+            worker, request, 33U, &response, &response_len)
+        || response_len != 10U || worker->count != 0U
+        || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(
+            worker, request, 26U, &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker->next_id != 0U || worker->count != 0U
+        || reservation_count != reservations_before + 1U
+        || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        return 5;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -1345,6 +1420,10 @@ int main(void)
     const int memory_failures = check_malformed_memory_commands(&worker);
     if (memory_failures != 0) {
         return 40 + memory_failures;
+    }
+    const int exhausted = check_mapping_id_exhaustion(&worker);
+    if (exhausted != 0) {
+        return 60 + exhausted;
     }
     return 0;
 }

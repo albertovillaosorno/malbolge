@@ -1213,6 +1213,11 @@ forged code-copy identity and lengths, premature cache synchronization,
 invalid protection and release fields, and unknown commands. The worker then
 releases the original reservation and successfully reuses the same child.
 
+The Windows memory shim now also exercises exhaustion of the monotonically
+allocated 64-bit mapping ID. The final valid ID remains writable and can be
+released after the counter becomes zero; later allocation attempts fail with
+no ID reuse and no new platform reservation on either POSIX or Windows.
+
 The same host simulation drives the concrete Win32 framed I/O loops using
 partial two-byte `ReadFile` and `WriteFile` transfers. It verifies exact frame
 reconstruction, empty-frame handling, and rejection of truncated headers,
