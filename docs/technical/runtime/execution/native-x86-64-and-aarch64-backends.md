@@ -1204,6 +1204,12 @@ without counting synchronization or demoting the existing RX mapping.
 A retry succeeds on that same mapping before release, distinguishing a
 recoverable cache API error from an admitted synchronized native entry.
 
+The simulated Windows RX sync boundary now rejects nine forged request
+variants: stale ID, addresses one byte outside the mapped start, short,
+long, empty or overflowing lengths, and short/long wire frames. None calls
+`FlushInstructionCache` or changes mapping ownership. The original full-span
+synchronization and subsequent release still succeed on the same mapping.
+
 The controlled Win32-host compilation also runs the actual Windows call
 handler against Clang `ms_abi` C entries on Linux x86-64. Its MBNPC1 response
 captures one changed memory word, input/output cursor progress, an output byte,

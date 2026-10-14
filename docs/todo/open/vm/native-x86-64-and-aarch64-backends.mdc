@@ -629,6 +629,10 @@ A distinct single-resident lease cache
   without claiming successful synchronization; retrying the exact range
   succeeds before the mapping is released.
 
+  Nine forged Windows RX synchronization requests now reject stale IDs,
+  off-by-one start addresses, invalid ranges, and truncated/extended frames.
+  None calls the cache API; a valid full-range retry and release remain healthy.
+
   The Windows handler is now driven by Clang `ms_abi` C entries through MBNPC1:
   state, registers, input/output progress, output bytes, and pointer identity
   round-trip exactly. Non-RX or unknown IDs, out-of-range entries, malformed

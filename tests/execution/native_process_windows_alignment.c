@@ -2054,6 +2054,112 @@ static int check_process_loop_cleanup(int scenario)
     return valid && multi_valid && lifecycle_valid ? 0 : 1;
 }
 
+static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
+{
+    mb_u8 request[34] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_protect(worker, request, 34U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    const size_t syncs_before = sync_count;
+    const size_t releases_before = release_count;
+    for (size_t case_index = 0U; case_index < 9U; ++case_index) {
+        mb_u8 forged[34];
+        memcpy(forged, request, sizeof(forged));
+        size_t length = 33U;
+        switch (case_index) {
+        case 0U:
+            mb_native_process_write_u64(&forged[9], id + 1U);
+            break;
+        case 1U:
+            mb_native_process_write_u64(&forged[17], base + 1U);
+            break;
+        case 2U:
+            mb_native_process_write_u64(&forged[17], base - 1U);
+            break;
+        case 3U:
+            mb_native_process_write_u64(&forged[25], 63U);
+            break;
+        case 4U:
+            mb_native_process_write_u64(&forged[25], 65U);
+            break;
+        case 5U:
+            mb_native_process_write_u64(&forged[25], 0U);
+            break;
+        case 6U:
+            mb_native_process_write_u64(&forged[25], (mb_u64)-1);
+            break;
+        case 7U:
+            length = 32U;
+            break;
+        default:
+            length = 34U;
+            break;
+        }
+        forged[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+            = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+        if (!mb_worker_handle_memory(worker, forged, length,
+                &response, &response_len)
+            || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+            || response == NULL
+            || response[MB_NATIVE_PROCESS_OUTCOME_OFFSET]
+                != MB_NATIVE_PROCESS_MEMORY_FAILURE
+            || worker->count != 1U
+            || worker->mappings[0].id != id
+            || worker->mappings[0].permission
+                != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
+            || sync_count != syncs_before
+            || release_count != releases_before) {
+            mb_worker_free(response);
+            return (int)(case_index + 3U);
+        }
+        mb_worker_free(response);
+    }
+    request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+        = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+    if (!mb_worker_handle_memory(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
+        || sync_count != syncs_before + 1U) {
+        mb_worker_free(response);
+        return 13;
+    }
+    mb_worker_free(response);
+    request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+        = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+    if (!mb_worker_handle_memory(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker->count != 0U || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        return 14;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -2121,6 +2227,10 @@ int main(void)
     const int stale = check_stale_id_with_recycled_base(&worker);
     if (stale != 0) {
         return 57 + stale;
+    }
+    const int rejected_sync = check_rejected_rx_sync_ranges(&worker);
+    if (rejected_sync != 0) {
+        return 90 + rejected_sync;
     }
     const int exhausted = check_mapping_id_exhaustion(&worker);
     if (exhausted != 0) {
