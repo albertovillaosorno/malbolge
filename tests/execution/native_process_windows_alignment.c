@@ -733,6 +733,59 @@ static int check_native_corrupted_shape_response(
     return valid ? 0 : 2;
 }
 
+static int check_invalid_call_framing(
+    struct mb_worker_state *worker, const mb_u8 *valid)
+{
+    const size_t before = native_entry_invocations;
+    for (size_t index = 0U; index < 10U; ++index) {
+        mb_u8 frame[87] = {0};
+        mb_worker_copy_bytes(frame, valid, 86U);
+        size_t request_len = 86U;
+        switch (index) {
+        case 0U:
+            request_len = 76U;
+            break;
+        case 1U:
+            frame[0] ^= 0xffU;
+            break;
+        case 2U:
+            mb_native_process_write_u64(&frame[24], (mb_u64)-1);
+            break;
+        case 3U:
+            mb_native_process_write_u64(&frame[32], (mb_u64)-1);
+            break;
+        case 4U:
+            mb_native_process_write_u64(&frame[40], (mb_u64)-1);
+            break;
+        case 5U:
+            mb_native_process_write_u64(&frame[24], 0U);
+            break;
+        case 6U:
+            mb_native_process_write_u64(&frame[32], 0U);
+            break;
+        case 7U:
+            mb_native_process_write_u64(&frame[40], 0U);
+            break;
+        case 8U:
+            request_len = 85U;
+            break;
+        default:
+            request_len = 87U;
+            break;
+        }
+        mb_u8 *response = NULL;
+        size_t response_len = 0U;
+        if (mb_worker_handle_call(
+                worker, frame, request_len, &response, &response_len)
+            || response != NULL || response_len != 0U
+            || native_entry_invocations != before) {
+            mb_worker_free(response);
+            return (int)(index + 1U);
+        }
+    }
+    return 0;
+}
+
 static int check_native_call_guarding(struct mb_worker_state *worker)
 {
     mb_u8 allocation[33] = {0};
@@ -779,6 +832,9 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
     if (call_result != 0 || memcmp(request, unchanged_request,
             sizeof(request)) != 0) {
         return 20 + call_result;
+    }
+    if (check_invalid_call_framing(worker, request) != 0) {
+        return 14;
     }
     worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
     if (check_native_call_shape(

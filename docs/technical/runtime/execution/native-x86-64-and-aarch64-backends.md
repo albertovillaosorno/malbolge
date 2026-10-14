@@ -1201,6 +1201,12 @@ entry offsets, impossible I/O cursors, and unsupported termination tags.
 Request bytes remain intact, and the denied calls never execute the host
 entry. This exercises handler framing, not Windows ABI or guest semantics.
 
+The Windows host simulation also sends ten malformed MBNPC1 frames to the
+same worker: short or excess payloads, incorrect magic, impossible large
+memory/input/output lengths, and too few words or bytes for the frame.
+Each fails during shape parsing before native dispatch or response allocation.
+A subsequent valid call on the same mapping still executes normally.
+
 The same host simulation drives the concrete Win32 framed I/O loops using
 partial two-byte `ReadFile` and `WriteFile` transfers. It verifies exact frame
 reconstruction, empty-frame handling, and rejection of truncated headers,

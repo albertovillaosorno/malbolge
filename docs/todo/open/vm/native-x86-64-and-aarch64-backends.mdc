@@ -623,6 +623,10 @@ A distinct single-resident lease cache
   state, registers, input/output progress, output bytes, and pointer identity
   round-trip exactly. Non-RX or unknown IDs, out-of-range entries, malformed
   cursors, and termination tags deny the call without executing the entry.
+
+  Ten malformed Windows MBNPC1 frame shapes now also fail before entry: short
+  or excess payloads, wrong magic, overlarge length fields, and payload/length
+  disagreement. The retained mapping still accepts a subsequent valid call.
   This is controlled host simulation, not native Windows ABI execution.
 
   The mocked Win32 frame I/O also exercises partial reads and writes, valid
