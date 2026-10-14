@@ -1277,6 +1277,15 @@ serialized mapping identities. Clean EOF releases the five original backing
 reservations; an alternate malformed sixth call frame also releases all five
 while returning the expected failure status without a sixth response.
 
+Three late-stream failure cases now retain those five successful allocation
+responses while exercising a sixth frame. A truncated sixth request body and
+a broken pipe after two header bytes both exit with framing failure, releasing
+all five reservations without emitting a sixth response.
+
+An interrupted write ten bytes into a sixth valid allocation response exits
+with a transport failure and releases all six backing reservations. These
+checks distinguish a partially published response from a leaked mapping.
+
 A full five-frame Windows memory lifecycle now uses the mapping identity and
 aligned address returned by allocation to drive later copy, RX protection,
 instruction synchronization, and release through the process loop. The

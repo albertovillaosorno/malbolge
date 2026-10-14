@@ -1560,7 +1560,8 @@ static int check_process_loop_cleanup(int scenario)
         memcpy(&wire[42], MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
         wire_len = 119U;
     }
-    if (scenario == 8 || scenario == 9) {
+    if (scenario == 8 || scenario == 9
+        || scenario == 11 || scenario == 12 || scenario == 13) {
         for (size_t index = 1U; index < 5U; ++index) {
             mb_native_process_write_u64(&wire[wire_len], 26U);
             memcpy(&wire[wire_len + 8U], &wire[8], 26U);
@@ -1570,6 +1571,15 @@ static int check_process_loop_cleanup(int scenario)
             mb_native_process_write_u64(&wire[wire_len], 5U);
             memcpy(&wire[wire_len + 8U], MB_NATIVE_PROCESS_CALL_MAGIC, 5U);
             wire_len += 13U;
+        } else if (scenario == 11) {
+            // A complete length header but a truncated sixth request body.
+            mb_native_process_write_u64(&wire[wire_len], 26U);
+            memcpy(&wire[wire_len + 8U], MB_NATIVE_PROCESS_MEMORY_MAGIC, 4U);
+            wire_len += 12U;
+        } else if (scenario == 12 || scenario == 13) {
+            mb_native_process_write_u64(&wire[wire_len], 26U);
+            memcpy(&wire[wire_len + 8U], &wire[8], 26U);
+            wire_len += 34U;
         }
     }
     if (scenario == 10) {
@@ -1601,7 +1611,14 @@ static int check_process_loop_cleanup(int scenario)
     mock_write_chunk = 2U;
     mock_fail_write = 0;
     mock_write_overreport = 0;
-    mock_fail_write_after = scenario == 3 ? 10U : (size_t)-1;
+    mock_fail_write_after = scenario == 3 ? 10U
+        : scenario == 13 ? 225U : (size_t)-1;
+    if (scenario == 12) {
+        // A broken pipe after the first two bytes of the sixth length.
+        mock_fail_read = 1;
+        mock_fail_read_after = 172U;
+        mock_read_error = 109U;
+    }
     fail_next_invalid_call_response = scenario == 6 ? 1 : 0;
     fail_next_mapping_response = scenario == 7 ? 1 : 0;
     const size_t reservations_before = reservation_count;
@@ -1611,13 +1628,17 @@ static int check_process_loop_cleanup(int scenario)
     const int exit_code = mb_test_windows_worker_entry();
     const int expected_exit = scenario == 0 || scenario == 5
         || scenario == 8 || scenario == 10 ? 0
-        : scenario == 2 ? 2 : 3;
+        : scenario == 2 || scenario == 11 || scenario == 12 ? 2 : 3;
     const size_t expected_output = scenario == 7 ? 0U
         : scenario == 3 ? 10U : scenario == 5 ? 125U
-        : scenario == 8 || scenario == 9 ? 215U
+        : scenario == 8 || scenario == 9 || scenario == 11
+            || scenario == 12 ? 215U
+        : scenario == 13 ? 225U
         : scenario == 10 ? 186U : 43U;
     const size_t expected_reservations =
-        scenario == 8 || scenario == 9 ? 5U : 1U;
+        scenario == 8 || scenario == 9 || scenario == 11
+        || scenario == 12 ? 5U
+        : scenario == 13 ? 6U : 1U;
     const int valid = exit_code == expected_exit
         && mock_write_pos == expected_output
         && (scenario == 7
@@ -1634,9 +1655,10 @@ static int check_process_loop_cleanup(int scenario)
                     &mock_write_buffer[
                         51U + MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
                     == MB_NATIVE_INVALID_ARGUMENT));
-    const int multi_valid = (scenario != 8 && scenario != 9)
+    const int multi_valid = (scenario != 8 && scenario != 9
+        && scenario != 11 && scenario != 12 && scenario != 13)
         || check_multi_frame_allocation_results(
-            mock_write_buffer, mock_write_pos) == 0;
+            mock_write_buffer, 215U) == 0;
     const int lifecycle_valid = scenario != 10
         || check_framed_memory_lifecycle_results(
             mock_write_buffer, mock_write_pos) == 0;
@@ -1709,7 +1731,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 11; ++scenario) {
+    for (int scenario = 0; scenario < 14; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }

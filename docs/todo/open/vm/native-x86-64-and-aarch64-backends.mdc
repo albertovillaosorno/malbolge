@@ -681,6 +681,11 @@ A distinct single-resident lease cache
   and a malformed sixth call frame release all five original reservations;
   the malformed frame emits no sixth response.
 
+  Further five-mapping loop fixtures fail a sixth request by truncating its
+  body or breaking the pipe after two header bytes. Both emit no sixth
+  response and release all five reservations. If writing a valid sixth
+  allocation response fails partway, all six backing reservations are freed.
+
   A separate five-frame Windows loop uses the returned allocation identity
   and address in subsequent code-copy, RX protection, synchronization, and
   release requests. Every response matches its command, copied bytes are
