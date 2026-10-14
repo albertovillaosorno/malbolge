@@ -1052,6 +1052,12 @@ Invoking offset 16 returns the expected native status and unchanged buffers,
 proving the worker uses the selected byte address rather than the map base.
 That same child releases and reallocates normally.
 
+A larger RX-mapping fixture uses 8,192 bytes and copies code through the
+4,096-byte page boundary, leaving a trap at the base and a guard-miss entry
+at offset 4,096. After whole-range instruction-cache synchronization, the
+worker executes the second-page stub with intact transfer buffers and can
+release and allocate memory again on the retained child.
+
 Six concurrent POSIX mappings now exercise the worker's dynamic mapping-table
 growth and middle-entry removal. Every survivor remains individually writable
 and releasable after compaction; the retained child admits another allocation

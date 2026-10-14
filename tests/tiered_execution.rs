@@ -71037,7 +71037,7 @@ fn assert_posix_worker_invokes_nonzero_entry_offset(
     else {
         return Err(String::from("offset stub RX seal failed"));
     };
-    assert_posix_worker_nonzero_entry_response(session, executable)?;
+    assert_posix_worker_nonzero_entry_response(session, executable, 16)?;
     posix_worker_release(session, executable)?;
     assert_posix_worker_allocates_and_releases(session)
 }
@@ -71046,6 +71046,7 @@ fn assert_posix_worker_invokes_nonzero_entry_offset(
 fn assert_posix_worker_nonzero_entry_response(
     session: &mut NativeProcessSession,
     executable: NativeExecutableMappingReport,
+    entry_offset: u64,
 ) -> Result<(), String> {
     let (request, _expected) = native_process_call_wire_fixture()?;
     let mut bytes = encode_native_process_call_request(&request)
@@ -71057,7 +71058,7 @@ fn assert_posix_worker_nonzero_entry_response(
     bytes
         .get_mut(16..24)
         .ok_or("entry offset field absent")?
-        .copy_from_slice(&16u64.to_le_bytes());
+        .copy_from_slice(&entry_offset.to_le_bytes());
     let limit = native_process_call_response_byte_limit(&request)
         .map_err(|error| error.to_string())?;
     let frame = session
@@ -71090,6 +71091,101 @@ fn native_process_posix_worker_invokes_nonzero_native_entry_offset()
             .spawn()
             .map_err(|error| format!("nonzero entry spawn: {error:?}"))?;
         assert_posix_worker_invokes_nonzero_entry_offset(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_second_page_entry(
+    session: &mut NativeProcessSession,
+) -> Result<NativeExecutableMappingReport, String> {
+    let allocate = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            8192,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let NativeProcessMemoryResponse::Allocate(writable) =
+        posix_worker_memory_exchange(session, &allocate)?
+    else {
+        return Err(String::from("two-page mapping allocation failed"));
+    };
+    if writable.mapped_len() != 8192 {
+        return Err(String::from("two-page allocation geometry drifted"));
+    }
+    let mut code = vec![0x90u8; 4102];
+    code.get_mut(..2)
+        .ok_or("two-page initial trap missing")?
+        .copy_from_slice(&[0x0f, 0x0b]);
+    code.get_mut(4096..4102)
+        .ok_or("two-page native entry missing")?
+        .copy_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.clone().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("two-page code copy failed"));
+    };
+    if copied.copied_code() != code {
+        return Err(String::from("two-page code payload drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("two-page RX transition failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_second_page_entry(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let executable = posix_worker_install_second_page_entry(session)?;
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    let NativeProcessMemoryResponse::Synchronize(report) =
+        posix_worker_memory_exchange(session, &sync)?
+    else {
+        return Err(String::from("two-page cache synchronization failed"));
+    };
+    if report.start_address() != executable.base_address()
+        || report.byte_len() != executable.mapped_len()
+    {
+        return Err(String::from("two-page cache sync range drifted"));
+    }
+    assert_posix_worker_nonzero_entry_response(session, executable, 4096)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_invokes_second_page_entry() -> Result<(), String>
+{
+    let (directory, host) =
+        native_process_posix_worker_fixture("second_page_entry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("two-page entry spawn: {error:?}"))?;
+        assert_posix_worker_second_page_entry(&mut session)
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
