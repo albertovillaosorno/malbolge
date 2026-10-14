@@ -60,6 +60,7 @@ static int unexpected_old_protect;
 static int fail_next_heap_realloc;
 static int fail_next_mapping_response;
 static int fail_next_call_response;
+static int fail_next_invalid_call_response;
 static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
@@ -90,6 +91,10 @@ void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 {
     (void)heap;
     (void)flags;
+    if (len == 74U && fail_next_invalid_call_response != 0) {
+        fail_next_invalid_call_response = 0;
+        return NULL;
+    }
     if (len == 81U && fail_next_call_response != 0) {
         fail_next_call_response = 0;
         return NULL;
@@ -1415,8 +1420,8 @@ static int check_process_loop_cleanup(int scenario)
         mb_native_process_write_u64(&wire[34], 16U);
         memcpy(&wire[42], MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
         wire_len = 58U;
-    } else if (scenario == 5) {
-        // A complete call frame cannot enter a mapping with identity zero.
+    } else if (scenario == 5 || scenario == 6) {
+        // The call cannot enter mapping ID zero, even with full framing.
         mb_native_process_write_u64(&wire[34], 77U);
         memcpy(&wire[42], MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
         wire_len = 119U;
@@ -1427,6 +1432,7 @@ static int check_process_loop_cleanup(int scenario)
     mock_fail_write = 0;
     mock_write_overreport = 0;
     mock_fail_write_after = scenario == 3 ? 10U : (size_t)-1;
+    fail_next_invalid_call_response = scenario == 6 ? 1 : 0;
     const size_t reservations_before = reservation_count;
     const size_t releases_before = release_count;
     const int exit_code = mb_test_windows_worker_entry();
@@ -1439,6 +1445,7 @@ static int check_process_loop_cleanup(int scenario)
         && mb_native_process_read_u64(mock_write_buffer) == 35U
         && reservation_count == reservations_before + 1U
         && release_count == releases_before + 1U
+        && fail_next_invalid_call_response == 0
         && (scenario != 5
             || (mb_native_process_read_u64(&mock_write_buffer[43]) == 74U
                 && mb_native_process_read_u32(
@@ -1513,7 +1520,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 6; ++scenario) {
+    for (int scenario = 0; scenario < 7; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }

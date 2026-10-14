@@ -660,6 +660,10 @@ A distinct single-resident lease cache
   Both paths release the original reservation and distinguish failure exit
   from successful framed response followed by clean EOF.
 
+  An injected 74-byte call-response allocation failure in that second frame
+  terminates the Windows loop without a partial response. Teardown still
+  releases the prior live reservation exactly once.
+
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.

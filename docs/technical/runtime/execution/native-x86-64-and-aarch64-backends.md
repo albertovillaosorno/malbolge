@@ -1250,6 +1250,11 @@ second MBNPC1 call frame then exits as malformed and releases that mapping;
 a complete call to unknown mapping ID zero instead receives exact
 `InvalidArgument` framing and reaches clean EOF before the same cleanup.
 
+The seventh process-loop case instead fails the complete unknown-ID call's
+74-byte response allocation after the first mapping allocation succeeded.
+No second response bytes escape; the loop exits with a framing error and
+releases the original backing reservation exactly once.
+
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing
