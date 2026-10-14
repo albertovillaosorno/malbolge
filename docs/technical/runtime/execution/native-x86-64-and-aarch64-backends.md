@@ -1170,6 +1170,11 @@ failed `VirtualFree` for an aligned mapping. The failed protection preserves
 RW copy authority, the failed release preserves table ownership, and both
 operations succeed on retry without losing the original reservation base.
 
+A separate Win32 simulation returns a successful `VirtualProtect` with an
+unexpected previous page-protection report. That contradictory success still
+means the OS has installed RX; the worker now records RX before returning the
+platform failure, denies further RW copies, and retains release ownership.
+
 A further injected `FlushInstructionCache` failure returns a remote failure
 without counting synchronization or demoting the existing RX mapping.
 A retry succeeds on that same mapping before release, distinguishing a

@@ -542,6 +542,9 @@ static int mb_worker_handle_protect(
             response,
             response_len);
     }
+    // VirtualProtect succeeded: preserve RX authority even if its report
+    // contradicts the expected previous writable page protection.
+    mapping->permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
     if (old_protection != MB_WIN_PAGE_READWRITE) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_PROTECT,
@@ -549,7 +552,6 @@ static int mb_worker_handle_protect(
             response,
             response_len);
     }
-    mapping->permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
     mb_u8 *bytes = mb_worker_memory_success(
         MB_NATIVE_PROCESS_MEMORY_PROTECT,
         MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES);

@@ -56,6 +56,7 @@ static size_t protect_count;
 static size_t sync_count;
 static size_t release_count;
 static int fail_next_protect;
+static int unexpected_old_protect;
 static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
@@ -200,7 +201,10 @@ mb_win_bool VirtualProtect(
         if (!reservations[i].released && location >= base
             && location - base <= reservations[i].len
             && len <= reservations[i].len - (size_t)(location - base)) {
-            *old = MB_WIN_PAGE_READWRITE;
+            *old = unexpected_old_protect != 0
+                ? MB_WIN_PAGE_EXECUTE_READ
+                : MB_WIN_PAGE_READWRITE;
+            unexpected_old_protect = 0;
             protect_count += 1U;
             return 1;
         }
@@ -403,6 +407,55 @@ static int check_compaction_and_teardown(struct mb_worker_state *worker)
     return worker->count == 0U && release_count == releases_before + 6U
         && protect_count == protects_before + 5U
         && sync_count == syncs_before + 5U ? 0 : 7;
+}
+
+static int check_protect_report_mismatch(struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len) || len != 35U) {
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    unexpected_old_protect = 1;
+    if (!mb_worker_handle_protect(worker, request, 34U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "ABCDEF", 6U);
+    if (!mb_worker_handle_copy(worker, request, 48U, &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE) {
+        mb_worker_free(response);
+        return 3;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &len) || len != 10U || worker->count != 0U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    return 0;
 }
 
 static int check_win32_failure_recovery(struct mb_worker_state *worker)
@@ -874,6 +927,9 @@ int main(void)
     const int frame_result = check_frame_io();
     if (frame_result != 0) {
         return 16 + frame_result;
+    }
+    if (check_protect_report_mismatch(&worker) != 0) {
+        return 33;
     }
     return 0;
 }
