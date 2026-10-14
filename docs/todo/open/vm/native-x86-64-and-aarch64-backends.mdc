@@ -541,6 +541,10 @@ A distinct single-resident lease cache
   output-length counters exceed their transferred capacities. A host-real
   regression reproduces the former trap-byte execution and now confirms four
   forged progress cases fail without invocation or session loss.
+
+  Both workers also reject unknown termination tags at native entry using
+  the shared C ABI tag authority. A real POSIX trap-byte fixture formerly
+  executed for unknown tags; the same child now fails closed and stays live.
   A non-mutating native guard-miss stub at exact input/output capacity limits
   still runs with empty or fully consumed one-byte input and leaves a clean
   releasable mapping.

@@ -951,6 +951,13 @@ that counters just beyond capacity or at `u64::MAX` return invalid-argument
 status with unchanged buffers and a healthy session. Valid code remains under
 independent semantic verification by the Rust host.
 
+The POSIX and Windows worker entry checks now also require the C ABI's three
+normative termination tags (`Running`, `HaltInstruction`, or
+`NonGraphicalCell`). Host-real testing reproduced native trap execution for
+an unknown incoming tag before the fix; tags `3` and `255` now return
+invalid-argument evidence without entering the executable mapping or
+poisoning the retained session.
+
 A complementary host-real call uses a non-mutating guard-miss test stub with
 input consumed exactly equal to input length and output length exactly equal
 to capacity. The worker invokes that RX entry for both empty input and a

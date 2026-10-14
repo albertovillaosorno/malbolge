@@ -71397,6 +71397,44 @@ fn assert_posix_worker_rejects_call_progress(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_unknown_call_termination(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("termination fixture mapping ID missing")?
+        .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    for tag in [3u8, u8::MAX] {
+        *encoded
+            .get_mut(76)
+            .ok_or("termination fixture field missing")? = tag;
+        let frame = session.exchange(&encoded, limit).map_err(|error| {
+            format!("invalid termination exchange: {error:?}")
+        })?;
+        let response = decode_native_process_call_response(&frame, &request)
+            .map_err(|error| error.to_string())?;
+        if response.raw_status() != 2i32
+            || response.mapping_id() != mapping.mapping_id()
+            || response.memory() != request.memory()
+            || response.output() != request.output()
+            || !response.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "invalid termination entered native code",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_refuses_out_of_bounds_call_progress()
 -> Result<(), String> {
@@ -71429,6 +71467,10 @@ fn native_process_posix_worker_refuses_out_of_bounds_call_progress()
             return Err(String::from("invalid progress RX seal failed"));
         };
         assert_posix_worker_rejects_call_progress(&mut session, executable)?;
+        assert_posix_worker_rejects_unknown_call_termination(
+            &mut session,
+            executable,
+        )?;
         posix_worker_release(&mut session, executable)
     })();
     drop(host);

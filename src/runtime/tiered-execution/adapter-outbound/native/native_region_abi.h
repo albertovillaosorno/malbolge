@@ -51,6 +51,12 @@ enum mb_native_status {
     MB_NATIVE_INVALID_ARGUMENT = 2
 };
 
+enum mb_native_termination {
+    MB_NATIVE_TERMINATION_RUNNING = 0,
+    MB_NATIVE_TERMINATION_HALT_INSTRUCTION = 1,
+    MB_NATIVE_TERMINATION_NON_GRAPHICAL_CELL = 2
+};
+
 struct mb_native_region_state {
     mb_u32 *memory;
     mb_u64 memory_words;

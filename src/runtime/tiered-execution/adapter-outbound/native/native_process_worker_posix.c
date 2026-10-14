@@ -764,7 +764,8 @@ static int mb_worker_handle_call(
         && mapping->permission == MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
         && entry_offset < mapping->len
         && state.input_consumed <= state.input_len
-        && state.output_len <= state.output_capacity) {
+        && state.output_len <= state.output_capacity
+        && state.termination <= MB_NATIVE_TERMINATION_NON_GRAPHICAL_CELL) {
         void *entry_address = &mapping->base[entry_offset];
         mb_native_entry_fn entry = NULL;
         static_assert(
