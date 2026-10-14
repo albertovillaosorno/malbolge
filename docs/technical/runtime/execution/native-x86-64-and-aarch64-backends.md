@@ -1235,6 +1235,12 @@ output buffer (`2/2` input bytes and `3/3` output bytes). Exact upper-bound
 progress still admits the call, preserves all original buffers and pointer
 identities, and returns a stable `GuardMiss` rather than an invalid argument.
 
+Two additional Microsoft x64 entries return a nominal `Applied` result without
+mutating machine state, or an unknown raw code 127. The worker preserves the
+exact raw status, untouched state, buffer contents, and pointer identity.
+Trusted Rust verification, rather than the untrusted worker, decides whether
+the native result is semantically admissible.
+
 A deterministic Win32 shim now recycles the exact `VirtualAlloc` backing
 address after release into a new 128-KiB-aligned mapping. The stale mapping
 ID cannot copy, protect, release, or dispatch native code through the reused

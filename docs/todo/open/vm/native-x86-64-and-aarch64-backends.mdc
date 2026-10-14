@@ -643,6 +643,10 @@ A distinct single-resident lease cache
   The Windows handler returns `GuardMiss`, unchanged pointers and contents,
   preserving the distinction from invalid out-of-range progress.
 
+  Microsoft x64 host entries also return `Applied` with unchanged state and an
+  unknown raw status 127. Both codes survive Windows MBNPC1 framing exactly;
+  semantic acceptance remains the responsibility of the trusted Rust verifier.
+
   The pinned Windows host-simulation fixture also runs under both ASan and
   UBSan, validating the same Microsoft x64 entry, over-aligned allocation,
   pointer-drift, malformed framing, and full cleanup cases with instrumentation.
