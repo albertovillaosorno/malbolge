@@ -591,6 +591,10 @@ A distinct single-resident lease cache
   two simultaneously live over-aligned mappings for copy, RX protection,
   release, and cache sync. Both remain independently operable afterward.
 
+  Two live simulated Windows RX mappings additionally dispatch distinct host
+  entries on alternating call IDs; releasing one denies its stale call ID
+  while the other remains executable and releasable after compaction.
+
   The same controlled Windows handler also accepts zero-byte code copying,
   rejects a 65-byte overflow into 64 mapped bytes without mutation, then
   admits the exact 64-byte copy before sealing, syncing, and releasing.

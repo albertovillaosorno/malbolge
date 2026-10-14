@@ -1324,6 +1324,11 @@ other mapping's geometry fails copy, RX protection, release, and RX cache sync
 without mutating either mapping or releasing either reservation. Both mappings
 then copy, seal, synchronize, and release independently with their own IDs.
 
+The controlled Win32 C-ABI dispatch simulation also binds distinct entry
+functions to two live RX mapping IDs. Interleaved calls return their own
+raw statuses and accumulator changes. Releasing the first mapping denies its
+stale ID while the second continues to execute and release after table shift.
+
 The Win32-host memory handler also admits a zero-byte code copy without
 changing its backing buffer or mapping identity. A subsequent 65-byte copy
 into 64 mapped bytes is denied without writes; a full 64-byte copy succeeds

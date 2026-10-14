@@ -2066,6 +2066,142 @@ static int check_empty_and_full_code_copies(struct mb_worker_state *worker)
     return 0;
 }
 
+static size_t first_native_mapping_calls;
+static size_t second_native_mapping_calls;
+
+static int __attribute__((ms_abi)) mb_first_live_native_entry(
+    struct mb_native_region_state *state)
+{
+    first_native_mapping_calls += 1U;
+    state->accumulator += 1U;
+    return MB_NATIVE_GUARD_MISS;
+}
+
+static int __attribute__((ms_abi)) mb_second_live_native_entry(
+    struct mb_native_region_state *state)
+{
+    second_native_mapping_calls += 1U;
+    state->accumulator += 2U;
+    return MB_NATIVE_APPLIED;
+}
+
+static int check_live_native_dispatch(
+    struct mb_worker_state *worker, mb_u64 id, int status,
+    mb_u32 expected_accumulator)
+{
+    mb_u8 request[MB_NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
+    mb_native_process_write_u64(&request[8], id);
+    mb_native_process_write_u32(&request[64], 5U);
+    if (!mb_worker_handle_call(worker, request, sizeof(request),
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const int valid = mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+            == (mb_u32)status
+        && mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_ACCUMULATOR_OFFSET])
+            == expected_accumulator
+        && response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
+            == 1U;
+    mb_worker_free(response);
+    return valid ? 0 : 2;
+}
+
+static int check_two_live_native_mappings(struct mb_worker_state *worker)
+{
+    mb_u8 allocation[34] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    mb_u64 ids[2] = {0};
+    mb_u64 bases[2] = {0};
+    mb_native_entry_fn entries[2] = {
+        mb_first_live_native_entry, mb_second_live_native_entry,
+    };
+    const size_t releases_before = release_count;
+    memcpy(allocation, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&allocation[9], 64U);
+    mb_native_process_write_u64(&allocation[17], 131072U);
+    allocation[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    for (size_t index = 0U; index < 2U; ++index) {
+        if (!mb_worker_handle_allocate(worker, allocation, 26U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 1;
+        }
+        ids[index] = mb_native_process_read_u64(&response[10]);
+        bases[index] = mb_native_process_read_u64(&response[18]);
+        mb_worker_free(response);
+        mb_native_process_write_u64(&allocation[9], ids[index]);
+        mb_native_process_write_u64(&allocation[17], bases[index]);
+        mb_native_process_write_u64(&allocation[25], 64U);
+        allocation[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        if (!mb_worker_handle_protect(worker, allocation, 34U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 2;
+        }
+        mb_worker_free(response);
+        mb_u8 *native_address = NULL;
+        mb_worker_copy_bytes(&native_address, &entries[index],
+            sizeof(entries[index]));
+        worker->mappings[index].base = native_address;
+        mb_native_process_write_u64(&allocation[9], 64U);
+        mb_native_process_write_u64(&allocation[17], 131072U);
+        allocation[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    }
+    if (ids[0] == ids[1] || bases[0] == bases[1]
+        || check_live_native_dispatch(worker, ids[0],
+            MB_NATIVE_GUARD_MISS, 6U)
+        || check_live_native_dispatch(worker, ids[1],
+            MB_NATIVE_APPLIED, 7U)
+        || check_live_native_dispatch(worker, ids[0],
+            MB_NATIVE_GUARD_MISS, 6U)) {
+        return 3;
+    }
+    worker->mappings[0].base = (mb_u8 *)(mb_uintptr)bases[0];
+    mb_native_process_write_u64(&allocation[9], ids[0]);
+    mb_native_process_write_u64(&allocation[17], bases[0]);
+    mb_native_process_write_u64(&allocation[25], 64U);
+    if (!mb_worker_handle_release(worker, allocation, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker->count != 1U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    if (check_live_native_dispatch(worker, ids[0],
+            MB_NATIVE_INVALID_ARGUMENT, 5U)
+        || check_live_native_dispatch(worker, ids[1],
+            MB_NATIVE_APPLIED, 7U)) {
+        return 5;
+    }
+    worker->mappings[0].base = (mb_u8 *)(mb_uintptr)bases[1];
+    mb_native_process_write_u64(&allocation[9], ids[1]);
+    mb_native_process_write_u64(&allocation[17], bases[1]);
+    if (!mb_worker_handle_release(worker, allocation, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 6;
+    }
+    mb_worker_free(response);
+    return worker->count == 0U
+        && first_native_mapping_calls == 2U
+        && second_native_mapping_calls == 2U
+        && release_count == releases_before + 2U ? 0 : 7;
+}
+
 static int check_stale_id_with_recycled_base(
     struct mb_worker_state *worker)
 {
@@ -2856,6 +2992,10 @@ int main(void)
     const int empty_copy = check_empty_and_full_code_copies(&worker);
     if (empty_copy != 0) {
         return 135 + empty_copy;
+    }
+    const int live_dispatch = check_two_live_native_mappings(&worker);
+    if (live_dispatch != 0) {
+        return 150 + live_dispatch;
     }
     const int mixed = check_mixed_live_mapping_ids(&worker);
     if (mixed != 0) {
