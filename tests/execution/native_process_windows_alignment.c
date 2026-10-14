@@ -1134,6 +1134,158 @@ static int check_unreportable_mapping_cleanup(
         && release_count == releases_before + 2U ? 0 : 5;
 }
 
+static int check_invalid_memory_command(
+    struct mb_worker_state *worker,
+    const mb_u8 *request,
+    size_t request_len,
+    mb_u32 expected_code)
+{
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    if (!mb_worker_handle_memory(
+            worker, request, request_len, &response, &response_len)
+        || response == NULL
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+            != request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+        || response[MB_NATIVE_PROCESS_OUTCOME_OFFSET]
+            != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || mb_native_process_read_u32(&response[10]) != expected_code) {
+        mb_worker_free(response);
+        return 1;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
+static int check_malformed_memory_commands(struct mb_worker_state *worker)
+{
+    mb_u8 allocate[26] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(allocate, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&allocate[9], 64U);
+    mb_native_process_write_u64(&allocate[17], 131072U);
+    allocate[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(
+            worker, allocate, 26U, &response, &response_len)
+        || response == NULL || response_len != 35U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 mapping_id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_u8 sentinel[64];
+    memset(sentinel, 'X', sizeof(sentinel));
+    mb_worker_copy_bytes(worker->mappings[0].base,
+        sentinel, sizeof(sentinel));
+    for (size_t index = 0U; index < 17U; ++index) {
+        mb_u8 frame[48] = {0};
+        size_t request_len = 43U;
+        mb_u32 failure_code = MB_WORKER_MAPPING_NOT_FOUND;
+        memcpy(frame, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+        frame[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+        mb_native_process_write_u64(&frame[9], mapping_id);
+        mb_native_process_write_u64(&frame[17], address);
+        mb_native_process_write_u64(&frame[25], 64U);
+        frame[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&frame[34], 1U);
+        frame[42] = 'Z';
+        switch (index) {
+        case 0U:
+        case 1U:
+        case 2U:
+        case 3U:
+            memcpy(frame, allocate, 26U);
+            request_len = index == 0U ? 25U : 26U;
+            failure_code = MB_WORKER_INVALID_REQUEST;
+            if (index == 1U) {
+                mb_native_process_write_u64(&frame[9], 0U);
+            } else if (index == 2U) {
+                mb_native_process_write_u64(&frame[17], 3U);
+            } else if (index == 3U) {
+                frame[25] = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+            }
+            break;
+        case 4U:
+            request_len = 41U;
+            failure_code = MB_WORKER_INVALID_REQUEST;
+            break;
+        case 5U:
+            mb_native_process_write_u64(&frame[9], mapping_id + 1U);
+            break;
+        case 6U:
+            mb_native_process_write_u64(&frame[17], address + 1U);
+            break;
+        case 7U:
+            mb_native_process_write_u64(&frame[25], 63U);
+            break;
+        case 8U:
+            mb_native_process_write_u64(&frame[34], 65U);
+            break;
+        case 9U:
+            mb_native_process_write_u64(&frame[34], 0U);
+            break;
+        case 10U:
+            frame[33] = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+            break;
+        case 11U:
+            frame[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+            request_len = 34U;
+            frame[33] = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+            failure_code = MB_WORKER_INVALID_REQUEST;
+            break;
+        case 12U:
+            frame[8] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+            request_len = 33U;
+            mb_native_process_write_u64(&frame[9], mapping_id + 1U);
+            break;
+        case 13U:
+            frame[8] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+            request_len = 33U;
+            break;
+        case 14U:
+            frame[8] = 0xffU;
+            request_len = 9U;
+            failure_code = MB_WORKER_INVALID_REQUEST;
+            break;
+        case 15U:
+            frame[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+            request_len = 35U;
+            failure_code = MB_WORKER_INVALID_REQUEST;
+            break;
+        default:
+            frame[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+            mb_native_process_write_u64(&frame[34], (mb_u64)-1);
+            break;
+        }
+        if (check_invalid_memory_command(
+                worker, frame, request_len, failure_code) != 0
+            || worker->count != 1U
+            || worker->mappings[0].permission
+                != MB_NATIVE_PROCESS_MEMORY_READ_WRITE
+            || memcmp(worker->mappings[0].base,
+                sentinel, sizeof(sentinel)) != 0) {
+            return (int)(index + 2U);
+        }
+    }
+    mb_u8 release[33] = {0};
+    memcpy(release, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    release[8] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+    mb_native_process_write_u64(&release[9], mapping_id);
+    mb_native_process_write_u64(&release[17], address);
+    mb_native_process_write_u64(&release[25], 64U);
+    if (!mb_worker_handle_release(worker, release, 33U,
+            &response, &response_len)
+        || response_len != 10U || worker->count != 0U) {
+        mb_worker_free(response);
+        return 20;
+    }
+    mb_worker_free(response);
+    return check_mapping_lifecycle(worker) == 0 ? 0 : 21;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -1189,6 +1341,10 @@ int main(void)
     }
     if (check_unreportable_mapping_cleanup(&worker) != 0) {
         return 35;
+    }
+    const int memory_failures = check_malformed_memory_commands(&worker);
+    if (memory_failures != 0) {
+        return 40 + memory_failures;
     }
     return 0;
 }

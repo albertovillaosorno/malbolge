@@ -627,6 +627,10 @@ A distinct single-resident lease cache
   Ten malformed Windows MBNPC1 frame shapes now also fail before entry: short
   or excess payloads, wrong magic, overlarge length fields, and payload/length
   disagreement. The retained mapping still accepts a subsequent valid call.
+
+  Seventeen malformed Windows memory commands return bounded failures while
+  preserving an existing RW mapping's bytes, permission, and identity. An
+  ordinary release and fresh allocation still succeed on the same child.
   This is controlled host simulation, not native Windows ABI execution.
 
   The mocked Win32 frame I/O also exercises partial reads and writes, valid

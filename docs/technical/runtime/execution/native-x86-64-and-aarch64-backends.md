@@ -1207,6 +1207,12 @@ memory/input/output lengths, and too few words or bytes for the frame.
 Each fails during shape parsing before native dispatch or response allocation.
 A subsequent valid call on the same mapping still executes normally.
 
+Seventeen malformed Windows MBNPM1 commands also return exact failure frames
+without changing a live RW mapping. They include illegal allocation geometry,
+forged code-copy identity and lengths, premature cache synchronization,
+invalid protection and release fields, and unknown commands. The worker then
+releases the original reservation and successfully reuses the same child.
+
 The same host simulation drives the concrete Win32 framed I/O loops using
 partial two-byte `ReadFile` and `WriteFile` transfers. It verifies exact frame
 reconstruction, empty-frame handling, and rejection of truncated headers,
