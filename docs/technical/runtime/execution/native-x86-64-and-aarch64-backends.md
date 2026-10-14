@@ -865,6 +865,12 @@ leave the caller's original state unchanged.
 Deterministic persistent workers prove the complete load/call/release
 transaction plus remote-memory and call-response rejection paths.
 
+A host-real verifier-rollback fixture runs two native stubs that mutate a guest
+memory word or output byte before returning `GuardMiss`. The worker reports
+those real mutations over MBNPC1, but the existing semantic completion checker
+rejects each non-atomic miss and restores the original caller buffers. The
+retained child can still release the mappings and handle later allocations.
+
 `native/native_process_worker_posix.c` now supplies the first concrete child
 implementation. On Linux x86-64 it allocates anonymous RW mappings, copies exact
 verified image bytes, transitions the same mapping to RX, performs full-range

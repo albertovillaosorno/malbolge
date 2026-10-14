@@ -401,8 +401,12 @@ A distinct single-resident lease cache
   remains authoritative. The structural response gate also rejects returned
   input/output progress beyond original capacities before mutating caller
   buffers, with explicit input-cursor and output-length failure evidence.
-  Process framing is implemented below, while concrete
-  OS ownership remains isolated behind the process host.
+  Process framing is implemented below, while concrete OS ownership remains
+  isolated behind the process host.
+
+  Real native guard-miss stubs now mutate a guest memory word or output byte.
+  The semantic verifier rejects these non-atomic misses and restores caller
+  buffers, while the retained child can release and allocate normally.
 
   The `MBNPC1` process-call wire contract now frames that transfer in
   little-endian bytes with stable 77-byte request and 74-byte response prefixes.
