@@ -55,6 +55,8 @@ static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
 static size_t release_count;
+static int fail_next_protect;
+static int fail_next_release;
 static char mock_handle;
 
 mb_win_handle GetCurrentProcess(void) { return &mock_handle; }
@@ -136,6 +138,10 @@ mb_win_bool VirtualProtect(
     if (permissions != MB_WIN_PAGE_EXECUTE_READ) {
         return 0;
     }
+    if (fail_next_protect != 0) {
+        fail_next_protect = 0;
+        return 0;
+    }
     for (size_t i = 0U; i < reservation_count; ++i) {
         const uintptr_t base = (uintptr_t)reservations[i].base;
         const uintptr_t location = (uintptr_t)address;
@@ -152,6 +158,10 @@ mb_win_bool VirtualProtect(
 mb_win_bool VirtualFree(void *address, size_t len, mb_win_dword flags)
 {
     if (len != 0U || flags != MB_WIN_MEM_RELEASE) {
+        return 0;
+    }
+    if (fail_next_release != 0) {
+        fail_next_release = 0;
         return 0;
     }
     for (size_t i = 0U; i < reservation_count; ++i) {
@@ -339,6 +349,69 @@ static int check_compaction_and_teardown(struct mb_worker_state *worker)
         && sync_count == syncs_before + 5U ? 0 : 7;
 }
 
+static int check_win32_failure_recovery(struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t releases_before = release_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len)
+        || len != 35U || worker->count != 1U) {
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_protect = 1;
+    if (!mb_worker_handle_protect(worker, request, 34U,
+            &response, &len)
+        || len != 14U || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
+        return 2;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "ABCDEF", 6U);
+    if (!mb_worker_handle_copy(worker, request, 48U, &response, &len)
+        || len != 32U || memcmp(&response[26], "ABCDEF", 6U) != 0) {
+        return 3;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_protect(worker, request, 34U,
+            &response, &len)
+        || len != 35U
+        || response[34] != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        return 4;
+    }
+    mb_worker_free(response);
+    fail_next_release = 1;
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &len)
+        || len != 14U || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->count != 1U || release_count != releases_before) {
+        return 5;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &len)
+        || len != 10U || worker->count != 0U
+        || release_count != releases_before + 1U) {
+        return 6;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -366,6 +439,13 @@ int main(void)
     if (reservation_count != 9U || release_count != 9U
         || protect_count != 7U || sync_count != 7U) {
         return 11;
+    }
+    if (check_win32_failure_recovery(&worker) != 0) {
+        return 12;
+    }
+    if (reservation_count != 10U || release_count != 10U
+        || protect_count != 8U || sync_count != 7U) {
+        return 13;
     }
     return 0;
 }
