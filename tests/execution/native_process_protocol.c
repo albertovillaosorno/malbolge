@@ -79,6 +79,33 @@ _Static_assert(MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET == 69U,
 _Static_assert(MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET == 73U,
     "MBNPC1 response pointer flag offset drifted");
 
+_Static_assert(sizeof(struct mb_native_region_state) == 80U,
+    "native region state size drifted");
+_Static_assert(offsetof(struct mb_native_region_state, memory) == 0U,
+    "native region memory field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, memory_words) == 8U,
+    "native region memory_words field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, input) == 16U,
+    "native region input field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, input_len) == 24U,
+    "native region input_len field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, input_consumed) == 32U,
+    "native region input_consumed field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, output) == 40U,
+    "native region output field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, output_capacity) == 48U,
+    "native region output_capacity field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, output_len) == 56U,
+    "native region output_len field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, accumulator) == 64U,
+    "native region accumulator field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, code_pointer) == 68U,
+    "native region code_pointer field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, data_pointer) == 72U,
+    "native region data_pointer field offset drifted");
+_Static_assert(offsetof(struct mb_native_region_state, termination) == 76U,
+    "native region termination field offset drifted");
+
 static int check_magic(void)
 {
     static const mb_u8 expected_call[8] = {
@@ -119,7 +146,13 @@ static int check_tags(void)
         && MB_NATIVE_PROCESS_MEMORY_SUCCESS == 0
         && MB_NATIVE_PROCESS_MEMORY_FAILURE == 1
         && MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE == 0
-        && MB_NATIVE_PROCESS_MEMORY_READ_WRITE == 1;
+        && MB_NATIVE_PROCESS_MEMORY_READ_WRITE == 1
+        && MB_NATIVE_APPLIED == 0
+        && MB_NATIVE_GUARD_MISS == 1
+        && MB_NATIVE_INVALID_ARGUMENT == 2
+        && MB_NATIVE_TERMINATION_RUNNING == 0
+        && MB_NATIVE_TERMINATION_HALT_INSTRUCTION == 1
+        && MB_NATIVE_TERMINATION_NON_GRAPHICAL_CELL == 2;
 }
 
 int main(void)

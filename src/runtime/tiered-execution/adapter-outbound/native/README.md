@@ -127,7 +127,8 @@ Windows execution remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance
-harness checks exact fixed sizes, tags, magic bytes, and call-field offsets. The
+harness checks exact fixed sizes, tags, magic bytes, call-field offsets,
+80-byte native ABI state layout, and all native status/termination tags. The
 header performs no process, memory, or call operation; both tracked platform
 workers consume it instead of re-declaring protocol literals independently.
 

@@ -452,6 +452,10 @@ A distinct single-resident lease cache
   zero-byte response limit without poisoning; a four-byte response-length
   header fails as `UnexpectedEof` and permanently poisons the session.
 
+  The pinned C23 conformance fixture now also asserts the complete 80-byte
+  native ABI state layout, twelve exact field offsets, three raw statuses,
+  and three normative termination tag values across the worker header.
+
   The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
   synchronize, and release commands over that session. Returned mapping, range,
   permission, and copied-byte fields remain untrusted evidence for the existing

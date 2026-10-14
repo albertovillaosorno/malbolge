@@ -1135,6 +1135,12 @@ scalar helpers for C23 workers. A strict pinned-Clang conformance harness checks
 those declarations independently. Both concrete child sources consume this
 header rather than duplicating wire literals.
 
+The pinned C23 harness also verifies the native call-state structure's exact
+80-byte size and all twelve field offsets against the Windows-x64/AArch64
+shared ABI. It locks the three raw native status codes and three normative
+termination tags, so worker entry checks cannot silently drift from the
+semantically admitted Rust observations.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact
