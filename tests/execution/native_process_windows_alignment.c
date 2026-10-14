@@ -604,6 +604,7 @@ static size_t empty_native_entry_invocations;
 static size_t corrupted_shape_invocations;
 static size_t exact_progress_invocations;
 static size_t raw_status_invocations;
+static size_t invalid_termination_invocations;
 static int next_simulated_raw_status;
 static size_t pointer_drift_invocations;
 static size_t pointer_drift_field;
@@ -620,6 +621,14 @@ static int __attribute__((ms_abi)) mb_simulated_corrupt_shape_entry(
     state->output_capacity = (mb_u64)-1;
     state->output_len = (mb_u64)-1;
     return MB_NATIVE_GUARD_MISS;
+}
+
+static int __attribute__((ms_abi)) mb_simulated_invalid_termination_entry(
+    struct mb_native_region_state *state)
+{
+    invalid_termination_invocations += 1U;
+    state->termination = 0xffU;
+    return MB_NATIVE_APPLIED;
 }
 
 static int __attribute__((ms_abi)) mb_simulated_raw_status_entry(
@@ -968,6 +977,40 @@ static int check_empty_native_call_shape(
     return 0;
 }
 
+static int check_untrusted_termination(
+    struct mb_worker_state *worker, const mb_u8 *request)
+{
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t before = invalid_termination_invocations;
+    if (!mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || len != 81U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const int valid = mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+            == MB_NATIVE_APPLIED
+        && response[MB_NATIVE_PROCESS_CALL_RESPONSE_TERMINATION_OFFSET]
+            == 0xffU
+        && response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
+            == 1U
+        && mb_native_process_read_u32(&response[74]) == 8U
+        && mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_ACCUMULATOR_OFFSET])
+            == 7U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_INPUT_CONSUMED_OFFSET])
+            == 0U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_OUTPUT_LEN_OFFSET])
+            == 1U
+        && response[78] == 0x10U && response[79] == 0U
+        && invalid_termination_invocations == before + 1U;
+    mb_worker_free(response);
+    return valid ? 0 : 2;
+}
+
 static int check_untrusted_raw_status(
     struct mb_worker_state *worker, const mb_u8 *request, int expected)
 {
@@ -1150,6 +1193,12 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         || check_untrusted_raw_status(worker, request, 127)) {
         return 18;
     }
+    mb_native_entry_fn invalid_end = mb_simulated_invalid_termination_entry;
+    mb_worker_copy_bytes(&native_address, &invalid_end, sizeof(invalid_end));
+    worker->mappings[0].base = native_address;
+    if (check_untrusted_termination(worker, request) != 0) {
+        return 19;
+    }
     mb_native_entry_fn exact_entry = mb_simulated_exact_progress_entry;
     mb_worker_copy_bytes(
         &native_address, &exact_entry, sizeof(exact_entry));
@@ -1176,7 +1225,8 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         && pointer_drift_invocations == 3U
         && corrupted_shape_invocations == 1U
         && exact_progress_invocations == 1U
-        && raw_status_invocations == 2U ? 0 : 9;
+        && raw_status_invocations == 2U
+        && invalid_termination_invocations == 1U ? 0 : 9;
 }
 
 static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)

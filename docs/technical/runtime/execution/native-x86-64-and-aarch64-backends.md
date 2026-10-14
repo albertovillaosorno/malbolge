@@ -1241,6 +1241,11 @@ exact raw status, untouched state, buffer contents, and pointer identity.
 Trusted Rust verification, rather than the untrusted worker, decides whether
 the native result is semantically admissible.
 
+A separate hostile Microsoft x64 entry returns `Applied` while replacing the
+termination tag with unknown value 255. The Windows worker preserves the raw
+termination byte and original buffers; it does not claim to validate the
+post-call machine semantics before the independent Rust verifier runs.
+
 A deterministic Win32 shim now recycles the exact `VirtualAlloc` backing
 address after release into a new 128-KiB-aligned mapping. The stale mapping
 ID cannot copy, protect, release, or dispatch native code through the reused

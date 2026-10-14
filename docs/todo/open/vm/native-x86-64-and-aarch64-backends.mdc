@@ -647,6 +647,10 @@ A distinct single-resident lease cache
   unknown raw status 127. Both codes survive Windows MBNPC1 framing exactly;
   semantic acceptance remains the responsibility of the trusted Rust verifier.
 
+  A further `Applied` entry overwrites the termination tag with invalid 255.
+  The Windows response retains that untrusted byte for the Rust verifier,
+  leaving memory, output, progress, and reconstructed pointers unchanged.
+
   The pinned Windows host-simulation fixture also runs under both ASan and
   UBSan, validating the same Microsoft x64 entry, over-aligned allocation,
   pointer-drift, malformed framing, and full cleanup cases with instrumentation.
