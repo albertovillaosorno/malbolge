@@ -58,6 +58,7 @@ static size_t release_count;
 static int fail_next_protect;
 static int unexpected_old_protect;
 static int fail_next_heap_realloc;
+static int fail_next_mapping_response;
 static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
@@ -88,6 +89,11 @@ void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 {
     (void)heap;
     (void)flags;
+    if (len == MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        && fail_next_mapping_response != 0) {
+        fail_next_mapping_response = 0;
+        return NULL;
+    }
     return malloc(len);
 }
 void *HeapReAlloc(mb_win_handle heap, mb_win_dword flags, void *ptr, size_t len)
@@ -958,6 +964,57 @@ static int check_mapping_table_growth_failure(
         && release_count == releases_before + 6U ? 0 : 5;
 }
 
+static int check_unreportable_mapping_cleanup(
+    struct mb_worker_state *worker)
+{
+    mb_u8 request[34] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t releases_before = release_count;
+    const size_t reservations_before = reservation_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_mapping_response = 1;
+    if (mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len) != 0
+        || response != NULL || worker->count != 1U
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
+        return 1;
+    }
+    mb_worker_release_all(worker);
+    if (release_count != releases_before + 1U
+        || worker->count != 0U) {
+        return 2;
+    }
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len) || len != 35U) {
+        return 3;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    response = NULL;
+    fail_next_mapping_response = 1;
+    if (mb_worker_handle_protect(worker, request, 34U,
+            &response, &len) != 0
+        || response != NULL || worker->count != 1U
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        return 4;
+    }
+    mb_worker_release_all(worker);
+    return worker->count == 0U
+        && reservation_count == reservations_before + 2U
+        && release_count == releases_before + 2U ? 0 : 5;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -1010,6 +1067,9 @@ int main(void)
     }
     if (check_mapping_table_growth_failure(&worker) != 0) {
         return 34;
+    }
+    if (check_unreportable_mapping_cleanup(&worker) != 0) {
+        return 35;
     }
     return 0;
 }

@@ -1176,6 +1176,11 @@ newly reserved backing span, preserves four live mapping IDs and copy rights,
 and leaves the next ID unchanged. Retrying growth succeeds and teardown
 releases every original backing reservation exactly once.
 
+The same Win32 heap simulation fails the 35-byte mapping response allocation
+after a successful `VirtualAlloc`, and separately after a successful RX
+transition. Neither path fabricates a success response: worker teardown
+releases the still-owned backing reservation, including the RX case.
+
 A separate Win32 simulation returns a successful `VirtualProtect` with an
 unexpected previous page-protection report. That contradictory success still
 means the OS has installed RX; the worker now records RX before returning the

@@ -607,6 +607,10 @@ A distinct single-resident lease cache
   newly allocated backing span, preserves four live mapping identities and
   copy rights, and admits a successful retry without consuming an ID.
 
+  Failed mapping-response allocation after `VirtualAlloc` or a successful RX
+  transition leaves backing ownership in the worker until teardown, which
+  releases the original reservation without claiming a success response.
+
   A successful `VirtualProtect` with an unexpected old-permission report now
   records the actual RX transition even though it reports platform failure.
   This prevents stale RW authority, preserves release, and denies code copy.
