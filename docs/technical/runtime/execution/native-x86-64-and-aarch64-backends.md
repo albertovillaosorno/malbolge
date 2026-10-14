@@ -1167,6 +1167,11 @@ synchronization and release requests. It combines each valid ID with another
 mapping's base address, length, or both; every mixed-geometry request fails
 without synchronizing or freeing any reservation, before legitimate releases.
 
+After each of the eight releases, the Windows fixture also retries that stale
+ID against its former geometry and each still-live mapping's geometry. All
+stale synchronization and release requests fail while the surviving mappings
+retain their separate ownership and remain synchronizable.
+
 A separate two-mapping POSIX regression seals only the first mapping as RX.
 Code copy fails on that executable mapping but succeeds on the still-RW second
 mapping, while full-range synchronization succeeds only for RX. Both mappings
