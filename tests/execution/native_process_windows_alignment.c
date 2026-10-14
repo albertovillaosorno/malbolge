@@ -2915,6 +2915,148 @@ static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
     return 0;
 }
 
+static int check_mixed_geometry_survivors(
+    struct mb_worker_state *worker,
+    const mb_u64 ids[8],
+    const mb_u64 bases[8],
+    const size_t sizes[8],
+    const int released[8])
+{
+    size_t live = 0U;
+    for (size_t i = 0U; i < 8U; ++i) {
+        const struct mb_worker_mapping *mapping =
+            mb_worker_find_mapping(worker, ids[i]);
+        if (released[i] != 0) {
+            if (mapping != NULL) {
+                return 1;
+            }
+            continue;
+        }
+        if (mapping == NULL
+            || (mb_u64)(mb_uintptr)mapping->base != bases[i]
+            || mapping->len != sizes[i]
+            || mapping->permission != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+            return 2;
+        }
+        live += 1U;
+    }
+    return worker->count == live ? 0 : 3;
+}
+
+static int check_mixed_geometry_table(struct mb_worker_state *worker)
+{
+    const size_t sizes[8] = {
+        64U, 256U, 4096U, 8198U, 127U, 1024U, 2048U, 16384U,
+    };
+    const size_t alignments[8] = {
+        1U, 16U, 4096U, 65536U, 131072U, 262144U, 32U, 8192U,
+    };
+    const size_t order[8] = {2U, 7U, 0U, 5U, 3U, 1U, 6U, 4U};
+    mb_u64 ids[8] = {0};
+    mb_u64 bases[8] = {0};
+    int released[8] = {0};
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t original_releases = release_count;
+    const size_t original_syncs = sync_count;
+    const size_t original_protects = protect_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    for (size_t i = 0U; i < 8U; ++i) {
+        request[8] = MB_NATIVE_PROCESS_MEMORY_ALLOCATE;
+        mb_native_process_write_u64(&request[9], (mb_u64)sizes[i]);
+        mb_native_process_write_u64(&request[17], (mb_u64)alignments[i]);
+        request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        if (!mb_worker_handle_allocate(worker, request, 26U,
+                &response, &len)
+            || len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 1;
+        }
+        ids[i] = mb_native_process_read_u64(&response[10]);
+        bases[i] = mb_native_process_read_u64(&response[18]);
+        mb_worker_free(response);
+        if (ids[i] == 0U
+            || (bases[i] & (mb_u64)(alignments[i] - 1U)) != 0U) {
+            return 2;
+        }
+        request[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+        mb_native_process_write_u64(&request[9], ids[i]);
+        mb_native_process_write_u64(&request[17], bases[i]);
+        mb_native_process_write_u64(&request[25], (mb_u64)sizes[i]);
+        request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&request[34], 6U);
+        memset(&request[42], (int)('A' + (int)i), 6U);
+        if (!mb_worker_handle_copy(worker, request, 48U, &response, &len)
+            || len != 32U || memcmp(&response[26], &request[42], 6U) != 0) {
+            mb_worker_free(response);
+            return 3;
+        }
+        mb_worker_free(response);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+        if (!mb_worker_handle_protect(worker, request, 34U,
+                &response, &len) || len != 35U) {
+            mb_worker_free(response);
+            return 4;
+        }
+        mb_worker_free(response);
+        request[8] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+        if (!mb_worker_handle_sync(worker, request, 33U,
+                &response, &len) || len != 34U) {
+            mb_worker_free(response);
+            return 5;
+        }
+        mb_worker_free(response);
+    }
+    if (check_mixed_geometry_survivors(
+            worker, ids, bases, sizes, released) != 0) {
+        return 6;
+    }
+    for (size_t index = 0U; index < 8U; ++index) {
+        const size_t i = order[index];
+        request[8] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+        mb_native_process_write_u64(&request[9], ids[i]);
+        mb_native_process_write_u64(&request[17], bases[i]);
+        mb_native_process_write_u64(&request[25], (mb_u64)sizes[i]);
+        if (!mb_worker_handle_release(worker, request, 33U,
+                &response, &len) || len != 10U) {
+            mb_worker_free(response);
+            return 7;
+        }
+        mb_worker_free(response);
+        released[i] = 1;
+        if (check_mixed_geometry_survivors(
+                worker, ids, bases, sizes, released) != 0) {
+            return 8;
+        }
+        for (size_t live = 0U; live < 8U; ++live) {
+            if (released[live] != 0) {
+                continue;
+            }
+            request[8] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+            mb_native_process_write_u64(&request[9], ids[live]);
+            mb_native_process_write_u64(&request[17], bases[live]);
+            mb_native_process_write_u64(&request[25],
+                (mb_u64)sizes[live]);
+            if (!mb_worker_handle_sync(worker, request, 33U,
+                    &response, &len) || len != 34U
+                || mb_native_process_read_u64(&response[10]) != ids[live]
+                || mb_native_process_read_u64(&response[18]) != bases[live]
+                || mb_native_process_read_u64(&response[26])
+                    != (mb_u64)sizes[live]
+                || (mb_u64)(mb_uintptr)last_sync_address != bases[live]
+                || last_sync_len != sizes[live]) {
+                mb_worker_free(response);
+                return 10;
+            }
+            mb_worker_free(response);
+        }
+    }
+    return worker->count == 0U && release_count == original_releases + 8U
+        && sync_count == original_syncs + 36U
+        && protect_count == original_protects + 8U ? 0 : 9;
+}
+
 int main(void)
 {
 #if defined(__aarch64__)
@@ -3026,6 +3168,10 @@ int main(void)
     const int rejected_sync = check_rejected_rx_sync_ranges(&worker);
     if (rejected_sync != 0) {
         return 90 + rejected_sync;
+    }
+    const int mixed_geometry = check_mixed_geometry_table(&worker);
+    if (mixed_geometry != 0) {
+        return 175 + mixed_geometry;
     }
     const int exhausted = check_mapping_id_exhaustion(&worker);
     if (exhausted != 0) {

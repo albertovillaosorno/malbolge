@@ -579,6 +579,11 @@ A distinct single-resident lease cache
   one mapping's identity with the other's geometry. Copy, protect, release,
   and sync all fail; valid distinct code copies and lifecycle operations work.
 
+  Eight mixed-size, mixed-alignment simulated Windows RX mappings also retain
+  exact geometry and ownership after scrambled interior table removals. The
+  surviving IDs continue to synchronize their exact full code range until
+  the last original backing reservation is released.
+
   Distinct simultaneous RX mappings now expose separate raw native statuses
   on alternating call IDs. Releasing one disables only its native entry,
   while the other remains callable and releasable on the retained child.

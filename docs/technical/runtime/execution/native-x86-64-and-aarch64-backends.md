@@ -1156,6 +1156,12 @@ Each copies a native return stub, seals, synchronizes, and dispatches before
 mappings are released in a scrambled order. Every surviving ID still executes
 its own stub after each release; the same child can allocate again afterward.
 
+An independent Win32-shim fixture now retains eight mixed-size mappings,
+from 64 to 16,384 bytes and alignment from 1 to 256 KiB. It performs exact
+code copy, RX protection, and full-range cache synchronization on all eight,
+then releases in scrambled order. Every surviving ID retains its address,
+length, RX status, and successful synchronization after table compaction.
+
 A separate two-mapping POSIX regression seals only the first mapping as RX.
 Code copy fails on that executable mapping but succeeds on the still-RW second
 mapping, while full-range synchronization succeeds only for RX. Both mappings
