@@ -613,6 +613,10 @@ A distinct single-resident lease cache
   cursors, and termination tags deny the call without executing the entry.
   This is controlled host simulation, not native Windows ABI execution.
 
+  Three further simulated guard-miss entries replace memory, input, or output
+  pointers individually; responses mark pointer drift but retain the original
+  serialized memory and output buffers, without trusting changed addresses.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.

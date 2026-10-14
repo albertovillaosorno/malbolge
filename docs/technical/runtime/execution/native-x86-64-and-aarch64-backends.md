@@ -1185,6 +1185,11 @@ entry offsets, impossible I/O cursors, and unsupported termination tags.
 Request bytes remain intact, and the denied calls never execute the host
 entry. This exercises handler framing, not Windows ABI or guest semantics.
 
+Three additional host stubs respectively replace native memory, input, or
+output pointers before returning `GuardMiss`. The Windows call handler reports
+pointer mismatch while encoding from the original memory/output backing
+buffers; none of the substituted pointers is trusted for response bytes.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.

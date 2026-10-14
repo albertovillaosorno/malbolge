@@ -437,6 +437,27 @@ static int check_win32_failure_recovery(struct mb_worker_state *worker)
 }
 
 static size_t native_entry_invocations;
+static size_t pointer_drift_invocations;
+static size_t pointer_drift_field;
+
+static int mb_simulated_pointer_drift_entry(
+    struct mb_native_region_state *state)
+{
+    pointer_drift_invocations += 1U;
+    switch (pointer_drift_field) {
+    case 0U:
+        state->memory = NULL;
+        break;
+    case 1U:
+        state->input = NULL;
+        break;
+    default:
+        state->output = NULL;
+        break;
+    }
+    return MB_NATIVE_GUARD_MISS;
+}
+
 
 static int mb_simulated_native_entry(struct mb_native_region_state *state)
 {
@@ -511,6 +532,35 @@ static int check_native_call_shape(
     }
     mb_worker_free(response);
     return failure;
+}
+
+static int check_native_pointer_drift_response(
+    struct mb_worker_state *worker, const mb_u8 *request)
+{
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t before = pointer_drift_invocations;
+    if (!mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || len != 81U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const int valid = mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+            == MB_NATIVE_GUARD_MISS
+        && response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
+            == 0U
+        && mb_native_process_read_u32(&response[74]) == 8U
+        && response[78] == 0x10U && response[79] == 0U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_INPUT_CONSUMED_OFFSET])
+            == 0U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_OUTPUT_LEN_OFFSET])
+            == 1U
+        && pointer_drift_invocations == before + 1U;
+    mb_worker_free(response);
+    return valid ? 0 : 2;
 }
 
 static int check_native_call_guarding(struct mb_worker_state *worker)
@@ -595,6 +645,17 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
             worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
         return 7;
     }
+    request[76] = MB_NATIVE_TERMINATION_RUNNING;
+    mb_native_entry_fn drifting_entry = mb_simulated_pointer_drift_entry;
+    mb_worker_copy_bytes(
+        &native_address, &drifting_entry, sizeof(drifting_entry));
+    worker->mappings[0].base = native_address;
+    for (size_t field = 0U; field < 3U; ++field) {
+        pointer_drift_field = field;
+        if (check_native_pointer_drift_response(worker, request) != 0) {
+            return 12;
+        }
+    }
     worker->mappings[0].base = (mb_u8 *)(mb_uintptr)address;
     mb_native_process_write_u64(&allocation[9], id);
     mb_native_process_write_u64(&allocation[17], address);
@@ -604,7 +665,8 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         return 8;
     }
     mb_worker_free(response);
-    return native_entry_invocations == 1U ? 0 : 9;
+    return native_entry_invocations == 1U
+        && pointer_drift_invocations == 3U ? 0 : 9;
 }
 
 int main(void)
