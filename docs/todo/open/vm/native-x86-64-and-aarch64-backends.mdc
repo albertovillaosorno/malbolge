@@ -459,6 +459,8 @@ A distinct single-resident lease cache
   The pinned C23 conformance fixture now also asserts the complete 80-byte
   native ABI state layout, twelve exact field offsets, three raw statuses,
   and three normative termination tag values across the worker header.
+  The canonical C header additionally checks pointer size and all ABI
+  offsets during compilation of both workers for x86-64 and AArch64.
 
   The `MBNPM1` executable-memory wire now frames allocate, copy, protect,
   synchronize, and release commands over that session. Returned mapping, range,

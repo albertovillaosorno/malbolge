@@ -1147,6 +1147,11 @@ shared ABI. It locks the three raw native status codes and three normative
 termination tags, so worker entry checks cannot silently drift from the
 semantically admitted Rust observations.
 
+The canonical C ABI header now additionally asserts its 64-bit pointer size,
+80-byte state size, and all twelve field offsets at compilation. The same
+checks therefore run when the POSIX and Windows workers compile for x86-64
+or AArch64, not only when the host C23 conformance fixture executes.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact

@@ -33,6 +33,8 @@
 #ifndef MALBOLGE_NATIVE_REGION_ABI_H
 #define MALBOLGE_NATIVE_REGION_ABI_H
 
+#include <stddef.h>
+
 typedef unsigned char mb_u8;
 typedef unsigned int mb_u32;
 typedef unsigned long long mb_u64;
@@ -71,6 +73,34 @@ struct mb_native_region_state {
     mb_u32 data_pointer;
     mb_u8 termination;
 };
+
+static_assert(sizeof(void *) == 8U, "64-bit native pointer required");
+static_assert(sizeof(struct mb_native_region_state) == 80U,
+    "native call-state ABI size drifted");
+static_assert(offsetof(struct mb_native_region_state, memory) == 0U,
+    "native call-state memory offset drifted");
+static_assert(offsetof(struct mb_native_region_state, memory_words) == 8U,
+    "native call-state memory_words offset drifted");
+static_assert(offsetof(struct mb_native_region_state, input) == 16U,
+    "native call-state input offset drifted");
+static_assert(offsetof(struct mb_native_region_state, input_len) == 24U,
+    "native call-state input_len offset drifted");
+static_assert(offsetof(struct mb_native_region_state, input_consumed) == 32U,
+    "native call-state input_consumed offset drifted");
+static_assert(offsetof(struct mb_native_region_state, output) == 40U,
+    "native call-state output offset drifted");
+static_assert(offsetof(struct mb_native_region_state, output_capacity) == 48U,
+    "native call-state output_capacity offset drifted");
+static_assert(offsetof(struct mb_native_region_state, output_len) == 56U,
+    "native call-state output_len offset drifted");
+static_assert(offsetof(struct mb_native_region_state, accumulator) == 64U,
+    "native call-state accumulator offset drifted");
+static_assert(offsetof(struct mb_native_region_state, code_pointer) == 68U,
+    "native call-state code_pointer offset drifted");
+static_assert(offsetof(struct mb_native_region_state, data_pointer) == 72U,
+    "native call-state data_pointer offset drifted");
+static_assert(offsetof(struct mb_native_region_state, termination) == 76U,
+    "native call-state termination offset drifted");
 
 #if defined(MB_NATIVE_POSIX_WINDOWS_X64_BRIDGE)
 typedef int (__attribute__((ms_abi)) *mb_native_entry_fn)(
