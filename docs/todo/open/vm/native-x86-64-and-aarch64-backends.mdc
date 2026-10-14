@@ -532,6 +532,10 @@ A distinct single-resident lease cache
   Read-execute or unknown permission tags in copy and protect commands also
   fail closed, followed by valid copy, RX transition, and release.
 
+  Two simultaneously live mappings now reject mixed-ID commands that combine
+  one mapping's identity with the other's geometry. Copy, protect, release,
+  and sync all fail; valid distinct code copies and lifecycle operations work.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 

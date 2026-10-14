@@ -70611,6 +70611,151 @@ fn assert_posix_worker_rejects_forged_mapping_geometry(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_mixed_live_mapping_identity(
+    session: &mut NativeProcessSession,
+    first: NativeExecutableMappingReport,
+    second: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    if first.mapping_id() == second.mapping_id()
+        || first.base_address() == second.base_address()
+    {
+        return Err(String::from("independent mappings unexpectedly alias"));
+    }
+    let forged_id = second.mapping_id().get();
+    let requests = [
+        (
+            NativeProcessMemoryRequest::Copy {
+                code: vec![0x90].into_boxed_slice(),
+                mapping: first,
+            },
+            2u32,
+        ),
+        (NativeProcessMemoryRequest::Protect(first), 1),
+        (
+            NativeProcessMemoryRequest::Release(
+                NativeExecutableReleaseRequest::from_mapping(first),
+            ),
+            2,
+        ),
+    ];
+    for (request, failure) in &requests {
+        if posix_worker_forged_mapping_exchange(session, request, 9, forged_id)?
+            != NativeProcessMemoryResponse::Failure(*failure)
+            || session.poisoned()
+        {
+            return Err(String::from("live ID bypassed mapping geometry"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_recovers_from_mixed_live_mapping_identity(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let first = posix_worker_allocate(session)?;
+    let second = posix_worker_allocate(session)?;
+    assert_posix_worker_rejects_mixed_live_mapping_identity(
+        session, first, second,
+    )?;
+    for (mapping, byte) in [(first, 0x90u8), (second, 0xcc)] {
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: vec![byte].into_boxed_slice(),
+            mapping,
+        };
+        let NativeProcessMemoryResponse::Copy(report) =
+            posix_worker_memory_exchange(session, &copy)?
+        else {
+            return Err(String::from("mixed-ID request lost live mapping"));
+        };
+        if report.mapping_id() != mapping.mapping_id()
+            || report.copied_code() != [byte]
+        {
+            return Err(String::from("mixed-ID request altered live code"));
+        }
+    }
+    let first_rx = posix_worker_seal_for_mixed_id(session, first)?;
+    let second_rx = posix_worker_seal_for_mixed_id(session, second)?;
+    assert_posix_worker_rejects_mixed_live_sync(session, first_rx, second_rx)?;
+    posix_worker_release(session, first_rx)?;
+    posix_worker_release(session, second_rx)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_seal_for_mixed_id(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NativeExecutableMappingReport, String> {
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(mapping),
+        )?
+    else {
+        return Err(String::from("live mapping lost RX transition"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_mixed_live_sync(
+    session: &mut NativeProcessSession,
+    first: NativeExecutableMappingReport,
+    second: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            first.mapping_id(),
+            first.base_address(),
+            first.mapped_len(),
+        ),
+    );
+    if posix_worker_forged_mapping_exchange(
+        session,
+        &sync,
+        9,
+        second.mapping_id().get(),
+    )? != NativeProcessMemoryResponse::Failure(2)
+    {
+        return Err(String::from("mixed live ID admitted cache sync"));
+    }
+    let NativeProcessMemoryResponse::Synchronize(report) =
+        posix_worker_memory_exchange(session, &sync)?
+    else {
+        return Err(String::from("valid cache sync failed after mixed ID"));
+    };
+    if report.start_address() != first.base_address()
+        || report.byte_len() != first.mapped_len()
+        || session.poisoned()
+    {
+        return Err(String::from("mixed live ID changed sync authority"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_mixed_live_mapping_id()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("mixed_live_mapping_id")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("mixed live ID spawn: {error:?}"))?;
+        assert_posix_worker_recovers_from_mixed_live_mapping_identity(
+            &mut session,
+        )
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_rejects_forged_mapping_geometry()
 -> Result<(), String> {

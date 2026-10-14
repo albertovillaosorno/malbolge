@@ -1019,6 +1019,11 @@ permission values in code-copy and protection commands. The worker rejects
 both tags without modifying a writable mapping; exact copy and RX sealing
 then succeed on the retained child before clean release.
 
+A two-live-mapping regression also combines one live mapping ID with another
+live mapping's original address and length. The POSIX worker rejects mixed-ID
+copy, RX-protect, release, and cache-sync commands; both mappings retain their
+separate code-copy, protection, synchronization, and release authority.
+
 A further host-real regression seals a mapping and attempts instruction-cache
 synchronization with a forged start, truncated range, or unknown mapping ID.
 Each remote command fails; exact synchronization then succeeds for the retained
