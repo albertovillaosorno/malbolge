@@ -70865,6 +70865,94 @@ fn assert_posix_worker_rejects_out_of_range_native_call(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_invokes_nonzero_entry_offset(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let mut code = vec![0x0f, 0x0b];
+    code.extend_from_slice(&[0x90; 14]);
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.clone().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("offset stub copy was rejected"));
+    };
+    if copied.copied_code() != code {
+        return Err(String::from("offset stub code copy drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("offset stub RX seal failed"));
+    };
+    assert_posix_worker_nonzero_entry_response(session, executable)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_nonzero_entry_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("offset mapping ID field absent")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    bytes
+        .get_mut(16..24)
+        .ok_or("entry offset field absent")?
+        .copy_from_slice(&16u64.to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("offset call exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    if response.raw_status() != 1i32
+        || response.mapping_id() != executable.mapping_id()
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("POSIX worker ignored nonzero entry offset"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_invokes_nonzero_native_entry_offset()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("nonzero_entry_offset")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("nonzero entry spawn: {error:?}"))?;
+        assert_posix_worker_invokes_nonzero_entry_offset(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_rejects_out_of_range_entry_offset()
 -> Result<(), String> {

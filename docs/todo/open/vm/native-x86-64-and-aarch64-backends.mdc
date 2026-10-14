@@ -537,6 +537,10 @@ A distinct single-resident lease cache
   one byte beyond, or `u64::MAX` reject without mutating buffers or state;
   the same retained child can still release the mapping.
 
+  A positive host-real MBNPC1 offset fixture places a native trap at mapping
+  byte zero and a non-mutating guard miss at offset 16. Calling the latter
+  keeps the session healthy and leaves later release/reallocation available.
+
   POSIX and Windows workers now reject native entry when input-consumed or
   output-length counters exceed their transferred capacities. A host-real
   regression reproduces the former trap-byte execution and now confirms four

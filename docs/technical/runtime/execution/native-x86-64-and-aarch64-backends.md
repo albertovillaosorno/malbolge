@@ -1024,6 +1024,12 @@ its entry offset at the mapped byte length, one byte beyond, or `u64::MAX`.
 The child returns invalid-argument status without changing memory, output,
 state, or pointer identity; that child then releases the mapping normally.
 
+A complementary host-real offset regression places invalid-opcode trap bytes
+at mapping offset zero and a non-mutating guard-miss entry at byte offset 16.
+Invoking offset 16 returns the expected native status and unchanged buffers,
+proving the worker uses the selected byte address rather than the map base.
+That same child releases and reallocates normally.
+
 Six concurrent POSIX mappings now exercise the worker's dynamic mapping-table
 growth and middle-entry removal. Every survivor remains individually writable
 and releasable after compaction; the retained child admits another allocation
