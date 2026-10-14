@@ -1245,6 +1245,11 @@ an unrecognized second frame, a truncated header, or interrupted response
 writing exits with the appropriate failure code. Every path releases its
 live over-aligned mapping through the original `VirtualAlloc` reservation.
 
+Two further end-to-end frame sequences first allocate a live mapping. A short
+second MBNPC1 call frame then exits as malformed and releases that mapping;
+a complete call to unknown mapping ID zero instead receives exact
+`InvalidArgument` framing and reaches clean EOF before the same cleanup.
+
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing

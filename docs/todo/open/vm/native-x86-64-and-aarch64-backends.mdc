@@ -655,6 +655,11 @@ A distinct single-resident lease cache
   unknown frames, short headers, and interrupted writes. Each preserves the
   correct exit result and releases the live over-aligned reservation once.
 
+  Two more process-loop cases allocate first, then either reject a short
+  second native-call frame or answer an unknown mapping with `InvalidArgument`.
+  Both paths release the original reservation and distinguish failure exit
+  from successful framed response followed by clean EOF.
+
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.
