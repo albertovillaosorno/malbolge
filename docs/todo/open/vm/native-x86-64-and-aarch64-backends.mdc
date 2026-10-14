@@ -634,6 +634,10 @@ A distinct single-resident lease cache
   round-trip exactly. Non-RX or unknown IDs, out-of-range entries, malformed
   cursors, and termination tags deny the call without executing the entry.
 
+  The MS x64 entry also changes the code pointer, data pointer, and halt tag;
+  the Windows response reproduces all scalar fields exactly, while rejected
+  calls retain the original machine-state fields without entry execution.
+
   The pinned Windows host-simulation fixture also runs under both ASan and
   UBSan, validating the same Microsoft x64 entry, over-aligned allocation,
   pointer-drift, malformed framing, and full cleanup cases with instrumentation.

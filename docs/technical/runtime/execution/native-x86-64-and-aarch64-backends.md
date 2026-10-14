@@ -1209,6 +1209,11 @@ handler against Clang `ms_abi` C entries on Linux x86-64. Its MBNPC1 response
 captures one changed memory word, input/output cursor progress, an output byte,
 register updates, exact buffer lengths, and unchanged pointer identity.
 
+The same MS x64 stub now also sets a distinct code pointer, data pointer,
+and normative halt termination tag. The MBNPC1 frame must round-trip every
+scalar state field exactly; denied entries retain the originally requested
+register and termination values without invoking native code.
+
 The pinned host test now runs the complete simulated Win32 handler suite both
 as plain C23 and under AddressSanitizer/UndefinedBehaviorSanitizer. Instrumented
 runs cover the same over-aligned backing ownership, MS x64 entry calls, pointer

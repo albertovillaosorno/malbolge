@@ -638,6 +638,9 @@ static int __attribute__((ms_abi)) mb_simulated_native_entry(
     state->input_consumed += 1U;
     state->output_len += 1U;
     state->accumulator += 1U;
+    state->code_pointer = 0x123U;
+    state->data_pointer = 0x456U;
+    state->termination = MB_NATIVE_TERMINATION_HALT_INSTRUCTION;
     return MB_NATIVE_APPLIED;
 }
 
@@ -677,8 +680,15 @@ static int check_native_call_shape(
     } else if (mb_native_process_read_u32(
             &response[MB_NATIVE_PROCESS_CALL_RESPONSE_ACCUMULATOR_OFFSET])
         != (changed != 0 ? 8U : 7U)
+        || mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_CODE_POINTER_OFFSET])
+            != (changed != 0 ? 0x123U : 0U)
+        || mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_DATA_POINTER_OFFSET])
+            != (changed != 0 ? 0x456U : 0U)
         || response[MB_NATIVE_PROCESS_CALL_RESPONSE_TERMINATION_OFFSET]
-            != request[MB_NATIVE_PROCESS_CALL_REQUEST_TERMINATION_OFFSET]) {
+            != (changed != 0 ? MB_NATIVE_TERMINATION_HALT_INSTRUCTION
+                : request[MB_NATIVE_PROCESS_CALL_REQUEST_TERMINATION_OFFSET])) {
         failure = 11;
     } else if (response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
         != 1U) {
