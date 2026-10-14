@@ -2811,7 +2811,7 @@ static int check_virtual_alloc_failure_is_retryable(
 
 static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
 {
-    mb_u8 request[34] = {0};
+    mb_u8 request[42] = {0};
     mb_u8 *response = NULL;
     size_t response_len = 0U;
     memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
@@ -2891,6 +2891,25 @@ static int check_rejected_rx_sync_ranges(struct mb_worker_state *worker)
             return (int)(case_index + 3U);
         }
         mb_worker_free(response);
+    }
+    // A sealed RX mapping may no longer be copied or protected again.
+    const size_t protects_before = protect_count;
+    request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+        = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+    if (check_invalid_memory_command(worker, request, 34U,
+            MB_WORKER_INVALID_REQUEST) != 0
+        || protect_count != protects_before) {
+        return 15;
+    }
+    request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
+        = MB_NATIVE_PROCESS_MEMORY_COPY;
+    mb_native_process_write_u64(&request[34], 0U);
+    if (check_invalid_memory_command(worker, request, 42U,
+            MB_WORKER_MAPPING_NOT_FOUND) != 0
+        || protect_count != protects_before
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        return 16;
     }
     request[MB_NATIVE_PROCESS_COMMAND_OFFSET]
         = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;

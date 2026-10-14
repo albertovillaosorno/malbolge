@@ -1293,6 +1293,11 @@ long, empty or overflowing lengths, and short/long wire frames. None calls
 `FlushInstructionCache` or changes mapping ownership. The original full-span
 synchronization and subsequent release still succeed on the same mapping.
 
+A sealed Windows mapping also rejects a second protection transition and an
+empty code-copy request without making another platform protection call or
+reviving writable rights. The same RX mapping still synchronizes and releases
+normally, retaining its original backing reservation.
+
 The controlled Win32-host compilation also runs the actual Windows call
 handler against Clang `ms_abi` C entries on Linux x86-64. Its MBNPC1 response
 captures one changed memory word, input/output cursor progress, an output byte,

@@ -701,6 +701,10 @@ A distinct single-resident lease cache
   records the actual RX transition even though it reports platform failure.
   This prevents stale RW authority, preserves release, and denies code copy.
 
+  Once Windows protection seals a mapping RX, repeated protection or code
+  copy is denied without invoking `VirtualProtect` again. The mapping still
+  admits full-range cache sync and release, retaining its original backing.
+
   A simulated `FlushInstructionCache` failure also preserves RX ownership
   without claiming successful synchronization; retrying the exact range
   succeeds before the mapping is released.
