@@ -1361,6 +1361,44 @@ static int check_mapping_id_exhaustion(struct mb_worker_state *worker)
     return 0;
 }
 
+static int check_process_loop_cleanup(int scenario)
+{
+    mb_u8 wire[64] = {0};
+    mb_native_process_write_u64(wire, 26U);
+    memcpy(&wire[8], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&wire[17], 64U);
+    mb_native_process_write_u64(&wire[25], 131072U);
+    wire[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    size_t wire_len = 34U;
+    if (scenario == 1) {
+        mb_native_process_write_u64(&wire[34], 8U);
+        memcpy(&wire[42], "wrongtag", 8U);
+        wire_len = 50U;
+    } else if (scenario == 2) {
+        mb_native_process_write_u32(&wire[34], 8U);
+        wire_len = 38U;
+    }
+    mb_mock_read_reset(wire, wire_len);
+    mock_write_pos = 0U;
+    mock_write_chunk = 2U;
+    mock_fail_write = 0;
+    mock_write_overreport = 0;
+    mock_fail_write_after = scenario == 3 ? 10U : (size_t)-1;
+    const size_t reservations_before = reservation_count;
+    const size_t releases_before = release_count;
+    const int exit_code = mb_test_windows_worker_entry();
+    const int expected_exit = scenario == 0 ? 0
+        : scenario == 2 ? 2 : 3;
+    const size_t expected_output = scenario == 3 ? 10U : 43U;
+    const int valid = exit_code == expected_exit
+        && mock_write_pos == expected_output
+        && mb_native_process_read_u64(mock_write_buffer) == 35U
+        && reservation_count == reservations_before + 1U
+        && release_count == releases_before + 1U;
+    mock_fail_write_after = (size_t)-1;
+    return valid ? 0 : 1;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -1425,5 +1463,11 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
+    for (int scenario = 0; scenario < 4; ++scenario) {
+        if (check_process_loop_cleanup(scenario) != 0) {
+            return 70 + scenario;
+        }
+    }
+    mb_worker_release_all(&worker);
     return 0;
 }

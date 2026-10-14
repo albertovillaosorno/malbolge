@@ -646,6 +646,10 @@ A distinct single-resident lease cache
   first header read. Controlled shims verify invalid read or write counts
   fail closed, preserving the Windows framing trust boundary.
 
+  Four complete mocked Windows process-loop cases now verify clean EOF,
+  unknown frames, short headers, and interrupted writes. Each preserves the
+  correct exit result and releases the live over-aligned reservation once.
+
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.

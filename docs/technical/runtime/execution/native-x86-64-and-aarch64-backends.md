@@ -1233,6 +1233,12 @@ a classification bug: the worker previously treated that impossible count
 at header start as clean EOF. Only a genuine zero-byte read now admits clean
 EOF; overreported reads and writes fail closed without accepting a frame.
 
+The host simulation now exercises the complete Windows worker process loop,
+not only its individual handlers. Clean stream EOF exits successfully, while
+an unrecognized second frame, a truncated header, or interrupted response
+writing exits with the appropriate failure code. Every path releases its
+live over-aligned mapping through the original `VirtualAlloc` reservation.
+
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing
