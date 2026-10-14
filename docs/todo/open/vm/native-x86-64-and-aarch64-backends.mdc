@@ -590,6 +590,11 @@ A distinct single-resident lease cache
   still cross-compile with the pinned CRT-free import contract; native Windows
   execution remains an explicitly separate compatibility follow-up.
 
+  A pinned C23 host simulation now compiles the real Windows memory handlers
+  with controlled Win32 shims. A deliberately misaligned 64-KiB reservation
+  satisfies a 128-KiB request after alignment, then copies, seals, syncs,
+  releases, and rejects overflow. Teardown frees the original backing base.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.

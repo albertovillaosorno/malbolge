@@ -1148,6 +1148,17 @@ for `VirtualFree` in both explicit release and child teardown. Native Windows
 execution remains unverified on this host; pinned x86-64 and AArch64 COFF
 cross-compilation checks that the worker stays warning-clean and CRT-free.
 
+A separate pinned C23 host simulation exercises the Windows worker's actual
+memory-command handlers against mock Win32 allocation APIs. Its fake
+`VirtualAlloc` deliberately returns a 64-KiB-aligned base that is not aligned
+to the requested 128 KiB; checked over-reservation still produces a usable
+aligned mapping through copy, protection, synchronization, and release.
+
+The same simulation checks a second mapping lifecycle, reservation arithmetic
+overflow before allocation, and cleanup of a still-live mapping during worker
+teardown. Mock `VirtualFree` accepts only original allocation bases, so these
+checks exercise backing ownership, but they are not native Windows execution.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.

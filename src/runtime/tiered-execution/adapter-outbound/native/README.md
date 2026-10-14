@@ -121,9 +121,13 @@ The source also contains the AArch64 cache-sync and native-call path;
 boundary with `VirtualAlloc`, `VirtualProtect`, `FlushInstructionCache`, native
 Windows invocation, and `VirtualFree`. Pinned Clang cross-compiles that worker
 warning-clean into x86-64 and AArch64 COFF objects. The Rust regression checks
-both machine IDs and parses each COFF symbol table, requiring the exact same 13
-Win32 imports with no compiler runtime or CRT dependency. Host-real AArch64 and
-Windows execution remain open.
+both machine IDs and parses each COFF symbol table, requiring the exact same
+13 Win32 imports with no compiler runtime or CRT dependency.
+
+A Linux-hosted C23 simulation runs the actual Windows memory handlers against
+controlled Win32 shims, including 128-KiB alignment from an unaligned
+`VirtualAlloc` result, explicit release, overflow, and teardown. This is not
+Windows execution; host-real AArch64 and Windows execution remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance

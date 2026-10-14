@@ -57,6 +57,9 @@ NO_OPERATION_HARNESS = ROOT / "tests/execution/native_no_operation_posix.c"
 NO_OPERATION_INCLUDE = "native_no_operation_text.inc"
 NO_OPERATION_TEXT_SIZE = 147
 PROCESS_PROTOCOL_HARNESS = ROOT / "tests/execution/native_process_protocol.c"
+WINDOWS_ALIGNMENT_HARNESS = (
+    ROOT / "tests/execution/native_process_windows_alignment.c"
+)
 TEXT_SECTION = b".text"
 COFF_SECTION_HEADER_SIZE = 40
 X86_64_COFF_MACHINE = 0x8664
@@ -186,6 +189,32 @@ def run_command(
         shell=False,
         timeout=30,
     )
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="Win32 API simulation requires Linux x86-64 host",
+)
+def test_native_process_windows_alignment_simulation(tmp_path: Path) -> None:
+    """Run simulated Win32 over-alignment and backing-release handlers."""
+    assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
+    executable = tmp_path / "native-process-windows-alignment"
+    compiled = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            *STRICT_WARNINGS,
+            f"-I{NATIVE_INCLUDE}",
+            str(WINDOWS_ALIGNMENT_HARNESS),
+            "-o",
+            str(executable),
+        ),
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = run_command((str(executable),), tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
 def test_native_process_protocol_c_conformance(tmp_path: Path) -> None:
