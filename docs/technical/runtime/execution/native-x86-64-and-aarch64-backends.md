@@ -829,6 +829,12 @@ child survives multiple exchanges and that oversized/truncated responses fail
 closed. The session does not interpret MBNPC1 or yet implement executable-memory
 commands or the foreign call itself.
 
+Transport boundary tests now also distinguish a valid zero-byte response from
+partial header framing. A Python child sends three consecutive empty response
+payloads to zero-limit exchanges (including empty requests) without session
+poisoning; a separate child emits only four of the required eight response-
+length bytes and triggers `Read(UnexpectedEof)` and permanent session poisoning.
+
 `native/process_memory_wire.rs` now defines the transport-neutral `MBNPM1`
 little-endian command protocol for writable allocation, exact code copy, RX
 protection, instruction synchronization, and release. Mapping/address/length/

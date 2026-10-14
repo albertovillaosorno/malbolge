@@ -1402,6 +1402,35 @@ const NATIVE_PROCESS_WINDOWS_IMPORTS: [&str; 13] = [
     "__imp_WriteFile",
 ];
 
+const NATIVE_PROCESS_SESSION_EMPTY_RESPONSE_WORKER: &str = r#"
+import sys
+while True:
+    header = sys.stdin.buffer.read(8)
+    if header == b"":
+        break
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length:
+        raise SystemExit(3)
+    sys.stdout.buffer.write((0).to_bytes(8, "little"))
+    sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_SESSION_PARTIAL_HEADER_WORKER: &str = r#"
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write(b"\x04\x00\x00\x00")
+sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -74139,6 +74168,40 @@ fn native_process_host_executes_call_over_same_session() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("native process host call execution drifted"))
+    }
+}
+
+#[test]
+fn native_process_session_reuses_zero_length_responses() -> Result<(), String> {
+    let mut session = native_process_session_python(
+        NATIVE_PROCESS_SESSION_EMPTY_RESPONSE_WORKER,
+    )?;
+    for request in [b"".as_slice(), b"hello", b"".as_slice()] {
+        let returned = session
+            .exchange(request, 0)
+            .map_err(|error| format!("zero-length response: {error:?}"))?;
+        if !returned.is_empty() || session.poisoned() {
+            return Err(String::from("empty response poisoned retained child"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_rejects_short_response_header() -> Result<(), String>
+{
+    let mut session = native_process_session_python(
+        NATIVE_PROCESS_SESSION_PARTIAL_HEADER_WORKER,
+    )?;
+    let result = session.exchange(b"header", 16);
+    if result == Err(NativeProcessSessionError::Read(ErrorKind::UnexpectedEof))
+        && session.poisoned()
+        && session.exchange(b"again", 16)
+            == Err(NativeProcessSessionError::Poisoned)
+    {
+        Ok(())
+    } else {
+        Err(format!("truncated response header admitted: {result:?}"))
     }
 }
 
