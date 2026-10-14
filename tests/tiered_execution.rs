@@ -70504,6 +70504,21 @@ fn assert_posix_worker_rejects_stale_memory(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_overaligned_native_fault_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("overaligned_native_fault")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result =
+        assert_posix_worker_native_fault_is_session_local(&worker, 65_536);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_stale_call_on_live_mapping(
     session: &mut NativeProcessSession,
     stale: NativeExecutableMappingReport,
@@ -72089,8 +72104,36 @@ fn assert_posix_worker_sibling_survives_dispatch_failure(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_fault_sibling_reuses_mapping(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("fault sibling lost existing RW mapping"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(mapping),
+        )?
+    else {
+        return Err(String::from("fault sibling lost RX transition"));
+    };
+    assert_posix_worker_call_dispatch_status(session, executable, 1)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_native_fault_is_session_local(
     worker: &Path,
+    alignment: usize,
 ) -> Result<(), String> {
     let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
         .spawn()
@@ -72098,7 +72141,10 @@ fn assert_posix_worker_native_fault_is_session_local(
     let mut healthy = NativeProcessSessionConfig::new(worker.to_path_buf())
         .spawn()
         .map_err(|error| format!("fault sibling spawn: {error:?}"))?;
-    let writable = posix_worker_allocate(&mut failed)?;
+    let writable =
+        posix_worker_allocate_for_compaction(&mut failed, alignment)?;
+    let healthy_mapping =
+        posix_worker_allocate_for_compaction(&mut healthy, alignment)?;
     let trap = NativeProcessMemoryRequest::Copy {
         code: vec![0x0f, 0x0b].into_boxed_slice(),
         mapping: writable,
@@ -72134,11 +72180,10 @@ fn assert_posix_worker_native_fault_is_session_local(
     {
         return Err(String::from("native fault did not isolate child"));
     }
-    assert_posix_worker_allocates_and_releases(&mut healthy)?;
-    if healthy.poisoned() {
-        return Err(String::from("native fault poisoned healthy sibling"));
-    }
-    Ok(())
+    assert_posix_worker_fault_sibling_reuses_mapping(
+        &mut healthy,
+        healthy_mapping,
+    )
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -72148,7 +72193,7 @@ fn native_process_posix_worker_native_fault_is_session_local()
     let (directory, host) =
         native_process_posix_worker_fixture("native_fault_isolation")?;
     let worker = directory.join("native-process-worker-posix");
-    let result = assert_posix_worker_native_fault_is_session_local(&worker);
+    let result = assert_posix_worker_native_fault_is_session_local(&worker, 16);
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;

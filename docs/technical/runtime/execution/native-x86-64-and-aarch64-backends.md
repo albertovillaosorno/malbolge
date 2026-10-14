@@ -922,6 +922,12 @@ mapping, exercising a real illegal-instruction fault rather than a framing
 failure. Only the executing worker terminates and poisons its session; the
 independent child still allocates and releases memory successfully.
 
+An over-aligned variant preallocates separate 64-KiB-aligned mappings in both
+children. After an RX `ud2` traps and poisons only the first session, the
+second child still copies, seals, executes, and releases its existing mapping.
+That child can also allocate again; fault cleanup does not cross process or
+reservation ownership boundaries.
+
 A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
 forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
 trailing-byte call payloads fail the same dispatch boundary. Each child exits
