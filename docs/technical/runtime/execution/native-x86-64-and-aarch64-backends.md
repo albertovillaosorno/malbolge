@@ -1150,6 +1150,12 @@ removes an interior entry, and confirms all survivors retain their exposed
 addresses, copy authority, and full backing-reservation release ownership.
 A fresh allocation still works on the same retained worker after cleanup.
 
+A mixed-geometry real POSIX worker fixture retains eight simultaneous RX
+mappings ranging from 64 to 8,198 bytes and alignments from 1 to 256 KiB.
+Each copies a native return stub, seals, synchronizes, and dispatches before
+mappings are released in a scrambled order. Every surviving ID still executes
+its own stub after each release; the same child can allocate again afterward.
+
 A separate two-mapping POSIX regression seals only the first mapping as RX.
 Code copy fails on that executable mapping but succeeds on the still-RW second
 mapping, while full-range synchronization succeeds only for RX. Both mappings

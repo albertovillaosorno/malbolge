@@ -71899,6 +71899,135 @@ fn native_process_posix_worker_executes_overaligned_multi_page_mapping()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_mixed_geometry_entry(
+    session: &mut NativeProcessSession,
+    byte_len: usize,
+    alignment: usize,
+    status: u8,
+) -> Result<NativeExecutableMappingReport, String> {
+    let allocation = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            byte_len,
+            alignment,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let NativeProcessMemoryResponse::Allocate(writable) =
+        posix_worker_memory_exchange(session, &allocation)?
+    else {
+        return Err(String::from("mixed-geometry allocation rejected"));
+    };
+    let mask = alignment.checked_sub(1).ok_or("invalid mixed alignment")?;
+    if writable.mapped_len() != byte_len
+        || (writable.base_address().get() & mask) != 0
+    {
+        return Err(String::from("mixed native mapping geometry drifted"));
+    }
+    let code = vec![0xb8, status, 0, 0, 0, 0xc3];
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Copy {
+                code: code.clone().into_boxed_slice(),
+                mapping: writable,
+            },
+        )?
+    else {
+        return Err(String::from("mixed-geometry code copy rejected"));
+    };
+    if copied.copied_code() != code {
+        return Err(String::from("mixed-geometry code bytes drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("mixed-geometry RX sealing rejected"));
+    };
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    if !matches!(
+        posix_worker_memory_exchange(session, &sync)?,
+        NativeProcessMemoryResponse::Synchronize(_),
+    ) {
+        return Err(String::from("mixed-geometry cache sync rejected"));
+    }
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_retains_mixed_geometry_entries(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let geometries = [
+        (64usize, 16usize),
+        (8198, 131_072),
+        (65, 65_536),
+        (4097, 4096),
+        (128, 32),
+        (64, 262_144),
+        (8198, 16),
+        (64, 1),
+    ];
+    let mut mappings = Vec::new();
+    for (index, (len, alignment)) in geometries.into_iter().enumerate() {
+        let status =
+            u8::try_from(index & 1).map_err(|error| error.to_string())?;
+        let executable = posix_worker_install_mixed_geometry_entry(
+            session, len, alignment, status,
+        )?;
+        assert_posix_worker_call_dispatch_status(
+            session,
+            executable,
+            i32::from(status),
+        )?;
+        mappings.push(executable);
+    }
+    let mut live = [true; 8];
+    for index in [3usize, 0, 5, 1, 7, 2, 4, 6] {
+        let released = *mappings.get(index).ok_or("mixed mapping absent")?;
+        posix_worker_release(session, released)?;
+        *live.get_mut(index).ok_or("mixed live slot absent")? = false;
+        for (other, mapping) in mappings.iter().enumerate() {
+            if live.get(other).copied().ok_or("mixed live bit absent")? {
+                let status = i32::try_from(other & 1)
+                    .map_err(|error| error.to_string())?;
+                assert_posix_worker_call_dispatch_status(
+                    session, *mapping, status,
+                )?;
+            }
+        }
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_retains_mixed_mapping_geometry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("mixed_mapping_geometry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("mixed geometry spawn: {error:?}"))?;
+        assert_posix_worker_retains_mixed_geometry_entries(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_invalid_allocate_fields(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {

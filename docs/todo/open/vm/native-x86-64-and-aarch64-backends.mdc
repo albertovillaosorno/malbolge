@@ -617,6 +617,11 @@ A distinct single-resident lease cache
   removal: each surviving entry retains address, code-copy authority, and its
   original reservation for release; the retained child can allocate again.
 
+  A separate real POSIX fixture interleaves eight mappings with heterogeneous
+  sizes (including page-spanning lengths) and alignments from 1 to 256 KiB.
+  Each survives full RX sealing, sync, and native dispatch while scrambled
+  releases compact the table; subsequent child allocation remains healthy.
+
   Windows now likewise over-reserves with checked arithmetic and retains the
   original `VirtualAlloc` base for full release. Both Windows ISA objects
   still cross-compile with the pinned CRT-free import contract; native Windows
