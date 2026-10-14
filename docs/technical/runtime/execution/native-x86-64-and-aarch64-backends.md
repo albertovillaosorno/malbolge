@@ -1190,6 +1190,12 @@ and leaves executable mapping identity unchanged. A subsequent successful
 call applies an input/output and memory transition without changing the
 caller-owned request frame.
 
+The POSIX harness now also fails `calloc` while encoding the MBNPC1 response
+after native execution has already happened. The handler emits no partial
+frame, frees both staging buffers, and retains executable mapping identity;
+a direct-handler retry can re-execute the expected transition. A persistent
+session must treat the absent frame as fatal rather than replaying implicitly.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits

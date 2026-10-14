@@ -43,20 +43,24 @@
 
 static int fail_next_memory;
 static int fail_next_output;
+static int fail_next_response;
 static size_t frees;
 static size_t entries;
 
 static void *mb_test_malloc(size_t len);
+static void *mb_test_calloc(size_t count, size_t width);
 static void mb_test_free(void *ptr);
 
 int mb_test_posix_worker_entry(void);
 
 #define malloc mb_test_malloc
+#define calloc mb_test_calloc
 #define free mb_test_free
 #define main mb_test_posix_worker_entry
 #include "native_process_worker_posix.c"
 #undef main
 #undef malloc
+#undef calloc
 #undef free
 
 static void *mb_test_malloc(size_t len)
@@ -70,6 +74,15 @@ static void *mb_test_malloc(size_t len)
         return NULL;
     }
     return malloc(len);
+}
+
+static void *mb_test_calloc(size_t count, size_t width)
+{
+    if (count == 81U && width == 1U && fail_next_response != 0) {
+        fail_next_response = 0;
+        return NULL;
+    }
+    return calloc(count, width);
 }
 
 static void mb_test_free(void *ptr)
@@ -90,6 +103,38 @@ static int __attribute__((ms_abi)) mb_test_entry(
     state->output_len = 2U;
     state->accumulator += 1U;
     return MB_NATIVE_APPLIED;
+}
+
+static int check_response_allocation_failure(
+    struct mb_worker_state *worker, const mb_u8 *request)
+{
+    const size_t frees_before = frees;
+    const size_t entries_before = entries;
+    const mb_u8 *const base = worker->mappings[0].base;
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    fail_next_response = 1;
+    if (mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || response != NULL || len != 0U
+        || frees != frees_before + 2U
+        || entries != entries_before + 1U
+        || worker->count != 1U || worker->mappings[0].base != base) {
+        mb_test_free(response);
+        return 1;
+    }
+    if (!mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || response == NULL || len != 81U
+        || entries != entries_before + 2U
+        || frees != frees_before + 4U
+        || response[73] != 1U
+        || mb_native_process_read_u32(&response[69]) != MB_NATIVE_APPLIED
+        || mb_native_process_read_u32(&response[74]) != 10U
+        || response[79] != 0xa5U) {
+        mb_test_free(response);
+        return 2;
+    }
+    mb_test_free(response);
+    return frees == frees_before + 5U ? 0 : 3;
 }
 
 static int check_call_allocations(void)
@@ -161,7 +206,16 @@ static int check_call_allocations(void)
         return 3;
     }
     mb_test_free(response);
-    return frees == 5U ? 0 : 4;
+    if (frees != 5U) {
+        return 4;
+    }
+    const int response_failure = check_response_allocation_failure(
+        &worker, request);
+    if (response_failure != 0 || entries != 3U
+        || memcmp(request, original, sizeof(request)) != 0) {
+        return 5 + response_failure;
+    }
+    return 0;
 }
 
 int main(void)

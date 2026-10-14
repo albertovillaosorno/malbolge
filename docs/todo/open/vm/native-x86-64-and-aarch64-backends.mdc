@@ -639,6 +639,10 @@ A distinct single-resident lease cache
   verifies counterpart cleanup, no dispatch, unchanged mapping identity,
   and exact native state after a later valid call.
 
+  The POSIX harness also injects failure in the `calloc` response encoder
+  after native dispatch, requiring no partial frame and full staging cleanup.
+  Direct-handler retry succeeds; the session does not replay implicitly.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy
