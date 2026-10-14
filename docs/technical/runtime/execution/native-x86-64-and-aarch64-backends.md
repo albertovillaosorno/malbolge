@@ -944,6 +944,11 @@ retained POSIX worker serializes its originally allocated guest-memory and
 output buffers rather than trusting the mutated ABI lengths. Each child call
 returns bounded shape evidence and leaves future allocations operational.
 
+The same five real responses now pass through a bound Rust invocation: each
+is rejected with its exact structural capacity or progress error before any
+caller memory, output, or scalar state is copied. The caller snapshots remain
+unchanged and the retained POSIX child continues accepting valid requests.
+
 Both C workers now check native-call input and output progress counters against
 the transmitted capacities before invoking an RX entry. A host-real POSIX
 regression reproduced the prior failure with a trap-byte mapping, then verifies

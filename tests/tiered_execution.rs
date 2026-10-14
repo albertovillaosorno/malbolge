@@ -71858,6 +71858,81 @@ fn native_process_posix_worker_reports_native_pointer_mutation()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_verified_scalar_response(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+    request: &NativeProcessCallRequest,
+) -> Result<NativeProcessCallResponse, String> {
+    let mut frame = encode_native_process_call_request(request)
+        .map_err(|error| error.to_string())?;
+    frame
+        .get_mut(8..16)
+        .ok_or("scalar response mapping field missing")?
+        .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    frame
+        .get_mut(16..24)
+        .ok_or("scalar response entry field missing")?
+        .fill(0);
+    let limit = native_process_call_response_byte_limit(request)
+        .map_err(|error| error.to_string())?;
+    let received = session
+        .exchange(&frame, limit)
+        .map_err(|error| format!("scalar verification exchange: {error:?}"))?;
+    decode_native_process_call_response(&received, request)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_mutated_scalar_admission(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+    field_offset: u8,
+) -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready =
+        ready_native_executable(&artifact, mapping.mapping_id().get(), 0x7800)?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let response =
+        posix_worker_verified_scalar_response(session, mapping, &request)?;
+    let expected = match field_offset {
+        8 => NativeProcessCallResponseError::StateMemoryWords,
+        24 => NativeProcessCallResponseError::StateInputLength,
+        32 => NativeProcessCallResponseError::StateInputConsumed,
+        48 => NativeProcessCallResponseError::StateOutputCapacity,
+        56 => NativeProcessCallResponseError::StateOutputLength,
+        _ => return Err(String::from("scalar rejection offset unknown")),
+    };
+    let rejected = response.raw_status() == 1i32
+        && response.pointers_unchanged()
+        && invocation.apply_process_response(&response) == Err(expected);
+    invocation.abort();
+    if !rejected
+        || memory != native_verified_output_memory()
+        || output != [0x10, 0, 0]
+        || session.poisoned()
+    {
+        return Err(String::from("scalar corruption reached caller state"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_encodes_mutated_scalar_state(
     session: &mut NativeProcessSession,
     field_offset: u8,
@@ -71886,6 +71961,11 @@ fn assert_posix_worker_encodes_mutated_scalar_state(
         return Err(String::from("scalar mutation stub protection failed"));
     };
     assert_posix_worker_mutated_scalar_response(
+        session,
+        executable,
+        field_offset,
+    )?;
+    assert_posix_worker_rejects_mutated_scalar_admission(
         session,
         executable,
         field_offset,

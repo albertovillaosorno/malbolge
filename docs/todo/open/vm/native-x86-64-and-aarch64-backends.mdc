@@ -512,6 +512,8 @@ A distinct single-resident lease cache
   Five more host-real stubs overwrite all immutable length and mutable
   progress counters with `u64::MAX`; child response encoding still uses the
   original owned buffer lengths and remains reusable after each call.
+  Bound Rust invocation additionally rejects each of those five real responses
+  with its typed structural error before changing the caller snapshot.
 
   A separate host-real fixture now transitions a RW mapping to RX and verifies
   a later copied-code request is rejected, with a healthy session and release.
