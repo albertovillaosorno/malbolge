@@ -997,6 +997,12 @@ output byte already committed, it reads `input[1]`, appends to `output[1]`,
 and advances both cursors from one to two. The returned MBNPC1 response keeps
 the original output prefix, untouched guest memory, and all pointer identities
 before clean release and reuse.
+A separate hostile x86-64 entry writes through its nominally immutable input
+pointer within the POSIX child's private call-frame copy, then exposes the
+modified byte through output. Replaying identical original request bytes
+returns the same mutation without changing the caller's input or frame,
+confirming child-local ownership and continued worker reuse.
+
 
 A separate real POSIX call transfers zero guest-memory words, zero input, and
 zero output capacity to a guard-miss stub. The worker reconstructs empty

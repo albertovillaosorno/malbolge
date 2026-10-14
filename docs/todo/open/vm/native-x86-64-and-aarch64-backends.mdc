@@ -598,6 +598,10 @@ A distinct single-resident lease cache
   nonzero output cursor. Both cursors advance once without changing the
   already-committed output prefix or guest memory.
 
+  A real hostile entry mutates the child-private input copy and reflects it
+  through output. Repeating the original request preserves the caller's
+  unchanged input and frame while the worker remains reusable.
+
   A real native guard-miss entry also accepts an MBNPC1 call with zero memory
   words, zero input, and zero output, preserving pointer identity and release.
 

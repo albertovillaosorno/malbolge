@@ -72189,6 +72189,112 @@ fn native_process_posix_worker_advances_nonzero_native_io_cursors()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_private_input_copy(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    // Mutate the worker-owned input copy through its native ABI pointer,
+    // then reveal that byte in output without changing either pointer.
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![
+            0x48, 0x8b, 0x41, 0x10, 0xc6, 0x00, 0xcc, 0x8a, 0x10, 0x48, 0x8b,
+            0x41, 0x28, 0x88, 0x10, 0x48, 0xc7, 0x41, 0x20, 1, 0, 0, 0, 0x48,
+            0xc7, 0x41, 0x38, 1, 0, 0, 0, 0xb8, 1, 0, 0, 0, 0xc3,
+        ]
+        .into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("private input stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("private input stub RX seal failed"));
+    };
+    assert_posix_worker_private_input_response(session, executable)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_private_input_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (template, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&template)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("private input mapping identity missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    encoded
+        .get_mut(32..40)
+        .ok_or("private input capacity missing")?
+        .copy_from_slice(&1u64.to_le_bytes());
+    let input_offset = template
+        .memory()
+        .len()
+        .checked_mul(4)
+        .and_then(|len| {
+            len.checked_add(NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES)
+        })
+        .ok_or("private input payload offset overflow")?;
+    encoded.insert(input_offset, 0xa7);
+    let request = decode_native_process_call_request(&encoded)
+        .map_err(|error| error.to_string())?;
+    let original_frame = encoded.clone();
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    for _ in 0..2usize {
+        let frame = session
+            .exchange(&encoded, limit)
+            .map_err(|error| format!("private input exchange: {error:?}"))?;
+        let response = decode_native_process_call_response(&frame, &request)
+            .map_err(|error| error.to_string())?;
+        if request.input() != [0xa7]
+            || encoded != original_frame
+            || response.raw_status() != 1i32
+            || response.mapping_id() != executable.mapping_id()
+            || response.state()
+                != request.state().with_input_consumed(1).with_output_len(1)
+            || response.memory() != request.memory()
+            || response.output() != [0xcc, 0, 0]
+            || !response.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from("private native input escaped the child"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_keeps_mutated_input_child_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("child_local_input")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("child input spawn: {error:?}"))?;
+        assert_posix_worker_private_input_copy(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_transfers_input_into_output(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
