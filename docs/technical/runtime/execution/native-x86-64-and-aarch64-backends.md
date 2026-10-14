@@ -1277,6 +1277,12 @@ serialized mapping identities. Clean EOF releases the five original backing
 reservations; an alternate malformed sixth call frame also releases all five
 while returning the expected failure status without a sixth response.
 
+A full five-frame Windows memory lifecycle now uses the mapping identity and
+aligned address returned by allocation to drive later copy, RX protection,
+instruction synchronization, and release through the process loop. The
+simulated pipe verifies each successful response, exact copied code bytes,
+and exactly one protection, synchronization, and backing release operation.
+
 
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports

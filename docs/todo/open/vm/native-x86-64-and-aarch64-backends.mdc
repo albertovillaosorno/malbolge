@@ -681,6 +681,11 @@ A distinct single-resident lease cache
   and a malformed sixth call frame release all five original reservations;
   the malformed frame emits no sixth response.
 
+  A separate five-frame Windows loop uses the returned allocation identity
+  and address in subsequent code-copy, RX protection, synchronization, and
+  release requests. Every response matches its command, copied bytes are
+  exact, and each platform lifecycle operation occurs once before clean EOF.
+
 
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original

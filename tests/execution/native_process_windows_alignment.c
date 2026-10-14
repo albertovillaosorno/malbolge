@@ -65,6 +65,7 @@ static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
 static const mb_u8 *mock_read_source;
+static mb_u8 *mock_dynamic_wire;
 static size_t mock_read_len;
 static size_t mock_read_pos;
 static size_t mock_read_chunk;
@@ -139,6 +140,18 @@ mb_win_bool ReadFile(
         mock_fail_read = 0;
         *read = 0UL;
         return 0;
+    }
+    if (mock_dynamic_wire != NULL && mock_read_pos >= 34U) {
+        const mb_u64 id = mb_native_process_read_u64(&mock_write_buffer[18]);
+        const mb_u64 base = mb_native_process_read_u64(&mock_write_buffer[26]);
+        for (size_t offset = 0U; offset < 4U; ++offset) {
+            const size_t starts[4] = {42U, 98U, 140U, 181U};
+            mb_native_process_write_u64(
+                &mock_dynamic_wire[starts[offset] + 9U], id);
+            mb_native_process_write_u64(
+                &mock_dynamic_wire[starts[offset] + 17U], base);
+        }
+        mock_dynamic_wire = NULL;
     }
     const size_t remaining = mock_read_len - mock_read_pos;
     size_t count = (size_t)len < remaining ? (size_t)len : remaining;
@@ -1494,9 +1507,35 @@ static int check_multi_frame_allocation_results(
     return 0;
 }
 
+static int check_framed_memory_lifecycle_results(
+    const mb_u8 *output, size_t output_len)
+{
+    const mb_u64 lengths[5] = {35U, 32U, 35U, 34U, 10U};
+    const mb_u8 commands[5] = {
+        MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
+        MB_NATIVE_PROCESS_MEMORY_COPY,
+        MB_NATIVE_PROCESS_MEMORY_PROTECT,
+        MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE,
+        MB_NATIVE_PROCESS_MEMORY_RELEASE,
+    };
+    size_t cursor = 0U;
+    for (size_t index = 0U; index < 5U; ++index) {
+        if (mb_native_process_read_u64(&output[cursor]) != lengths[index]
+            || memcmp(&output[cursor + 8U],
+                MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U) != 0
+            || output[cursor + 16U] != commands[index]
+            || output[cursor + 17U] != MB_NATIVE_PROCESS_MEMORY_SUCCESS) {
+            return 1;
+        }
+        cursor += (size_t)lengths[index] + 8U;
+    }
+    return cursor == output_len && output_len == 186U
+        && memcmp(&output[77], "ABCDEF", 6U) == 0 ? 0 : 2;
+}
+
 static int check_process_loop_cleanup(int scenario)
 {
-    mb_u8 wire[200] = {0};
+    mb_u8 wire[240] = {0};
     mb_native_process_write_u64(wire, 26U);
     memcpy(&wire[8], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
     mb_native_process_write_u64(&wire[17], 64U);
@@ -1533,7 +1572,31 @@ static int check_process_loop_cleanup(int scenario)
             wire_len += 13U;
         }
     }
+    if (scenario == 10) {
+        mb_native_process_write_u64(&wire[34], 48U);
+        memcpy(&wire[42], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+        wire[50] = MB_NATIVE_PROCESS_MEMORY_COPY;
+        mb_native_process_write_u64(&wire[67], 64U);
+        wire[75] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&wire[76], 6U);
+        memcpy(&wire[84], "ABCDEF", 6U);
+        mb_native_process_write_u64(&wire[90], 34U);
+        memcpy(&wire[98], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+        wire[106] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+        mb_native_process_write_u64(&wire[123], 64U);
+        wire[131] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&wire[132], 33U);
+        memcpy(&wire[140], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+        wire[148] = MB_NATIVE_PROCESS_MEMORY_SYNCHRONIZE;
+        mb_native_process_write_u64(&wire[165], 64U);
+        mb_native_process_write_u64(&wire[173], 33U);
+        memcpy(&wire[181], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+        wire[189] = MB_NATIVE_PROCESS_MEMORY_RELEASE;
+        mb_native_process_write_u64(&wire[206], 64U);
+        wire_len = 214U;
+    }
     mb_mock_read_reset(wire, wire_len);
+    mock_dynamic_wire = scenario == 10 ? wire : NULL;
     mock_write_pos = 0U;
     mock_write_chunk = 2U;
     mock_fail_write = 0;
@@ -1543,12 +1606,16 @@ static int check_process_loop_cleanup(int scenario)
     fail_next_mapping_response = scenario == 7 ? 1 : 0;
     const size_t reservations_before = reservation_count;
     const size_t releases_before = release_count;
+    const size_t protects_before = protect_count;
+    const size_t syncs_before = sync_count;
     const int exit_code = mb_test_windows_worker_entry();
     const int expected_exit = scenario == 0 || scenario == 5
-        || scenario == 8 ? 0 : scenario == 2 ? 2 : 3;
+        || scenario == 8 || scenario == 10 ? 0
+        : scenario == 2 ? 2 : 3;
     const size_t expected_output = scenario == 7 ? 0U
         : scenario == 3 ? 10U : scenario == 5 ? 125U
-        : scenario == 8 || scenario == 9 ? 215U : 43U;
+        : scenario == 8 || scenario == 9 ? 215U
+        : scenario == 10 ? 186U : 43U;
     const size_t expected_reservations =
         scenario == 8 || scenario == 9 ? 5U : 1U;
     const int valid = exit_code == expected_exit
@@ -1557,6 +1624,8 @@ static int check_process_loop_cleanup(int scenario)
             || mb_native_process_read_u64(mock_write_buffer) == 35U)
         && reservation_count == reservations_before + expected_reservations
         && release_count == releases_before + expected_reservations
+        && protect_count == protects_before + (scenario == 10 ? 1U : 0U)
+        && sync_count == syncs_before + (scenario == 10 ? 1U : 0U)
         && fail_next_invalid_call_response == 0
         && fail_next_mapping_response == 0
         && (scenario != 5
@@ -1568,8 +1637,12 @@ static int check_process_loop_cleanup(int scenario)
     const int multi_valid = (scenario != 8 && scenario != 9)
         || check_multi_frame_allocation_results(
             mock_write_buffer, mock_write_pos) == 0;
+    const int lifecycle_valid = scenario != 10
+        || check_framed_memory_lifecycle_results(
+            mock_write_buffer, mock_write_pos) == 0;
+    mock_dynamic_wire = NULL;
     mock_fail_write_after = (size_t)-1;
-    return valid && multi_valid ? 0 : 1;
+    return valid && multi_valid && lifecycle_valid ? 0 : 1;
 }
 
 int main(void)
@@ -1636,7 +1709,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 10; ++scenario) {
+    for (int scenario = 0; scenario < 11; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }
