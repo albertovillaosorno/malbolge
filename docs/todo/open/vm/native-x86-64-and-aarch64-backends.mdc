@@ -556,7 +556,8 @@ A distinct single-resident lease cache
 
   Both workers now reject AArch64 entry offsets not divisible by four while
   retaining x86-64 byte-entry behavior. The host-run Windows handler fixture
-  checks the AArch64 denial rule in both normal and sanitized configurations;
+  rejects all 48 misaligned offsets below 64 bytes in normal and sanitized
+  configurations;
   actual AArch64 instruction execution remains unclaimed.
 
   Host-real x86-64 execution additionally admits a byte-three native entry

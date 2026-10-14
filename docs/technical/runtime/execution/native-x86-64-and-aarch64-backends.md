@@ -1122,8 +1122,9 @@ rejected without execution, and the child remains releasable and reusable.
 A shared worker pre-dispatch check rejects misaligned AArch64 entry offsets
 before invoking an executable mapping. Native AArch64 instruction slots
 require four-byte alignment; x86-64 still permits byte-addressable entries.
-A dual-mode Windows-handler simulation checks offsets one through three under
-an AArch64 admission configuration, including sanitized host test runs; the
+A dual-mode Windows-handler simulation rejects all 48 non-four-byte-aligned
+entry offsets in a 64-byte mapping under AArch64 admission, including sanitized
+host test runs; the
 AArch64 worker objects still cross-compile, without hardware execution claims.
 
 A separate real POSIX x86-64 fixture protects an executable mapping with an

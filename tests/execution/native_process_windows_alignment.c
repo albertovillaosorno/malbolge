@@ -1249,7 +1249,10 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
     mb_native_process_write_u64(&request[8], id);
 #if defined(__aarch64__)
     // Run with the ARM64 admission rule, but retain the host x64 C stub.
-    for (mb_u64 misaligned = 1U; misaligned < 4U; ++misaligned) {
+    for (mb_u64 misaligned = 1U; misaligned < 64U; ++misaligned) {
+        if ((misaligned & 3U) == 0U) {
+            continue;
+        }
         mb_native_process_write_u64(&request[16], misaligned);
         if (check_native_call_shape(
                 worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
