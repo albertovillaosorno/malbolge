@@ -72076,6 +72076,108 @@ fn assert_posix_worker_admits_normative_termination_tags(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_transfers_input_into_output(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    // Windows-x64 RCX points to native state. Read the first input byte,
+    // store it in output, then advance both progress counters by one.
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![
+            0x48, 0x8b, 0x41, 0x10, 0x8a, 0x10, 0x48, 0x8b, 0x41, 0x28, 0x88,
+            0x10, 0x48, 0xc7, 0x41, 0x20, 1, 0, 0, 0, 0x48, 0xc7, 0x41, 0x38,
+            1, 0, 0, 0, 0xb8, 1, 0, 0, 0, 0xc3,
+        ]
+        .into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("input/output transfer stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("input/output transfer RX seal failed"));
+    };
+    assert_posix_worker_input_output_transfer_response(session, executable)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_input_output_transfer_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (template, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&template)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("transfer call mapping identity absent")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    encoded
+        .get_mut(32..40)
+        .ok_or("transfer call input length absent")?
+        .copy_from_slice(&1u64.to_le_bytes());
+    let input_offset = template
+        .memory()
+        .len()
+        .checked_mul(4)
+        .and_then(|len| {
+            len.checked_add(NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES)
+        })
+        .ok_or("transfer input offset overflow")?;
+    encoded.insert(input_offset, 0xa7);
+    let request = decode_native_process_call_request(&encoded)
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let framed = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("input/output native exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&framed, &request)
+        .map_err(|error| error.to_string())?;
+    if request.input() != [0xa7]
+        || response.raw_status() != 1i32
+        || response.mapping_id() != executable.mapping_id()
+        || response.state()
+            != request.state().with_input_consumed(1).with_output_len(1)
+        || response.memory() != request.memory()
+        || response.output() != [0xa7, 0, 0]
+        || !response.pointers_unchanged()
+        || session.poisoned()
+    {
+        return Err(String::from("native input/output transfer shape drifted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_transfers_nonempty_native_input_output()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("native_input_output_transfer")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("input/output spawn: {error:?}"))?;
+        assert_posix_worker_transfers_input_into_output(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_admits_exact_progress(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {

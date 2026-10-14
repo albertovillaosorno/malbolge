@@ -985,6 +985,12 @@ one-byte input fully consumed. It retains the original buffers and releases
 the mapping. Rejection uses strict overflow comparisons, not an overly broad
 denial of valid end-of-buffer progress.
 
+A separate real x86-64 entry reads a nonempty input byte through the native
+ABI pointer, copies it into output storage, and advances input-consumed and
+output-length cursors to one. Its `GuardMiss` result preserves guest memory,
+reports the exact changed output byte, and retains all three reconstructed
+pointer identities before normal mapping release and session reuse.
+
 A separate real POSIX call transfers zero guest-memory words, zero input, and
 zero output capacity to a guard-miss stub. The worker reconstructs empty
 buffers without changing pointer identities, returns the exact 74-byte call

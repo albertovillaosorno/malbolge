@@ -589,6 +589,10 @@ A distinct single-resident lease cache
   still runs with empty or fully consumed one-byte input and leaves a clean
   releasable mapping.
 
+  A real native x86-64 entry also reads one input byte, writes that byte to
+  output, and advances both progress cursors. MBNPC1 returns exact modified
+  output with intact pointer identity and independent child recovery.
+
   A real native guard-miss entry also accepts an MBNPC1 call with zero memory
   words, zero input, and zero output, preserving pointer identity and release.
 
