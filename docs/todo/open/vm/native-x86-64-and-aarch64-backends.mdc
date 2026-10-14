@@ -634,6 +634,11 @@ A distinct single-resident lease cache
   Win32 native dispatch now free any surviving temporary buffer, retain RX
   mapping ownership, and leave dispatch untouched before a successful retry.
 
+  A C23/ASan host simulation now links the POSIX worker's actual call handler
+  and independently fails guest-memory and output staging allocations. It
+  verifies counterpart cleanup, no dispatch, unchanged mapping identity,
+  and exact native state after a later valid call.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy

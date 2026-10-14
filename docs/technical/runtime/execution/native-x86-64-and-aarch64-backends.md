@@ -1183,6 +1183,13 @@ allocated staging buffer, returns no partial response, and leaves the RX
 mapping and native invocation count unchanged. A valid call on the same
 mapping still executes and returns its exact expected state.
 
+A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
+with deterministic allocation faults at those same two staging steps. Each
+failed call frees the counterpart buffer, emits no partial MBNPC1 response,
+and leaves executable mapping identity unchanged. A subsequent successful
+call applies an input/output and memory transition without changing the
+caller-owned request frame.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits

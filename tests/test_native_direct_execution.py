@@ -57,6 +57,7 @@ NO_OPERATION_HARNESS = ROOT / "tests/execution/native_no_operation_posix.c"
 NO_OPERATION_INCLUDE = "native_no_operation_text.inc"
 NO_OPERATION_TEXT_SIZE = 147
 PROCESS_PROTOCOL_HARNESS = ROOT / "tests/execution/native_process_protocol.c"
+POSIX_STAGING_HARNESS = ROOT / "tests/execution/native_process_posix_staging.c"
 WINDOWS_ALIGNMENT_HARNESS = (
     ROOT / "tests/execution/native_process_windows_alignment.c"
 )
@@ -218,6 +219,43 @@ def test_native_process_windows_alignment_simulation(
             ) if sanitized else ()),
             f"-I{NATIVE_INCLUDE}",
             str(WINDOWS_ALIGNMENT_HARNESS),
+            "-o",
+            str(executable),
+        ),
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = run_command((str(executable),), tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="POSIX native-call staging simulation requires Linux x86-64",
+)
+@pytest.mark.parametrize("sanitized", [False, True], ids=["c23", "asan-ubsan"])
+def test_native_process_posix_staging_allocation_failures(
+    tmp_path: Path,
+    *,
+    sanitized: bool,
+) -> None:
+    """Check both POSIX native-call staging failure cleanup paths."""
+    assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
+    executable = tmp_path / "native-process-posix-staging"
+    compiled = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            *STRICT_WARNINGS,
+            *(((
+                "-O1",
+                "-g",
+                "-fno-omit-frame-pointer",
+                "-fsanitize=address,undefined",
+            )) if sanitized else ()),
+            f"-I{NATIVE_INCLUDE}",
+            str(POSIX_STAGING_HARNESS),
             "-o",
             str(executable),
         ),
