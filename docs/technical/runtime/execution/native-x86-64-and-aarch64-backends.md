@@ -1311,6 +1311,11 @@ a classification bug: the worker previously treated that impossible count
 at header start as clean EOF. Only a genuine zero-byte read now admits clean
 EOF; overreported reads and writes fail closed without accepting a frame.
 
+The Windows worker now defines `DWORD` and `BOOL` as explicit 32-bit ABI
+scalars instead of relying on the host's `unsigned long` width. The host C23
+simulation checks that a transfer larger than `UINT32_MAX` is capped to a
+single maximum-DWORD request before any buffer access or failed I/O return.
+
 The host simulation now exercises the complete Windows worker process loop,
 not only its individual handlers. Clean stream EOF exits successfully, while
 an unrecognized second frame, a truncated header, or interrupted response

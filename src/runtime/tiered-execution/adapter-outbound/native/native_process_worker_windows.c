@@ -46,8 +46,10 @@
 
 typedef __UINTPTR_TYPE__ mb_uintptr;
 typedef void *mb_win_handle;
-typedef unsigned long mb_win_dword;
+typedef mb_u32 mb_win_dword;
+static_assert(sizeof(mb_win_dword) == 4U, "Win32 DWORD must be 32 bits");
 typedef int mb_win_bool;
+static_assert(sizeof(mb_win_bool) == 4U, "Win32 BOOL must be 32 bits");
 
 #define MB_WIN_FALSE 0
 #define MB_WIN_STD_INPUT_HANDLE ((mb_win_dword)-10)

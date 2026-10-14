@@ -81,6 +81,7 @@ static mb_u8 *mock_dynamic_wire;
 static size_t mock_read_len;
 static size_t mock_read_pos;
 static size_t mock_read_chunk;
+static mb_win_dword mock_last_read_request;
 static int mock_fail_read;
 static int mock_read_overreport;
 static size_t mock_fail_read_after;
@@ -88,6 +89,7 @@ static mb_win_dword mock_read_error = 5UL;
 static mb_u8 mock_write_buffer[256];
 static size_t mock_write_pos;
 static size_t mock_write_chunk;
+static mb_win_dword mock_last_write_request;
 static int mock_fail_write;
 static int mock_write_overreport;
 static size_t mock_fail_write_after = (size_t)-1;
@@ -156,6 +158,7 @@ mb_win_bool ReadFile(
 {
     (void)handle;
     (void)overlapped;
+    mock_last_read_request = len;
     if (mock_read_overreport != 0) {
         mock_read_overreport = 0;
         *read = len + 1UL;
@@ -197,6 +200,7 @@ mb_win_bool WriteFile(
 {
     (void)handle;
     (void)overlapped;
+    mock_last_write_request = len;
     if (mock_write_overreport != 0) {
         mock_write_overreport = 0;
         *written = len + 1UL;
@@ -1251,6 +1255,32 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         && exact_progress_invocations == 1U
         && raw_status_invocations == 2U
         && invalid_termination_invocations == 1U ? 0 : 9;
+}
+
+static int check_win32_dword_transfer_chunks(void)
+{
+    static_assert(sizeof(mb_win_dword) == 4U,
+        "mock DWORD size must agree with the Windows ABI");
+    static_assert(sizeof(size_t) > sizeof(mb_win_dword),
+        "host test requires a 64-bit size_t");
+    mb_u8 byte = 0U;
+    const size_t huge = (size_t)MB_WIN_DWORD_MAX + 1U;
+    mock_fail_read = 1;
+    mock_fail_read_after = 0U;
+    mock_read_pos = 0U;
+    mock_last_read_request = 0U;
+    if (mb_worker_read_exact(&mock_handle, &byte, huge, 0) != -1
+        || mock_last_read_request != MB_WIN_DWORD_MAX) {
+        return 1;
+    }
+    mock_fail_write = 1;
+    mock_fail_write_after = (size_t)-1;
+    mock_last_write_request = 0U;
+    if (mb_worker_write_exact(&mock_handle, &byte, huge) != 0
+        || mock_last_write_request != MB_WIN_DWORD_MAX) {
+        return 2;
+    }
+    return 0;
 }
 
 static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)
@@ -2465,6 +2495,9 @@ int main(void)
     const int frame_result = check_frame_io();
     if (frame_result != 0) {
         return 16 + frame_result;
+    }
+    if (check_win32_dword_transfer_chunks() != 0) {
+        return 36;
     }
     if (check_protect_report_mismatch(&worker) != 0) {
         return 33;

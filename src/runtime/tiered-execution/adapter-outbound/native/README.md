@@ -143,6 +143,10 @@ EOF classification. These mocks do not establish real Windows pipe behavior.
 An injected read count larger than the requested chunk previously looked
 like clean EOF at header start; it now fails as malformed transport framing.
 
+The worker explicitly pins `DWORD`/`BOOL` widths to 32 bits on all hosts.
+A simulated oversized transfer confirms Win32 counts are capped to one DWORD
+before a failed I/O return, without allocating a multi-gigabyte buffer.
+
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance
 harness checks exact fixed sizes, tags, magic bytes, call-field offsets,
