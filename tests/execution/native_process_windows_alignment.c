@@ -1433,19 +1433,22 @@ static int check_process_loop_cleanup(int scenario)
     mock_write_overreport = 0;
     mock_fail_write_after = scenario == 3 ? 10U : (size_t)-1;
     fail_next_invalid_call_response = scenario == 6 ? 1 : 0;
+    fail_next_mapping_response = scenario == 7 ? 1 : 0;
     const size_t reservations_before = reservation_count;
     const size_t releases_before = release_count;
     const int exit_code = mb_test_windows_worker_entry();
     const int expected_exit = scenario == 0 || scenario == 5 ? 0
         : scenario == 2 ? 2 : 3;
-    const size_t expected_output = scenario == 3 ? 10U
-        : scenario == 5 ? 125U : 43U;
+    const size_t expected_output = scenario == 7 ? 0U
+        : scenario == 3 ? 10U : scenario == 5 ? 125U : 43U;
     const int valid = exit_code == expected_exit
         && mock_write_pos == expected_output
-        && mb_native_process_read_u64(mock_write_buffer) == 35U
+        && (scenario == 7
+            || mb_native_process_read_u64(mock_write_buffer) == 35U)
         && reservation_count == reservations_before + 1U
         && release_count == releases_before + 1U
         && fail_next_invalid_call_response == 0
+        && fail_next_mapping_response == 0
         && (scenario != 5
             || (mb_native_process_read_u64(&mock_write_buffer[43]) == 74U
                 && mb_native_process_read_u32(
@@ -1520,7 +1523,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 7; ++scenario) {
+    for (int scenario = 0; scenario < 8; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }

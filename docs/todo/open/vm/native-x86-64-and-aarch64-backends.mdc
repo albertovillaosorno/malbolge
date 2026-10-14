@@ -663,6 +663,10 @@ A distinct single-resident lease cache
   An injected 74-byte call-response allocation failure in that second frame
   terminates the Windows loop without a partial response. Teardown still
   releases the prior live reservation exactly once.
+  Failing the initial mapping-response allocation inside the actual loop
+  likewise emits no bytes and releases the unreported `VirtualAlloc` span
+  during terminal cleanup.
+
 
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original

@@ -1254,6 +1254,11 @@ The seventh process-loop case instead fails the complete unknown-ID call's
 74-byte response allocation after the first mapping allocation succeeded.
 No second response bytes escape; the loop exits with a framing error and
 releases the original backing reservation exactly once.
+An eighth case fails allocation of the initial 35-byte mapping response
+after `VirtualAlloc` has already succeeded. The worker publishes zero bytes,
+exits as a failed command, and releases that hidden backing reservation on
+process-loop teardown rather than leaking an allocation with no public ID.
+
 
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
