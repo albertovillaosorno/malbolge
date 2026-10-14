@@ -579,6 +579,7 @@ static int check_win32_failure_recovery(struct mb_worker_state *worker)
 static size_t native_entry_invocations;
 static size_t empty_native_entry_invocations;
 static size_t corrupted_shape_invocations;
+static size_t exact_progress_invocations;
 static size_t pointer_drift_invocations;
 static size_t pointer_drift_field;
 
@@ -593,6 +594,20 @@ static int __attribute__((ms_abi)) mb_simulated_corrupt_shape_entry(
     state->input_consumed = (mb_u64)-1;
     state->output_capacity = (mb_u64)-1;
     state->output_len = (mb_u64)-1;
+    return MB_NATIVE_GUARD_MISS;
+}
+
+static int __attribute__((ms_abi)) mb_simulated_exact_progress_entry(
+    struct mb_native_region_state *state)
+{
+    exact_progress_invocations += 1U;
+    if (state->input_len != 2U || state->input_consumed != 2U
+        || state->output_capacity != 3U || state->output_len != 3U
+        || state->input[0] != 0xa5U || state->input[1] != 0xb6U
+        || state->output[0] != 0x10U || state->output[1] != 0U
+        || state->output[2] != 0U || state->memory[0] != 8U) {
+        return MB_NATIVE_INVALID_ARGUMENT;
+    }
     return MB_NATIVE_GUARD_MISS;
 }
 
@@ -915,6 +930,42 @@ static int check_empty_native_call_shape(
     return 0;
 }
 
+static int check_exact_native_progress(
+    struct mb_worker_state *worker, const mb_u8 *original)
+{
+    mb_u8 request[86] = {0};
+    mb_worker_copy_bytes(request, original, sizeof(request));
+    mb_native_process_write_u64(
+        &request[MB_NATIVE_PROCESS_CALL_REQUEST_INPUT_CONSUMED_OFFSET], 2U);
+    mb_native_process_write_u64(
+        &request[MB_NATIVE_PROCESS_CALL_REQUEST_OUTPUT_LEN_OFFSET], 3U);
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t before = exact_progress_invocations;
+    if (!mb_worker_handle_call(worker, request, sizeof(request),
+            &response, &len) || len != 81U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const int valid = mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+            == MB_NATIVE_GUARD_MISS
+        && response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
+            == 1U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_INPUT_CONSUMED_OFFSET])
+            == 2U
+        && mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_OUTPUT_LEN_OFFSET])
+            == 3U
+        && mb_native_process_read_u32(&response[74]) == 8U
+        && response[78] == 0x10U
+        && response[79] == 0U && response[80] == 0U
+        && exact_progress_invocations == before + 1U;
+    mb_worker_free(response);
+    return valid ? 0 : 2;
+}
+
 static int check_native_call_guarding(struct mb_worker_state *worker)
 {
     mb_u8 allocation[33] = {0};
@@ -1021,6 +1072,13 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
     if (check_native_corrupted_shape_response(worker, request) != 0) {
         return 13;
     }
+    mb_native_entry_fn exact_entry = mb_simulated_exact_progress_entry;
+    mb_worker_copy_bytes(
+        &native_address, &exact_entry, sizeof(exact_entry));
+    worker->mappings[0].base = native_address;
+    if (check_exact_native_progress(worker, request) != 0) {
+        return 17;
+    }
     mb_native_entry_fn empty_entry = mb_simulated_empty_native_entry;
     mb_worker_copy_bytes(&native_address, &empty_entry, sizeof(empty_entry));
     worker->mappings[0].base = native_address;
@@ -1038,7 +1096,8 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
     mb_worker_free(response);
     return native_entry_invocations == 3U
         && pointer_drift_invocations == 3U
-        && corrupted_shape_invocations == 1U ? 0 : 9;
+        && corrupted_shape_invocations == 1U
+        && exact_progress_invocations == 1U ? 0 : 9;
 }
 
 static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)

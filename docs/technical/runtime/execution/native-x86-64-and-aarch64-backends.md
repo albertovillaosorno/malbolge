@@ -1230,6 +1230,11 @@ Request bytes remain intact, and the denied calls never execute the host
 entry. This checks the Microsoft x64 entry ABI on Linux, not actual Windows
 kernel behavior or independently verified guest semantics.
 
+A second Microsoft x64 host entry receives already-consumed input and a full
+output buffer (`2/2` input bytes and `3/3` output bytes). Exact upper-bound
+progress still admits the call, preserves all original buffers and pointer
+identities, and returns a stable `GuardMiss` rather than an invalid argument.
+
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large
 memory/input/output lengths, and too few words or bytes for the frame.

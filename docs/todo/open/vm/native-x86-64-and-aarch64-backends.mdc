@@ -638,6 +638,11 @@ A distinct single-resident lease cache
   the Windows response reproduces all scalar fields exactly, while rejected
   calls retain the original machine-state fields without entry execution.
 
+  A second Microsoft x64 host entry accepts exact input-consumption and
+  output-capacity progress (`2/2` and `3/3`) without touching the buffers.
+  The Windows handler returns `GuardMiss`, unchanged pointers and contents,
+  preserving the distinction from invalid out-of-range progress.
+
   The pinned Windows host-simulation fixture also runs under both ASan and
   UBSan, validating the same Microsoft x64 entry, over-aligned allocation,
   pointer-drift, malformed framing, and full cleanup cases with instrumentation.
