@@ -330,6 +330,7 @@ pub fn decode_native_process_memory_response(
             }
             let response = decode_success_response(&mut reader, request)?;
             reader.finish()?;
+            validate_success_response_shape(request, &response)?;
             Ok(response)
         },
         value => Err(NativeProcessMemoryWireError::OutcomeTag(value)),
@@ -568,28 +569,58 @@ fn validate_success_response_shape(
     request: &NativeProcessMemoryRequest,
     response: &NativeProcessMemoryResponse,
 ) -> Result<(), NativeProcessMemoryWireError> {
-    match (request, response) {
+    let consistent = match (request, response) {
         (
-            NativeProcessMemoryRequest::Allocate(_),
-            NativeProcessMemoryResponse::Allocate(_),
-        )
-        | (
-            NativeProcessMemoryRequest::Protect(_),
-            NativeProcessMemoryResponse::Protect(_),
-        )
-        | (
+            NativeProcessMemoryRequest::Allocate(allocation),
+            NativeProcessMemoryResponse::Allocate(report),
+        ) => {
+            let alignment = allocation.alignment();
+            let expected_len = allocation.byte_len();
+            let actual_len = report.mapped_len();
+            actual_len == expected_len
+                && report.permissions() == allocation.permissions()
+                && report.base_address().get().checked_rem(alignment) == Some(0)
+        },
+        (
+            NativeProcessMemoryRequest::Protect(mapping),
+            NativeProcessMemoryResponse::Protect(report),
+        ) => {
+            report.mapping_id() == mapping.mapping_id()
+                && report.base_address() == mapping.base_address()
+                && report.mapped_len() == mapping.mapped_len()
+                && report.permissions()
+                    == NativeExecutablePermission::ReadExecute
+        },
+        (
+            NativeProcessMemoryRequest::Copy { code, mapping },
+            NativeProcessMemoryResponse::Copy(report),
+        ) => {
+            let copied_start = report.start_address();
+            let original_base = mapping.base_address();
+            let actual_code = report.copied_code();
+            let expected_code = code.as_ref();
+            report.mapping_id() == mapping.mapping_id()
+                && copied_start == original_base
+                && actual_code == expected_code
+        },
+        (
             NativeProcessMemoryRequest::Release(_),
             NativeProcessMemoryResponse::Release,
-        )
-        | (
-            NativeProcessMemoryRequest::Synchronize(_),
-            NativeProcessMemoryResponse::Synchronize(_),
-        ) => Ok(()),
+        ) => true,
         (
-            NativeProcessMemoryRequest::Copy { code, .. },
-            NativeProcessMemoryResponse::Copy(report),
-        ) if code.len() == report.copied_code().len() => Ok(()),
-        _ => Err(NativeProcessMemoryWireError::ResponseShape),
+            NativeProcessMemoryRequest::Synchronize(sync),
+            NativeProcessMemoryResponse::Synchronize(report),
+        ) => {
+            report.mapping_id() == sync.mapping_id()
+                && report.start_address() == sync.start_address()
+                && report.byte_len() == sync.byte_len()
+        },
+        _ => false,
+    };
+    if consistent {
+        Ok(())
+    } else {
+        Err(NativeProcessMemoryWireError::ResponseShape)
     }
 }
 

@@ -467,6 +467,11 @@ A distinct single-resident lease cache
   permission, and copied-byte fields remain untrusted evidence for the existing
   lifecycle checks; copy response allocation is bounded by the original request.
 
+  The success codec also rejects request-inconsistent evidence before handing
+  it to the lifecycle layer: allocation length/permission/alignment, copy
+  identity/address/bytes, and protect/synchronize identity/range are bound to
+  the original request. Forged wire fields return typed `ResponseShape`.
+
   Failure encoding now reserves only its fixed 14-byte frame, rather than the
   full potential successful copy payload. A 4096-byte copy request has a
   measured over-reservation regression without changing failure evidence.

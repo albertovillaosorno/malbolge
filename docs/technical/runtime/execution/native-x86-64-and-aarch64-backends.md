@@ -850,6 +850,13 @@ Successful response encoding validates the command/response variant and copy
 length before reserving any bytes. Drifted success evidence returns typed
 `ResponseShape` without allocating the request-sized copy buffer.
 
+Successful MBNPM1 frames now also match the exact original request before
+admission. Allocation reports must preserve length, permission, and required
+base alignment; copy reports must preserve mapping ID, start address, and
+byte-exact code; protection and synchronization must preserve their mapping
+and range identities. Forged command-specific fields fail as `ResponseShape`
+without accepting a new executable mapping or changing caller-owned memory.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.

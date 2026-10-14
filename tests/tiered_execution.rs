@@ -74737,6 +74737,57 @@ fn native_process_memory_wire_rejects_success_shape_before_encoding()
     Ok(())
 }
 
+fn assert_native_process_memory_success_byte_drift(
+    request: &NativeProcessMemoryRequest,
+    response: &NativeProcessMemoryResponse,
+    index: usize,
+    forged: u8,
+) -> Result<(), String> {
+    let mut bytes = encode_native_process_memory_response(request, response)
+        .map_err(|error| error.to_string())?;
+    let byte = bytes
+        .get_mut(index)
+        .ok_or_else(|| format!("memory response byte {index} absent"))?;
+    if *byte == forged {
+        return Err(String::from("memory response forgery did not alter data"));
+    }
+    *byte = forged;
+    if decode_native_process_memory_response(&bytes, request)
+        == Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        Ok(())
+    } else {
+        Err(format!("MBNPM1 accepted drift at byte {index}"))
+    }
+}
+
+#[test]
+fn native_process_memory_wire_rejects_forged_successful_evidence()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    for (request_index, changes) in [
+        (0usize, vec![(18usize, 1u8), (26, 63), (34, 0)]),
+        (1, vec![(10, 70), (18, 8), (26, 0xcc)]),
+        (2, vec![(10, 70), (18, 8), (26, 65), (34, 1)]),
+        (4, vec![(10, 70), (18, 8), (26, 4)]),
+    ] {
+        let request = requests
+            .get(request_index)
+            .ok_or("missing memory evidence request fixture")?;
+        let response =
+            native_process_memory_success_response(request, executable);
+        for (byte_index, forged_byte) in changes {
+            assert_native_process_memory_success_byte_drift(
+                request,
+                &response,
+                byte_index,
+                forged_byte,
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn native_process_memory_wire_failure_does_not_reserve_copy_payload()
 -> Result<(), String> {
