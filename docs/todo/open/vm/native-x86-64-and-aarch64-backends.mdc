@@ -603,6 +603,10 @@ A distinct single-resident lease cache
   writable or still owned, respectively. Retried operations succeed without
   losing the aligned backing reservation or corrupting table state.
 
+  Simulated `HeapReAlloc` failure during fifth-mapping table growth frees the
+  newly allocated backing span, preserves four live mapping identities and
+  copy rights, and admits a successful retry without consuming an ID.
+
   A successful `VirtualProtect` with an unexpected old-permission report now
   records the actual RX transition even though it reports platform failure.
   This prevents stale RW authority, preserves release, and denies code copy.

@@ -50,13 +50,14 @@ struct mb_mock_reservation {
     int released;
 };
 
-static struct mb_mock_reservation reservations[16];
+static struct mb_mock_reservation reservations[32];
 static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
 static size_t release_count;
 static int fail_next_protect;
 static int unexpected_old_protect;
+static int fail_next_heap_realloc;
 static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
@@ -93,6 +94,10 @@ void *HeapReAlloc(mb_win_handle heap, mb_win_dword flags, void *ptr, size_t len)
 {
     (void)heap;
     (void)flags;
+    if (fail_next_heap_realloc != 0) {
+        fail_next_heap_realloc = 0;
+        return NULL;
+    }
     return realloc(ptr, len);
 }
 mb_win_bool HeapFree(mb_win_handle heap, mb_win_dword flags, void *ptr)
@@ -165,7 +170,7 @@ void *VirtualAlloc(
 {
     if (address != NULL || flags != (MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT)
         || protect != MB_WIN_PAGE_READWRITE
-        || reservation_count >= 16U || len > 1048576U) {
+        || reservation_count >= 32U || len > 1048576U) {
         return NULL;
     }
     const size_t total = len + 262144U;
@@ -881,6 +886,78 @@ static int check_frame_io(void)
     return 0;
 }
 
+static int check_mapping_table_growth_failure(
+    struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    mb_u64 ids[4] = {0};
+    mb_u64 addresses[4] = {0};
+    const size_t reservations_before = reservation_count;
+    const size_t releases_before = release_count;
+    const mb_u64 id_before = worker->next_id;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    for (size_t i = 0U; i < 4U; ++i) {
+        if (!mb_worker_handle_allocate(worker, request, 26U,
+                &response, &len) || len != 35U) {
+            return 1;
+        }
+        ids[i] = mb_native_process_read_u64(&response[10]);
+        addresses[i] = mb_native_process_read_u64(&response[18]);
+        mb_worker_free(response);
+    }
+    fail_next_heap_realloc = 1;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker->count != 4U || worker->capacity != 4U
+        || worker->next_id != id_before + 4U
+        || reservation_count != reservations_before + 5U
+        || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    for (size_t i = 0U; i < 4U; ++i) {
+        mb_native_process_write_u64(&request[9], ids[i]);
+        mb_native_process_write_u64(&request[17], addresses[i]);
+        mb_native_process_write_u64(&request[25], 64U);
+        request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&request[34], 6U);
+        memcpy(&request[42], "ABCDEF", 6U);
+        if (!mb_worker_handle_copy(worker, request, 48U,
+                &response, &len) || len != 32U
+            || memcmp(&response[26], "ABCDEF", 6U) != 0) {
+            mb_worker_free(response);
+            return 3;
+        }
+        mb_worker_free(response);
+    }
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len)
+        || len != 35U || worker->count != 5U
+        || worker->capacity < 5U
+        || mb_native_process_read_u64(&response[10])
+            != id_before + 4U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    mb_worker_release_all(worker);
+    return worker->count == 0U
+        && reservation_count == reservations_before + 6U
+        && release_count == releases_before + 6U ? 0 : 5;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -930,6 +1007,9 @@ int main(void)
     }
     if (check_protect_report_mismatch(&worker) != 0) {
         return 33;
+    }
+    if (check_mapping_table_growth_failure(&worker) != 0) {
+        return 34;
     }
     return 0;
 }

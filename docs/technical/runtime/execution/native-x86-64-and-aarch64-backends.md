@@ -1170,6 +1170,12 @@ failed `VirtualFree` for an aligned mapping. The failed protection preserves
 RW copy authority, the failed release preserves table ownership, and both
 operations succeed on retry without losing the original reservation base.
 
+The controlled Windows heap-shim fixture also rejects a mapping-table growth
+failure at the fifth live reservation. A failed `HeapReAlloc` frees only the
+newly reserved backing span, preserves four live mapping IDs and copy rights,
+and leaves the next ID unchanged. Retrying growth succeeds and teardown
+releases every original backing reservation exactly once.
+
 A separate Win32 simulation returns a successful `VirtualProtect` with an
 unexpected previous page-protection report. That contradictory success still
 means the OS has installed RX; the worker now records RX before returning the
