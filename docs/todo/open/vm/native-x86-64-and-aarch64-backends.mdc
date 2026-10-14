@@ -611,6 +611,11 @@ A distinct single-resident lease cache
   transition leaves backing ownership in the worker until teardown, which
   releases the original reservation without claiming a success response.
 
+  Failed 81-byte MBNPC1 response allocation after simulated native dispatch
+  also produces no partial response while retaining executable mapping state.
+  Direct handler retry reserializes the request; the process-loop exit policy
+  remains authoritative for an actual transport failure.
+
   A successful `VirtualProtect` with an unexpected old-permission report now
   records the actual RX transition even though it reports platform failure.
   This prevents stale RW authority, preserves release, and denies code copy.

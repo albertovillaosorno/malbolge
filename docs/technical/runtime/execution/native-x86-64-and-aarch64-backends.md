@@ -1181,6 +1181,12 @@ after a successful `VirtualAlloc`, and separately after a successful RX
 transition. Neither path fabricates a success response: worker teardown
 releases the still-owned backing reservation, including the RX case.
 
+The simulated Win32 call handler now also fails its 81-byte MBNPC1 response
+allocation after a host-ABI native entry has run. It returns no partial frame
+and retains the mapping's identity and RX authority. A direct-handler retry
+produces the expected original-request-derived response on the same mapping;
+this does not claim that the production process loop retries failed framing.
+
 A separate Win32 simulation returns a successful `VirtualProtect` with an
 unexpected previous page-protection report. That contradictory success still
 means the OS has installed RX; the worker now records RX before returning the
