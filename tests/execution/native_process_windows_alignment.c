@@ -72,6 +72,9 @@ static int fail_next_copy_response;
 static int fail_next_sync_response;
 static int fail_next_release_response;
 static int fail_next_call_response;
+static int fail_next_call_memory_alloc;
+static int fail_next_call_output_alloc;
+static size_t heap_free_count;
 static int fail_next_invalid_call_response;
 static int fail_next_release;
 static int fail_next_sync;
@@ -113,6 +116,14 @@ mb_win_handle GetStdHandle(mb_win_dword kind)
 void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 {
     if (heap != &mock_heap_handle || flags != 0U) {
+        return NULL;
+    }
+    if (len == 4U && fail_next_call_memory_alloc != 0) {
+        fail_next_call_memory_alloc = 0;
+        return NULL;
+    }
+    if (len == 3U && fail_next_call_output_alloc != 0) {
+        fail_next_call_output_alloc = 0;
         return NULL;
     }
     if (len == 74U && fail_next_invalid_call_response != 0) {
@@ -161,6 +172,7 @@ mb_win_bool HeapFree(mb_win_handle heap, mb_win_dword flags, void *ptr)
         return 0;
     }
     free(ptr);
+    heap_free_count += 1U;
     return 1;
 }
 mb_win_bool ReadFile(
@@ -946,6 +958,44 @@ static int check_invalid_call_framing(
     return 0;
 }
 
+static int check_native_call_staging_failures(
+    struct mb_worker_state *worker, const mb_u8 *request)
+{
+    const size_t calls_before = native_entry_invocations;
+    const size_t frees_before = heap_free_count;
+    const mb_u64 id = worker->mappings[0].id;
+    const mb_u8 *const base = worker->mappings[0].base;
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    fail_next_call_memory_alloc = 1;
+    if (mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || response != NULL || len != 0U
+        || heap_free_count != frees_before + 1U
+        || native_entry_invocations != calls_before) {
+        mb_worker_free(response);
+        return 1;
+    }
+    fail_next_call_output_alloc = 1;
+    if (mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || response != NULL || len != 0U
+        || heap_free_count != frees_before + 2U
+        || native_entry_invocations != calls_before) {
+        mb_worker_free(response);
+        return 2;
+    }
+    if (worker->count != 1U || worker->mappings[0].id != id
+        || worker->mappings[0].base != base
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        return 3;
+    }
+    if (check_native_call_shape(worker, request, MB_NATIVE_APPLIED, 1)
+        || native_entry_invocations != calls_before + 1U) {
+        return 4;
+    }
+    return 0;
+}
+
 static int check_unreportable_native_call(
     struct mb_worker_state *worker, const mb_u8 *request)
 {
@@ -1174,6 +1224,11 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
             sizeof(request)) != 0) {
         return 20 + call_result;
     }
+    const int staging_failure = check_native_call_staging_failures(
+        worker, request);
+    if (staging_failure != 0) {
+        return 25 + staging_failure;
+    }
     if (check_unreportable_native_call(worker, request) != 0) {
         return 15;
     }
@@ -1268,7 +1323,7 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         return 8;
     }
     mb_worker_free(response);
-    return native_entry_invocations == 3U
+    return native_entry_invocations == 4U
         && pointer_drift_invocations == 3U
         && corrupted_shape_invocations == 1U
         && exact_progress_invocations == 1U
@@ -2536,7 +2591,7 @@ int main(void)
         return 14 + call_failure;
     }
     if (reservation_count != 11U || release_count != 11U
-        || protect_count != 9U || native_entry_invocations != 3U) {
+        || protect_count != 9U || native_entry_invocations != 4U) {
         return 15;
     }
     const int frame_result = check_frame_io();

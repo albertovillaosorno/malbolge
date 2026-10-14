@@ -1177,6 +1177,12 @@ and synchronizes each survivor. Worker teardown invokes `VirtualFree` only on
 the original backing bases for all five remaining mappings, including entries
 shifted during compaction. Native Windows execution remains a separate gap.
 
+The Windows MBNPC1 staging simulation now also fails the independent guest
+memory and output allocations before dispatch. Each failure frees the other
+allocated staging buffer, returns no partial response, and leaves the RX
+mapping and native invocation count unchanged. A valid call on the same
+mapping still executes and returns its exact expected state.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits

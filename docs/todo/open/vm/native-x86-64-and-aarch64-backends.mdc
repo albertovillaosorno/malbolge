@@ -630,6 +630,10 @@ A distinct single-resident lease cache
   transition leaves backing ownership in the worker until teardown, which
   releases the original reservation without claiming a success response.
 
+  Independent failed guest-memory and output staging allocations before
+  Win32 native dispatch now free any surviving temporary buffer, retain RX
+  mapping ownership, and leave dispatch untouched before a successful retry.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy
