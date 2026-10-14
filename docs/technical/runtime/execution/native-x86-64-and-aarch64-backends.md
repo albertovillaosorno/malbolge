@@ -1172,6 +1172,12 @@ and synchronizes each survivor. Worker teardown invokes `VirtualFree` only on
 the original backing bases for all five remaining mappings, including entries
 shifted during compaction. Native Windows execution remains a separate gap.
 
+The simulated Win32 heap also injects response-buffer allocation failures
+after real memory operations. Failed copy response encoding leaves the staged
+RW bytes and ID intact; failed sync encoding retains RX ownership and permits
+a later exact retry; failed release response encoding removes the mapping and
+frees its backing reservation once. None publishes a success frame.
+
 The simulation additionally injects one failed `VirtualProtect` and one
 failed `VirtualFree` for an aligned mapping. The failed protection preserves
 RW copy authority, the failed release preserves table ownership, and both

@@ -52,7 +52,7 @@ struct mb_mock_reservation {
     int released;
 };
 
-static struct mb_mock_reservation reservations[64];
+static struct mb_mock_reservation reservations[96];
 static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
@@ -65,6 +65,9 @@ static int fail_next_protect;
 static int unexpected_old_protect;
 static int fail_next_heap_realloc;
 static int fail_next_mapping_response;
+static int fail_next_copy_response;
+static int fail_next_sync_response;
+static int fail_next_release_response;
 static int fail_next_call_response;
 static int fail_next_invalid_call_response;
 static int fail_next_release;
@@ -109,6 +112,20 @@ void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
     if (len == MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
         && fail_next_mapping_response != 0) {
         fail_next_mapping_response = 0;
+        return NULL;
+    }
+    if (len == 32U && fail_next_copy_response != 0) {
+        fail_next_copy_response = 0;
+        return NULL;
+    }
+    if (len == MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
+        && fail_next_sync_response != 0) {
+        fail_next_sync_response = 0;
+        return NULL;
+    }
+    if (len == MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        && fail_next_release_response != 0) {
+        fail_next_release_response = 0;
         return NULL;
     }
     return malloc(len);
@@ -205,7 +222,7 @@ void *VirtualAlloc(
 {
     if (address != NULL || flags != (MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT)
         || protect != MB_WIN_PAGE_READWRITE
-        || reservation_count >= 64U || len > 1048576U) {
+        || reservation_count >= 96U || len > 1048576U) {
         return NULL;
     }
     void *allocation = recycled_allocation;
@@ -1460,6 +1477,101 @@ static int check_unreportable_mapping_cleanup(
         && release_count == releases_before + 2U ? 0 : 5;
 }
 
+static int check_unreportable_copy_sync_release(
+    struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    const size_t before_sync = sync_count;
+    const size_t before_release = release_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "ABCDEF", 6U);
+    response = NULL;
+    response_len = 0U;
+    fail_next_copy_response = 1;
+    if (mb_worker_handle_copy(worker, request, 48U,
+            &response, &response_len) != 0
+        || response != NULL || response_len != 0U
+        || worker->count != 1U
+        || memcmp(worker->mappings[0].base, "ABCDEF", 6U) != 0) {
+        mb_worker_free(response);
+        return 2;
+    }
+    const int protected = mb_worker_handle_protect(
+        worker, request, 34U, &response, &response_len);
+    if (!protected) {
+        mb_worker_free(response);
+        return 21;
+    }
+    if (response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 22;
+    }
+    if (worker->mappings[0].permission
+        != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        mb_worker_free(response);
+        return 23;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
+    fail_next_sync_response = 1;
+    if (mb_worker_handle_sync(worker, request, 33U,
+            &response, &response_len) != 0
+        || response != NULL || response_len != 0U
+        || sync_count != before_sync + 1U || worker->count != 1U) {
+        mb_worker_free(response);
+        return 4;
+    }
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
+        || sync_count != before_sync + 2U) {
+        mb_worker_free(response);
+        return 5;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
+    fail_next_release_response = 1;
+    if (mb_worker_handle_release(worker, request, 33U,
+            &response, &response_len) != 0
+        || response != NULL || response_len != 0U
+        || worker->count != 0U || release_count != before_release + 1U) {
+        mb_worker_free(response);
+        return 6;
+    }
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_MAPPING_NOT_FOUND
+        || worker->count != 0U || release_count != before_release + 1U) {
+        mb_worker_free(response);
+        return 7;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 static int check_invalid_memory_command(
     struct mb_worker_state *worker,
     const mb_u8 *request,
@@ -2215,6 +2327,10 @@ int main(void)
     }
     if (check_unreportable_mapping_cleanup(&worker) != 0) {
         return 35;
+    }
+    const int side_effects = check_unreportable_copy_sync_release(&worker);
+    if (side_effects != 0) {
+        return 80 + side_effects;
     }
     const int memory_failures = check_malformed_memory_commands(&worker);
     if (memory_failures != 0) {

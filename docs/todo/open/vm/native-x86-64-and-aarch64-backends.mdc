@@ -604,6 +604,11 @@ A distinct single-resident lease cache
   and interior deletion. All five survivors copy, seal, and synchronize, and
   worker teardown releases each original `VirtualAlloc` base exactly once.
 
+  Unreportable simulated Win32 copy, sync, and release responses now preserve
+  post-operation ownership: copied RW bytes stay staged, RX sync admits retry,
+  and release removes the mapping and frees backing exactly once. No success
+  frame is fabricated after response-buffer allocation failure.
+
   Simulated `VirtualProtect` and `VirtualFree` failures leave the mapping
   writable or still owned, respectively. Retried operations succeed without
   losing the aligned backing reservation or corrupting table state.
