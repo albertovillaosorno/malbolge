@@ -59,9 +59,20 @@ static int fail_next_protect;
 static int fail_next_release;
 static int fail_next_sync;
 static char mock_handle;
+static const mb_u8 *mock_read_source;
+static size_t mock_read_len;
+static size_t mock_read_pos;
+static size_t mock_read_chunk;
+static int mock_fail_read;
+static size_t mock_fail_read_after;
+static mb_win_dword mock_read_error = 5UL;
+static mb_u8 mock_write_buffer[256];
+static size_t mock_write_pos;
+static size_t mock_write_chunk;
+static int mock_fail_write;
 
 mb_win_handle GetCurrentProcess(void) { return &mock_handle; }
-mb_win_dword GetLastError(void) { return 5UL; }
+mb_win_dword GetLastError(void) { return mock_read_error; }
 mb_win_handle GetProcessHeap(void) { return &mock_handle; }
 mb_win_handle GetStdHandle(mb_win_dword kind)
 {
@@ -92,20 +103,46 @@ mb_win_bool ReadFile(
     mb_win_dword *read, void *overlapped)
 {
     (void)handle;
-    (void)buffer;
-    (void)len;
     (void)overlapped;
-    *read = 0UL;
-    return 0;
+    if (mock_fail_read != 0
+        && mock_read_pos >= mock_fail_read_after) {
+        mock_fail_read = 0;
+        *read = 0UL;
+        return 0;
+    }
+    const size_t remaining = mock_read_len - mock_read_pos;
+    size_t count = (size_t)len < remaining ? (size_t)len : remaining;
+    if (count > mock_read_chunk) {
+        count = mock_read_chunk;
+    }
+    if (count != 0U) {
+        memcpy(buffer, &mock_read_source[mock_read_pos], count);
+    }
+    mock_read_pos += count;
+    *read = (mb_win_dword)count;
+    return 1;
 }
 mb_win_bool WriteFile(
     mb_win_handle handle, const void *buffer, mb_win_dword len,
     mb_win_dword *written, void *overlapped)
 {
     (void)handle;
-    (void)buffer;
     (void)overlapped;
-    *written = len;
+    if (mock_fail_write != 0) {
+        mock_fail_write = 0;
+        *written = 0UL;
+        return 0;
+    }
+    const size_t space = sizeof(mock_write_buffer) - mock_write_pos;
+    size_t count = (size_t)len < space ? (size_t)len : space;
+    if (count > mock_write_chunk) {
+        count = mock_write_chunk;
+    }
+    if (count != 0U) {
+        memcpy(&mock_write_buffer[mock_write_pos], buffer, count);
+    }
+    mock_write_pos += count;
+    *written = (mb_win_dword)count;
     return 1;
 }
 void *VirtualAlloc(
@@ -669,6 +706,91 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         && pointer_drift_invocations == 3U ? 0 : 9;
 }
 
+static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)
+{
+    mock_read_source = bytes;
+    mock_read_len = len;
+    mock_read_pos = 0U;
+    mock_read_chunk = 2U;
+    mock_fail_read = 0;
+    mock_fail_read_after = 0U;
+    mock_read_error = 5UL;
+}
+
+static int check_frame_io(void)
+{
+    mb_u8 wire[11] = {0};
+    mb_u8 *payload = NULL;
+    size_t len = 0U;
+    mb_native_process_write_u64(wire, 3U);
+    memcpy(&wire[8], "xyz", 3U);
+    mb_mock_read_reset(wire, sizeof(wire));
+    if (mb_worker_read_frame(&payload, &len) != 1
+        || len != 3U || memcmp(payload, "xyz", 3U) != 0
+        || mock_read_pos != sizeof(wire)) {
+        mb_worker_free(payload);
+        return 1;
+    }
+    mb_worker_free(payload);
+    mock_write_pos = 0U;
+    mock_write_chunk = 2U;
+    mock_fail_write = 0;
+    if (!mb_worker_write_frame((const mb_u8 *)"xyz", 3U)
+        || mock_write_pos != sizeof(wire)
+        || memcmp(mock_write_buffer, wire, sizeof(wire)) != 0) {
+        return 2;
+    }
+    mb_mock_read_reset(wire, 0U);
+    if (mb_worker_read_frame(&payload, &len) != 0) {
+        return 3;
+    }
+    mb_mock_read_reset(wire, 4U);
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 4;
+    }
+    mb_mock_read_reset(wire, 9U);
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 5;
+    }
+    mb_native_process_write_u64(wire, 0U);
+    mb_mock_read_reset(wire, 8U);
+    if (mb_worker_read_frame(&payload, &len) != 1
+        || len != 0U || payload != NULL) {
+        return 6;
+    }
+    mock_write_pos = 0U;
+    if (!mb_worker_write_frame(NULL, 0U)
+        || mock_write_pos != 8U
+        || memcmp(mock_write_buffer, wire, 8U) != 0) {
+        return 7;
+    }
+    mock_fail_write = 1;
+    if (mb_worker_write_frame(NULL, 0U) != 0) {
+        return 8;
+    }
+    mock_fail_read = 1;
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 9;
+    }
+    for (mb_win_dword error_code = 38U; error_code <= 109U;
+            error_code += 71U) {
+        mb_mock_read_reset(wire, 8U);
+        mock_fail_read = 1;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != 0) {
+            return 10;
+        }
+        mb_mock_read_reset(wire, 8U);
+        mock_fail_read = 1;
+        mock_fail_read_after = 2U;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1) {
+            return 11;
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -711,6 +833,9 @@ int main(void)
     if (reservation_count != 11U || release_count != 11U
         || protect_count != 9U || native_entry_invocations != 1U) {
         return 15;
+    }
+    if (check_frame_io() != 0) {
+        return 16;
     }
     return 0;
 }

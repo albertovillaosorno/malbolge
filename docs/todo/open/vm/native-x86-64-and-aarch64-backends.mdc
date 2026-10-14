@@ -613,6 +613,11 @@ A distinct single-resident lease cache
   cursors, and termination tags deny the call without executing the entry.
   This is controlled host simulation, not native Windows ABI execution.
 
+  The mocked Win32 frame I/O also exercises partial reads and writes, valid
+  empty frames, truncated headers and payloads, and failed writes. Broken-pipe
+  error codes 38/109 mean clean EOF only before any header bytes are received;
+  after a partial header the worker rejects the transport framing.
+
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
   serialized memory and output buffers, without trusting changed addresses.

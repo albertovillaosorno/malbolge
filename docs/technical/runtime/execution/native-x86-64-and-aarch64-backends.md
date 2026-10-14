@@ -1185,6 +1185,16 @@ entry offsets, impossible I/O cursors, and unsupported termination tags.
 Request bytes remain intact, and the denied calls never execute the host
 entry. This exercises handler framing, not Windows ABI or guest semantics.
 
+The same host simulation drives the concrete Win32 framed I/O loops using
+partial two-byte `ReadFile` and `WriteFile` transfers. It verifies exact frame
+reconstruction, empty-frame handling, and rejection of truncated headers,
+truncated bodies, and failed writes without accepting incomplete responses.
+
+Simulated broken-pipe errors 38 and 109 count as clean EOF only before the
+first header byte; the same errors after partial header input fail closed.
+This verifies Windows transport control flow under mocks, not Windows kernel
+pipe behavior on an actual Windows host.
+
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports
 pointer mismatch while encoding from the original memory/output backing
