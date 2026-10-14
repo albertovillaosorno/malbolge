@@ -1983,6 +1983,89 @@ static int check_mixed_live_mapping_ids(struct mb_worker_state *worker)
         && release_count == releases_before + 2U ? 0 : 12;
 }
 
+static int check_empty_and_full_code_copies(struct mb_worker_state *worker)
+{
+    mb_u8 request[107] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    memset(worker->mappings[0].base, 'A', 64U);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 0U);
+    if (!mb_worker_handle_copy(worker, request, 42U,
+            &response, &response_len)
+        || response_len != 26U
+        || mb_native_process_read_u64(&response[10]) != id
+        || mb_native_process_read_u64(&response[18]) != base
+        || worker->mappings[0].base[0] != 'A') {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    memset(&request[42], 'B', 65U);
+    mb_native_process_write_u64(&request[34], 65U);
+    if (!mb_worker_handle_copy(worker, request, 107U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->mappings[0].base[0] != 'A'
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
+        mb_worker_free(response);
+        return 3;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[34], 64U);
+    if (!mb_worker_handle_copy(worker, request, 106U,
+            &response, &response_len)
+        || response_len != 90U
+        || memcmp(&response[26], &request[42], 64U) != 0
+        || memcmp(worker->mappings[0].base, &request[42], 64U) != 0) {
+        mb_worker_free(response);
+        return 4;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_protect(worker, request, 34U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 5;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES) {
+        mb_worker_free(response);
+        return 6;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker->count != 0U) {
+        mb_worker_free(response);
+        return 7;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 static int check_stale_id_with_recycled_base(
     struct mb_worker_state *worker)
 {
@@ -2769,6 +2852,10 @@ int main(void)
     const int independent = check_independent_worker_mapping_ids();
     if (independent != 0) {
         return 75 + independent;
+    }
+    const int empty_copy = check_empty_and_full_code_copies(&worker);
+    if (empty_copy != 0) {
+        return 135 + empty_copy;
     }
     const int mixed = check_mixed_live_mapping_ids(&worker);
     if (mixed != 0) {

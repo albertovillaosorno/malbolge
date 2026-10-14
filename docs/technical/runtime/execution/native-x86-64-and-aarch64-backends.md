@@ -1324,6 +1324,11 @@ other mapping's geometry fails copy, RX protection, release, and RX cache sync
 without mutating either mapping or releasing either reservation. Both mappings
 then copy, seal, synchronize, and release independently with their own IDs.
 
+The Win32-host memory handler also admits a zero-byte code copy without
+changing its backing buffer or mapping identity. A subsequent 65-byte copy
+into 64 mapped bytes is denied without writes; a full 64-byte copy succeeds
+on the same mapping before RX sealing, synchronization, and clean release.
+
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large
 memory/input/output lengths, and too few words or bytes for the frame.

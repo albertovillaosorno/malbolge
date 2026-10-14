@@ -591,6 +591,10 @@ A distinct single-resident lease cache
   two simultaneously live over-aligned mappings for copy, RX protection,
   release, and cache sync. Both remain independently operable afterward.
 
+  The same controlled Windows handler also accepts zero-byte code copying,
+  rejects a 65-byte overflow into 64 mapped bytes without mutation, then
+  admits the exact 64-byte copy before sealing, syncing, and releasing.
+
   Forged start, length, and mapping identity in cache-sync commands similarly
   fail on a sealed mapping; exact full-range sync and release remain valid.
 
