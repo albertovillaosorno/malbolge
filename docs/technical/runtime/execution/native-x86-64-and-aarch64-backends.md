@@ -960,6 +960,12 @@ poisoning the retained session. A non-mutating real RX entry also accepts
 all three normative incoming tags, returning unchanged buffer evidence and
 remaining releasable on the same session.
 
+A separate real-call regression checks returned termination evidence: a native
+entry writes an unknown tag (`255`) into its ABI state and falsely returns
+`Applied`. The worker returns that untrusted state as data; Rust semantic
+verification then rejects the unknown termination, restores original caller
+buffers, and permits clean worker release and reuse.
+
 A complementary host-real call uses a non-mutating guard-miss test stub with
 input consumed exactly equal to input length and output length exactly equal
 to capacity. The worker invokes that RX entry for both empty input and a

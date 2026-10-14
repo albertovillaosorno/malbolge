@@ -695,7 +695,8 @@ use execution_native::{
     NativeProcessSessionError, NativeRegionBuffers, NativeRegionCallFrame,
     NativeRegionCallFrameError, NativeRegionInvocationError,
     NativeRegionInvocationOutcome, NativeRegionMutationSurface,
-    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeRegionObservationError, NativeRegionStatus,
+    NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedDirectFusedInvocation,
     PreparedDirectFusedNativeInvocation,
     PreparedExecutionGeometryNativeInvocation,
@@ -72074,6 +72075,131 @@ fn assert_posix_worker_rejects_unverified_native_status(
         return Err(String::from("false Applied status changed caller"));
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_returned_termination_evidence(
+    response: &NativeProcessCallResponse,
+    request: &NativeProcessCallRequest,
+) -> Result<(), String> {
+    if response.raw_status() != 0i32
+        || response.state().termination_tag() != u8::MAX
+        || !response.pointers_unchanged()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+    {
+        return Err(String::from(
+            "native termination mutation was not returned",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_corrupted_return_termination(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(
+        &artifact,
+        executable.mapping_id().get(),
+        0x7700,
+    )?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(16..24)
+        .ok_or("corrupted termination entry offset missing")?
+        .fill(0);
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let frame = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("invalid exit termination: {error:?}"))?;
+    let response = decode_native_process_call_response(&frame, &request)
+        .map_err(|error| error.to_string())?;
+    assert_posix_worker_returned_termination_evidence(&response, &request)?;
+    let raw = invocation
+        .apply_process_response(&response)
+        .map_err(|error| error.to_string())?;
+    let rejected = matches!(
+        invocation.complete(raw),
+        Err(VerifiedDirectInvocationError::Invocation(
+            NativeRegionInvocationError::Observation(
+                NativeRegionObservationError::Termination(error),
+            ),
+        )) if error.value() == u8::MAX
+    );
+    if !rejected
+        || memory != native_verified_output_memory()
+        || output != [0x10, 0, 0]
+        || session.poisoned()
+    {
+        return Err(String::from("native termination rollback failed"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rolls_back_invalid_exit_termination()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("invalid_exit_termination")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("exit termination spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        // mov byte ptr [rcx + 76], 255; mov eax, Applied; ret
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: vec![0xc6, 0x41, 0x4c, 0xff, 0xb8, 0, 0, 0, 0, 0, 0xc3]
+                .into_boxed_slice(),
+            mapping: writable,
+        };
+        let NativeProcessMemoryResponse::Copy(_report) =
+            posix_worker_memory_exchange(&mut session, &copy)?
+        else {
+            return Err(String::from("exit termination stub copy failed"));
+        };
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("exit termination stub RX seal failed"));
+        };
+        assert_posix_worker_rejects_corrupted_return_termination(
+            &mut session,
+            executable,
+        )?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

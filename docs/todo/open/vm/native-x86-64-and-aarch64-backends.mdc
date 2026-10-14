@@ -546,6 +546,11 @@ A distinct single-resident lease cache
   the shared C ABI tag authority. A real POSIX trap-byte fixture formerly
   executed for unknown tags; the same child now fails closed and stays live.
   A real guard-miss entry still admits all three normative termination tags.
+
+  A native stub that changes the *returned* termination tag to `255` and
+  reports `Applied` is rejected by Rust semantic verification, with caller
+  buffers rolled back and the retained worker reusable.
+
   A non-mutating native guard-miss stub at exact input/output capacity limits
   still runs with empty or fully consumed one-byte input and leaves a clean
   releasable mapping.
