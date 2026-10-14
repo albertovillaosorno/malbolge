@@ -871,6 +871,12 @@ those real mutations over MBNPC1, but the existing semantic completion checker
 rejects each non-atomic miss and restores the original caller buffers. The
 retained child can still release the mappings and handle later allocations.
 
+A complementary host-real success-forgery regression invokes a native entry
+that returns `Applied` while leaving the required register, memory, and output
+transition incomplete. The semantic verifier rejects that false status as
+`AppliedObservation`, restores the original caller buffers, and retains the
+same worker for cleanup and subsequent allocation.
+
 `native/native_process_worker_posix.c` now supplies the first concrete child
 implementation. On Linux x86-64 it allocates anonymous RW mappings, copies exact
 verified image bytes, transitions the same mapping to RX, performs full-range

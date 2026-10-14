@@ -71904,6 +71904,113 @@ fn assert_posix_worker_native_guard_miss_rollback(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_false_native_applied(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(
+        &artifact,
+        executable.mapping_id().get(),
+        0x7600,
+    )?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let mut encoded = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(16..24)
+        .ok_or("false Applied entry offset missing")?
+        .fill(0);
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let bytes = session
+        .exchange(&encoded, limit)
+        .map_err(|error| format!("false Applied exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&bytes, &request)
+        .map_err(|error| error.to_string())?;
+    if response.raw_status() != 0i32
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+    {
+        return Err(String::from("false Applied response shape drifted"));
+    }
+    let raw = invocation
+        .apply_process_response(&response)
+        .map_err(|error| error.to_string())?;
+    if invocation.complete(raw)
+        != Err(VerifiedDirectInvocationError::Invocation(
+            NativeRegionInvocationError::AppliedObservation,
+        ))
+        || memory != native_verified_output_memory()
+        || output != [0x10, 0, 0]
+        || session.poisoned()
+    {
+        return Err(String::from("false Applied status changed caller"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rolls_back_false_native_applied()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("false_native_applied")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("false Applied spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let request = NativeProcessMemoryRequest::Copy {
+            code: vec![0xb8, 0, 0, 0, 0, 0xc3].into_boxed_slice(),
+            mapping: writable,
+        };
+        let NativeProcessMemoryResponse::Copy(_report) =
+            posix_worker_memory_exchange(&mut session, &request)?
+        else {
+            return Err(String::from("false Applied stub copy failed"));
+        };
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("false Applied stub RX seal failed"));
+        };
+        assert_posix_worker_rejects_false_native_applied(
+            &mut session,
+            executable,
+        )?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_rolls_back_mutating_guard_miss()
 -> Result<(), String> {

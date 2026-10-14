@@ -408,6 +408,10 @@ A distinct single-resident lease cache
   The semantic verifier rejects these non-atomic misses and restores caller
   buffers, while the retained child can release and allocate normally.
 
+  A host-real false `Applied` native stub also fails semantic verification
+  without the required transition; caller buffers roll back and the child
+  remains available for release and a new mapping.
+
   The `MBNPC1` process-call wire contract now frames that transfer in
   little-endian bytes with stable 77-byte request and 74-byte response prefixes.
   Request decoding now rejects overflowed or incomplete declared payloads
