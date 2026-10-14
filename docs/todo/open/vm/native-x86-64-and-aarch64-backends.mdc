@@ -573,7 +573,9 @@ A distinct single-resident lease cache
   POSIX allocations now preserve an over-reserved backing span while exposing
   a power-of-two-aligned executable range. Eight live 64-KiB-aligned mappings
   copy, seal, execute, and release independently. Overflowing reservation
-  geometry fails closed without poisoning the child.
+  geometry fails closed without poisoning the child. A separate 128-KiB-
+  aligned multi-page mapping executes from byte 8,192 after full-range
+  synchronization and releases its original reservation cleanly.
 
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and

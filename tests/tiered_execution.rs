@@ -71558,6 +71558,101 @@ fn native_process_posix_worker_allocates_overaligned_mappings()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_overaligned_multi_page_entry(
+    session: &mut NativeProcessSession,
+) -> Result<NativeExecutableMappingReport, String> {
+    let allocation = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            8198,
+            131_072,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let NativeProcessMemoryResponse::Allocate(writable) =
+        posix_worker_memory_exchange(session, &allocation)?
+    else {
+        return Err(String::from("128-KiB-aligned mapping allocation failed"));
+    };
+    if (writable.base_address().get() & 131_071) != 0
+        || writable.mapped_len() != 8198
+    {
+        return Err(String::from("multipage allocation geometry drifted"));
+    }
+    let mut code = vec![0x90u8; 8198];
+    code.get_mut(..2)
+        .ok_or("aligned multipage trap absent")?
+        .copy_from_slice(&[0x0f, 0x0b]);
+    code.get_mut(8192..8198)
+        .ok_or("aligned multipage native entry absent")?
+        .copy_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.clone().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("aligned multipage code copy failed"));
+    };
+    if copied.copied_code() != code {
+        return Err(String::from("aligned multipage copy drifted"));
+    }
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("aligned multipage RX seal failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_overaligned_multi_page_entry(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let executable =
+        posix_worker_install_overaligned_multi_page_entry(session)?;
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    if !matches!(
+        posix_worker_memory_exchange(session, &sync)?,
+        NativeProcessMemoryResponse::Synchronize(_),
+    ) {
+        return Err(String::from("aligned multipage sync failed"));
+    }
+    assert_posix_worker_nonzero_entry_response(session, executable, 8192)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_executes_overaligned_multi_page_mapping()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("overaligned_multipage")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session =
+            NativeProcessSessionConfig::new(worker).spawn().map_err(
+                |error| format!("overaligned multipage spawn: {error:?}"),
+            )?;
+        assert_posix_worker_overaligned_multi_page_entry(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_invalid_allocate_fields(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {

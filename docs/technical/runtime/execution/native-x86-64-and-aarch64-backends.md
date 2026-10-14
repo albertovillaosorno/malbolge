@@ -1126,6 +1126,11 @@ fix and checks eight simultaneous aligned mappings through copy, RX protection,
 native dispatch, and independent release. Reservation-length overflow rejects
 without creating a mapping or poisoning the retained child. Windows alignment
 continues to follow its explicit platform allocation/failure contract.
+
+A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
+native entry at byte 8,192, seals and synchronizes the whole range, then
+executes that entry before releasing the original backing reservation.
+
 A separate full-copy boundary fixture admits a zero-byte code copy without
 losing writable mapping identity, rejects 65 bytes for a 64-byte RW mapping,
 then admits an exact 64-byte copy and release on the same unpoisoned child.
