@@ -72108,6 +72108,145 @@ fn native_process_posix_worker_reports_native_pointer_mutation()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_pointer_and_buffer_admission(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+    memory_changed: bool,
+) -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(
+        &artifact,
+        executable.mapping_id().get(),
+        0x7900,
+    )?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = bound_native_output_call(
+        &artifact,
+        &program,
+        &ready,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let request = invocation.process_request();
+    let response =
+        posix_worker_verified_scalar_response(session, executable, &request)?;
+    let buffer_changed = if memory_changed {
+        response.memory() != request.memory()
+            && response.output() == request.output()
+    } else {
+        response.memory() == request.memory()
+            && response.output() != request.output()
+    };
+    let rejected = response.raw_status() == 0i32
+        && !response.pointers_unchanged()
+        && buffer_changed
+        && invocation.apply_process_response(&response)
+            == Err(NativeProcessCallResponseError::PointerIntegrity);
+    invocation.abort();
+    if !rejected
+        || memory != native_verified_output_memory()
+        || output != [0x10, 0, 0]
+        || session.poisoned()
+    {
+        return Err(String::from("pointer tampering mutated trusted buffers"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_seal_pointer_tamper_stub(
+    session: &mut NativeProcessSession,
+    code: Vec<u8>,
+) -> Result<NativeExecutableMappingReport, String> {
+    let writable = posix_worker_allocate(session)?;
+    let request = NativeProcessMemoryRequest::Copy {
+        code: code.into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &request)?
+    else {
+        return Err(String::from("pointer/buffer stub code copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("pointer/buffer stub RX seal failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_pointer_and_buffer_rollbacks(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    // RCX is the Windows-x64 ABI state pointer, and code returns Applied.
+    let stubs = [
+        (
+            vec![
+                0x48, 0x8b, 0x01, 0xc7, 0x00, 123, 0, 0, 0, 0x48, 0xc7, 0x01,
+                0, 0, 0, 0, 0xb8, 0, 0, 0, 0, 0xc3,
+            ],
+            true,
+        ),
+        (
+            vec![
+                0x48, 0x8b, 0x41, 40, 0xc6, 0x00, 0xaa, 0x48, 0xc7, 0x41, 40,
+                0, 0, 0, 0, 0xb8, 0, 0, 0, 0, 0xc3,
+            ],
+            false,
+        ),
+        (
+            vec![
+                0x48, 0x8b, 0x01, 0xc7, 0x00, 123, 0, 0, 0, 0x48, 0xc7, 0x41,
+                16, 1, 0, 0, 0, 0xb8, 0, 0, 0, 0, 0xc3,
+            ],
+            true,
+        ),
+    ];
+    for (code, memory_changed) in stubs {
+        let executable = posix_worker_seal_pointer_tamper_stub(session, code)?;
+        assert_posix_worker_pointer_and_buffer_admission(
+            session,
+            executable,
+            memory_changed,
+        )?;
+        posix_worker_release(session, executable)?;
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rejects_mutated_pointer_and_buffer()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("pointer_and_buffer_mutation")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("pointer/buffer spawn: {error:?}"))?;
+        assert_posix_worker_pointer_and_buffer_rollbacks(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn posix_worker_verified_scalar_response(
     session: &mut NativeProcessSession,
     mapping: NativeExecutableMappingReport,

@@ -509,6 +509,10 @@ A distinct single-resident lease cache
   input, or output pointer. The worker reports pointer-integrity failure but
   transports only its original buffers and remains releasable afterward.
 
+  Three real stubs now mutate an owned guest buffer before replacing a memory,
+  input, or output pointer. Rust rejects each pointer-integrity violation
+  before copying modified data into caller buffers and retains child recovery.
+
   Five more host-real stubs overwrite all immutable length and mutable
   progress counters with `u64::MAX`; child response encoding still uses the
   original owned buffer lengths and remains reusable after each call.

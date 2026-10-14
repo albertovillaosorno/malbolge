@@ -938,6 +938,13 @@ its reconstructed ABI state. The worker sets the pointer-change flag while
 serializing memory and output through its original owned buffers, then
 releases each RX mapping without losing the retained child session.
 
+A stronger host-real pointer-integrity fixture first mutates a guest memory
+word or output byte, then overwrites the native memory, input, or output
+pointer while falsely reporting `Applied`. Although the POSIX child reports
+the modified owned buffers, Rust structurally rejects `PointerIntegrity`
+before copying them into caller memory. The original caller snapshot survives
+all three cases, and each mapping remains independently releasable.
+
 Five further x86-64 native stubs overwrite memory-word count, input length,
 input consumption, output capacity, or output length with `u64::MAX`. The
 retained POSIX worker serializes its originally allocated guest-memory and
