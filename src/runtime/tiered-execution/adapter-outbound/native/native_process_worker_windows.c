@@ -991,6 +991,7 @@ static int mb_worker_read_exact(
             const mb_win_dword code = GetLastError();
             if (clean_eof_allowed != 0
                 && read == 0U
+                && count == 0U
                 && (code == 38U || code == 109U)) {
                 return 0;
             }

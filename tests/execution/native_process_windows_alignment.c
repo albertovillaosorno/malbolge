@@ -89,6 +89,7 @@ static size_t mock_read_pos;
 static size_t mock_read_chunk;
 static mb_win_dword mock_last_read_request;
 static int mock_fail_read;
+static int mock_fail_read_with_count;
 static int mock_read_overreport;
 static size_t mock_fail_read_after;
 static mb_win_dword mock_read_error = 5UL;
@@ -193,7 +194,8 @@ mb_win_bool ReadFile(
     if (mock_fail_read != 0
         && mock_read_pos >= mock_fail_read_after) {
         mock_fail_read = 0;
-        *read = 0UL;
+        *read = mock_fail_read_with_count != 0 ? 1UL : 0UL;
+        mock_fail_read_with_count = 0;
         return 0;
     }
     if (mock_dynamic_wire != NULL && mock_read_pos >= 34U) {
@@ -1390,6 +1392,7 @@ static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)
     mock_read_pos = 0U;
     mock_read_chunk = 2U;
     mock_fail_read = 0;
+    mock_fail_read_with_count = 0;
     mock_read_overreport = 0;
     mock_fail_read_after = 0U;
     mock_read_error = 5UL;
@@ -1479,6 +1482,13 @@ static int check_frame_io(void)
         mock_read_error = error_code;
         if (mb_worker_read_frame(&payload, &len) != 0) {
             return 10;
+        }
+        mb_mock_read_reset(wire, 8U);
+        mock_fail_read = 1;
+        mock_fail_read_with_count = 1;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1) {
+            return 16;
         }
         mb_mock_read_reset(wire, 8U);
         mock_fail_read = 1;

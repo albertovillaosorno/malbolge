@@ -749,6 +749,9 @@ A distinct single-resident lease cache
   error codes 38/109 mean clean EOF only before any header bytes are received;
   after a partial header the worker rejects the transport framing.
 
+  A broken-pipe error with a contradictory nonzero returned byte count also
+  fails closed at header start rather than being accepted as clean EOF.
+
   Windows DWORD and BOOL widths are now pinned at 32 bits in both target code
   and the Linux-hosted Win32 simulation. A guarded oversized transfer test
   verifies requests are split at the maximum Win32 DWORD boundary.

@@ -1367,6 +1367,11 @@ first header byte; the same errors after partial header input fail closed.
 This verifies Windows transport control flow under mocks, not Windows kernel
 pipe behavior on an actual Windows host.
 
+The controlled Win32 shim also reports broken-pipe failure 38 or 109
+with a contradictory nonzero byte count at header start. This formerly
+looked like clean EOF, but now fails closed: only a zero-byte error report
+can signal clean EOF before any header bytes are received.
+
 An adversarial fake `ReadFile` that reports more bytes than requested exposed
 a classification bug: the worker previously treated that impossible count
 at header start as clean EOF. Only a genuine zero-byte read now admits clean
