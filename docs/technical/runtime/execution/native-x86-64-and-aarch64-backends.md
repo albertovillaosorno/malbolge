@@ -1080,9 +1080,9 @@ Host-real allocation validation also rejects zero mapped length, zero
 alignment, non-power-of-two alignment, and RX-only allocation permissions
 before creating a mapping. Both POSIX and Windows child handlers explicitly
 require power-of-two alignment before reserving executable storage.
-A separate full-copy boundary fixture rejects 65 bytes for a 64-byte RW
-mapping while admitting a later exact 64-byte copy and release on the same
-unpoisoned child process.
+A separate full-copy boundary fixture admits a zero-byte code copy without
+losing writable mapping identity, rejects 65 bytes for a 64-byte RW mapping,
+then admits an exact 64-byte copy and release on the same unpoisoned child.
 
 The source includes an AArch64 call/cache-sync path; a separate tracked
 `native_process_worker_windows.c` mirrors the same MBNPM1/MBNPC1 lifecycle

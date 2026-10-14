@@ -555,6 +555,10 @@ A distinct single-resident lease cache
   one byte beyond, or `u64::MAX` reject without mutating buffers or state;
   the same retained child can still release the mapping.
 
+  A real worker now accepts zero-byte code-copy evidence without changing
+  mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
+  subsequently accepts an exact 64-byte copy and release.
+
   A positive host-real MBNPC1 offset fixture places a native trap at mapping
   byte zero and a non-mutating guard miss at offset 16. Calling the latter
   keeps the session healthy and leaves later release/reallocation available.

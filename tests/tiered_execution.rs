@@ -71456,6 +71456,22 @@ fn assert_posix_worker_bounds_code_copy(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
     let mapping = posix_worker_allocate(session)?;
+    let empty = NativeProcessMemoryRequest::Copy {
+        code: Vec::new().into_boxed_slice(),
+        mapping,
+    };
+    let NativeProcessMemoryResponse::Copy(empty_report) =
+        posix_worker_memory_exchange(session, &empty)?
+    else {
+        return Err(String::from("zero-byte code copy was rejected"));
+    };
+    if !empty_report.copied_code().is_empty()
+        || empty_report.mapping_id() != mapping.mapping_id()
+        || empty_report.start_address() != mapping.base_address()
+        || session.poisoned()
+    {
+        return Err(String::from("zero-byte copy lost mapping identity"));
+    }
     let too_large = NativeProcessMemoryRequest::Copy {
         code: vec![0x90; 65].into_boxed_slice(),
         mapping,
