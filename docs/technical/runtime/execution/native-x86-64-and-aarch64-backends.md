@@ -1116,6 +1116,16 @@ Host-real allocation validation also rejects zero mapped length, zero
 alignment, non-power-of-two alignment, and RX-only allocation permissions
 before creating a mapping. Both POSIX and Windows child handlers explicitly
 require power-of-two alignment before reserving executable storage.
+
+The POSIX worker now reserves enough address space to align mappings beyond the
+OS page boundary, retaining the original reservation for full release and
+teardown while exposing only the requested aligned code range.
+
+A host-real regression reproduces rejection of 64-KiB alignment before the
+fix and checks eight simultaneous aligned mappings through copy, RX protection,
+native dispatch, and independent release. Reservation-length overflow rejects
+without creating a mapping or poisoning the retained child. Windows alignment
+continues to follow its explicit platform allocation/failure contract.
 A separate full-copy boundary fixture admits a zero-byte code copy without
 losing writable mapping identity, rejects 65 bytes for a 64-byte RW mapping,
 then admits an exact 64-byte copy and release on the same unpoisoned child.

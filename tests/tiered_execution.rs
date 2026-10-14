@@ -71468,6 +71468,96 @@ fn native_process_posix_worker_rejects_out_of_range_entry_offset()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rejects_overaligned_overflow(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let oversized = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            (1usize << 63) + 1,
+            1usize << 63,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    if posix_worker_memory_exchange(session, &oversized)?
+        != NativeProcessMemoryResponse::Failure(4)
+        || session.poisoned()
+    {
+        return Err(String::from("overaligned reservation overflow admitted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_allocates_overaligned_mappings(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let allocation = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            65_536,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    assert_posix_worker_rejects_overaligned_overflow(session)?;
+    let mut mappings = Vec::new();
+    for _ in 0..8usize {
+        let NativeProcessMemoryResponse::Allocate(mapping) =
+            posix_worker_memory_exchange(session, &allocation)?
+        else {
+            return Err(String::from("64-KiB aligned allocation failed"));
+        };
+        if (mapping.base_address().get() & 65_535) != 0
+            || mapping.mapped_len() != 64
+            || session.poisoned()
+        {
+            return Err(String::from("POSIX mapping alignment drifted"));
+        }
+        mappings.push(mapping);
+    }
+    for mapping in mappings {
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+            mapping,
+        };
+        let NativeProcessMemoryResponse::Copy(_copied) =
+            posix_worker_memory_exchange(session, &copy)?
+        else {
+            return Err(String::from("aligned mapping code copy failed"));
+        };
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                session,
+                &NativeProcessMemoryRequest::Protect(mapping),
+            )?
+        else {
+            return Err(String::from("aligned mapping protection failed"));
+        };
+        assert_posix_worker_call_dispatch_status(session, executable, 1)?;
+        posix_worker_release(session, executable)?;
+    }
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_allocates_overaligned_mappings()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("overaligned_mappings")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("aligned worker spawn: {error:?}"))?;
+        assert_posix_worker_allocates_overaligned_mappings(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_invalid_allocate_fields(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {

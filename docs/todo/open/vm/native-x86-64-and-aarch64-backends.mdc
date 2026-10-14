@@ -570,6 +570,11 @@ A distinct single-resident lease cache
   one byte beyond, or `u64::MAX` reject without mutating buffers or state;
   the same retained child can still release the mapping.
 
+  POSIX allocations now preserve an over-reserved backing span while exposing
+  a power-of-two-aligned executable range. Eight live 64-KiB-aligned mappings
+  copy, seal, execute, and release independently. Overflowing reservation
+  geometry fails closed without poisoning the child.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.

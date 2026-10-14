@@ -58,6 +58,8 @@ struct mb_worker_mapping {
     mb_u64 id;
     mb_u8 *base;
     size_t len;
+    mb_u8 *reservation;
+    size_t reservation_len;
     enum mb_native_process_memory_permission permission;
 };
 
@@ -175,7 +177,9 @@ static void mb_worker_remove_mapping(
 static void mb_worker_release_all(struct mb_worker_state *worker)
 {
     for (size_t index = 0U; index < worker->count; ++index) {
-        (void)munmap(worker->mappings[index].base, worker->mappings[index].len);
+        (void)munmap(
+            worker->mappings[index].reservation,
+            worker->mappings[index].reservation_len);
     }
     free(worker->mappings);
     worker->mappings = NULL;
@@ -253,30 +257,33 @@ static int mb_worker_handle_allocate(
             response,
             response_len);
     }
-    void *memory = mmap(
+    size_t reservation_len = 0U;
+    if (!mb_worker_add_size(byte_len, alignment - 1U, &reservation_len)) {
+        return mb_worker_memory_failure(
+            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
+            MB_WORKER_ALLOCATION_FAILURE,
+            response,
+            response_len);
+    }
+    void *reservation = mmap(
         NULL,
-        byte_len,
+        reservation_len,
         PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS,
         -1,
         0);
-    if (memory == MAP_FAILED) {
+    if (reservation == MAP_FAILED) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             mb_worker_platform_code(),
             response,
             response_len);
     }
-    if (((uintptr_t)memory % alignment) != 0U) {
-        (void)munmap(memory, byte_len);
-        return mb_worker_memory_failure(
-            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
-            MB_WORKER_ALIGNMENT_FAILURE,
-            response,
-            response_len);
-    }
+    const size_t remainder = (size_t)((uintptr_t)reservation % alignment);
+    const size_t leading = remainder == 0U ? 0U : alignment - remainder;
+    mb_u8 *memory = (mb_u8 *)reservation + leading;
     if (!mb_worker_reserve_mapping(worker)) {
-        (void)munmap(memory, byte_len);
+        (void)munmap(reservation, reservation_len);
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             MB_WORKER_ALLOCATION_FAILURE,
@@ -284,7 +291,7 @@ static int mb_worker_handle_allocate(
             response_len);
     }
     if (worker->next_id == 0U) {
-        (void)munmap(memory, byte_len);
+        (void)munmap(reservation, reservation_len);
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
             MB_WORKER_ALLOCATION_FAILURE,
@@ -297,6 +304,8 @@ static int mb_worker_handle_allocate(
         .id = id,
         .base = memory,
         .len = byte_len,
+        .reservation = reservation,
+        .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
     };
     worker->count += 1U;
@@ -500,7 +509,7 @@ static int mb_worker_handle_release(
             response,
             response_len);
     }
-    if (munmap(mapping->base, mapping->len) != 0) {
+    if (munmap(mapping->reservation, mapping->reservation_len) != 0) {
         return mb_worker_memory_failure(
             MB_NATIVE_PROCESS_MEMORY_RELEASE,
             mb_worker_platform_code(),
