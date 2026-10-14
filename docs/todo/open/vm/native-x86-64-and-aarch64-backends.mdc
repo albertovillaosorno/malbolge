@@ -600,6 +600,10 @@ A distinct single-resident lease cache
   satisfies a 128-KiB request after alignment, then copies, seals, syncs,
   releases, and rejects overflow. Teardown frees the original backing base.
 
+  An 8,198-byte simulated Windows code image now copies across page boundaries
+  into a 128-KiB-aligned mapping and synchronizes exactly the full exposed
+  range before release. The backing reservation remains independently owned.
+
   Six simultaneous simulated Windows reservations also survive table growth
   and interior deletion. All five survivors copy, seal, and synchronize, and
   worker teardown releases each original `VirtualAlloc` base exactly once.

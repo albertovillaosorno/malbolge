@@ -1161,6 +1161,11 @@ memory-command handlers against mock Win32 allocation APIs. Its fake
 to the requested 128 KiB; checked over-reservation still produces a usable
 aligned mapping through copy, protection, synchronization, and release.
 
+A further simulated 8,198-byte native code image crosses multiple pages
+inside a 128-KiB-aligned Windows mapping. Its full copy response matches
+all source bytes, and `FlushInstructionCache` receives the exact exposed
+base and entire span before the original backing reservation is released.
+
 The same simulation checks a second mapping lifecycle, reservation arithmetic
 overflow before allocation, and cleanup of a still-live mapping during worker
 teardown. Mock `VirtualFree` accepts only original allocation bases, so these
