@@ -708,6 +708,10 @@ A distinct single-resident lease cache
   and the Linux-hosted Win32 simulation. A guarded oversized transfer test
   verifies requests are split at the maximum Win32 DWORD boundary.
 
+  A simulated high-bit Win32 platform error (`0x80000001`) is returned as
+  the same unsigned 32-bit failure code without consuming a mapping ID or
+  leaking an allocation; the host sanitizer fixture checks buffer cleanup.
+
   Overreported `ReadFile` byte counts no longer impersonate clean EOF on the
   first header read. Controlled shims verify invalid read or write counts
   fail closed, preserving the Windows framing trust boundary.

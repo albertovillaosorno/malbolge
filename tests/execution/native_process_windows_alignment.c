@@ -2300,6 +2300,21 @@ static int check_virtual_alloc_failure_is_retryable(
         return 1;
     }
     mb_worker_free(response);
+    // Windows DWORD errors are unsigned; preserve their high-bit payload.
+    mock_read_error = 0x80000001U;
+    fail_next_virtual_alloc = 1;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10]) != 0x80000001U
+        || fail_next_virtual_alloc != 0
+        || worker->count != 0U || worker->next_id != id_before
+        || reservation_count != reservations_before
+        || release_count != releases_before) {
+        mb_worker_free(response);
+        return 5;
+    }
+    mb_worker_free(response);
     // Even missing GetLastError evidence must return a nonzero failure tag.
     mock_read_error = 0UL;
     fail_next_virtual_alloc = 1;

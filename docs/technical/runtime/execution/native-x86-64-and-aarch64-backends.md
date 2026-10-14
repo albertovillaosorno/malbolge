@@ -1316,6 +1316,11 @@ scalars instead of relying on the host's `unsigned long` width. The host C23
 simulation checks that a transfer larger than `UINT32_MAX` is capped to a
 single maximum-DWORD request before any buffer access or failed I/O return.
 
+The controlled allocation-failure shim also returns a high-bit Win32 error
+(`0x80000001`), and the worker retains the exact unsigned 32-bit value in
+its failure response. The mapping count, next ID, and reservation count
+remain unchanged, and both the ordinary and sanitizer-hosted tests pass.
+
 The host simulation now exercises the complete Windows worker process loop,
 not only its individual handlers. Clean stream EOF exits successfully, while
 an unrecognized second frame, a truncated header, or interrupted response
