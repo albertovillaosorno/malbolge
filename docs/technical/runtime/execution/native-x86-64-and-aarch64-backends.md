@@ -1235,6 +1235,11 @@ output buffer (`2/2` input bytes and `3/3` output bytes). Exact upper-bound
 progress still admits the call, preserves all original buffers and pointer
 identities, and returns a stable `GuardMiss` rather than an invalid argument.
 
+A deterministic Win32 shim now recycles the exact `VirtualAlloc` backing
+address after release into a new 128-KiB-aligned mapping. The stale mapping
+ID cannot copy, protect, release, or dispatch native code through the reused
+address, while the new ID retains ordinary copy and release authority.
+
 The Windows host simulation also sends ten malformed MBNPC1 frames to the
 same worker: short or excess payloads, incorrect magic, impossible large
 memory/input/output lengths, and too few words or bytes for the frame.

@@ -57,6 +57,10 @@ static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
 static size_t release_count;
+static int recycle_next_release;
+static void *recycled_allocation;
+static void *recycled_base;
+static size_t recycled_len;
 static int fail_next_protect;
 static int unexpected_old_protect;
 static int fail_next_heap_realloc;
@@ -204,14 +208,26 @@ void *VirtualAlloc(
         || reservation_count >= 64U || len > 1048576U) {
         return NULL;
     }
-    const size_t total = len + 262144U;
-    void *allocation = malloc(total);
-    if (allocation == NULL) {
-        return NULL;
+    void *allocation = recycled_allocation;
+    void *base = recycled_base;
+    if (allocation != NULL) {
+        if (len != recycled_len) {
+            return NULL;
+        }
+        recycled_allocation = NULL;
+        recycled_base = NULL;
+        recycled_len = 0U;
+    } else {
+        const size_t total = len + 262144U;
+        allocation = malloc(total);
+        if (allocation == NULL) {
+            return NULL;
+        }
+        const uintptr_t start = (uintptr_t)allocation;
+        const uintptr_t aligned = (start + 131071U)
+            & ~(uintptr_t)131071U;
+        base = (void *)(aligned + 65536U);
     }
-    const uintptr_t start = (uintptr_t)allocation;
-    const uintptr_t aligned = (start + 131071U) & ~(uintptr_t)131071U;
-    void *base = (void *)(aligned + 65536U);
     reservations[reservation_count] = (struct mb_mock_reservation){
         .allocation = allocation,
         .base = base,
@@ -259,7 +275,14 @@ mb_win_bool VirtualFree(void *address, size_t len, mb_win_dword flags)
     for (size_t i = 0U; i < reservation_count; ++i) {
         if (!reservations[i].released && address == reservations[i].base) {
             reservations[i].released = 1;
-            free(reservations[i].allocation);
+            if (recycle_next_release != 0) {
+                recycle_next_release = 0;
+                recycled_allocation = reservations[i].allocation;
+                recycled_base = reservations[i].base;
+                recycled_len = reservations[i].len;
+            } else {
+                free(reservations[i].allocation);
+            }
             release_count += 1U;
             return 1;
         }
@@ -1483,6 +1506,107 @@ static int check_malformed_memory_commands(struct mb_worker_state *worker)
     return check_mapping_lifecycle(worker) == 0 ? 0 : 21;
 }
 
+static int check_stale_id_with_recycled_base(
+    struct mb_worker_state *worker)
+{
+    mb_u8 request[48] = {0};
+    mb_u8 call[MB_NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t releases_before = release_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len) || len != 35U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    const mb_u64 stale_id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], stale_id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    recycle_next_release = 1;
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &len) || len != 10U) {
+        mb_worker_free(response);
+        return 2;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, request, 26U,
+            &response, &len) || len != 35U) {
+        mb_worker_free(response);
+        return 3;
+    }
+    const mb_u64 live_id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 live_base = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    if (live_id == stale_id || live_base != base
+        || recycled_allocation != NULL || worker->count != 1U) {
+        return 4;
+    }
+    mb_native_process_write_u64(&request[9], stale_id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "ABCDEF", 6U);
+    for (size_t index = 0U; index < 3U; ++index) {
+        int handled = 0;
+        if (index == 0U) {
+            handled = mb_worker_handle_copy(
+                worker, request, 48U, &response, &len);
+        } else if (index == 1U) {
+            handled = mb_worker_handle_protect(
+                worker, request, 34U, &response, &len);
+        } else {
+            handled = mb_worker_handle_release(
+                worker, request, 33U, &response, &len);
+        }
+        if (!handled || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+            || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+            || worker->count != 1U) {
+            mb_worker_free(response);
+            return 5;
+        }
+        mb_worker_free(response);
+    }
+    memcpy(call, MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
+    mb_native_process_write_u64(&call[8], stale_id);
+    if (!mb_worker_handle_call(worker, call, sizeof(call),
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES
+        || mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+            != MB_NATIVE_INVALID_ARGUMENT) {
+        mb_worker_free(response);
+        return 6;
+    }
+    mb_worker_free(response);
+    mb_native_process_write_u64(&request[9], live_id);
+    if (!mb_worker_handle_copy(worker, request, 48U,
+            &response, &len) || len != 32U
+        || memcmp(&response[26], "ABCDEF", 6U) != 0) {
+        mb_worker_free(response);
+        return 7;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_release(worker, request, 33U,
+            &response, &len) || len != 10U || worker->count != 0U
+        || release_count != releases_before + 2U) {
+        mb_worker_free(response);
+        return 8;
+    }
+    mb_worker_free(response);
+    return 0;
+}
+
 static int check_mapping_id_exhaustion(struct mb_worker_state *worker)
 {
     mb_u8 request[48] = {0};
@@ -1798,6 +1922,10 @@ int main(void)
     const int memory_failures = check_malformed_memory_commands(&worker);
     if (memory_failures != 0) {
         return 40 + memory_failures;
+    }
+    const int stale = check_stale_id_with_recycled_base(&worker);
+    if (stale != 0) {
+        return 57 + stale;
     }
     const int exhausted = check_mapping_id_exhaustion(&worker);
     if (exhausted != 0) {
