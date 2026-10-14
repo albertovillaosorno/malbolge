@@ -1126,6 +1126,11 @@ A dual-mode Windows-handler simulation checks offsets one through three under
 an AArch64 admission configuration, including sanitized host test runs; the
 AArch64 worker objects still cross-compile, without hardware execution claims.
 
+A separate real POSIX x86-64 fixture protects an executable mapping with an
+illegal instruction at offset zero and a six-byte native return stub at byte
+three. Calling offset three succeeds as a guard miss and leaves the child
+releasable, proving the ARM-only alignment rule does not restrict x86-64.
+
 A larger RX-mapping fixture uses 8,192 bytes and copies code through the
 4,096-byte page boundary, leaving a trap at the base and a guard-miss entry
 at offset 4,096. After whole-range instruction-cache synchronization, the

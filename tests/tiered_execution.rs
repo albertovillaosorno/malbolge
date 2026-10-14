@@ -71323,6 +71323,59 @@ fn native_process_posix_worker_invokes_nonzero_native_entry_offset()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_enters_byte_aligned_x86_stub(
+    session: &mut NativeProcessSession,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    let mut code = vec![0x90u8; 64];
+    code.get_mut(..3)
+        .ok_or("unaligned x86 initial trap absent")?
+        .copy_from_slice(&[0x0f, 0x0b, 0x90]);
+    code.get_mut(3..9)
+        .ok_or("unaligned x86 native entry absent")?
+        .copy_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("unaligned x86 code copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("unaligned x86 RX seal failed"));
+    };
+    assert_posix_worker_nonzero_entry_response(session, executable, 3)?;
+    posix_worker_release(session, executable)?;
+    assert_posix_worker_allocates_and_releases(session)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_accepts_byte_aligned_x86_entry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("unaligned_x86_entry")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("unaligned x86 spawn: {error:?}"))?;
+        assert_posix_worker_enters_byte_aligned_x86_stub(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_enters_last_complete_stub(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {

@@ -559,6 +559,10 @@ A distinct single-resident lease cache
   checks the AArch64 denial rule in both normal and sanitized configurations;
   actual AArch64 instruction execution remains unclaimed.
 
+  Host-real x86-64 execution additionally admits a byte-three native entry
+  while offset zero holds a trap, confirming the ARM-only alignment guard
+  does not reject valid non-four-byte-aligned x86 instruction addresses.
+
   The same stale-ID rejection now covers successive 64-KiB-aligned backing
   reservations, preserving only the current mapping's copy, RX, and release
   rights even when underlying address storage is recycled.
