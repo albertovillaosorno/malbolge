@@ -71793,14 +71793,42 @@ fn native_process_posix_worker_bounds_code_copy_at_mapping_length()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_allocate_for_compaction(
+    session: &mut NativeProcessSession,
+    alignment: usize,
+) -> Result<NativeExecutableMappingReport, String> {
+    let allocate = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            alignment,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let NativeProcessMemoryResponse::Allocate(mapping) =
+        posix_worker_memory_exchange(session, &allocate)?
+    else {
+        return Err(String::from("compaction aligned allocation failed"));
+    };
+    let mask = alignment
+        .checked_sub(1)
+        .ok_or("zero compaction alignment")?;
+    if (mapping.base_address().get() & mask) != 0 || mapping.mapped_len() != 64
+    {
+        return Err(String::from("compaction mapping alignment drifted"));
+    }
+    Ok(mapping)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_compacts_mapping_table(
     session: &mut NativeProcessSession,
+    alignment: usize,
 ) -> Result<(), String> {
     // Six live mappings force the child mapping table past its first
     // four-entry capacity, and releasing an interior slot shifts entries.
     let mut mappings = Vec::new();
     for _ in 0..6usize {
-        let mapping = posix_worker_allocate(session)?;
+        let mapping = posix_worker_allocate_for_compaction(session, alignment)?;
         if mappings
             .iter()
             .any(|previous: &NativeExecutableMappingReport| {
@@ -71853,7 +71881,26 @@ fn native_process_posix_worker_retains_mappings_after_table_compaction()
         let mut session = NativeProcessSessionConfig::new(worker)
             .spawn()
             .map_err(|error| format!("mapping table spawn: {error:?}"))?;
-        assert_posix_worker_compacts_mapping_table(&mut session)
+        assert_posix_worker_compacts_mapping_table(&mut session, 16)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_compacts_overaligned_mapping_table()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("overaligned_table_compaction")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("aligned table spawn: {error:?}"))?;
+        assert_posix_worker_compacts_mapping_table(&mut session, 65_536)
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);

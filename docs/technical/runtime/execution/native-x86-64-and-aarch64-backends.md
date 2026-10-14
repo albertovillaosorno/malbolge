@@ -1107,6 +1107,11 @@ once the table is empty. A separate regression forges a copied-code length of
 `u64::MAX`, rejects it as a remote failure, then copies valid bytes and releases
 the same mapping without session poisoning.
 
+The table-compaction fixture now also uses six 64-KiB-aligned mappings,
+removes an interior entry, and confirms all survivors retain their exposed
+addresses, copy authority, and full backing-reservation release ownership.
+A fresh allocation still works on the same retained worker after cleanup.
+
 A separate two-mapping POSIX regression seals only the first mapping as RX.
 Code copy fails on that executable mapping but succeeds on the still-RW second
 mapping, while full-range synchronization succeeds only for RX. Both mappings

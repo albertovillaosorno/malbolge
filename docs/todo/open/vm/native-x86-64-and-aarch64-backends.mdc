@@ -577,6 +577,10 @@ A distinct single-resident lease cache
   aligned multi-page mapping executes from byte 8,192 after full-range
   synchronization and releases its original reservation cleanly.
 
+  Six concurrently over-aligned mappings now also survive middle-entry table
+  removal: each surviving entry retains address, code-copy authority, and its
+  original reservation for release; the retained child can allocate again.
+
   Windows now likewise over-reserves with checked arithmetic and retains the
   original `VirtualAlloc` base for full release. Both Windows ISA objects
   still cross-compile with the pinned CRT-free import contract; native Windows
