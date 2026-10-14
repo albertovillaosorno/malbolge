@@ -71620,6 +71620,109 @@ fn native_process_posix_worker_reports_native_pointer_mutation()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_encodes_mutated_scalar_state(
+    session: &mut NativeProcessSession,
+    field_offset: u8,
+) -> Result<(), String> {
+    let writable = posix_worker_allocate(session)?;
+    // Windows-x64 ABI: RCX points to the region state. Store -1 into
+    // exactly one 64-bit scalar, return GuardMiss without buffer writes.
+    let mut code = vec![0x48, 0xc7, 0x41, field_offset];
+    code.extend_from_slice(&[0xff; 4]);
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("scalar mutation stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("scalar mutation stub protection failed"));
+    };
+    assert_posix_worker_mutated_scalar_response(
+        session,
+        executable,
+        field_offset,
+    )?;
+    posix_worker_release(session, executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_mutated_scalar_response(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+    field_offset: u8,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("scalar mutation mapping field missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let framed = session
+        .exchange(&bytes, limit)
+        .map_err(|error| format!("scalar mutation exchange: {error:?}"))?;
+    let response = decode_native_process_call_response(&framed, &request)
+        .map_err(|error| error.to_string())?;
+    let observed = response.state();
+    let overwritten = match field_offset {
+        8 => observed.memory_words(),
+        24 => observed.input_len(),
+        32 => observed.input_consumed(),
+        48 => observed.output_capacity(),
+        56 => observed.output_len(),
+        _ => return Err(String::from("unrecognized scalar mutation offset")),
+    };
+    if response.raw_status() != 1i32
+        || response.mapping_id() != executable.mapping_id()
+        || !response.pointers_unchanged()
+        || overwritten != u64::MAX
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || session.poisoned()
+    {
+        return Err(String::from("scalar mutation corrupted owned buffers"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_survives_mutated_native_scalar_capacities()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("native_scalar_capacity_mutation")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("scalar mutation spawn: {error:?}"))?;
+        for offset in [8u8, 24, 32, 48, 56] {
+            assert_posix_worker_encodes_mutated_scalar_state(
+                &mut session,
+                offset,
+            )?;
+        }
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_admits_empty_transfer_buffers()
 -> Result<(), String> {

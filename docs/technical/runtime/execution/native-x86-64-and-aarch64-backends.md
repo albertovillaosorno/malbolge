@@ -919,6 +919,12 @@ its reconstructed ABI state. The worker sets the pointer-change flag while
 serializing memory and output through its original owned buffers, then
 releases each RX mapping without losing the retained child session.
 
+Five further x86-64 native stubs overwrite memory-word count, input length,
+input consumption, output capacity, or output length with `u64::MAX`. The
+retained POSIX worker serializes its originally allocated guest-memory and
+output buffers rather than trusting the mutated ABI lengths. Each child call
+returns bounded shape evidence and leaves future allocations operational.
+
 Both C workers now check native-call input and output progress counters against
 the transmitted capacities before invoking an RX entry. A host-real POSIX
 regression reproduced the prior failure with a trap-byte mapping, then verifies
