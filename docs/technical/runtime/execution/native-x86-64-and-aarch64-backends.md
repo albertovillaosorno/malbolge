@@ -1271,6 +1271,12 @@ after `VirtualAlloc` has already succeeded. The worker publishes zero bytes,
 exits as a failed command, and releases that hidden backing reservation on
 process-loop teardown rather than leaking an allocation with no public ID.
 
+Two longer Windows process-loop simulations issue five valid allocation frames
+through fragmented pipe reads and writes, exercising table growth and all five
+serialized mapping identities. Clean EOF releases the five original backing
+reservations; an alternate malformed sixth call frame also releases all five
+while returning the expected failure status without a sixth response.
+
 
 Three additional host stubs respectively replace native memory, input, or
 output pointers before returning `GuardMiss`. The Windows call handler reports

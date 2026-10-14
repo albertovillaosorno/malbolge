@@ -50,7 +50,7 @@ struct mb_mock_reservation {
     int released;
 };
 
-static struct mb_mock_reservation reservations[32];
+static struct mb_mock_reservation reservations[64];
 static size_t reservation_count;
 static size_t protect_count;
 static size_t sync_count;
@@ -186,7 +186,7 @@ void *VirtualAlloc(
 {
     if (address != NULL || flags != (MB_WIN_MEM_RESERVE | MB_WIN_MEM_COMMIT)
         || protect != MB_WIN_PAGE_READWRITE
-        || reservation_count >= 32U || len > 1048576U) {
+        || reservation_count >= 64U || len > 1048576U) {
         return NULL;
     }
     const size_t total = len + 262144U;
@@ -1473,9 +1473,30 @@ static int check_mapping_id_exhaustion(struct mb_worker_state *worker)
     return 0;
 }
 
+static int check_multi_frame_allocation_results(
+    const mb_u8 *output, size_t output_len)
+{
+    if (output_len != 215U) {
+        return 1;
+    }
+    for (size_t index = 0U; index < 5U; ++index) {
+        const size_t offset = index * 43U;
+        if (mb_native_process_read_u64(&output[offset]) != 35U
+            || memcmp(&output[offset + 8U],
+                MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U) != 0
+            || output[offset + 16U] != MB_NATIVE_PROCESS_MEMORY_ALLOCATE
+            || output[offset + 17U] != MB_NATIVE_PROCESS_MEMORY_SUCCESS
+            || mb_native_process_read_u64(&output[offset + 18U])
+                != (mb_u64)(index + 1U)) {
+            return 2;
+        }
+    }
+    return 0;
+}
+
 static int check_process_loop_cleanup(int scenario)
 {
-    mb_u8 wire[160] = {0};
+    mb_u8 wire[200] = {0};
     mb_native_process_write_u64(wire, 26U);
     memcpy(&wire[8], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
     mb_native_process_write_u64(&wire[17], 64U);
@@ -1500,6 +1521,18 @@ static int check_process_loop_cleanup(int scenario)
         memcpy(&wire[42], MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
         wire_len = 119U;
     }
+    if (scenario == 8 || scenario == 9) {
+        for (size_t index = 1U; index < 5U; ++index) {
+            mb_native_process_write_u64(&wire[wire_len], 26U);
+            memcpy(&wire[wire_len + 8U], &wire[8], 26U);
+            wire_len += 34U;
+        }
+        if (scenario == 9) {
+            mb_native_process_write_u64(&wire[wire_len], 5U);
+            memcpy(&wire[wire_len + 8U], MB_NATIVE_PROCESS_CALL_MAGIC, 5U);
+            wire_len += 13U;
+        }
+    }
     mb_mock_read_reset(wire, wire_len);
     mock_write_pos = 0U;
     mock_write_chunk = 2U;
@@ -1511,16 +1544,19 @@ static int check_process_loop_cleanup(int scenario)
     const size_t reservations_before = reservation_count;
     const size_t releases_before = release_count;
     const int exit_code = mb_test_windows_worker_entry();
-    const int expected_exit = scenario == 0 || scenario == 5 ? 0
-        : scenario == 2 ? 2 : 3;
+    const int expected_exit = scenario == 0 || scenario == 5
+        || scenario == 8 ? 0 : scenario == 2 ? 2 : 3;
     const size_t expected_output = scenario == 7 ? 0U
-        : scenario == 3 ? 10U : scenario == 5 ? 125U : 43U;
+        : scenario == 3 ? 10U : scenario == 5 ? 125U
+        : scenario == 8 || scenario == 9 ? 215U : 43U;
+    const size_t expected_reservations =
+        scenario == 8 || scenario == 9 ? 5U : 1U;
     const int valid = exit_code == expected_exit
         && mock_write_pos == expected_output
         && (scenario == 7
             || mb_native_process_read_u64(mock_write_buffer) == 35U)
-        && reservation_count == reservations_before + 1U
-        && release_count == releases_before + 1U
+        && reservation_count == reservations_before + expected_reservations
+        && release_count == releases_before + expected_reservations
         && fail_next_invalid_call_response == 0
         && fail_next_mapping_response == 0
         && (scenario != 5
@@ -1529,8 +1565,11 @@ static int check_process_loop_cleanup(int scenario)
                     &mock_write_buffer[
                         51U + MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
                     == MB_NATIVE_INVALID_ARGUMENT));
+    const int multi_valid = (scenario != 8 && scenario != 9)
+        || check_multi_frame_allocation_results(
+            mock_write_buffer, mock_write_pos) == 0;
     mock_fail_write_after = (size_t)-1;
-    return valid ? 0 : 1;
+    return valid && multi_valid ? 0 : 1;
 }
 
 int main(void)
@@ -1597,7 +1636,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 8; ++scenario) {
+    for (int scenario = 0; scenario < 10; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }

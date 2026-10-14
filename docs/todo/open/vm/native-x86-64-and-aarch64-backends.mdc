@@ -676,6 +676,11 @@ A distinct single-resident lease cache
   likewise emits no bytes and releases the unreported `VirtualAlloc` span
   during terminal cleanup.
 
+  Two more process-loop cases exchange five valid allocation frames, checking
+  each serialized mapping ID and cleanup after table growth. Both clean EOF
+  and a malformed sixth call frame release all five original reservations;
+  the malformed frame emits no sixth response.
+
 
   Three further simulated guard-miss entries replace memory, input, or output
   pointers individually; responses mark pointer drift but retain the original
