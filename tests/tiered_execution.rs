@@ -71480,6 +71480,45 @@ fn native_process_posix_worker_refuses_out_of_bounds_call_progress()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_admits_normative_termination_tags(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("normative termination mapping identity absent")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    for tag in [0u8, 1, 2] {
+        *bytes
+            .get_mut(76)
+            .ok_or("normative termination byte absent")? = tag;
+        let framed = session.exchange(&bytes, limit).map_err(|error| {
+            format!("normative termination exchange: {error:?}")
+        })?;
+        let response = decode_native_process_call_response(&framed, &request)
+            .map_err(|error| error.to_string())?;
+        if response.raw_status() != 1i32
+            || response.state().termination_tag() != tag
+            || response.mapping_id() != executable.mapping_id()
+            || response.memory() != request.memory()
+            || response.output() != request.output()
+            || !response.pointers_unchanged()
+            || session.poisoned()
+        {
+            return Err(String::from(
+                "valid termination tag denied native call",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_admits_exact_progress(
     session: &mut NativeProcessSession,
 ) -> Result<(), String> {
@@ -71503,6 +71542,7 @@ fn assert_posix_worker_admits_exact_progress(
         return Err(String::from("valid progress entry was not sealed"));
     };
     assert_posix_worker_exact_progress_response(session, executable)?;
+    assert_posix_worker_admits_normative_termination_tags(session, executable)?;
     posix_worker_release(session, executable)
 }
 

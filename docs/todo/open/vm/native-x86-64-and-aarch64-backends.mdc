@@ -545,6 +545,7 @@ A distinct single-resident lease cache
   Both workers also reject unknown termination tags at native entry using
   the shared C ABI tag authority. A real POSIX trap-byte fixture formerly
   executed for unknown tags; the same child now fails closed and stays live.
+  A real guard-miss entry still admits all three normative termination tags.
   A non-mutating native guard-miss stub at exact input/output capacity limits
   still runs with empty or fully consumed one-byte input and leaves a clean
   releasable mapping.
