@@ -920,6 +920,13 @@ The framing regression also rejects an announced `u64::MAX` byte length
 without payload as a read failure, and a zero-length payload as an unknown
 protocol. Neither case emits a response or grants native-call authority.
 
+A positive host-real stream fixture sends five valid MBNPM1 commands to one
+POSIX child using one-, two-, three-, five-, and seven-byte pipe writes.
+The worker retains one 64-KiB-aligned mapping through allocate, exact code
+copy, RX protection, full-range synchronization, and release; each bounded
+response decodes against the corresponding original request. Closing input
+after release produces clean EOF with no surplus output or mapping leak.
+
 A separate host-real isolation regression runs two independent POSIX children.
 Sending an unknown outer protocol poisons and terminates only the first child;
 the sibling session remains able to allocate and release native memory.

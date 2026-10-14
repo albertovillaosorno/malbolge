@@ -277,12 +277,12 @@ use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::io::Write as _;
+use std::io::{Read as _, Write as _};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::process::{Command, Stdio, id as process_id};
+use std::process::{ChildStdin, ChildStdout, Command, Stdio, id as process_id};
 use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
@@ -69944,6 +69944,161 @@ fn assert_posix_worker_rejects_frame(
         return Err(format!("raw POSIX worker malformed frame: {output:?}"));
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_fragmented_memory_exchange(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    request: &NativeProcessMemoryRequest,
+    chunk_size: usize,
+) -> Result<NativeProcessMemoryResponse, String> {
+    let encoded = encode_native_process_memory_request(request)
+        .map_err(|error| error.to_string())?;
+    let count =
+        u64::try_from(encoded.len()).map_err(|error| error.to_string())?;
+    let frame = [count.to_le_bytes().as_slice(), encoded.as_slice()].concat();
+    for chunk in frame.chunks(chunk_size) {
+        stdin
+            .write_all(chunk)
+            .map_err(|error| format!("fragmented native write: {error}"))?;
+        thread::yield_now();
+    }
+    stdin.flush().map_err(|error| error.to_string())?;
+    let mut header = [0u8; 8];
+    stdout
+        .read_exact(&mut header)
+        .map_err(|error| format!("fragmented response header: {error}"))?;
+    let response_len = usize::try_from(u64::from_le_bytes(header))
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_memory_response_byte_limit(request)
+        .map_err(|error| error.to_string())?;
+    if response_len > limit {
+        return Err(String::from("fragmented response exceeded request bound"));
+    }
+    let mut response = vec![0u8; response_len];
+    stdout
+        .read_exact(&mut response)
+        .map_err(|error| format!("fragmented response body: {error}"))?;
+    decode_native_process_memory_response(&response, request)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_fragmented_allocate_and_seal(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+) -> Result<NativeExecutableMappingReport, String> {
+    let allocate = NativeProcessMemoryRequest::Allocate(
+        NativeExecutableAllocationRequest::new(
+            64,
+            65_536,
+            NativeExecutablePermission::ReadWrite,
+        ),
+    );
+    let NativeProcessMemoryResponse::Allocate(writable) =
+        posix_worker_fragmented_memory_exchange(stdin, stdout, &allocate, 1)?
+    else {
+        return Err(String::from("fragmented allocation failed"));
+    };
+    if (writable.base_address().get() & 65_535) != 0 {
+        return Err(String::from("fragmented mapping alignment drifted"));
+    }
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping: writable,
+    };
+    if !matches!(
+        posix_worker_fragmented_memory_exchange(stdin, stdout, &copy, 2,)?,
+        NativeProcessMemoryResponse::Copy(_)
+    ) {
+        return Err(String::from("fragmented code copy failed"));
+    }
+    let protect = NativeProcessMemoryRequest::Protect(writable);
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_fragmented_memory_exchange(stdin, stdout, &protect, 3)?
+    else {
+        return Err(String::from("fragmented RX seal failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_fragmented_sync_and_release(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let sync = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    if !matches!(
+        posix_worker_fragmented_memory_exchange(stdin, stdout, &sync, 5,)?,
+        NativeProcessMemoryResponse::Synchronize(_)
+    ) {
+        return Err(String::from("fragmented cache sync failed"));
+    }
+    let release = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(executable),
+    );
+    if posix_worker_fragmented_memory_exchange(stdin, stdout, &release, 7)?
+        != NativeProcessMemoryResponse::Release
+    {
+        return Err(String::from("fragmented release failed"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_fragmented_memory_lifecycle(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut child = Command::new(worker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("fragmented worker spawn: {error}"))?;
+    let mut stdin =
+        child.stdin.take().ok_or("fragmented worker stdin absent")?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or("fragmented worker stdout absent")?;
+    let executable =
+        posix_worker_fragmented_allocate_and_seal(&mut stdin, &mut stdout)?;
+    posix_worker_fragmented_sync_and_release(
+        &mut stdin,
+        &mut stdout,
+        executable,
+    )?;
+    drop(stdin);
+    let mut after = [0u8; 1];
+    if stdout.read(&mut after).map_err(|error| error.to_string())? != 0 {
+        return Err(String::from("worker emitted data after stream EOF"));
+    }
+    drop(stdout);
+    if child.wait().map_err(|error| error.to_string())?.code() != Some(0i32) {
+        return Err(String::from("fragmented worker did not exit cleanly"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_reuses_fragmented_memory_frames()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("fragmented_memory_frames")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = assert_posix_worker_fragmented_memory_lifecycle(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
