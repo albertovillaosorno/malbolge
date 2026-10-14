@@ -607,6 +607,12 @@ A distinct single-resident lease cache
   without claiming successful synchronization; retrying the exact range
   succeeds before the mapping is released.
 
+  The Windows handler is now also driven by a host-ABI C entry through MBNPC1:
+  state, registers, input/output progress, output bytes, and pointer identity
+  round-trip exactly. Non-RX or unknown IDs, out-of-range entries, malformed
+  cursors, and termination tags deny the call without executing the entry.
+  This is controlled host simulation, not native Windows ABI execution.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.

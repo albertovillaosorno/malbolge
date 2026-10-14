@@ -126,8 +126,10 @@ both machine IDs and parses each COFF symbol table, requiring the exact same
 
 A Linux-hosted C23 simulation runs the actual Windows memory handlers against
 controlled Win32 shims, including 128-KiB alignment from an unaligned
-`VirtualAlloc` result, explicit release, overflow, and teardown. This is not
-Windows execution; host-real AArch64 and Windows execution remain open.
+`VirtualAlloc` result, explicit release, overflow, and teardown. The same
+harness invokes the Windows MBNPC1 handler with a Linux-host-ABI C stub,
+checks returned state, and denies malformed call progress. This is not a
+Windows ABI execution test; host-real AArch64 and Windows execution remain open.
 
 `native_process_protocol.h` is the C23 mirror of MBNPM1/MBNPC1 version-one
 constants and little-endian scalar access. Its strict pinned-Clang conformance

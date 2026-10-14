@@ -436,6 +436,177 @@ static int check_win32_failure_recovery(struct mb_worker_state *worker)
     return 0;
 }
 
+static size_t native_entry_invocations;
+
+static int mb_simulated_native_entry(struct mb_native_region_state *state)
+{
+    native_entry_invocations += 1U;
+    state->memory[0] += 2U;
+    state->output[state->output_len] = state->input[state->input_consumed];
+    state->input_consumed += 1U;
+    state->output_len += 1U;
+    state->accumulator += 1U;
+    return MB_NATIVE_APPLIED;
+}
+
+static int check_native_call_shape(
+    struct mb_worker_state *worker,
+    const mb_u8 *request,
+    int expected_status,
+    int changed)
+{
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t before = native_entry_invocations;
+    if (!mb_worker_handle_call(worker, request, 86U, &response, &len)
+        || len != 81U) {
+        mb_worker_free(response);
+        return 1;
+    }
+    int failure = 0;
+    if (mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_STATUS_OFFSET])
+        != (mb_u32)expected_status) {
+        failure = 2;
+    } else if (mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_MAPPING_ID_OFFSET])
+        != mb_native_process_read_u64(&request[8])) {
+        failure = 9;
+    } else if (mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_MEMORY_WORDS_OFFSET])
+        != 1U
+        || mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_INPUT_LEN_OFFSET])
+            != 2U
+        || mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_OUTPUT_CAPACITY_OFFSET])
+            != 3U) {
+        failure = 10;
+    } else if (mb_native_process_read_u32(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_ACCUMULATOR_OFFSET])
+        != (changed != 0 ? 8U : 7U)
+        || response[MB_NATIVE_PROCESS_CALL_RESPONSE_TERMINATION_OFFSET]
+            != request[MB_NATIVE_PROCESS_CALL_REQUEST_TERMINATION_OFFSET]) {
+        failure = 11;
+    } else if (response[MB_NATIVE_PROCESS_CALL_RESPONSE_POINTER_FLAG_OFFSET]
+        != 1U) {
+        failure = 3;
+    } else if (mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_INPUT_CONSUMED_OFFSET])
+        != (changed != 0 ? 1U : mb_native_process_read_u64(&request[48]))) {
+        failure = 4;
+    } else if (mb_native_process_read_u64(
+            &response[MB_NATIVE_PROCESS_CALL_RESPONSE_OUTPUT_LEN_OFFSET])
+        != (changed != 0 ? 2U : mb_native_process_read_u64(&request[56]))) {
+        failure = 5;
+    } else if (mb_native_process_read_u32(&response[74])
+        != (changed != 0 ? 10U : 8U)) {
+        failure = 6;
+    } else if (response[78] != 0x10U
+        || response[79] != (changed != 0 ? 0xa5U : 0U)) {
+        failure = 7;
+    } else if (native_entry_invocations
+        != before + (changed != 0 ? 1U : 0U)) {
+        failure = 8;
+    }
+    mb_worker_free(response);
+    return failure;
+}
+
+static int check_native_call_guarding(struct mb_worker_state *worker)
+{
+    mb_u8 allocation[33] = {0};
+    mb_u8 request[86] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    memcpy(allocation, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&allocation[9], 64U);
+    mb_native_process_write_u64(&allocation[17], 131072U);
+    allocation[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(worker, allocation, 26U,
+            &response, &len) || len != 35U) {
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_worker_free(response);
+    mb_win_dword old_permissions = 0U;
+    if (!VirtualProtect(worker->mappings[0].base, 64U,
+            MB_WIN_PAGE_EXECUTE_READ, &old_permissions)) {
+        return 2;
+    }
+    worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+    // Run a host C entry through the Windows handler's pointer reconstruction.
+    mb_native_entry_fn entry = mb_simulated_native_entry;
+    mb_u8 *native_address = NULL;
+    mb_worker_copy_bytes(&native_address, &entry, sizeof(entry));
+    worker->mappings[0].base = native_address;
+    memcpy(request, MB_NATIVE_PROCESS_CALL_MAGIC, 8U);
+    mb_native_process_write_u64(&request[8], id);
+    mb_native_process_write_u64(&request[24], 1U);
+    mb_native_process_write_u64(&request[32], 2U);
+    mb_native_process_write_u64(&request[40], 3U);
+    mb_native_process_write_u64(&request[56], 1U);
+    mb_native_process_write_u32(&request[64], 7U);
+    mb_native_process_write_u32(&request[77], 8U);
+    request[81] = 0xa5U;
+    request[82] = 0xb6U;
+    request[83] = 0x10U;
+    mb_u8 unchanged_request[sizeof(request)];
+    memcpy(unchanged_request, request, sizeof(request));
+    const int call_result = check_native_call_shape(
+        worker, request, MB_NATIVE_APPLIED, 1);
+    if (call_result != 0 || memcmp(request, unchanged_request,
+            sizeof(request)) != 0) {
+        return 20 + call_result;
+    }
+    worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 10;
+    }
+    worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+    mb_native_process_write_u64(&request[8], id + 1U);
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 11;
+    }
+    mb_native_process_write_u64(&request[8], id);
+    mb_native_process_write_u64(&request[16], 64U);
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 4;
+    }
+    mb_native_process_write_u64(&request[16], 0U);
+    mb_native_process_write_u64(&request[48], 3U);
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 5;
+    }
+    mb_native_process_write_u64(&request[48], 0U);
+    mb_native_process_write_u64(&request[56], 4U);
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 6;
+    }
+    mb_native_process_write_u64(&request[56], 1U);
+    request[76] = 0xffU;
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
+        return 7;
+    }
+    worker->mappings[0].base = (mb_u8 *)(mb_uintptr)address;
+    mb_native_process_write_u64(&allocation[9], id);
+    mb_native_process_write_u64(&allocation[17], address);
+    mb_native_process_write_u64(&allocation[25], 64U);
+    if (!mb_worker_handle_release(worker, allocation, 33U, &response, &len)
+        || worker->count != 0U || len != 10U) {
+        return 8;
+    }
+    mb_worker_free(response);
+    return native_entry_invocations == 1U ? 0 : 9;
+}
+
 int main(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -470,6 +641,14 @@ int main(void)
     if (reservation_count != 10U || release_count != 10U
         || protect_count != 8U || sync_count != 8U) {
         return 13;
+    }
+    const int call_failure = check_native_call_guarding(&worker);
+    if (call_failure != 0) {
+        return 14 + call_failure;
+    }
+    if (reservation_count != 11U || release_count != 11U
+        || protect_count != 9U || native_entry_invocations != 1U) {
+        return 15;
     }
     return 0;
 }

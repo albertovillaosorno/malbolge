@@ -1175,6 +1175,16 @@ without counting synchronization or demoting the existing RX mapping.
 A retry succeeds on that same mapping before release, distinguishing a
 recoverable cache API error from an admitted synchronized native entry.
 
+The controlled Win32-host compilation also runs the actual Windows call
+handler against a host-ABI C entry. Its MBNPC1 response captures one changed
+memory word, input/output cursor progress, a changed output byte, register
+updates, exact input/output lengths, and unchanged pointer identity.
+
+The same fixture denies dispatch for non-RX or unknown mappings, out-of-range
+entry offsets, impossible I/O cursors, and unsupported termination tags.
+Request bytes remain intact, and the denied calls never execute the host
+entry. This exercises handler framing, not Windows ABI or guest semantics.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.
