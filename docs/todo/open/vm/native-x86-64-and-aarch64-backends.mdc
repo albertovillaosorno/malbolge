@@ -543,6 +543,10 @@ A distinct single-resident lease cache
   allocating again never authorizes stale release or RX-protect commands,
   regardless of address reuse. A trap-bearing RX mapping also cannot be entered
   through the released ID, and its live identity still permits clean release.
+
+  The same stale-ID rejection now covers successive 64-KiB-aligned backing
+  reservations, preserving only the current mapping's copy, RX, and release
+  rights even when underlying address storage is recycled.
   A live mapping also rejects forged base/length fields on release while its
   original mapping identity still permits clean release on the same child.
   Forged base and length fields on RX-protect also fail while the mapping

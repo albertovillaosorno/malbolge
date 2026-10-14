@@ -1042,6 +1042,11 @@ remains writable and denies a second protect operation after it becomes RX.
 Once sealed, full-range synchronization returns the exact expected report and
 the retained worker releases the executable mapping without losing its session.
 
+An aligned variant repeats the stale release, protection, and execution-ID
+denials with two successive 64-KiB-aligned allocations. The current mapping
+retains copy, RX protection, and release authority despite prior reservation
+address reuse; stale IDs confer no authority in the retained child.
+
 A host-real stale-identity regression releases one allocation, creates another,
 and proves the original mapping ID cannot release or protect the new mapping,
 even when the OS reuses its address. A valid RW copy succeeds for the new ID,

@@ -70471,10 +70471,11 @@ fn native_process_posix_worker_rejects_sync_before_rx_and_repeat_seal()
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_recycled_mapping_identity(
     session: &mut NativeProcessSession,
+    alignment: usize,
 ) -> Result<(), String> {
-    let stale = posix_worker_allocate(session)?;
+    let stale = posix_worker_allocate_for_compaction(session, alignment)?;
     posix_worker_release(session, stale)?;
-    let live = posix_worker_allocate(session)?;
+    let live = posix_worker_allocate_for_compaction(session, alignment)?;
     if stale.mapping_id() == live.mapping_id() {
         return Err(String::from("POSIX worker recycled native mapping ID"));
     }
@@ -70600,7 +70601,29 @@ fn native_process_posix_worker_refuses_recycled_mapping_identity()
         let mut session = NativeProcessSessionConfig::new(worker)
             .spawn()
             .map_err(|error| format!("stale mapping spawn: {error:?}"))?;
-        assert_posix_worker_rejects_recycled_mapping_identity(&mut session)
+        assert_posix_worker_rejects_recycled_mapping_identity(&mut session, 16)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_refuses_stale_overaligned_mapping_identity()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("stale_overaligned_mapping")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = (|| -> Result<(), String> {
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("stale aligned spawn: {error:?}"))?;
+        assert_posix_worker_rejects_recycled_mapping_identity(
+            &mut session,
+            65_536,
+        )
     })();
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
