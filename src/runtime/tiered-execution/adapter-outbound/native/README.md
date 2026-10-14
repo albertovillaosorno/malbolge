@@ -127,9 +127,10 @@ both machine IDs and parses each COFF symbol table, requiring the exact same
 A Linux-hosted C23 simulation runs the actual Windows memory handlers against
 controlled Win32 shims, including 128-KiB alignment from an unaligned
 `VirtualAlloc` result, explicit release, overflow, and teardown. The same
-harness invokes the Windows MBNPC1 handler with a Linux-host-ABI C stub,
-checks returned state, and denies malformed call progress. This is not a
-Windows ABI execution test; host-real AArch64 and Windows execution remain open.
+harness invokes the Windows MBNPC1 handler using Clang `ms_abi` host stubs.
+This checks Microsoft x64 native-entry argument passing, returned state, and
+malformed progress denial, but not Windows kernel APIs or full native Windows
+execution. Host-real AArch64 and Windows execution remain open.
 
 The host simulation also drives partial Win32 pipe transfers, exact framed
 request/response lengths, truncated frames, and clean versus partial-header

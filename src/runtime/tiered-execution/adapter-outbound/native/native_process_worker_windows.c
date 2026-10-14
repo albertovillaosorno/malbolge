@@ -83,7 +83,9 @@ __declspec(dllimport) mb_win_bool __stdcall VirtualFree(
 __declspec(dllimport) mb_win_bool __stdcall FlushInstructionCache(
     mb_win_handle, const void *, size_t);
 
+#if !defined(MB_NATIVE_POSIX_WINDOWS_X64_BRIDGE)
 typedef int (*mb_native_entry_fn)(struct mb_native_region_state *);
+#endif
 
 static void *mb_worker_alloc(size_t len)
 {

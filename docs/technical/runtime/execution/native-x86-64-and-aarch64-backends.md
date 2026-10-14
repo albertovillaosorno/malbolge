@@ -1205,9 +1205,9 @@ A retry succeeds on that same mapping before release, distinguishing a
 recoverable cache API error from an admitted synchronized native entry.
 
 The controlled Win32-host compilation also runs the actual Windows call
-handler against a host-ABI C entry. Its MBNPC1 response captures one changed
-memory word, input/output cursor progress, a changed output byte, register
-updates, exact input/output lengths, and unchanged pointer identity.
+handler against Clang `ms_abi` C entries on Linux x86-64. Its MBNPC1 response
+captures one changed memory word, input/output cursor progress, an output byte,
+register updates, exact buffer lengths, and unchanged pointer identity.
 
 The same Windows-handler simulation now invokes a native C entry with zero
 memory words and empty input/output buffers. All three reconstructed pointers

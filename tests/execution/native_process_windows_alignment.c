@@ -34,6 +34,8 @@
 #define _WIN32 1
 #define __declspec(value)
 #define __stdcall
+// Compile callable entries with the actual Microsoft x64 native ABI.
+#define MB_NATIVE_POSIX_WINDOWS_X64_BRIDGE
 int mb_test_windows_worker_entry(void);
 #define main mb_test_windows_worker_entry
 #include "native_process_worker_windows.c"
@@ -580,7 +582,7 @@ static size_t corrupted_shape_invocations;
 static size_t pointer_drift_invocations;
 static size_t pointer_drift_field;
 
-static int mb_simulated_corrupt_shape_entry(
+static int __attribute__((ms_abi)) mb_simulated_corrupt_shape_entry(
     struct mb_native_region_state *state)
 {
     corrupted_shape_invocations += 1U;
@@ -594,7 +596,7 @@ static int mb_simulated_corrupt_shape_entry(
     return MB_NATIVE_GUARD_MISS;
 }
 
-static int mb_simulated_empty_native_entry(
+static int __attribute__((ms_abi)) mb_simulated_empty_native_entry(
     struct mb_native_region_state *state)
 {
     empty_native_entry_invocations += 1U;
@@ -608,7 +610,7 @@ static int mb_simulated_empty_native_entry(
     return MB_NATIVE_GUARD_MISS;
 }
 
-static int mb_simulated_pointer_drift_entry(
+static int __attribute__((ms_abi)) mb_simulated_pointer_drift_entry(
     struct mb_native_region_state *state)
 {
     pointer_drift_invocations += 1U;
@@ -627,7 +629,8 @@ static int mb_simulated_pointer_drift_entry(
 }
 
 
-static int mb_simulated_native_entry(struct mb_native_region_state *state)
+static int __attribute__((ms_abi)) mb_simulated_native_entry(
+    struct mb_native_region_state *state)
 {
     native_entry_invocations += 1U;
     state->memory[0] += 2U;
