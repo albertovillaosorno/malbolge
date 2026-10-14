@@ -57,6 +57,7 @@ static size_t sync_count;
 static size_t release_count;
 static int fail_next_protect;
 static int fail_next_release;
+static int fail_next_sync;
 static char mock_handle;
 
 mb_win_handle GetCurrentProcess(void) { return &mock_handle; }
@@ -180,6 +181,10 @@ mb_win_bool FlushInstructionCache(
     (void)process;
     (void)address;
     (void)len;
+    if (fail_next_sync != 0) {
+        fail_next_sync = 0;
+        return 0;
+    }
     sync_count += 1U;
     return 1;
 }
@@ -394,6 +399,25 @@ static int check_win32_failure_recovery(struct mb_worker_state *worker)
         return 4;
     }
     mb_worker_free(response);
+    const size_t syncs_before = sync_count;
+    fail_next_sync = 1;
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
+        || sync_count != syncs_before) {
+        return 7;
+    }
+    mb_worker_free(response);
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
+        || sync_count != syncs_before + 1U) {
+        return 8;
+    }
+    mb_worker_free(response);
     fail_next_release = 1;
     if (!mb_worker_handle_release(worker, request, 33U,
             &response, &len)
@@ -444,7 +468,7 @@ int main(void)
         return 12;
     }
     if (reservation_count != 10U || release_count != 10U
-        || protect_count != 8U || sync_count != 7U) {
+        || protect_count != 8U || sync_count != 8U) {
         return 13;
     }
     return 0;

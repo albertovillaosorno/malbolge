@@ -603,6 +603,10 @@ A distinct single-resident lease cache
   writable or still owned, respectively. Retried operations succeed without
   losing the aligned backing reservation or corrupting table state.
 
+  A simulated `FlushInstructionCache` failure also preserves RX ownership
+  without claiming successful synchronization; retrying the exact range
+  succeeds before the mapping is released.
+
   A real worker now accepts zero-byte code-copy evidence without changing
   mapping identity, still denies a 65-byte copy into 64 mapped bytes, and
   subsequently accepts an exact 64-byte copy and release.

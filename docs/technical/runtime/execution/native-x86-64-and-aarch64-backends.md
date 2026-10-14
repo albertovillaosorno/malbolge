@@ -1170,6 +1170,11 @@ failed `VirtualFree` for an aligned mapping. The failed protection preserves
 RW copy authority, the failed release preserves table ownership, and both
 operations succeed on retry without losing the original reservation base.
 
+A further injected `FlushInstructionCache` failure returns a remote failure
+without counting synchronization or demoting the existing RX mapping.
+A retry succeeds on that same mapping before release, distinguishing a
+recoverable cache API error from an admitted synchronized native entry.
+
 A 128-KiB-aligned 8,198-byte mapping also spans multiple pages, copies a
 native entry at byte 8,192, seals and synchronizes the whole range, then
 executes that entry before releasing the original backing reservation.
