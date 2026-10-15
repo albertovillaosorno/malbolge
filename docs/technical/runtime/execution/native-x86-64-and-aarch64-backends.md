@@ -1294,6 +1294,12 @@ The same sanitized harness also injects one `mmap` failure and a failed
 failures preserve the next mapping ID; table-growth failure releases only the
 new reservation. Subsequent growth succeeds, and mapped/unmapped counts balance.
 
+Independent POSIX lifecycle response-allocation failures now cover the gap
+between a completed syscall and its success frame. Failed allocation response
+encoding retains the live reservation for teardown; failed protection response
+encoding retains RX state; failed release response encoding frees the mapping
+once without reporting success. No orphaned reservation survives cleanup.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits

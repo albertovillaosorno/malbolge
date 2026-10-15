@@ -732,6 +732,10 @@ A distinct single-resident lease cache
   Failed growth from four live mappings frees only the new reservation, leaves
   IDs and existing mappings intact, and permits retry with balanced teardown.
 
+  Failed POSIX allocate/protect/release success-frame allocations now preserve
+  the real syscall outcome: live allocation stays owned, RX seal stays RX,
+  and completed release cannot be repeated or leaked during child teardown.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy

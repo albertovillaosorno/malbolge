@@ -48,6 +48,7 @@ static int fail_next_protect;
 static int fail_next_release;
 static int fail_next_map;
 static int fail_next_table_growth;
+static size_t fail_next_lifecycle_response;
 static size_t mapped_reservations;
 static size_t unmapped_reservations;
 static size_t frees;
@@ -149,6 +150,10 @@ static void *mb_test_calloc(size_t count, size_t width)
 {
     if (count == 81U && width == 1U && fail_next_response != 0) {
         fail_next_response = 0;
+        return NULL;
+    }
+    if (width == 1U && count == fail_next_lifecycle_response) {
+        fail_next_lifecycle_response = 0U;
         return NULL;
     }
     return calloc(count, width);
@@ -416,6 +421,69 @@ static int check_allocation_and_table_failure(void)
         && mapped_reservations == unmapped_reservations ? 0 : 5;
 }
 
+static int check_lifecycle_response_failures(void)
+{
+    struct mb_worker_state worker = {.next_id = 1U};
+    mb_u8 request[34] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_lifecycle_response = 35U;
+    if (mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response != NULL || response_len != 0U
+        || worker.count != 1U || worker.next_id != 2U) {
+        mb_test_free(response);
+        return 1;
+    }
+    mb_worker_release_all(&worker);
+    if (worker.count != 0U || worker.capacity != 0U) {
+        return 2;
+    }
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || mb_native_process_read_u64(&response[10]) != 2U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 3;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_test_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_lifecycle_response = 35U;
+    response = NULL;
+    response_len = 0U;
+    if (mb_worker_handle_protect(&worker, request, 34U,
+            &response, &response_len)
+        || response != NULL || response_len != 0U
+        || worker.count != 1U
+        || worker.mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 4;
+    }
+    fail_next_lifecycle_response = 10U;
+    if (mb_worker_handle_release(&worker, request, 33U,
+            &response, &response_len)
+        || response != NULL || response_len != 0U
+        || worker.count != 0U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 5;
+    }
+    mb_worker_release_all(&worker);
+    return mapped_reservations == unmapped_reservations ? 0 : 6;
+}
+
 int main(void)
 {
     const int call_result = check_call_allocations();
@@ -427,5 +495,9 @@ int main(void)
         return 20 + lifecycle_result;
     }
     const int allocation_result = check_allocation_and_table_failure();
-    return allocation_result == 0 ? 0 : 40 + allocation_result;
+    if (allocation_result != 0) {
+        return 40 + allocation_result;
+    }
+    const int response_result = check_lifecycle_response_failures();
+    return response_result == 0 ? 0 : 60 + response_result;
 }
