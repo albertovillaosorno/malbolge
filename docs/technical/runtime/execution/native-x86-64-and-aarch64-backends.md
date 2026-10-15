@@ -857,6 +857,12 @@ byte-exact code; protection and synchronization must preserve their mapping
 and range identities. Forged command-specific fields fail as `ResponseShape`
 without accepting a new executable mapping or changing caller-owned memory.
 
+Successful allocation evidence now additionally requires a nonempty RW
+allocation, power-of-two requested alignment, and representable reservation
+length. A forged exact-match response cannot turn zero-byte, zero- or non-
+power-of-two-aligned, or initially RX allocations into admitted successes.
+Failure responses remain independently framed and may report invalid requests.
+
 Allocation and protection success reports also reject address ranges whose
 base plus mapped length wraps `usize`. Such otherwise-aligned child evidence
 fails as `ResponseShape` before the trusted executable lifecycle sees it.

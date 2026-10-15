@@ -75107,6 +75107,60 @@ fn assert_native_process_memory_extent_rejected(
 }
 
 #[test]
+fn native_process_memory_wire_rejects_successful_invalid_allocations()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original = requests.first().ok_or("allocation request missing")?;
+    let valid = native_process_memory_success_response(original, executable);
+    let valid_bytes = encode_native_process_memory_response(original, &valid)
+        .map_err(|error| error.to_string())?;
+    for (size, alignment, permissions) in [
+        (0usize, 16usize, NativeExecutablePermission::ReadWrite),
+        (64, 0, NativeExecutablePermission::ReadWrite),
+        (64, 3, NativeExecutablePermission::ReadWrite),
+        (64, 16, NativeExecutablePermission::ReadExecute),
+    ] {
+        let request = NativeProcessMemoryRequest::Allocate(
+            NativeExecutableAllocationRequest::new(
+                size,
+                alignment,
+                permissions,
+            ),
+        );
+        let report = NativeExecutableMappingReport::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            size,
+            permissions,
+        );
+        let response = NativeProcessMemoryResponse::Allocate(report);
+        let mut forged = valid_bytes.clone();
+        forged
+            .get_mut(26..34)
+            .ok_or("allocation response length absent")?
+            .copy_from_slice(
+                &u64::try_from(size)
+                    .map_err(|error| error.to_string())?
+                    .to_le_bytes(),
+            );
+        *forged
+            .get_mut(34)
+            .ok_or("allocation response permission absent")? =
+            u8::from(permissions == NativeExecutablePermission::ReadWrite);
+        if encode_native_process_memory_response(&request, &response)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+            || decode_native_process_memory_response(&forged, &request)
+                != Err(NativeProcessMemoryWireError::ResponseShape)
+        {
+            return Err(format!(
+                "accepted invalid allocation size={size} align={alignment}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_rejects_mapping_extent_overflow()
 -> Result<(), String> {
     let (executable, requests) = native_process_memory_wire_fixture()?;

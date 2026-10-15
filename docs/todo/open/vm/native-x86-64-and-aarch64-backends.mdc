@@ -484,6 +484,10 @@ A distinct single-resident lease cache
   Copy success also rejects code larger than its original mapping capacity
   or mappings whose complete host address interval wraps `usize`.
 
+  The MBNPM1 success gate now also denies invalid allocation requests even
+  when reports match their fields: nonempty RW staging, power-of-two alignment,
+  and representable reservation lengths are required for successful evidence.
+
   Release successes also reject wrapped mapping extents derived from the
   original release request, since the response itself has no range fields.
 

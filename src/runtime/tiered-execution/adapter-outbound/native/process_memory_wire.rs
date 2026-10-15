@@ -571,7 +571,14 @@ fn allocation_report_shape_matches(
 ) -> bool {
     let alignment = allocation.alignment();
     let actual_len = report.mapped_len();
-    actual_len == allocation.byte_len()
+    actual_len != 0
+        && alignment.is_power_of_two()
+        && allocation.permissions() == NativeExecutablePermission::ReadWrite
+        && allocation
+            .byte_len()
+            .checked_add(alignment.saturating_sub(1))
+            .is_some()
+        && actual_len == allocation.byte_len()
         && report.permissions() == allocation.permissions()
         && report.base_address().get().checked_rem(alignment) == Some(0)
         && report
