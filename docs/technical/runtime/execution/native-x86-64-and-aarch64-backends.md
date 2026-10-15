@@ -863,6 +863,13 @@ length. A forged exact-match response cannot turn zero-byte, zero- or non-
 power-of-two-aligned, or initially RX allocations into admitted successes.
 Failure responses remain independently framed and may report invalid requests.
 
+Other successful lifecycle transitions now also require their preconditions:
+code can be copied only into a nonempty RW mapping, and protection success
+requires an existing nonempty RW mapping to transition into RX. Release and
+instruction-cache synchronization must describe nonempty mapped ranges.
+The codec rejects matching but impossible child success evidence instead of
+letting it reach trusted mapping lifecycle admission.
+
 Allocation and protection success reports also reject address ranges whose
 base plus mapped length wraps `usize`. Such otherwise-aligned child evidence
 fails as `ResponseShape` before the trusted executable lifecycle sees it.

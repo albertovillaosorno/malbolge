@@ -488,6 +488,11 @@ A distinct single-resident lease cache
   when reports match their fields: nonempty RW staging, power-of-two alignment,
   and representable reservation lengths are required for successful evidence.
 
+  Forged successful copy/protect evidence for RX input mappings also fails,
+  since both transitions require nonempty RW staging. Release and cache-sync
+  success evidence requires nonempty mapped byte ranges. Matching responses
+  cannot turn worker-denied operations into authoritative success.
+
   Release successes also reject wrapped mapping extents derived from the
   original release request, since the response itself has no range fields.
 

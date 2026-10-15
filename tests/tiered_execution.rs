@@ -75160,6 +75160,125 @@ fn native_process_memory_wire_rejects_successful_invalid_allocations()
     Ok(())
 }
 
+fn assert_native_memory_rejects_invalid_success(
+    request: &NativeProcessMemoryRequest,
+    response: &NativeProcessMemoryResponse,
+    forged: &[u8],
+) -> Result<(), String> {
+    if encode_native_process_memory_response(request, response)
+        == Err(NativeProcessMemoryWireError::ResponseShape)
+        && decode_native_process_memory_response(forged, request)
+            == Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "memory wire accepted invalid transition success",
+        ))
+    }
+}
+
+#[test]
+fn native_process_memory_wire_rejects_wrong_permission_transitions()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original_copy = requests.get(1).ok_or("copy fixture missing")?;
+    let NativeProcessMemoryRequest::Copy { code, mapping } = original_copy
+    else {
+        return Err(String::from("copy fixture variant drifted"));
+    };
+    let copy_bytes = encode_native_process_memory_response(
+        original_copy,
+        &native_process_memory_success_response(original_copy, executable),
+    )
+    .map_err(|error| error.to_string())?;
+    let read_execute_mapping = NativeExecutableMappingReport::new(
+        mapping.mapping_id(),
+        mapping.base_address(),
+        mapping.mapped_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let invalid_copy = NativeProcessMemoryRequest::Copy {
+        code: code.clone(),
+        mapping: read_execute_mapping,
+    };
+    let copy_response =
+        NativeProcessMemoryResponse::Copy(NativeExecutableCodeCopyReport::new(
+            mapping.mapping_id(),
+            mapping.base_address(),
+            code.to_vec(),
+        ));
+    assert_native_memory_rejects_invalid_success(
+        &invalid_copy,
+        &copy_response,
+        &copy_bytes,
+    )?;
+    let original_protect = requests.get(2).ok_or("protect fixture missing")?;
+    let protect_response =
+        native_process_memory_success_response(original_protect, executable);
+    let protect_bytes = encode_native_process_memory_response(
+        original_protect,
+        &protect_response,
+    )
+    .map_err(|error| error.to_string())?;
+    assert_native_memory_rejects_invalid_success(
+        &NativeProcessMemoryRequest::Protect(read_execute_mapping),
+        &protect_response,
+        &protect_bytes,
+    )
+}
+
+#[test]
+fn native_process_memory_wire_rejects_empty_lifecycle_successes()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original_release = requests.get(3).ok_or("release fixture missing")?;
+    let release_bytes = encode_native_process_memory_response(
+        original_release,
+        &NativeProcessMemoryResponse::Release,
+    )
+    .map_err(|error| error.to_string())?;
+    let empty_mapping = NativeExecutableMappingReport::new(
+        executable.mapping_id(),
+        executable.base_address(),
+        0,
+        NativeExecutablePermission::ReadExecute,
+    );
+    assert_native_memory_rejects_invalid_success(
+        &NativeProcessMemoryRequest::Release(
+            NativeExecutableReleaseRequest::from_mapping(empty_mapping),
+        ),
+        &NativeProcessMemoryResponse::Release,
+        &release_bytes,
+    )?;
+    let original_sync = requests.get(4).ok_or("sync fixture missing")?;
+    let mut sync_bytes = encode_native_process_memory_response(
+        original_sync,
+        &native_process_memory_success_response(original_sync, executable),
+    )
+    .map_err(|error| error.to_string())?;
+    sync_bytes
+        .get_mut(26..34)
+        .ok_or("sync response length absent")?
+        .fill(0);
+    let empty_sync = NativeInstructionSyncRequest::new(
+        executable.mapping_id(),
+        executable.base_address(),
+        0,
+    );
+    assert_native_memory_rejects_invalid_success(
+        &NativeProcessMemoryRequest::Synchronize(empty_sync),
+        &NativeProcessMemoryResponse::Synchronize(
+            NativeInstructionSyncReport::new(
+                empty_sync.mapping_id(),
+                empty_sync.start_address(),
+                0,
+            ),
+        ),
+        &sync_bytes,
+    )
+}
+
 #[test]
 fn native_process_memory_wire_rejects_mapping_extent_overflow()
 -> Result<(), String> {

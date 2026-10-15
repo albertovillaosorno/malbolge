@@ -594,7 +594,9 @@ fn copy_report_shape_matches(
     report: &NativeExecutableCodeCopyReport,
 ) -> bool {
     let base = mapping.base_address();
-    report.mapping_id() == mapping.mapping_id()
+    mapping.permissions() == NativeExecutablePermission::ReadWrite
+        && mapping.mapped_len() != 0
+        && report.mapping_id() == mapping.mapping_id()
         && report.start_address() == base
         && report.copied_code() == code
         && code.len() <= mapping.mapped_len()
@@ -614,7 +616,9 @@ fn validate_success_response_shape(
             NativeProcessMemoryRequest::Protect(mapping),
             NativeProcessMemoryResponse::Protect(report),
         ) => {
-            report.mapping_id() == mapping.mapping_id()
+            mapping.permissions() == NativeExecutablePermission::ReadWrite
+                && mapping.mapped_len() != 0
+                && report.mapping_id() == mapping.mapping_id()
                 && report.base_address() == mapping.base_address()
                 && report.mapped_len() == mapping.mapped_len()
                 && report.permissions()
@@ -632,16 +636,20 @@ fn validate_success_response_shape(
         (
             NativeProcessMemoryRequest::Release(release),
             NativeProcessMemoryResponse::Release,
-        ) => release
-            .base_address()
-            .get()
-            .checked_add(release.mapped_len())
-            .is_some(),
+        ) => {
+            release.mapped_len() != 0
+                && release
+                    .base_address()
+                    .get()
+                    .checked_add(release.mapped_len())
+                    .is_some()
+        },
         (
             NativeProcessMemoryRequest::Synchronize(sync),
             NativeProcessMemoryResponse::Synchronize(report),
         ) => {
-            report.mapping_id() == sync.mapping_id()
+            sync.byte_len() != 0
+                && report.mapping_id() == sync.mapping_id()
                 && report.start_address() == sync.start_address()
                 && report.byte_len() == sync.byte_len()
                 && sync
