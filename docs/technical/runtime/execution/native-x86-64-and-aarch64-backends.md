@@ -1413,6 +1413,11 @@ after two header bytes and immediately after a complete header. Broken-pipe
 codes 38 and 109 cannot promote either failed transfer into valid progress;
 these partially received frames are rejected even if the API reports bytes.
 
+The fake broken-pipe codes also deny an otherwise clean-looking zero-byte
+failure once the header is complete: before the first payload byte and after
+one payload byte. Both positions fail framing and cannot be interpreted as a
+normal stream close, even though the error codes match header-start EOF.
+
 The Windows worker now defines `DWORD` and `BOOL` as explicit 32-bit ABI
 scalars instead of relying on the host's `unsigned long` width. The host C23
 simulation checks that a transfer larger than `UINT32_MAX` is capped to a

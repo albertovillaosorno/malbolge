@@ -1563,6 +1563,24 @@ static int check_frame_io(void)
             || mock_read_pos != 8U) {
             return 22;
         }
+        mb_native_process_write_u64(wire, 3U);
+        mb_mock_read_reset(wire, sizeof(wire));
+        mock_fail_read = 1;
+        mock_fail_read_after = 8U;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1
+            || mock_read_pos != 8U) {
+            return 23;
+        }
+        mb_mock_read_reset(wire, sizeof(wire));
+        mock_read_chunk = 1U;
+        mock_fail_read = 1;
+        mock_fail_read_after = 9U;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1
+            || mock_read_pos != 9U) {
+            return 24;
+        }
     }
     return 0;
 }
