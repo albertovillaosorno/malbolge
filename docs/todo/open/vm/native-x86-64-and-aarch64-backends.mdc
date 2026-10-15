@@ -728,6 +728,10 @@ A distinct single-resident lease cache
   `munmap` calls on an over-aligned live reservation. Permission and mapping
   ownership survive each failure, and retry seals and releases successfully.
 
+  The POSIX harness also injects failed `mmap` and mapping-table `realloc`.
+  Failed growth from four live mappings frees only the new reservation, leaves
+  IDs and existing mappings intact, and permits retry with balanced teardown.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy

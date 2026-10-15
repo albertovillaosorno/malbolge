@@ -46,10 +46,18 @@ static int fail_next_output;
 static int fail_next_response;
 static int fail_next_protect;
 static int fail_next_release;
+static int fail_next_map;
+static int fail_next_table_growth;
+static size_t mapped_reservations;
+static size_t unmapped_reservations;
 static size_t frees;
 static size_t entries;
 
 static void *mb_test_malloc(size_t len);
+static void *mb_test_realloc(void *ptr, size_t len);
+static void *mb_test_mmap(
+    void *address, size_t len, int protection,
+    int flags, int descriptor, off_t offset);
 static void *mb_test_calloc(size_t count, size_t width);
 static void mb_test_free(void *ptr);
 static int mb_test_mprotect(void *address, size_t len, int permissions);
@@ -58,6 +66,8 @@ static int mb_test_munmap(void *address, size_t len);
 int mb_test_posix_worker_entry(void);
 
 #define malloc mb_test_malloc
+#define realloc mb_test_realloc
+#define mmap mb_test_mmap
 #define calloc mb_test_calloc
 #define free mb_test_free
 #define mprotect mb_test_mprotect
@@ -66,10 +76,37 @@ int mb_test_posix_worker_entry(void);
 #include "native_process_worker_posix.c"
 #undef main
 #undef malloc
+#undef realloc
+#undef mmap
 #undef calloc
 #undef free
 #undef mprotect
 #undef munmap
+
+static void *mb_test_realloc(void *ptr, size_t len)
+{
+    if (fail_next_table_growth != 0) {
+        fail_next_table_growth = 0;
+        return NULL;
+    }
+    return realloc(ptr, len);
+}
+
+static void *mb_test_mmap(
+    void *address, size_t len, int protection,
+    int flags, int descriptor, off_t offset)
+{
+    if (fail_next_map != 0) {
+        fail_next_map = 0;
+        errno = ENOMEM;
+        return MAP_FAILED;
+    }
+    void *mapped = mmap(address, len, protection, flags, descriptor, offset);
+    if (mapped != MAP_FAILED) {
+        mapped_reservations += 1U;
+    }
+    return mapped;
+}
 
 static int mb_test_mprotect(void *address, size_t len, int permissions)
 {
@@ -88,7 +125,11 @@ static int mb_test_munmap(void *address, size_t len)
         errno = EINVAL;
         return -1;
     }
-    return munmap(address, len);
+    const int result = munmap(address, len);
+    if (result == 0) {
+        unmapped_reservations += 1U;
+    }
+    return result;
 }
 
 static void *mb_test_malloc(size_t len)
@@ -312,6 +353,69 @@ static int check_lifecycle_fault_recovery(void)
     return 0;
 }
 
+static int check_allocation_and_table_failure(void)
+{
+    struct mb_worker_state worker = {.next_id = 1U};
+    mb_u8 request[26] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_map = 1;
+    if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10]) != (mb_u32)ENOMEM
+        || worker.count != 0U || worker.next_id != 1U
+        || mapped_reservations != unmapped_reservations) {
+        mb_test_free(response);
+        return 1;
+    }
+    mb_test_free(response);
+    for (size_t i = 0U; i < 4U; ++i) {
+        if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
+                &response, &response_len)
+            || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+            || mb_native_process_read_u64(&response[10]) != (mb_u64)(i + 1U)
+            || (mb_native_process_read_u64(&response[18]) & 65535U) != 0U
+            || worker.count != i + 1U) {
+            mb_test_free(response);
+            mb_worker_release_all(&worker);
+            return 2;
+        }
+        mb_test_free(response);
+    }
+    fail_next_table_growth = 1;
+    if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker.count != 4U || worker.capacity != 4U
+        || worker.next_id != 5U
+        || mapped_reservations != unmapped_reservations + 4U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 3;
+    }
+    mb_test_free(response);
+    if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || mb_native_process_read_u64(&response[10]) != 5U
+        || worker.count != 5U || worker.next_id != 6U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 4;
+    }
+    mb_test_free(response);
+    mb_worker_release_all(&worker);
+    return worker.count == 0U && worker.capacity == 0U
+        && mapped_reservations == unmapped_reservations ? 0 : 5;
+}
+
 int main(void)
 {
     const int call_result = check_call_allocations();
@@ -319,5 +423,9 @@ int main(void)
         return call_result;
     }
     const int lifecycle_result = check_lifecycle_fault_recovery();
-    return lifecycle_result == 0 ? 0 : 20 + lifecycle_result;
+    if (lifecycle_result != 0) {
+        return 20 + lifecycle_result;
+    }
+    const int allocation_result = check_allocation_and_table_failure();
+    return allocation_result == 0 ? 0 : 40 + allocation_result;
 }

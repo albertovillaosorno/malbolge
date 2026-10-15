@@ -1289,6 +1289,11 @@ against a real 64-KiB-aligned reservation. Failed protection leaves the
 mapping writable; failed release preserves the exact mapping address and ID.
 Both operations succeed when retried, and the original reservation is unmapped.
 
+The same sanitized harness also injects one `mmap` failure and a failed
+`realloc` during growth from four to five live 64-KiB-aligned mappings. Both
+failures preserve the next mapping ID; table-growth failure releases only the
+new reservation. Subsequent growth succeeds, and mapped/unmapped counts balance.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits
