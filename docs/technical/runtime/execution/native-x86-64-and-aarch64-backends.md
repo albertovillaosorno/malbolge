@@ -874,6 +874,11 @@ A drip-feed fixture emits one response byte every 120 ms, separately for the
 header and payload. Each 350-ms exchange deadline expires despite partial
 forward progress; no sequence of short successful reads renews that budget.
 
+Request-side adversarial fixtures progressively drain a one-megabyte request
+at 4,096 bytes per 120 ms or fill stdout before reading stdin, producing a
+two-pipe deadlock. Both expire under the same cumulative 350-ms deadline,
+terminate the child, and refuse further use of the poisoned session.
+
 A timed transport parity fixture also checks truncated headers, truncated
 bodies, and oversized response announcements against the untimed error kinds.
 A retained timed child handles three consecutive zero-length responses with a

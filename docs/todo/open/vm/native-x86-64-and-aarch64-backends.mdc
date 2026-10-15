@@ -485,6 +485,10 @@ A distinct single-resident lease cache
   deadline: one byte every 120 ms during header or body reception still
   triggers the 350-ms timeout and permanent session poisoning.
 
+  Slow request consumers and children that fill stdout before reading stdin
+  also obey the cumulative 350-ms exchange deadline. One-megabyte blocked or
+  slowly drained writes cannot strand or reuse the poisoned parent session.
+
   Finite-deadline exchanges also preserve ordinary framing results: truncated
   response headers/bodies and oversized announcements poison with the same
   typed errors, while repeated zero-byte replies remain healthy at limit zero.

@@ -1462,6 +1462,29 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_TRICKLED_REQUEST_WORKER: &str = r#"
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+while length != 0:
+    chunk = sys.stdin.buffer.read(min(length, 4096))
+    if not chunk:
+        raise SystemExit(3)
+    length -= len(chunk)
+    time.sleep(0.12)
+"#;
+
+const NATIVE_PROCESS_SESSION_CROSS_PIPE_DEADLOCK_WORKER: &str = r#"
+import sys
+# Fill the response pipe before accepting a request frame.
+sys.stdout.buffer.write(b"x" * 1048576)
+sys.stdout.buffer.flush()
+sys.stdin.buffer.read(1048576)
+"#;
+
 const NATIVE_PROCESS_SESSION_TRICKLED_RESPONSE_WORKER: &str = r#"
 import sys
 import time
@@ -75184,6 +75207,38 @@ fn native_process_session_descendant_timeout_preserves_sibling()
         return Err(format!(
             "descendant timeout affected sibling: {timeout:?}"
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_bounds_progressive_request_writes()
+-> Result<(), String> {
+    for (label, script) in [
+        (
+            "slow consumer",
+            NATIVE_PROCESS_SESSION_TRICKLED_REQUEST_WORKER,
+        ),
+        (
+            "cross-pipe deadlock",
+            NATIVE_PROCESS_SESSION_CROSS_PIPE_DEADLOCK_WORKER,
+        ),
+    ] {
+        let mut session = native_process_session_python_config(script)
+            .exchange_timeout(Duration::from_millis(350))
+            .spawn()
+            .map_err(|error| format!("{label} spawn: {error:?}"))?;
+        let request = vec![0xa5u8; 1_048_576];
+        let started = Instant::now();
+        let result = session.exchange(&request, 16);
+        if result != Err(NativeProcessSessionError::ExchangeTimeout)
+            || !session.poisoned()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+            || started.elapsed() > Duration::from_secs(3)
+        {
+            return Err(format!("{label} escaped deadline: {result:?}"));
+        }
     }
     Ok(())
 }
