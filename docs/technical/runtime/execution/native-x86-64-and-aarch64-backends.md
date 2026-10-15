@@ -1121,6 +1121,11 @@ exchange timeout still admits no partial MBNPC1 response or caller-state
 changes, poisons only its worker, and preserves an independently executing
 sibling with a live aligned mapping.
 
+A third non-returning x86-64 entry writes to the worker-private input buffer
+rather than memory or output before looping forever. Its one-byte input frame
+remains byte-exact in the caller after the timed exchange fails, while all
+mapping IDs on that child become unusable and a sibling stays healthy.
+
 Before either timeout, the same child now executes a separate valid native
 `GuardMiss` entry twice, proving the per-exchange budget resets for completed
 calls. After the looping entry poisons the process, that previously callable

@@ -1102,6 +1102,10 @@ A distinct single-resident lease cache
   returning. Its 500-ms timeout publishes no partial response or caller-state
   mutation, and the separate sibling worker remains fully usable.
 
+  A third looping entry mutates the child-private nonempty input bytes before
+  timing out; the original request frame remains unchanged, no partial
+  response escapes, and the sibling retains its native mapping lifecycle.
+
   The looping child now also completes two valid calls to a separate RX
   mapping before the stalled call. Timeout poisons that otherwise healthy
   mapping ID along with the entire child, not the independent sibling.
