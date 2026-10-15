@@ -75265,6 +75265,63 @@ fn native_process_session_deadline_retains_responsive_child()
 }
 
 #[test]
+fn native_process_session_timed_rejects_malformed_frames() -> Result<(), String>
+{
+    for (label, script, expected) in [
+        (
+            "oversized",
+            NATIVE_PROCESS_SESSION_OVERSIZED_WORKER,
+            NativeProcessSessionError::ResponseTooLarge,
+        ),
+        (
+            "short header",
+            NATIVE_PROCESS_SESSION_PARTIAL_HEADER_WORKER,
+            NativeProcessSessionError::Read(ErrorKind::UnexpectedEof),
+        ),
+        (
+            "short payload",
+            NATIVE_PROCESS_SESSION_TRUNCATED_WORKER,
+            NativeProcessSessionError::Read(ErrorKind::UnexpectedEof),
+        ),
+    ] {
+        let mut session = native_process_session_python_config(script)
+            .exchange_timeout(Duration::from_secs(5))
+            .spawn()
+            .map_err(|error| format!("timed {label} spawn: {error:?}"))?;
+        let result = session.exchange(b"request", 16);
+        if result != Err(expected)
+            || !session.poisoned()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+        {
+            return Err(format!("timed {label} error drifted: {result:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_timed_reuses_empty_responses() -> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_EMPTY_RESPONSE_WORKER,
+    )
+    .exchange_timeout(Duration::from_secs(5))
+    .spawn()
+    .map_err(|error| format!("timed empty-response spawn: {error:?}"))?;
+    for request in [b"".as_slice(), b"hello", b"".as_slice()] {
+        let returned = session
+            .exchange(request, 0)
+            .map_err(|error| format!("timed empty response: {error:?}"))?;
+        if !returned.is_empty() || session.poisoned() {
+            return Err(String::from(
+                "timed zero-limit exchange poisoned child",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_reuses_zero_length_responses() -> Result<(), String> {
     let mut session = native_process_session_python(
         NATIVE_PROCESS_SESSION_EMPTY_RESPONSE_WORKER,

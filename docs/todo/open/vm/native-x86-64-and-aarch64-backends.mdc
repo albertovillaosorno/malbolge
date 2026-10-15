@@ -485,6 +485,10 @@ A distinct single-resident lease cache
   deadline: one byte every 120 ms during header or body reception still
   triggers the 350-ms timeout and permanent session poisoning.
 
+  Finite-deadline exchanges also preserve ordinary framing results: truncated
+  response headers/bodies and oversized announcements poison with the same
+  typed errors, while repeated zero-byte replies remain healthy at limit zero.
+
   A separate echo child remains healthy across a sibling's inherited-stdout
   timeout, preserving exact ordered replies while only the failing session
   becomes permanently poisoned.
