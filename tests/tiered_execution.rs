@@ -72948,6 +72948,32 @@ fn assert_posix_worker_native_fault_is_session_local(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_loop_entry(
+    session: &mut NativeProcessSession,
+    writable: NativeExecutableMappingReport,
+    code: &[u8],
+) -> Result<NativeExecutableMappingReport, String> {
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: code.to_vec().into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(session, &copy)?
+    else {
+        return Err(String::from("loop stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            session,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("loop stub RX seal failed"));
+    };
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_native_loop_timeout_is_session_local(
     worker: &Path,
     code: &[u8],
@@ -72962,24 +72988,16 @@ fn assert_posix_worker_native_loop_timeout_is_session_local(
     let writable = posix_worker_allocate_for_compaction(&mut looping, 65_536)?;
     let healthy_mapping =
         posix_worker_allocate_for_compaction(&mut healthy, 65_536)?;
-    let copy = NativeProcessMemoryRequest::Copy {
-        code: code.to_vec().into_boxed_slice(),
-        mapping: writable,
-    };
-    let NativeProcessMemoryResponse::Copy(_copied) =
-        posix_worker_memory_exchange(&mut looping, &copy)?
-    else {
-        return Err(String::from("loop stub copy failed"));
-    };
-    let NativeProcessMemoryResponse::Protect(executable) =
-        posix_worker_memory_exchange(
-            &mut looping,
-            &NativeProcessMemoryRequest::Protect(writable),
-        )?
-    else {
-        return Err(String::from("loop stub RX seal failed"));
-    };
-    assert_posix_worker_loop_call_times_out(&mut looping, executable)?;
+    let prior_entry = posix_worker_install_status_entry(&mut looping, 1)?;
+    assert_posix_worker_call_dispatch_status(&mut looping, prior_entry, 1)?;
+    let executable =
+        posix_worker_install_loop_entry(&mut looping, writable, code)?;
+    assert_posix_worker_call_dispatch_status(&mut looping, prior_entry, 1)?;
+    assert_posix_worker_loop_call_times_out(
+        &mut looping,
+        executable,
+        prior_entry,
+    )?;
     assert_posix_worker_fault_sibling_reuses_mapping(
         &mut healthy,
         healthy_mapping,
@@ -72990,6 +73008,7 @@ fn assert_posix_worker_native_loop_timeout_is_session_local(
 fn assert_posix_worker_loop_call_times_out(
     session: &mut NativeProcessSession,
     executable: NativeExecutableMappingReport,
+    prior: NativeExecutableMappingReport,
 ) -> Result<(), String> {
     let (request, _expected) = native_process_call_wire_fixture()?;
     let mut frame = encode_native_process_call_request(&request)
@@ -73004,9 +73023,14 @@ fn assert_posix_worker_loop_call_times_out(
     let original_memory = request.memory().to_vec();
     let original_output = request.output().to_vec();
     let result = session.exchange(&frame, limit);
+    let frame_unchanged = frame == original_frame;
+    frame
+        .get_mut(8..16)
+        .ok_or("prior native mapping ID missing")?
+        .copy_from_slice(&prior.mapping_id().get().to_le_bytes());
     if result != Err(NativeProcessSessionError::ExchangeTimeout)
         || !session.poisoned()
-        || frame != original_frame
+        || !frame_unchanged
         || request.memory() != original_memory
         || request.output() != original_output
         || session.exchange(&frame, limit)

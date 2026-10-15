@@ -1121,6 +1121,12 @@ exchange timeout still admits no partial MBNPC1 response or caller-state
 changes, poisons only its worker, and preserves an independently executing
 sibling with a live aligned mapping.
 
+Before either timeout, the same child now executes a separate valid native
+`GuardMiss` entry twice, proving the per-exchange budget resets for completed
+calls. After the looping entry poisons the process, that previously callable
+mapping ID is also refused; isolation belongs to the child session, not to an
+individual executable mapping.
+
 A separate pair of host-real cases executes `mov byte ptr [rip - 7], 0xcc`
 from an RX mapping, deliberately writing to its own executable entry byte.
 The write triggers protection failure in both ordinary and 64-KiB-aligned

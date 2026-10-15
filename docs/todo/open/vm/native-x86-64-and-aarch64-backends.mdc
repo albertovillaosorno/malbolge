@@ -1102,6 +1102,10 @@ A distinct single-resident lease cache
   returning. Its 500-ms timeout publishes no partial response or caller-state
   mutation, and the separate sibling worker remains fully usable.
 
+  The looping child now also completes two valid calls to a separate RX
+  mapping before the stalled call. Timeout poisons that otherwise healthy
+  mapping ID along with the entire child, not the independent sibling.
+
   A host-real MBNPC1 payload-shape regression also rejects `u64::MAX` guest
   memory, input, or output count fields and truncated or trailing payloads.
   No malformed call publishes response or guest-state evidence.
