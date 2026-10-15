@@ -435,6 +435,10 @@ A distinct single-resident lease cache
   truncation, and trailing bytes fail closed. The codec itself owns no process
   or platform operation; the retained session and concrete worker follow below.
 
+  Forged `u64::MAX` returned memory-word and input-capacity counts now traverse
+  fixed-size MBNPC1 decoding but are rejected by the structural verifier
+  before they can change caller-owned buffers or request state.
+
   A single-host execution seam now accepts one owner implementing both memory
   and runner ports, preserving exact load/call/release and rollback semantics
   without aliased mutable references. The retained process host uses this seam

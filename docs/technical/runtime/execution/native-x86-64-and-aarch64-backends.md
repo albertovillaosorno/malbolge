@@ -911,6 +911,11 @@ failures precede copying any returned memory, output, or scalar state into
 caller-owned buffers. Hostile-response fixtures prove both overflow paths
 leave the caller's original state unchanged.
 
+A wire-to-verifier regression now forges each immutable MBNPC1 response count
+for guest-memory words or input capacity to `u64::MAX`. The exact response
+payload remains bounded by the original request during decoding, then scalar
+admission rejects the mismatched capacity before modifying caller buffers.
+
 Deterministic persistent workers prove the complete load/call/release
 transaction plus remote-memory and call-response rejection paths.
 

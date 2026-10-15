@@ -76224,6 +76224,46 @@ fn assert_native_process_shape_rejections(
     )
 }
 
+fn assert_native_process_immutable_capacity_wire_rejections(
+    invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    request: &NativeProcessCallRequest,
+) -> Result<(), String> {
+    for (state, expected) in [
+        (
+            request.state().with_memory_words(u64::MAX),
+            NativeProcessCallResponseError::StateMemoryWords,
+        ),
+        (
+            request.state().with_input_len(u64::MAX),
+            NativeProcessCallResponseError::StateInputLength,
+        ),
+    ] {
+        let response = NativeProcessCallResponse::new(
+            request.mapping_id(),
+            state,
+            (request.memory().to_vec(), request.output().to_vec()),
+            (NativeRegionStatus::GuardMiss.code(), true),
+        );
+        let encoded = encode_native_process_call_response(request, &response)
+            .map_err(|error| error.to_string())?;
+        let decoded = decode_native_process_call_response(&encoded, request)
+            .map_err(|error| error.to_string())?;
+        if decoded != response
+            || encoded.len()
+                != native_process_call_response_byte_limit(request)
+                    .map_err(|error| error.to_string())?
+        {
+            return Err(String::from(
+                "forged immutable capacity escaped the request-size bound",
+            ));
+        }
+        assert_native_process_response_rejected(
+            invocation, request, &decoded, expected,
+        )?;
+    }
+    Ok(())
+}
+
 fn assert_native_process_progress_rejections(
     invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
     request: &NativeProcessCallRequest,
@@ -76282,6 +76322,10 @@ fn native_process_call_response_rejects_structural_drift_before_mutation()
     let request = invocation.process_request();
     assert_native_process_identity_rejections(&mut invocation, &request)?;
     assert_native_process_shape_rejections(&mut invocation, &request)?;
+    assert_native_process_immutable_capacity_wire_rejections(
+        &mut invocation,
+        &request,
+    )?;
     assert_native_process_progress_rejections(&mut invocation, &request)?;
     invocation.abort();
     if memory == native_verified_output_memory() && output == [0x10, 0, 0] {
