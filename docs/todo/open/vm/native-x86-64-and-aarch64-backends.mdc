@@ -481,6 +481,10 @@ A distinct single-resident lease cache
   Symmetrically, descendants retaining the request pipe cannot extend the
   deadline for blocked writes of a one-megabyte request after child termination.
 
+  Host-real response drip-feeds also test the single cumulative exchange
+  deadline: one byte every 120 ms during header or body reception still
+  triggers the 350-ms timeout and permanent session poisoning.
+
   A separate echo child remains healthy across a sibling's inherited-stdout
   timeout, preserving exact ordered replies while only the failing session
   becomes permanently poisoned.

@@ -870,6 +870,10 @@ after announcing four payload bytes but delivering only two. Both time out,
 terminate the direct child, and refuse subsequent exchange on the poisoned
 session; neither partial frame becomes an admitted response.
 
+A drip-feed fixture emits one response byte every 120 ms, separately for the
+header and payload. Each 350-ms exchange deadline expires despite partial
+forward progress; no sequence of short successful reads renews that budget.
+
 Another retained child returns a complete successful first response, then
 stalls on its second request. The deadline resets per exchange: the first
 response is admitted, the second expires, and subsequent use is refused.

@@ -1462,6 +1462,27 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_TRICKLED_RESPONSE_WORKER: &str = r#"
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+response = b"abcdef"
+framing = len(response).to_bytes(8, "little")
+if sys.argv[1] == "body":
+    sys.stdout.buffer.write(framing)
+    sys.stdout.buffer.flush()
+    framing = response
+for byte in framing:
+    sys.stdout.buffer.write(bytes([byte]))
+    sys.stdout.buffer.flush()
+    time.sleep(0.12)
+"#;
+
 const NATIVE_PROCESS_SESSION_STALLED_BODY_WORKER: &str = r#"
 import sys
 import time
@@ -75163,6 +75184,31 @@ fn native_process_session_descendant_timeout_preserves_sibling()
         return Err(format!(
             "descendant timeout affected sibling: {timeout:?}"
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_bounds_trickled_responses()
+-> Result<(), String> {
+    for phase in ["header", "body"] {
+        let mut session = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_TRICKLED_RESPONSE_WORKER,
+        )
+        .argument(phase.into())
+        .exchange_timeout(Duration::from_millis(350))
+        .spawn()
+        .map_err(|error| format!("{phase} trickle spawn: {error:?}"))?;
+        let started = Instant::now();
+        let result = session.exchange(b"request", 16);
+        if result != Err(NativeProcessSessionError::ExchangeTimeout)
+            || !session.poisoned()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+            || started.elapsed() > Duration::from_secs(3)
+        {
+            return Err(format!("{phase} drip reset deadline: {result:?}"));
+        }
     }
     Ok(())
 }
