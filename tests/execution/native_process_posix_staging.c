@@ -561,6 +561,7 @@ static int check_allocation_and_table_failure(void)
         }
         mb_test_free(response);
     }
+    const size_t mapped_before_growth = mapped_reservations;
     fail_next_table_growth = 1;
     if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
             &response, &response_len)
@@ -569,6 +570,7 @@ static int check_allocation_and_table_failure(void)
             != MB_WORKER_ALLOCATION_FAILURE
         || worker.count != 4U || worker.capacity != 4U
         || worker.next_id != 5U
+        || mapped_reservations != mapped_before_growth
         || mapped_reservations != unmapped_reservations + 4U) {
         mb_test_free(response);
         mb_worker_release_all(&worker);

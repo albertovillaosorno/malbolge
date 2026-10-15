@@ -1492,8 +1492,10 @@ Both operations succeed when retried, and the original reservation is unmapped.
 
 The same sanitized harness also injects one `mmap` failure and a failed
 `realloc` during growth from four to five live 64-KiB-aligned mappings. Both
-failures preserve the next mapping ID; table-growth failure releases only the
-new reservation. Subsequent growth succeeds, and mapped/unmapped counts balance.
+failures preserve the next mapping ID. Table capacity is reserved before
+`mmap`, so failed growth creates no reservation that could be stranded by a
+subsequent `munmap` failure. Subsequent growth succeeds, and mapped/unmapped
+counts balance.
 
 The POSIX C23/ASan staging fixture now also seeds the worker's mapping ID at
 `u64::MAX`, preserves that final identity through a failed `mmap`, then issues

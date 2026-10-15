@@ -273,6 +273,15 @@ static int mb_worker_handle_allocate(
             response,
             response_len);
     }
+    // Reserve the ownership slot before mapping, so table-allocation failure
+    // cannot strand a live reservation when munmap cleanup also fails.
+    if (!mb_worker_reserve_mapping(worker)) {
+        return mb_worker_memory_failure(
+            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
+            MB_WORKER_ALLOCATION_FAILURE,
+            response,
+            response_len);
+    }
     void *reservation = mmap(
         NULL,
         reservation_len,
@@ -290,14 +299,6 @@ static int mb_worker_handle_allocate(
     const size_t remainder = (size_t)((uintptr_t)reservation % alignment);
     const size_t leading = remainder == 0U ? 0U : alignment - remainder;
     mb_u8 *memory = (mb_u8 *)reservation + leading;
-    if (!mb_worker_reserve_mapping(worker)) {
-        (void)munmap(reservation, reservation_len);
-        return mb_worker_memory_failure(
-            MB_NATIVE_PROCESS_MEMORY_ALLOCATE,
-            MB_WORKER_ALLOCATION_FAILURE,
-            response,
-            response_len);
-    }
     const mb_u64 id = worker->next_id;
     worker->next_id += 1U;
     worker->mappings[worker->count] = (struct mb_worker_mapping){

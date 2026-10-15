@@ -820,8 +820,9 @@ A distinct single-resident lease cache
   ownership survive each failure, and retry seals and releases successfully.
 
   The POSIX harness also injects failed `mmap` and mapping-table `realloc`.
-  Failed growth from four live mappings frees only the new reservation, leaves
-  IDs and existing mappings intact, and permits retry with balanced teardown.
+  Failed growth from four live mappings creates no new reservation because
+  table capacity is reserved before `mmap`; existing IDs and mappings remain
+  intact, and retry succeeds with balanced teardown.
 
   POSIX C23/ASan simulation additionally exhausts the monotonic mapping-ID
   counter. A failed `mmap` does not consume the last `u64::MAX` ID, which
