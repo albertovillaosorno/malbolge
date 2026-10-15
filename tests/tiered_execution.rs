@@ -75179,6 +75179,60 @@ fn native_process_memory_wire_rejects_sync_extent_overflow()
 }
 
 #[test]
+fn native_process_memory_wire_rejects_copy_outside_mapping()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original = requests.get(1).ok_or("code-copy fixture missing")?;
+    let valid = native_process_memory_success_response(original, executable);
+    let original_wire = encode_native_process_memory_response(original, &valid)
+        .map_err(|error| error.to_string())?;
+    let NativeProcessMemoryRequest::Copy { code, mapping } = original else {
+        return Err(String::from("code-copy request fixture drifted"));
+    };
+    for (base, capacity) in [
+        (native_executable_address(usize::MAX & !15usize)?, 64),
+        (mapping.base_address(), 2),
+    ] {
+        let forged_mapping = NativeExecutableMappingReport::new(
+            mapping.mapping_id(),
+            base,
+            capacity,
+            NativeExecutablePermission::ReadWrite,
+        );
+        let request = NativeProcessMemoryRequest::Copy {
+            code: code.clone(),
+            mapping: forged_mapping,
+        };
+        let response = NativeProcessMemoryResponse::Copy(
+            NativeExecutableCodeCopyReport::new(
+                mapping.mapping_id(),
+                base,
+                code.clone(),
+            ),
+        );
+        let mut bytes = original_wire.clone();
+        bytes
+            .get_mut(18..26)
+            .ok_or("copy response base missing")?
+            .copy_from_slice(
+                &u64::try_from(base.get())
+                    .map_err(|error| error.to_string())?
+                    .to_le_bytes(),
+            );
+        if encode_native_process_memory_response(&request, &response)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+            || decode_native_process_memory_response(&bytes, &request)
+                != Err(NativeProcessMemoryWireError::ResponseShape)
+        {
+            return Err(String::from(
+                "memory wire admitted copy beyond mapped address extent",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_rejects_success_shape_before_encoding()
 -> Result<(), String> {
     let (executable, requests) = native_process_memory_wire_fixture()?;

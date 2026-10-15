@@ -865,6 +865,11 @@ Successful synchronization responses likewise reject ranges whose start plus
 requested byte count overflows `usize`. Even byte-exact matching of forged
 request and child report cannot confer authority over an impossible range.
 
+Copied-code success reports also require the code bytes to fit inside the
+original mapping capacity, and the complete mapped interval to fit `usize`.
+Matching a forged request is insufficient when the mapping geometry is
+impossible, even if the child returns the exact requested code bytes.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.

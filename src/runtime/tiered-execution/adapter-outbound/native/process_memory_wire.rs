@@ -581,6 +581,19 @@ fn allocation_report_shape_matches(
             .is_some()
 }
 
+fn copy_report_shape_matches(
+    code: &[u8],
+    mapping: &NativeExecutableMappingReport,
+    report: &NativeExecutableCodeCopyReport,
+) -> bool {
+    let base = mapping.base_address();
+    report.mapping_id() == mapping.mapping_id()
+        && report.start_address() == base
+        && report.copied_code() == code
+        && code.len() <= mapping.mapped_len()
+        && base.get().checked_add(mapping.mapped_len()).is_some()
+}
+
 fn validate_success_response_shape(
     request: &NativeProcessMemoryRequest,
     response: &NativeProcessMemoryResponse,
@@ -608,15 +621,7 @@ fn validate_success_response_shape(
         (
             NativeProcessMemoryRequest::Copy { code, mapping },
             NativeProcessMemoryResponse::Copy(report),
-        ) => {
-            let copied_start = report.start_address();
-            let original_base = mapping.base_address();
-            let actual_code = report.copied_code();
-            let expected_code = code.as_ref();
-            report.mapping_id() == mapping.mapping_id()
-                && copied_start == original_base
-                && actual_code == expected_code
-        },
+        ) => copy_report_shape_matches(code, mapping, report),
         (
             NativeProcessMemoryRequest::Release(_),
             NativeProcessMemoryResponse::Release,
