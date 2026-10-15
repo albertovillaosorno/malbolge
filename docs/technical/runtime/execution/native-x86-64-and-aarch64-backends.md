@@ -857,6 +857,10 @@ byte-exact code; protection and synchronization must preserve their mapping
 and range identities. Forged command-specific fields fail as `ResponseShape`
 without accepting a new executable mapping or changing caller-owned memory.
 
+Allocation and protection success reports also reject address ranges whose
+base plus mapped length wraps `usize`. Such otherwise-aligned child evidence
+fails as `ResponseShape` before the trusted executable lifecycle sees it.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.

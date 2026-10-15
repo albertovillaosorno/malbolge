@@ -75077,6 +75077,69 @@ fn native_process_memory_success_response(
     }
 }
 
+fn assert_native_process_memory_extent_rejected(
+    request: &NativeProcessMemoryRequest,
+    response: &NativeProcessMemoryResponse,
+    normal_request: &NativeProcessMemoryRequest,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let valid =
+        native_process_memory_success_response(normal_request, executable);
+    let mut forged =
+        encode_native_process_memory_response(normal_request, &valid)
+            .map_err(|error| error.to_string())?;
+    let overflow_address = u64::try_from(usize::MAX & !15usize)
+        .map_err(|error| error.to_string())?;
+    forged
+        .get_mut(18..26)
+        .ok_or("mapping response base missing")?
+        .copy_from_slice(&overflow_address.to_le_bytes());
+    if encode_native_process_memory_response(request, response)
+        != Err(NativeProcessMemoryWireError::ResponseShape)
+        || decode_native_process_memory_response(&forged, request)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        return Err(String::from(
+            "native wire admitted wrapped mapping address extent",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_memory_wire_rejects_mapping_extent_overflow()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let base = native_executable_address(usize::MAX & !15usize)?;
+    let near_end = NativeExecutableMappingReport::new(
+        executable.mapping_id(),
+        base,
+        64,
+        NativeExecutablePermission::ReadWrite,
+    );
+    let allocation = requests.first().ok_or("allocation fixture missing")?;
+    assert_native_process_memory_extent_rejected(
+        allocation,
+        &NativeProcessMemoryResponse::Allocate(near_end),
+        allocation,
+        executable,
+    )?;
+    let protect = requests.get(2).ok_or("protection fixture missing")?;
+    assert_native_process_memory_extent_rejected(
+        &NativeProcessMemoryRequest::Protect(near_end),
+        &NativeProcessMemoryResponse::Protect(
+            NativeExecutableMappingReport::new(
+                executable.mapping_id(),
+                base,
+                64,
+                NativeExecutablePermission::ReadExecute,
+            ),
+        ),
+        protect,
+        executable,
+    )
+}
+
 #[test]
 fn native_process_memory_wire_rejects_success_shape_before_encoding()
 -> Result<(), String> {

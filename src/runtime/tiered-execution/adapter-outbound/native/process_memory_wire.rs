@@ -565,6 +565,22 @@ const fn encode_permission(permission: NativeExecutablePermission) -> u8 {
     }
 }
 
+fn allocation_report_shape_matches(
+    allocation: &NativeExecutableAllocationRequest,
+    report: &NativeExecutableMappingReport,
+) -> bool {
+    let alignment = allocation.alignment();
+    let actual_len = report.mapped_len();
+    actual_len == allocation.byte_len()
+        && report.permissions() == allocation.permissions()
+        && report.base_address().get().checked_rem(alignment) == Some(0)
+        && report
+            .base_address()
+            .get()
+            .checked_add(actual_len)
+            .is_some()
+}
+
 fn validate_success_response_shape(
     request: &NativeProcessMemoryRequest,
     response: &NativeProcessMemoryResponse,
@@ -573,14 +589,7 @@ fn validate_success_response_shape(
         (
             NativeProcessMemoryRequest::Allocate(allocation),
             NativeProcessMemoryResponse::Allocate(report),
-        ) => {
-            let alignment = allocation.alignment();
-            let expected_len = allocation.byte_len();
-            let actual_len = report.mapped_len();
-            actual_len == expected_len
-                && report.permissions() == allocation.permissions()
-                && report.base_address().get().checked_rem(alignment) == Some(0)
-        },
+        ) => allocation_report_shape_matches(allocation, report),
         (
             NativeProcessMemoryRequest::Protect(mapping),
             NativeProcessMemoryResponse::Protect(report),
@@ -590,6 +599,11 @@ fn validate_success_response_shape(
                 && report.mapped_len() == mapping.mapped_len()
                 && report.permissions()
                     == NativeExecutablePermission::ReadExecute
+                && report
+                    .base_address()
+                    .get()
+                    .checked_add(report.mapped_len())
+                    .is_some()
         },
         (
             NativeProcessMemoryRequest::Copy { code, mapping },

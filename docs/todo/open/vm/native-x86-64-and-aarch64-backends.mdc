@@ -476,6 +476,8 @@ A distinct single-resident lease cache
   it to the lifecycle layer: allocation length/permission/alignment, copy
   identity/address/bytes, and protect/synchronize identity/range are bound to
   the original request. Forged wire fields return typed `ResponseShape`.
+  Allocation and protection evidence also fails if base plus mapping size
+  overflows the host address space, even with otherwise valid alignment.
 
   Failure encoding now reserves only its fixed 14-byte frame, rather than the
   full potential successful copy payload. A 4096-byte copy request has a
