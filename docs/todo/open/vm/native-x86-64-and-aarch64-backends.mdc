@@ -823,6 +823,10 @@ A distinct single-resident lease cache
   Failed growth from four live mappings frees only the new reservation, leaves
   IDs and existing mappings intact, and permits retry with balanced teardown.
 
+  POSIX C23/ASan simulation additionally exhausts the monotonic mapping-ID
+  counter. The final `u64::MAX` identity remains releasable, but subsequent
+  allocations never reuse zero or create another backing reservation.
+
   Failed POSIX allocate/protect/release success-frame allocations now preserve
   the real syscall outcome: live allocation stays owned, RX seal stays RX,
   and completed release cannot be repeated or leaked during child teardown.

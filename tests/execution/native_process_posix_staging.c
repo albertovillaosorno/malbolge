@@ -590,6 +590,73 @@ static int check_allocation_and_table_failure(void)
         && mapped_reservations == unmapped_reservations ? 0 : 5;
 }
 
+static int check_mapping_id_exhaustion(void)
+{
+    struct mb_worker_state worker = {.next_id = UINT64_MAX};
+    mb_u8 request[34] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    const size_t mapped_before = mapped_reservations;
+    const size_t unmapped_before = unmapped_reservations;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || mb_native_process_read_u64(&response[10]) != UINT64_MAX
+        || worker.count != 1U || worker.next_id != 0U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 1;
+    }
+    const mb_u64 address = mb_native_process_read_u64(&response[18]);
+    mb_test_free(response);
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker.count != 1U || worker.next_id != 0U
+        || mapped_reservations != mapped_before + 1U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 2;
+    }
+    mb_test_free(response);
+    mb_native_process_write_u64(&request[9], UINT64_MAX);
+    mb_native_process_write_u64(&request[17], address);
+    mb_native_process_write_u64(&request[25], 64U);
+    if (!mb_worker_handle_release(&worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker.count != 0U || worker.next_id != 0U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 3;
+    }
+    mb_test_free(response);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker.count != 0U || worker.next_id != 0U
+        || mapped_reservations != mapped_before + 1U
+        || unmapped_reservations != unmapped_before + 1U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 4;
+    }
+    mb_test_free(response);
+    mb_worker_release_all(&worker);
+    return mapped_reservations == unmapped_reservations ? 0 : 5;
+}
+
 static int check_lifecycle_response_failures(void)
 {
     struct mb_worker_state worker = {.next_id = 1U};
@@ -723,6 +790,10 @@ int main(void)
     const int allocation_result = check_allocation_and_table_failure();
     if (allocation_result != 0) {
         return 40 + allocation_result;
+    }
+    const int exhaustion_result = check_mapping_id_exhaustion();
+    if (exhaustion_result != 0) {
+        return 55 + exhaustion_result;
     }
     const int response_result = check_lifecycle_response_failures();
     if (response_result != 0) {
