@@ -282,7 +282,7 @@ impl NativeProcessSession {
             Ok((result, returned_stdin, returned_stdout)) => {
                 self.stdin = Some(returned_stdin);
                 self.stdout = Some(returned_stdout);
-                result
+                finish_timed_exchange(timeout, started.elapsed(), result)
             },
             Err(RecvTimeoutError::Timeout) => {
                 terminate_child(&mut self.child);
@@ -310,6 +310,17 @@ impl Drop for NativeProcessSession {
     fn drop(&mut self) {
         terminate_child(&mut self.child);
     }
+}
+
+fn finish_timed_exchange(
+    timeout: Duration,
+    elapsed: Duration,
+    result: Result<Vec<u8>, NativeProcessSessionError>,
+) -> Result<Vec<u8>, NativeProcessSessionError> {
+    // recv_timeout may return a queued frame after the caller's wall-clock
+    // budget has expired. Never admit that response as an on-time success.
+    let _remaining = remaining_exchange_timeout(timeout, elapsed)?;
+    result
 }
 
 fn remaining_exchange_timeout(
@@ -372,3 +383,7 @@ fn terminate_child(child: &mut Child) {
     let _kill_result = child.kill();
     let _wait_result = child.wait();
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/tiered/process_session_deadline.rs"]
+mod deadline_tests;

@@ -494,6 +494,11 @@ A distinct single-resident lease cache
   transport thread. Empty and one-megabyte requests both fail closed, and the
   direct child becomes poisoned before any later exchange.
 
+  Completed timed responses now also undergo a final elapsed-time check after
+  channel delivery. Existing host-real timed exchanges still admit on-time
+  data while
+  refusing expired or malformed response frames.
+
   Nonzero exchange budgets now also count request cloning and thread startup
   against the same deadline as response waiting. A host-real positive
   nanosecond deadline now fails closed on a one-megabyte request and poisons

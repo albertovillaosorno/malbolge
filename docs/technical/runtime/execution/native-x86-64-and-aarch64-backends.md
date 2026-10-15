@@ -869,6 +869,12 @@ pipe ownership transfer, or worker-thread creation. Both empty and one-megabyte
 requests return `ExchangeTimeout` immediately, poison the owning session, and
 cannot be retried through that child.
 
+A completed timed exchange now also checks the deadline after the worker's
+response reaches the channel. This closes a scheduling race where a queued
+response could be accepted after its allotted budget. Existing host-real
+deadline fixtures cover successful timed exchanges,
+expired responses, and transport errors without granting extra time.
+
 Positive exchange budgets now also start before request cloning and transport
 thread startup. The receiver waits only for the unused remainder, so setup
 cost can no longer silently grant a second full deadline. A host-real
