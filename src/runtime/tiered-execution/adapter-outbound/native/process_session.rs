@@ -72,6 +72,8 @@ pub enum NativeProcessSessionError {
     ResponseTooLarge,
     /// Failed to launch the configured child process.
     Spawn(ErrorKind),
+    /// Failed to launch the owned timed-exchange transport thread.
+    WorkerSpawn(ErrorKind),
     /// Failed while writing the request frame.
     Write(ErrorKind),
 }
@@ -254,15 +256,19 @@ impl NativeProcessSession {
             .map_err(|_error| NativeProcessSessionError::RequestAllocation)?;
         owned_request.extend_from_slice(request);
         let (sender, receiver) = mpsc::sync_channel(1);
-        let _worker = thread::spawn(move || {
-            let result = exchange_framed_bytes(
-                &mut stdin,
-                &mut stdout,
-                &owned_request,
-                response_limit,
-            );
-            let _sent = sender.send((result, stdin, stdout));
-        });
+        let _worker = thread::Builder::new()
+            .spawn(move || {
+                let result = exchange_framed_bytes(
+                    &mut stdin,
+                    &mut stdout,
+                    &owned_request,
+                    response_limit,
+                );
+                let _sent = sender.send((result, stdin, stdout));
+            })
+            .map_err(|error| {
+                NativeProcessSessionError::WorkerSpawn(error.kind())
+            })?;
         match receiver.recv_timeout(timeout) {
             Ok((result, returned_stdin, returned_stdout)) => {
                 self.stdin = Some(returned_stdin);

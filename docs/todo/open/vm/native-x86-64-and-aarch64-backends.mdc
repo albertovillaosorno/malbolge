@@ -475,6 +475,9 @@ A distinct single-resident lease cache
   now permit timed transport threads to detach after direct-child termination;
   the poisoned session returns promptly and is never reused. Timed request
   cloning also reserves fallibly rather than aborting the parent on OOM.
+
+  Timed transport-thread creation also returns typed `WorkerSpawn` on failure,
+  poisons the session, and terminates its child rather than panicking.
   Symmetrically, descendants retaining the request pipe cannot extend the
   deadline for blocked writes of a one-megabyte request after child termination.
 

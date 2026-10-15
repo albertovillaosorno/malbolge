@@ -847,6 +847,10 @@ transfer owned pipe handles to a detachable transport thread, return promptly
 on deadline expiry, and never reuse the poisoned stream. A fallible request
 copy avoids parent-process allocation aborts before the timed exchange begins.
 
+The transport worker also uses fallible thread creation: a failed spawn is
+returned as typed `WorkerSpawn` instead of panicking the parent, and the owned
+child session is terminated and poisoned on that failure.
+
 A symmetric test has a descendant inherit the request pipe without consuming
 bytes. A one-megabyte request now returns within the same 300-ms deadline even
 when the descendant still holds the read end after direct-child termination.
