@@ -1402,6 +1402,26 @@ const NATIVE_PROCESS_WINDOWS_IMPORTS: [&str; 13] = [
     "__imp_WriteFile",
 ];
 
+const NATIVE_PROCESS_SESSION_CONFIG_WORKER: &str = r#"
+import os
+import sys
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+payload = "\n".join((
+    sys.argv[1],
+    sys.argv[2],
+    os.environ["MALBOLGE_NATIVE_SESSION_CONFIG_TEST"],
+    os.getcwd(),
+)).encode()
+sys.stdout.buffer.write(len(payload).to_bytes(8, "little"))
+sys.stdout.buffer.write(payload)
+sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_SESSION_EMPTY_RESPONSE_WORKER: &str = r#"
 import sys
 while True:
@@ -75095,6 +75115,44 @@ fn native_process_host_executes_call_over_same_session() -> Result<(), String> {
     } else {
         Err(String::from("native process host call execution drifted"))
     }
+}
+
+#[test]
+fn native_process_session_applies_configured_child_context()
+-> Result<(), String> {
+    let directory =
+        fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests"))
+            .map_err(|error| format!("canonicalize temp directory: {error}"))?;
+    let environment_name =
+        OsString::from("MALBOLGE_NATIVE_SESSION_CONFIG_TEST");
+    for timed in [false, true] {
+        let mut configuration = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_CONFIG_WORKER,
+        )
+        .argument(OsString::from("value with spaces"))
+        .argument(OsString::new())
+        .environment(environment_name.clone(), OsString::from("old"))
+        .environment(environment_name.clone(), OsString::from("new value"))
+        .working_directory(directory.clone());
+        if timed {
+            configuration =
+                configuration.exchange_timeout(Duration::from_secs(5));
+        }
+        let mut session = configuration
+            .spawn()
+            .map_err(|error| format!("configured session spawn: {error:?}"))?;
+        let frame = session
+            .exchange(b"context", 1024)
+            .map_err(|error| format!("configured session: {error:?}"))?;
+        let expected =
+            format!("value with spaces\n\nnew value\n{}", directory.display());
+        if frame != expected.as_bytes() || session.poisoned() {
+            return Err(format!(
+                "child session context drifted (timed={timed}): {frame:?}",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]

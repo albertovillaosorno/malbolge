@@ -829,6 +829,11 @@ child survives multiple exchanges and that oversized/truncated responses fail
 closed. The session does not interpret MBNPC1 or yet implement executable-memory
 commands or the foreign call itself.
 
+A real Python-child configuration fixture now checks exact argument boundaries,
+including an empty argument and an argument containing spaces. The same
+fixture checks last-write-wins environment overrides and the configured
+working directory under both timed and untimed retained sessions.
+
 Transport boundary tests now also distinguish a valid zero-byte response from
 partial header framing. A Python child sends three consecutive empty response
 payloads to zero-limit exchanges (including empty requests) without session

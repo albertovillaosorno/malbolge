@@ -450,6 +450,10 @@ A distinct single-resident lease cache
   allocation, transport/framing failure poisons and terminates the session, and
   deterministic workers cover reuse plus oversized/truncated responses.
 
+  Timed and untimed Python child sessions now independently round-trip explicit
+  arguments (including spaces and an empty argument), duplicate environment
+  key overrides, and the requested working directory.
+
   A host-real POSIX stream now also delivers five MBNPM1 lifecycle frames in
   small pipe writes (one through seven bytes per chunk). The same child
   allocates a 64-KiB-aligned mapping, copies, seals, synchronizes, releases,
