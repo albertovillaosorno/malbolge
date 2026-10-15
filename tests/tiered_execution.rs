@@ -1597,6 +1597,26 @@ for count in (1, 2):
         time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_MALFORMED_SECOND_WORKER: &str = r#"
+import sys
+for count in (1, 2):
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length:
+        raise SystemExit(3)
+    if count == 1:
+        response = b"ok:" + request
+        sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+        sys.stdout.buffer.write(response)
+    else:
+        sys.stdout.buffer.write((4).to_bytes(8, "little"))
+        sys.stdout.buffer.write(b"ab")
+    sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -75841,6 +75861,70 @@ fn native_process_session_deadline_retains_responsive_child()
             || session.poisoned()
         {
             return Err(String::from("deadline poisoned healthy child"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_each_deadline_excludes_idle_time()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_ECHO_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(600))
+    .spawn()
+    .map_err(|error| format!("idle timing spawn: {error:?}"))?;
+    for (request, sequence) in [
+        (b"first".as_slice(), 1u8),
+        (b"second".as_slice(), 2u8),
+        (b"third".as_slice(), 3u8),
+    ] {
+        if sequence != 1 {
+            thread::sleep(Duration::from_millis(700));
+        }
+        let response = session
+            .exchange(request, 64)
+            .map_err(|error| format!("post-idle exchange: {error:?}"))?;
+        if response.first() != Some(&sequence)
+            || response.get(1..) != Some(request)
+            || session.poisoned()
+        {
+            return Err(String::from("idle time consumed the next deadline"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_rejects_truncated_second_frame() -> Result<(), String>
+{
+    for timed in [false, true] {
+        let mut config = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_MALFORMED_SECOND_WORKER,
+        );
+        if timed {
+            config = config.exchange_timeout(Duration::from_secs(5));
+        }
+        let mut session = config
+            .spawn()
+            .map_err(|error| format!("truncated second spawn: {error:?}"))?;
+        let first = session
+            .exchange(b"valid", 64)
+            .map_err(|error| format!("valid first frame: {error:?}"))?;
+        if first != b"ok:valid" || session.poisoned() {
+            return Err(String::from("valid first frame poisoned session"));
+        }
+        let second = session.exchange(b"truncated", 64);
+        if second
+            != Err(NativeProcessSessionError::Read(ErrorKind::UnexpectedEof))
+            || !session.poisoned()
+            || session.exchange(b"again", 64)
+                != Err(NativeProcessSessionError::Poisoned)
+        {
+            return Err(format!(
+                "truncated second frame escaped timed={timed}: {second:?}",
+            ));
         }
     }
     Ok(())

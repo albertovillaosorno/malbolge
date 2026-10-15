@@ -875,6 +875,12 @@ response could be accepted after its allotted budget. Existing host-real
 deadline fixtures cover successful timed exchanges,
 expired responses, and transport errors without granting extra time.
 
+Host-real retained-session fixtures now verify that a deadline applies to each
+exchange, not idle time between successful frames. A 700-ms idle interval
+between calls does not exhaust the following 600-ms transport deadline.
+If the second frame is truncated after a valid first response, both timed and
+untimed sessions poison immediately and reject every later request.
+
 Positive exchange budgets now also start before request cloning and transport
 thread startup. The receiver waits only for the unused remainder, so setup
 cost can no longer silently grant a second full deadline. A host-real

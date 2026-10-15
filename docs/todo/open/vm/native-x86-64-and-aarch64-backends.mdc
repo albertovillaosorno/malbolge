@@ -499,6 +499,10 @@ A distinct single-resident lease cache
   data while
   refusing expired or malformed response frames.
 
+  Host-real transport tests now distinguish the per-exchange clock from idle
+  time between requests. A truncated second frame, after one healthy reply,
+  poisons timed and untimed sessions and denies subsequent reuse.
+
   Nonzero exchange budgets now also count request cloning and thread startup
   against the same deadline as response waiting. A host-real positive
   nanosecond deadline now fails closed on a one-megabyte request and poisons
