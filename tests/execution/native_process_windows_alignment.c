@@ -66,6 +66,7 @@ static size_t recycled_len;
 static int fail_next_virtual_alloc;
 static int fail_next_protect;
 static int unexpected_old_protect;
+static int fail_first_mapping_heap_alloc;
 static int fail_next_heap_realloc;
 static int fail_next_mapping_response;
 static int fail_next_copy_response;
@@ -126,6 +127,11 @@ void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
     }
     if (len == (size_t)-1) {
         rejected_huge_frame_allocations += 1U;
+        return NULL;
+    }
+    if (len == sizeof(struct mb_worker_mapping) * 4U
+        && fail_first_mapping_heap_alloc != 0) {
+        fail_first_mapping_heap_alloc = 0;
         return NULL;
     }
     if (len == 26U) {
@@ -3285,6 +3291,52 @@ static int check_mixed_geometry_table(struct mb_worker_state *worker)
         && protect_count == original_protects + 8U ? 0 : 9;
 }
 
+static int check_first_mapping_heap_failure(void)
+{
+    struct mb_worker_state worker = {.next_id = 1U};
+    mb_u8 request[26] = {0};
+    mb_u8 *response = NULL;
+    size_t len = 0U;
+    const size_t allocations_before = reservation_count;
+    const size_t releases_before = release_count;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 131072U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_first_mapping_heap_alloc = 1;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response == NULL
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker.count != 0U || worker.capacity != 0U
+        || worker.next_id != 1U
+        || reservation_count != allocations_before + 1U
+        || release_count != releases_before + 1U) {
+        mb_worker_free(response);
+        mb_worker_release_all(&worker);
+        return 1;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &len)
+        || len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || response == NULL
+        || mb_native_process_read_u64(&response[10]) != 1U
+        || worker.count != 1U || worker.next_id != 2U) {
+        mb_worker_free(response);
+        mb_worker_release_all(&worker);
+        return 2;
+    }
+    mb_worker_free(response);
+    mb_worker_release_all(&worker);
+    return worker.count == 0U
+        && reservation_count == allocations_before + 2U
+        && release_count == releases_before + 2U ? 0 : 3;
+}
+
 int main(void)
 {
 #if defined(__aarch64__)
@@ -3411,5 +3463,9 @@ int main(void)
         }
     }
     mb_worker_release_all(&worker);
+    const int first_table = check_first_mapping_heap_failure();
+    if (first_table != 0) {
+        return 37 + first_table;
+    }
     return 0;
 }

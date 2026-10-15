@@ -1266,6 +1266,10 @@ newly reserved backing span, preserves four live mapping IDs and copy rights,
 and leaves the next ID unchanged. Retrying growth succeeds and teardown
 releases every original backing reservation exactly once.
 
+A Windows simulation also tests initial mapping-table heap allocation failure.
+The first reserved region is released, no mapping ID is consumed, and a
+subsequent allocation obtains ID one and releases its region on teardown.
+
 The same Win32 heap simulation fails the 35-byte mapping response allocation
 after a successful `VirtualAlloc`, and separately after a successful RX
 transition. Neither path fabricates a success response: worker teardown
