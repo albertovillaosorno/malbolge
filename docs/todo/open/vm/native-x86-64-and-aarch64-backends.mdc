@@ -774,6 +774,10 @@ A distinct single-resident lease cache
   the first two header bytes or after the header completes. Both mid-header
   and payload-boundary overreports fail closed without clean-EOF treatment.
 
+  Simulated `ReadFile` failures with a nonzero byte count also deny progress
+  after partial headers and at payload start. Neither broken-pipe code 38
+  nor 109 can turn those invalid reports into clean stream termination.
+
   A broken-pipe error with a contradictory nonzero returned byte count also
   fails closed at header start rather than being accepted as clean EOF.
 

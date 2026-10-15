@@ -1408,6 +1408,11 @@ two header bytes or immediately after a complete header, at the beginning
 of the payload. Neither read nor write can treat those mid-frame reports
 as successful progress or clean EOF, and the partial transfer is rejected.
 
+The same Windows shims now fail `ReadFile` with a nonzero reported byte count
+after two header bytes and immediately after a complete header. Broken-pipe
+codes 38 and 109 cannot promote either failed transfer into valid progress;
+these partially received frames are rejected even if the API reports bytes.
+
 The Windows worker now defines `DWORD` and `BOOL` as explicit 32-bit ABI
 scalars instead of relying on the host's `unsigned long` width. The host C23
 simulation checks that a transfer larger than `UINT32_MAX` is capped to a

@@ -1545,6 +1545,24 @@ static int check_frame_io(void)
         if (mb_worker_read_frame(&payload, &len) != -1) {
             return 11;
         }
+        mb_mock_read_reset(wire, sizeof(wire));
+        mock_fail_read = 1;
+        mock_fail_read_with_count = 1;
+        mock_fail_read_after = 2U;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1
+            || mock_read_pos != 2U) {
+            return 21;
+        }
+        mb_mock_read_reset(wire, sizeof(wire));
+        mock_fail_read = 1;
+        mock_fail_read_with_count = 1;
+        mock_fail_read_after = 8U;
+        mock_read_error = error_code;
+        if (mb_worker_read_frame(&payload, &len) != -1
+            || mock_read_pos != 8U) {
+            return 22;
+        }
     }
     return 0;
 }
