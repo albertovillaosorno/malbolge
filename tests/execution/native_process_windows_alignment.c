@@ -1634,8 +1634,8 @@ static int check_mapping_table_growth_failure(
             != MB_WORKER_ALLOCATION_FAILURE
         || worker->count != 4U || worker->capacity != 4U
         || worker->next_id != id_before + 4U
-        || reservation_count != reservations_before + 5U
-        || release_count != releases_before + 1U) {
+        || reservation_count != reservations_before + 4U
+        || release_count != releases_before) {
         mb_worker_free(response);
         return 2;
     }
@@ -1695,8 +1695,8 @@ static int check_mapping_table_growth_failure(
     }
     mb_worker_release_all(worker);
     return worker->count == 0U
-        && reservation_count == reservations_before + 6U
-        && release_count == releases_before + 6U ? 0 : 5;
+        && reservation_count == reservations_before + 5U
+        && release_count == releases_before + 5U ? 0 : 5;
 }
 
 static int check_unreportable_mapping_cleanup(
@@ -3348,8 +3348,8 @@ static int check_first_mapping_heap_failure(void)
             != MB_WORKER_ALLOCATION_FAILURE
         || worker.count != 0U || worker.capacity != 0U
         || worker.next_id != 1U
-        || reservation_count != allocations_before + 1U
-        || release_count != releases_before + 1U) {
+        || reservation_count != allocations_before
+        || release_count != releases_before) {
         mb_worker_free(response);
         mb_worker_release_all(&worker);
         return 1;
@@ -3369,8 +3369,8 @@ static int check_first_mapping_heap_failure(void)
     mb_worker_free(response);
     mb_worker_release_all(&worker);
     return worker.count == 0U
-        && reservation_count == allocations_before + 2U
-        && release_count == releases_before + 2U ? 0 : 3;
+        && reservation_count == allocations_before + 1U
+        && release_count == releases_before + 1U ? 0 : 3;
 }
 
 int main(void)

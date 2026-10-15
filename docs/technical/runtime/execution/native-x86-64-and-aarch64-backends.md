@@ -1533,10 +1533,10 @@ RW copy authority, the failed release preserves table ownership, and both
 operations succeed on retry without losing the original reservation base.
 
 The controlled Windows heap-shim fixture also rejects a mapping-table growth
-failure at the fifth live reservation. A failed `HeapReAlloc` frees only the
-newly reserved backing span, preserves four live mapping IDs and copy rights,
-and leaves the next ID unchanged. Retrying growth succeeds and teardown
-releases every original backing reservation exactly once.
+failure before the fifth live reservation. Table capacity is reserved before
+`VirtualAlloc`, so failed `HeapReAlloc` creates no backing span to release.
+Four live mapping IDs and copy rights survive, the next ID remains unchanged,
+and successful growth plus teardown release every original reservation once.
 
 A growth-retry regression forces `HeapReAlloc` to move the mapping table,
 rather than relying on allocator-dependent in-place growth. It verifies that
@@ -1544,8 +1544,8 @@ all four pre-existing mapping IDs and addresses survive the relocation,
 remain writable, and release their original backing reservations.
 
 A Windows simulation also tests initial mapping-table heap allocation failure.
-The first reserved region is released, no mapping ID is consumed, and a
-subsequent allocation obtains ID one and releases its region on teardown.
+No backing region is allocated, no mapping ID is consumed, and a subsequent
+allocation obtains ID one and releases its region on teardown.
 
 The same Win32 heap simulation fails the 35-byte mapping response allocation
 after a successful `VirtualAlloc`, and separately after a successful RX
