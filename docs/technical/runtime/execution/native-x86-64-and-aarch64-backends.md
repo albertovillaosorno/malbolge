@@ -1266,6 +1266,11 @@ newly reserved backing span, preserves four live mapping IDs and copy rights,
 and leaves the next ID unchanged. Retrying growth succeeds and teardown
 releases every original backing reservation exactly once.
 
+A growth-retry regression forces `HeapReAlloc` to move the mapping table,
+rather than relying on allocator-dependent in-place growth. It verifies that
+all four pre-existing mapping IDs and addresses survive the relocation,
+remain writable, and release their original backing reservations.
+
 A Windows simulation also tests initial mapping-table heap allocation failure.
 The first reserved region is released, no mapping ID is consumed, and a
 subsequent allocation obtains ID one and releases its region on teardown.

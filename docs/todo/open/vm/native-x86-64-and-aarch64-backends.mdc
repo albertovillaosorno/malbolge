@@ -675,6 +675,10 @@ A distinct single-resident lease cache
   newly allocated backing span, preserves four live mapping identities and
   copy rights, and admits a successful retry without consuming an ID.
 
+  The same retry now forces mapping-table relocation on `HeapReAlloc`, proving
+  four existing mappings retain IDs, addresses, and copy authority despite
+  movement of their table storage.
+
   Initial Windows table allocation failure also releases its reservation,
   preserves mapping ID one for retry, and permits subsequent cleanup.
 

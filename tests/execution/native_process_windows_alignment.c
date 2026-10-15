@@ -68,6 +68,7 @@ static int fail_next_protect;
 static int unexpected_old_protect;
 static int fail_first_mapping_heap_alloc;
 static int fail_next_heap_realloc;
+static int move_next_mapping_heap_realloc;
 static int fail_next_mapping_response;
 static int fail_next_copy_response;
 static int fail_next_sync_response;
@@ -185,6 +186,16 @@ void *HeapReAlloc(mb_win_handle heap, mb_win_dword flags, void *ptr, size_t len)
     if (fail_next_heap_realloc != 0) {
         fail_next_heap_realloc = 0;
         return NULL;
+    }
+    if (move_next_mapping_heap_realloc != 0) {
+        move_next_mapping_heap_realloc = 0;
+        void *moved = malloc(len);
+        if (moved == NULL) {
+            return NULL;
+        }
+        memcpy(moved, ptr, sizeof(struct mb_worker_mapping) * 4U);
+        free(ptr);
+        return moved;
     }
     return realloc(ptr, len);
 }
@@ -1644,6 +1655,8 @@ static int check_mapping_table_growth_failure(
         }
         mb_worker_free(response);
     }
+    const mb_uintptr original_table = (mb_uintptr)worker->mappings;
+    move_next_mapping_heap_realloc = 1;
     mb_native_process_write_u64(&request[9], 64U);
     mb_native_process_write_u64(&request[17], 131072U);
     request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
@@ -1652,11 +1665,34 @@ static int check_mapping_table_growth_failure(
         || len != 35U || worker->count != 5U
         || worker->capacity < 5U
         || mb_native_process_read_u64(&response[10])
-            != id_before + 4U) {
+            != id_before + 4U
+        || (mb_uintptr)worker->mappings == original_table
+        || move_next_mapping_heap_realloc != 0) {
         mb_worker_free(response);
         return 4;
     }
     mb_worker_free(response);
+    for (size_t i = 0U; i < 4U; ++i) {
+        if (worker->mappings[i].id != ids[i]
+            || (mb_u64)(mb_uintptr)worker->mappings[i].base
+                != addresses[i]) {
+            return 6;
+        }
+        mb_native_process_write_u64(&request[9], ids[i]);
+        mb_native_process_write_u64(&request[17], addresses[i]);
+        mb_native_process_write_u64(&request[25], 64U);
+        request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+        mb_native_process_write_u64(&request[34], 6U);
+        memcpy(&request[42], "UVWXYZ", 6U);
+        if (!mb_worker_handle_copy(worker, request, 48U,
+                &response, &len)
+            || len != 32U
+            || memcmp(&response[26], "UVWXYZ", 6U) != 0) {
+            mb_worker_free(response);
+            return 7;
+        }
+        mb_worker_free(response);
+    }
     mb_worker_release_all(worker);
     return worker->count == 0U
         && reservation_count == reservations_before + 6U
