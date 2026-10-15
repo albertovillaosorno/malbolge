@@ -967,6 +967,11 @@ A distinct single-resident lease cache
   error indicators. Genuine error-free EOF remains a normal stream close;
   prior code incorrectly classified the contradictory error case as EOF.
 
+  Seven controlled POSIX worker-loop cases first allocate a 64-KiB-aligned
+  mapping, then close cleanly or encounter an invalid second frame, partial
+  input, write/flush failure, or simultaneous EOF/error flags. Every path
+  frees its backing reservation; only clean EOF returns a success exit code.
+
   The real POSIX framing fixture also rejects announced `u64::MAX` payload
   lengths and zero-length frames with their distinct failure exit codes,
   without emitting any response bytes.

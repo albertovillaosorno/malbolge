@@ -1278,6 +1278,13 @@ at the first header byte were misclassified as clean termination. The worker
 now admits clean EOF only when the stream has no error; all other simulated
 transport failures remain fatal, with C23 and ASan/UBSan evidence.
 
+The same host-controlled fixture exercises the complete POSIX worker loop
+with a live 64-KiB-aligned allocation before shutdown. Clean EOF, unknown
+second frames, truncated second headers or payloads, failed response writes
+or flushes, and contradictory EOF/error indicators all exit with the expected
+status. Each path unmaps the exact original backing reservation once; only
+clean EOF exits successfully.
+
 A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
 with deterministic allocation faults at those same two staging steps. Each
 failed call frees the counterpart buffer, emits no partial MBNPC1 response,

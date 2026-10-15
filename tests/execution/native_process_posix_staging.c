@@ -21,9 +21,9 @@
 // - Merge-When:
 //   - One host-side runtime simulator covers both worker implementations.
 // - Summary:
-//   - Simulates native-call staging failures and POSIX stream framing.
+//   - Checks POSIX call staging, framing, and worker cleanup failures.
 // - Description:
-//   - Links actual POSIX handlers with injected malloc and stdio faults.
+//   - Runs actual POSIX handlers and loop with injected malloc/stdio faults.
 // - Usage:
 //   - Compile and run through pinned Clang and pytest on Linux x86-64.
 // - Defaults:
@@ -643,6 +643,49 @@ static int check_lifecycle_response_failures(void)
     return mapped_reservations == unmapped_reservations ? 0 : 6;
 }
 
+static int mb_test_process_loop_cleanup(int scenario)
+{
+    unsigned char frames[80] = {0};
+    mb_native_process_write_u64(frames, 26U);
+    memcpy(&frames[8], MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    frames[16] = MB_NATIVE_PROCESS_MEMORY_ALLOCATE;
+    mb_native_process_write_u64(&frames[17], 64U);
+    mb_native_process_write_u64(&frames[25], 65536U);
+    frames[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    size_t frame_len = 34U;
+    if (scenario == 1) {
+        mb_native_process_write_u64(&frames[34], 8U);
+        memcpy(&frames[42], "BADPROTO", 8U);
+        frame_len = 50U;
+    } else if (scenario == 2) {
+        mb_native_process_write_u64(&frames[34], 26U);
+        frame_len = 38U;
+    } else if (scenario == 3) {
+        mb_native_process_write_u64(&frames[34], 26U);
+        memcpy(&frames[42], MB_NATIVE_PROCESS_MEMORY_MAGIC, 4U);
+        frame_len = 46U;
+    }
+    mb_test_frame_reset(frames, frame_len, 1, scenario == 6 ? 1 : 0);
+    mock_frame_output_pos = 0U;
+    mock_frame_short_write = scenario == 4 ? 1 : 0;
+    mock_frame_flush_error = scenario == 5 ? 1 : 0;
+    const size_t mapped_before = mapped_reservations;
+    const size_t unmapped_before = unmapped_reservations;
+    const int exit_code = mb_test_posix_worker_entry();
+    const int expected_exit = scenario == 0 ? 0
+        : scenario == 1 || scenario == 4 || scenario == 5 ? 3 : 2;
+    const size_t expected_output = scenario == 4 ? 7U : 43U;
+    if (exit_code != expected_exit
+        || mock_frame_output_pos != expected_output
+        || (scenario != 4
+            && mb_native_process_read_u64(mock_frame_output) != 35U)
+        || mapped_reservations != mapped_before + 1U
+        || unmapped_reservations != unmapped_before + 1U) {
+        return 1;
+    }
+    return 0;
+}
+
 int main(void)
 {
     const int call_result = check_call_allocations();
@@ -662,5 +705,13 @@ int main(void)
         return 60 + response_result;
     }
     const int frame_result = mb_test_frame_io();
-    return frame_result == 0 ? 0 : 80 + frame_result;
+    if (frame_result != 0) {
+        return 80 + frame_result;
+    }
+    for (int scenario = 0; scenario < 7; ++scenario) {
+        if (mb_test_process_loop_cleanup(scenario) != 0) {
+            return 100 + scenario;
+        }
+    }
+    return 0;
 }
