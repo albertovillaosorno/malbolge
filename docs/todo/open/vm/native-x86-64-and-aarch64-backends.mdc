@@ -1089,6 +1089,10 @@ A distinct single-resident lease cache
   poisons only the executing child. The surviving sibling retains its already
   allocated mapping through copy, RX sealing, dispatch, release, and reuse.
 
+  A native RX stub that performs an indirect jump to null also faults only
+  its owning child; a separate worker retains its over-aligned mapping and
+  can copy, execute, release, and allocate after the instruction-fetch fault.
+
   Real RX self-write machine code now faults on both ordinary and 64-KiB-
   aligned executable pages. The executing child alone is poisoned; a sibling
   still copies, seals, executes, releases, and reallocates without interference.

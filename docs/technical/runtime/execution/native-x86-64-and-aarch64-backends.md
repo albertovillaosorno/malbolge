@@ -1109,6 +1109,11 @@ second child still copies, seals, executes, and releases its existing mapping.
 That child can also allocate again; fault cleanup does not cross process or
 reservation ownership boundaries.
 
+A separate aligned worker executes an in-range RX stub that jumps indirectly
+to the null address. The resulting instruction-fetch fault terminates only the
+executing child and poisons its session; a sibling still uses its existing
+aligned mapping through copy, RX execution, release, and reallocation.
+
 A separate host-real timeout fixture executes a sealed x86-64 `jmp -2`
 entry in a 64-KiB-aligned mapping. The 500-ms exchange deadline kills and
 poisons only that non-returning native worker. Another worker retains its

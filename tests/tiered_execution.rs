@@ -73140,6 +73140,24 @@ fn native_process_posix_worker_native_fault_is_session_local()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn native_process_posix_worker_null_indirect_jump_fault_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("indirect_null_jump_fault")?;
+    let worker = directory.join("native-process-worker-posix");
+    // mov rax,0; jmp rax. An in-range RX entry can branch out of range.
+    let jump = [0x48, 0xc7, 0xc0, 0, 0, 0, 0, 0xff, 0xe0];
+    let result = assert_posix_worker_native_fault_is_session_local(
+        &worker, 65_536, &jump,
+    );
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn native_process_posix_worker_rx_self_write_is_session_local()
 -> Result<(), String> {
     let (directory, host) =
