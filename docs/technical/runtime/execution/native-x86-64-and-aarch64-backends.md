@@ -1295,6 +1295,11 @@ The worker now ignores `SIGPIPE` so a broken stdout pipe fails the framed
 write with exit code 3 and executes normal mapping-table cleanup instead of
 terminating at the signal boundary.
 
+A second real-subprocess test first acknowledges an aligned allocation,
+then closes stdout before sending another valid allocation command. The worker
+reports exit code 3 rather than signal death after its mapping has remained
+live across a successful prior frame.
+
 A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
 with deterministic allocation faults at those same two staging steps. Each
 failed call frees the counterpart buffer, emits no partial MBNPC1 response,

@@ -38,6 +38,8 @@ from pathlib import Path
 import platform
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import BinaryIO
+from typing import cast
 
 import pytest
 
@@ -271,17 +273,15 @@ def test_native_process_posix_staging_allocation_failures(
     assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
-@pytest.mark.skipif(
-    not sys.platform.startswith("linux")
-    or platform.machine().lower() not in X86_64_HOST_NAMES,
-    reason="POSIX broken-pipe worker check requires Linux x86-64",
-)
-def test_native_process_posix_worker_handles_closed_output_pipe(
-    tmp_path: Path,
-) -> None:
-    """A broken stdout pipe takes the worker cleanup path, not SIGPIPE."""
+def _compile_posix_pipe_worker(tmp_path: Path, label: str) -> Path:
+    """Build the production POSIX child for real pipe-boundary checks.
+
+    Returns:
+        Path to the compiled worker executable.
+
+    """
     assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
-    executable = tmp_path / "native-process-posix-broken-pipe"
+    executable = tmp_path / label
     compiled = run_command(
         (
             str(CLANG),
@@ -295,6 +295,34 @@ def test_native_process_posix_worker_handles_closed_output_pipe(
         ROOT,
     )
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    return executable
+
+
+def _assert_posix_allocation_reply(output: BinaryIO) -> None:
+    """Read one framed successful mapping allocation without trailing data."""
+    header_bytes = 8
+    allocation_bytes = 35
+    header = output.read(header_bytes)
+    assert len(header) == header_bytes
+    assert int.from_bytes(header, "little") == allocation_bytes
+    body = output.read(allocation_bytes)
+    assert len(body) == allocation_bytes
+    assert body.startswith(b"MBNPM1\0\0\0\0")
+    assert int.from_bytes(body[10:18], "little") != 0
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="POSIX broken-pipe worker check requires Linux x86-64",
+)
+def test_native_process_posix_worker_handles_closed_output_pipe(
+    tmp_path: Path,
+) -> None:
+    """A broken stdout pipe takes the worker cleanup path, not SIGPIPE."""
+    executable = _compile_posix_pipe_worker(
+        tmp_path, "native-process-posix-broken-pipe"
+    )
     request = b"MBNPM1\0\0" + bytes([0]) + (64).to_bytes(8, "little")
     request += (65536).to_bytes(8, "little") + bytes([1])
     frame = len(request).to_bytes(8, "little") + request
@@ -313,6 +341,41 @@ def test_native_process_posix_worker_handles_closed_output_pipe(
         child.stdin.close()
         expected_write_failure_exit = 3
         assert child.wait(timeout=5) == expected_write_failure_exit
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="POSIX retained-worker broken-pipe check requires Linux x86-64",
+)
+def test_native_process_posix_worker_breaks_pipe_after_allocation(
+    tmp_path: Path,
+) -> None:
+    """A later broken response reclaims an already acknowledged mapping."""
+    executable = _compile_posix_pipe_worker(
+        tmp_path, "native-process-posix-late-broken-pipe"
+    )
+    request = b"MBNPM1\0\0" + bytes([0]) + (64).to_bytes(8, "little")
+    request += (65536).to_bytes(8, "little") + bytes([1])
+    frame = len(request).to_bytes(8, "little") + request
+    expected_exit = 3
+    with sp.Popen[bytes](
+        [str(executable)],
+        stdin=sp.PIPE,
+        stdout=sp.PIPE,
+        stderr=sp.DEVNULL,
+    ) as child:
+        assert child.stdin is not None
+        assert child.stdout is not None
+        output = cast("BinaryIO", child.stdout)
+        assert child.stdin.write(frame) == len(frame)
+        child.stdin.flush()
+        _assert_posix_allocation_reply(output)
+        child.stdout.close()
+        assert child.stdin.write(frame) == len(frame)
+        child.stdin.flush()
+        child.stdin.close()
+        assert child.wait(timeout=5) == expected_exit
 
 
 def test_native_process_protocol_c_conformance(tmp_path: Path) -> None:

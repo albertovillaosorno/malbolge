@@ -978,6 +978,10 @@ A distinct single-resident lease cache
   signal into a failed write (exit 3), preserving explicit cleanup of live
   mappings; a real subprocess test verifies the exit rather than a signal.
 
+  A second subprocess retains an already acknowledged mapping, then closes
+  output and issues another allocation frame. Framed write failure exits 3,
+  rather than terminating on `SIGPIPE`, after the earlier success.
+
   The real POSIX framing fixture also rejects announced `u64::MAX` payload
   lengths and zero-length frames with their distinct failure exit codes,
   without emitting any response bytes.
