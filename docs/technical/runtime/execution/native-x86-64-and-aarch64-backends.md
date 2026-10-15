@@ -1403,6 +1403,11 @@ a classification bug: the worker previously treated that impossible count
 at header start as clean EOF. Only a genuine zero-byte read now admits clean
 EOF; overreported reads and writes fail closed without accepting a frame.
 
+Additional deterministic Win32 shims now overreport transfer counts after
+two header bytes or immediately after a complete header, at the beginning
+of the payload. Neither read nor write can treat those mid-frame reports
+as successful progress or clean EOF, and the partial transfer is rejected.
+
 The Windows worker now defines `DWORD` and `BOOL` as explicit 32-bit ABI
 scalars instead of relying on the host's `unsigned long` width. The host C23
 simulation checks that a transfer larger than `UINT32_MAX` is capped to a

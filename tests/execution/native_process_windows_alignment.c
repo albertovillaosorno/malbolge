@@ -93,6 +93,7 @@ static mb_win_dword mock_last_read_request;
 static int mock_fail_read;
 static int mock_fail_read_with_count;
 static int mock_read_overreport;
+static size_t mock_read_overreport_after;
 static size_t mock_fail_read_after;
 static mb_win_dword mock_read_error = 5UL;
 static mb_u8 mock_write_buffer[256];
@@ -101,6 +102,7 @@ static size_t mock_write_chunk;
 static mb_win_dword mock_last_write_request;
 static int mock_fail_write;
 static int mock_write_overreport;
+static size_t mock_write_overreport_after;
 static size_t mock_fail_write_after = (size_t)-1;
 
 mb_win_handle GetCurrentProcess(void) { return &mock_process_handle; }
@@ -194,7 +196,8 @@ mb_win_bool ReadFile(
         return 0;
     }
     mock_last_read_request = len;
-    if (mock_read_overreport != 0) {
+    if (mock_read_overreport != 0
+        && mock_read_pos >= mock_read_overreport_after) {
         mock_read_overreport = 0;
         *read = len + 1UL;
         return 1;
@@ -240,7 +243,8 @@ mb_win_bool WriteFile(
         return 0;
     }
     mock_last_write_request = len;
-    if (mock_write_overreport != 0) {
+    if (mock_write_overreport != 0
+        && mock_write_pos >= mock_write_overreport_after) {
         mock_write_overreport = 0;
         *written = len + 1UL;
         return 1;
@@ -1402,6 +1406,7 @@ static void mb_mock_read_reset(const mb_u8 *bytes, size_t len)
     mock_fail_read = 0;
     mock_fail_read_with_count = 0;
     mock_read_overreport = 0;
+    mock_read_overreport_after = 0U;
     mock_fail_read_after = 0U;
     mock_read_error = 5UL;
 }
@@ -1479,6 +1484,36 @@ static int check_frame_io(void)
     if (mb_worker_read_frame(&payload, &len) != -1) {
         return 14;
     }
+    mb_mock_read_reset(wire, 8U);
+    mock_read_overreport = 1;
+    mock_read_overreport_after = 2U;
+    if (mb_worker_read_frame(&payload, &len) != -1
+        || mock_read_pos != 2U) {
+        return 17;
+    }
+    mb_native_process_write_u64(wire, 3U);
+    mb_mock_read_reset(wire, sizeof(wire));
+    mock_read_overreport = 1;
+    mock_read_overreport_after = 8U;
+    if (mb_worker_read_frame(&payload, &len) != -1
+        || mock_read_pos != 8U) {
+        return 18;
+    }
+    mock_write_pos = 0U;
+    mock_write_overreport = 1;
+    mock_write_overreport_after = 2U;
+    if (mb_worker_write_frame(NULL, 0U) != 0
+        || mock_write_pos != 2U) {
+        return 19;
+    }
+    mock_write_pos = 0U;
+    mock_write_overreport = 1;
+    mock_write_overreport_after = 8U;
+    if (mb_worker_write_frame((const mb_u8 *)"xyz", 3U) != 0
+        || mock_write_pos != 8U) {
+        return 20;
+    }
+    mock_write_overreport_after = 0U;
     mock_fail_read = 1;
     if (mb_worker_read_frame(&payload, &len) != -1) {
         return 9;
