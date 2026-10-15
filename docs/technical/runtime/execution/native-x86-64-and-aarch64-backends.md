@@ -1253,6 +1253,12 @@ a valid call frame with that mapping ID. The child returns invalid-argument
 status without executing bytes or changing state, memory, output, or pointer
 identity, then releases the same mapping over the healthy session.
 
+An over-aligned reservation has a separate W^X isolation fixture: a valid RX
+entry performs an indirect jump into the next, still-writable page of its own
+64-KiB over-reservation. The instruction-fetch fault invalidates only that
+child session. A sibling retains its independent aligned mapping for native
+execution, release, and subsequent allocation; only exposed code pages gain RX.
+
 A separate host-real RX regression protects a writable mapping as executable,
 then attempts to copy new code into it. The worker returns a typed protocol
 failure without writing into the sealed mapping or losing the retained child;

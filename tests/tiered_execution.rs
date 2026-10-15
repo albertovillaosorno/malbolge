@@ -73181,6 +73181,50 @@ fn assert_posix_worker_rw_target_is_not_executable(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_overaligned_slack_is_non_executable(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("slack fault child spawn: {error:?}"))?;
+    let mut sibling = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("slack sibling spawn: {error:?}"))?;
+    let writable = posix_worker_allocate_for_compaction(&mut failed, 65_536)?;
+    let healthy = posix_worker_allocate_for_compaction(&mut sibling, 65_536)?;
+    // The over-reservation always spans at least one page beyond the
+    // 64-byte exposed range. mprotect may grant RX to its first page only.
+    let slack = writable
+        .base_address()
+        .get()
+        .checked_add(4096)
+        .ok_or("overaligned slack address overflow")?;
+    // movabs rax, slack; jmp rax, an indirect branch out of RX into RW.
+    let mut jump = vec![0x48, 0xb8];
+    jump.extend_from_slice(&slack.to_le_bytes());
+    jump.extend_from_slice(&[0xff, 0xe0]);
+    let executable =
+        posix_worker_install_loop_entry(&mut failed, writable, &jump)?;
+    assert_posix_worker_call_causes_child_fault(&mut failed, executable)?;
+    assert_posix_worker_fault_sibling_reuses_mapping(&mut sibling, healthy)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_overaligned_slack_is_non_executable()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("overaligned_slack_nonexec")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result =
+        assert_posix_worker_overaligned_slack_is_non_executable(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_refuses_indirect_jump_into_rw_mapping()
 -> Result<(), String> {

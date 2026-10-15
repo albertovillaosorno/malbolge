@@ -1097,6 +1097,11 @@ A distinct single-resident lease cache
   valid code but remains RW. The attempted execution faults under W^X,
   poisons only its process, and leaves an independent child fully usable.
 
+  The reserved writable slack outside a 64-KiB-aligned RX mapping is not
+  executable either. An in-range native entry jumps into the next slack page,
+  faults within its child, and leaves a sibling worker ready for execution,
+  release, and allocation.
+
   Real RX self-write machine code now faults on both ordinary and 64-KiB-
   aligned executable pages. The executing child alone is poisoned; a sibling
   still copies, seals, executes, releases, and reallocates without interference.
