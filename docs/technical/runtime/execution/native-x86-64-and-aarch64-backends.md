@@ -1449,6 +1449,11 @@ responses while exercising a sixth frame. A truncated sixth request body and
 a broken pipe after two header bytes both exit with framing failure, releasing
 all five reservations without emitting a sixth response.
 
+The same stream now injects a `HeapAlloc` failure when reserving the sixth
+request payload, after the first five allocation responses are fully emitted.
+The Windows loop exits with a transport failure, emits no sixth response, and
+releases all five backing reservations rather than retaining hidden mappings.
+
 An interrupted write ten bytes into a sixth valid allocation response exits
 with a transport failure and releases all six backing reservations. These
 checks distinguish a partially published response from a leaked mapping.

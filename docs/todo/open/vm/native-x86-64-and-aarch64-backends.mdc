@@ -810,6 +810,10 @@ A distinct single-resident lease cache
   and a malformed sixth call frame release all five original reservations;
   the malformed frame emits no sixth response.
 
+  A sixth-frame `HeapAlloc` failure after five successful allocation responses
+  now exits as a transport error and reclaims all five live reservations.
+  The failed frame emits no response or public mapping identity.
+
   Further five-mapping loop fixtures fail a sixth request by truncating its
   body or breaking the pipe after two header bytes. Both emit no sixth
   response and release all five reservations. If writing a valid sixth
