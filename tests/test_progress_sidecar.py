@@ -2723,13 +2723,17 @@ def test_writer_lock_preserves_acquire_failure_before_close_failure(
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
     acquire_failure = "injected writer lock acquisition failure"
     close_failure = "injected writer lock close failure"
+    original_close = cast(
+        "Callable[[object], None]",
+        vars(progress)["_close_writer_lock_stream"],
+    )
 
     def fail_acquire(stream: object) -> Callable[[], None]:
         del stream
         raise OSError(acquire_failure)
 
     def fail_close(stream: object) -> None:
-        del stream
+        original_close(stream)
         raise progress.ProgressSidecarError(close_failure)
 
     with monkeypatch.context() as context:
@@ -2764,13 +2768,17 @@ def test_writer_lock_preserves_body_failure_before_teardown_failures(
     body_failure = "injected writer lock body failure"
     release_failure = "injected writer lock release failure"
     close_failure = "injected writer lock close failure"
+    original_close = cast(
+        "Callable[[object], None]",
+        vars(progress)["_close_writer_lock_stream"],
+    )
 
     def fail_release(release: Callable[[], None]) -> None:
-        del release
+        release()
         raise progress.ProgressSidecarError(release_failure)
 
     def fail_close(stream: object) -> None:
-        del stream
+        original_close(stream)
         raise progress.ProgressSidecarError(close_failure)
 
     with monkeypatch.context() as context:
@@ -2835,13 +2843,17 @@ def test_write_atomic_preserves_release_before_close_failure(
     destination = Path(candidate.progress_path)
     release_failure = "injected writer lock release failure"
     close_failure = "injected writer lock close failure"
+    original_close = cast(
+        "Callable[[object], None]",
+        vars(progress)["_close_writer_lock_stream"],
+    )
 
     def fail_release(release: Callable[[], None]) -> None:
-        del release
+        release()
         raise progress.ProgressSidecarError(release_failure)
 
     def fail_close(stream: object) -> None:
-        del stream
+        original_close(stream)
         raise progress.ProgressSidecarError(close_failure)
 
     with monkeypatch.context() as context:
