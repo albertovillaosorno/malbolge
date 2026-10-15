@@ -1459,6 +1459,11 @@ request payload, after the first five allocation responses are fully emitted.
 The Windows loop exits with a transport failure, emits no sixth response, and
 releases all five backing reservations rather than retaining hidden mappings.
 
+A sixth-frame length of `u64::MAX` is also rejected on the simulated 64-bit
+Windows host before attempting to read a body. The controlled heap shim
+denies that unreservable byte count; the worker retains the preceding five
+valid responses, emits no sixth frame, and releases every live reservation.
+
 An interrupted write ten bytes into a sixth valid allocation response exits
 with a transport failure and releases all six backing reservations. These
 checks distinguish a partially published response from a leaked mapping.

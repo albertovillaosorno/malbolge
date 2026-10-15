@@ -76,6 +76,7 @@ static int fail_next_call_memory_alloc;
 static int fail_next_call_output_alloc;
 static size_t heap_free_count;
 static size_t frame_body_allocations;
+static size_t rejected_huge_frame_allocations;
 static size_t fail_frame_body_allocation_number;
 static int fail_next_invalid_call_response;
 static int fail_next_release;
@@ -121,6 +122,10 @@ mb_win_handle GetStdHandle(mb_win_dword kind)
 void *HeapAlloc(mb_win_handle heap, mb_win_dword flags, size_t len)
 {
     if (heap != &mock_heap_handle || flags != 0U) {
+        return NULL;
+    }
+    if (len == (size_t)-1) {
+        rejected_huge_frame_allocations += 1U;
         return NULL;
     }
     if (len == 26U) {
@@ -2592,7 +2597,7 @@ static int check_process_loop_cleanup(int scenario)
     }
     if (scenario == 8 || scenario == 9
         || scenario == 11 || scenario == 12 || scenario == 13
-        || scenario == 14) {
+        || scenario == 14 || scenario == 15) {
         for (size_t index = 1U; index < 5U; ++index) {
             mb_native_process_write_u64(&wire[wire_len], 26U);
             memcpy(&wire[wire_len + 8U], &wire[8], 26U);
@@ -2613,6 +2618,11 @@ static int check_process_loop_cleanup(int scenario)
             memcpy(&wire[wire_len + 8U], &wire[8], 26U);
             wire_len += 34U;
         }
+    }
+    if (scenario == 15) {
+        // Unreservable complete sixth header after five published mappings.
+        mb_native_process_write_u64(&wire[wire_len], (mb_u64)-1);
+        wire_len += 8U;
     }
     if (scenario == 10) {
         mb_native_process_write_u64(&wire[34], 48U);
@@ -2663,16 +2673,18 @@ static int check_process_loop_cleanup(int scenario)
     const int expected_exit = scenario == 0 || scenario == 5
         || scenario == 8 || scenario == 10 ? 0
         : scenario == 2 || scenario == 11 || scenario == 12
-            || scenario == 14 ? 2 : 3;
+            || scenario == 14 || scenario == 15 ? 2 : 3;
     const size_t expected_output = scenario == 7 ? 0U
         : scenario == 3 ? 10U : scenario == 5 ? 125U
         : scenario == 8 || scenario == 9 || scenario == 11
-            || scenario == 12 || scenario == 14 ? 215U
+            || scenario == 12 || scenario == 14
+            || scenario == 15 ? 215U
         : scenario == 13 ? 225U
         : scenario == 10 ? 186U : 43U;
     const size_t expected_reservations =
         scenario == 8 || scenario == 9 || scenario == 11
-        || scenario == 12 || scenario == 14 ? 5U
+        || scenario == 12 || scenario == 14
+        || scenario == 15 ? 5U
         : scenario == 13 ? 6U : 1U;
     const int valid = exit_code == expected_exit
         && mock_write_pos == expected_output
@@ -2692,7 +2704,7 @@ static int check_process_loop_cleanup(int scenario)
                     == MB_NATIVE_INVALID_ARGUMENT));
     const int multi_valid = (scenario != 8 && scenario != 9
         && scenario != 11 && scenario != 12 && scenario != 13
-        && scenario != 14)
+        && scenario != 14 && scenario != 15)
         || check_multi_frame_allocation_results(
             mock_write_buffer, 215U) == 0;
     const int lifecycle_valid = scenario != 10
@@ -2701,7 +2713,9 @@ static int check_process_loop_cleanup(int scenario)
     mock_dynamic_wire = NULL;
     mock_fail_write_after = (size_t)-1;
     fail_frame_body_allocation_number = 0U;
-    return valid && multi_valid && lifecycle_valid ? 0 : 1;
+    const int huge_valid = scenario != 15
+        || rejected_huge_frame_allocations == 1U;
+    return valid && multi_valid && lifecycle_valid && huge_valid ? 0 : 1;
 }
 
 static int check_overaligned_cross_page_code_copy(
@@ -3355,7 +3369,7 @@ int main(void)
     if (exhausted != 0) {
         return 60 + exhausted;
     }
-    for (int scenario = 0; scenario < 15; ++scenario) {
+    for (int scenario = 0; scenario < 16; ++scenario) {
         if (check_process_loop_cleanup(scenario) != 0) {
             return 70 + scenario;
         }
