@@ -450,6 +450,10 @@ A distinct single-resident lease cache
   allocation, transport/framing failure poisons and terminates the session, and
   deterministic workers cover reuse plus oversized/truncated responses.
 
+  A retained native host now distinguishes a typed remote allocation failure
+  from broken transport. In timed and untimed modes, rejection code 77 is
+  followed by a successful exact allocation and release without poisoning.
+
   Timed and untimed Python child sessions now independently round-trip explicit
   arguments (including spaces and an empty argument), duplicate environment
   key overrides, and the requested working directory.

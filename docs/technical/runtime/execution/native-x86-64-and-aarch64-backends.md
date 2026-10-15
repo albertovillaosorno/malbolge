@@ -829,6 +829,12 @@ child survives multiple exchanges and that oversized/truncated responses fail
 closed. The session does not interpret MBNPC1 or yet implement executable-memory
 commands or the foreign call itself.
 
+The session-backed MBNPM1 host distinguishes remote platform failures from
+transport desynchronization. A Python worker deliberately rejects its first
+allocation with code 77, then admits an identical allocation and its release
+on the same still-healthy child. Both timed and untimed hosts retain exact
+mapping identity and release authority without poisoning on remote rejection.
+
 A real Python-child configuration fixture now checks exact argument boundaries,
 including an empty argument and an argument containing spaces. The same
 fixture checks last-write-wins environment overrides and the configured

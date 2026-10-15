@@ -1755,6 +1755,37 @@ sys.stdout.buffer.write(response)
 sys.stdout.buffer.flush()
 "#;
 
+const NATIVE_PROCESS_MEMORY_HOST_RETRY_WORKER: &str = r#"
+import sys
+magic = b"MBNPM1\x00\x00"
+for step in range(3):
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length or request[:8] != magic:
+        raise SystemExit(3)
+    if step == 0:
+        if request[8] != 0:
+            raise SystemExit(4)
+        response = magic + b"\x00\x01" + (77).to_bytes(4, "little")
+    elif step == 1:
+        if request[8] != 0:
+            raise SystemExit(5)
+        length = request[9:17]
+        response = magic + b"\x00\x00"
+        response += (95).to_bytes(8, "little")
+        response += (0x9500).to_bytes(8, "little") + length + b"\x01"
+    else:
+        if request[8] != 3 or request[9:17] != (95).to_bytes(8, "little"):
+            raise SystemExit(6)
+        response = magic + b"\x03\x00"
+    sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+    sys.stdout.buffer.write(response)
+    sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER: &str = r#"
 import sys
 
@@ -74874,6 +74905,46 @@ fn native_process_host_reports_remote_memory_failure() -> Result<(), String> {
     } else {
         Err(String::from("native process host remote failure drifted"))
     }
+}
+
+#[test]
+fn native_process_host_remote_failure_allows_timed_retry_and_release()
+-> Result<(), String> {
+    for timed in [false, true] {
+        let mut config = native_process_session_python_config(
+            NATIVE_PROCESS_MEMORY_HOST_RETRY_WORKER,
+        );
+        if timed {
+            config = config.exchange_timeout(Duration::from_secs(5));
+        }
+        let session = config
+            .spawn()
+            .map_err(|error| format!("remote-retry child spawn: {error:?}"))?;
+        let mut host = NativeProcessHost::new(session);
+        let allocation = NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        );
+        let first = host.allocate_writable(allocation);
+        let second = host
+            .allocate_writable(allocation)
+            .map_err(|error| format!("remote-retry allocation: {error:?}"))?;
+        if !matches!(first, Err(error) if error.remote_code() == Some(77))
+            || second.mapping_id() != native_executable_mapping_id(95)?
+            || second.base_address() != native_executable_address(0x9500)?
+            || second.mapped_len() != 64
+            || host.session_poisoned()
+        {
+            return Err(format!("remote failure poisoned retry: {first:?}"));
+        }
+        host.release(NativeExecutableReleaseRequest::from_mapping(second))
+            .map_err(|error| format!("remote-retry release: {error:?}"))?;
+        if host.session_poisoned() {
+            return Err(String::from("remote retry release poisoned host"));
+        }
+    }
+    Ok(())
 }
 
 #[test]
