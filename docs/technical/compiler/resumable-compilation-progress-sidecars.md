@@ -112,8 +112,12 @@ fields without UTC arithmetic.
 `ProgressWriteLimiter` accepts one explicit
 positive monotonic interval: routine queued/running updates are suppressed until
 that interval passes, while checkpointed and terminal evidence always attempts
-publication. Only successful or post-commit-failing writes consume the limiter
-window, so a prepublication failure can retry immediately.
+publication. The interval begins at the post-publication monotonic sample,
+not at the start of a potentially slow write. Only successful or
+post-commit-failing writes consume the limiter window, so a prepublication
+failure can retry immediately. A failed post-commit clock sample retains
+committed-path evidence, falls back to the pre-write sample for throttling, and
+cannot mask an earlier committed durability failure.
 
 `malbolge-checkpoint-v1` now supplies a canonical backend-neutral envelope for
 opaque resumable state. The envelope binds the sidecar compatibility

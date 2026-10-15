@@ -415,6 +415,17 @@ class ProgressWriteLimiter:
             _fail("progress write monotonic clock moved backward")
         return now
 
+    def _record_committed(self, path: Path, fallback_ns: int) -> None:
+        self._last_committed_write_ns = fallback_ns
+        try:
+            self._last_committed_write_ns = self._sample()
+        except ProgressSidecarError as error:
+            message = (
+                "progress sidecar committed but limiter clock failed: "
+                f"{error}"
+            )
+            raise ProgressSidecarCommittedError(message, path) from error
+
     def publish(self, sidecar: ProgressSidecar) -> Path | None:
         """Publish one sidecar only when its lifecycle requires or permits it.
 
@@ -425,9 +436,7 @@ class ProgressWriteLimiter:
         Returns:
             Canonical progress path when published, otherwise ``None``.
 
-        Raises:
-            ProgressSidecarCommittedError: If publication commits before a
-                later durability or cleanup failure.
+        A post-commit clock failure retains the committed path for recovery.
 
         """
         validated = validate(sidecar)
@@ -444,10 +453,13 @@ class ProgressWriteLimiter:
             return None
         try:
             destination = write_atomic(validated)
-        except ProgressSidecarCommittedError:
-            self._last_committed_write_ns = now
+        except ProgressSidecarCommittedError as error:
+            try:
+                self._record_committed(error.published_path, now)
+            except ProgressSidecarCommittedError as clock_error:
+                error.add_note(f"limiter clock also failed: {clock_error}")
             raise
-        self._last_committed_write_ns = now
+        self._record_committed(destination, now)
         return destination
 
 

@@ -3668,7 +3668,7 @@ def test_progress_write_limiter_bounds_routine_publication(
     tmp_path: Path,
 ) -> None:
     """Routine progress writes respect one explicit monotonic interval."""
-    clock = SequenceClock([100, 100, 109, 110, 111])
+    clock = SequenceClock([100, 100, 100, 109, 110, 110, 111, 111])
     limiter = progress.ProgressWriteLimiter.start(10, clock=clock)
     original = _sidecar(tmp_path)
     destination = Path(original.progress_path)
@@ -3709,12 +3709,100 @@ def test_progress_write_limiter_bounds_routine_publication(
     assert progress.read(destination) == completed
 
 
+def test_progress_write_limiter_anchors_to_publication_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow publication cannot immediately admit another routine write."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    calls: list[progress.ProgressSidecar] = []
+
+    def publish(sidecar: progress.ProgressSidecar) -> Path:
+        calls.append(sidecar)
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([100, 100, 150, 151, 160, 160]),
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        assert limiter.publish(candidate) == destination
+        assert limiter.publish(candidate) is None
+        assert limiter.publish(candidate) == destination
+    assert calls == [candidate, candidate]
+
+
+def test_progress_write_limiter_preserves_committed_clock_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed post-commit clock sample must retain committed-path evidence."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+
+    def publish(sidecar: progress.ProgressSidecar) -> Path:
+        del sidecar
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([100, 100, 99, 101]),
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed but limiter clock failed",
+        ) as captured:
+            _ = limiter.publish(candidate)
+    assert captured.value.published_path == destination
+    assert limiter.publish(candidate) is None
+
+
+def test_progress_write_limiter_committed_error_keeps_primary_clock_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure of a post-commit sample cannot mask a durability error."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    failure = progress.ProgressSidecarDurabilityError(
+        "injected directory sync failure",
+        destination,
+    )
+
+    def committed_failure(sidecar: progress.ProgressSidecar) -> Path:
+        del sidecar
+        raise failure
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10,
+        clock=SequenceClock([100, 100, 99, 101]),
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", committed_failure)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="injected directory sync failure",
+        ) as captured:
+            _ = limiter.publish(candidate)
+        assert limiter.publish(candidate) is None
+    assert captured.value is failure
+    expected_note = (
+        "limiter clock also failed: progress sidecar committed but "
+        "limiter clock failed: progress write monotonic clock moved backward"
+    )
+    assert failure.__notes__ == [expected_note]
+
+
 def test_progress_write_limiter_always_admits_checkpoint(
     tmp_path: Path,
 ) -> None:
     """Checkpoint evidence bypasses the routine progress interval."""
     checkpoint = b"rate-limited-checkpoint"
-    clock = SequenceClock([100, 100, 101])
+    clock = SequenceClock([100, 100, 100, 101, 101])
     limiter = progress.ProgressWriteLimiter.start(10, clock=clock)
     running = _sidecar(tmp_path)
     destination = Path(running.progress_path)
@@ -3751,7 +3839,7 @@ def test_progress_write_limiter_counts_committed_failure(
 
     limiter = progress.ProgressWriteLimiter.start(
         10,
-        clock=SequenceClock([0, 0, 1]),
+        clock=SequenceClock([0, 0, 0, 1]),
     )
     with monkeypatch.context() as context:
         context.setattr(progress, "write_atomic", commit_then_fail)
@@ -3785,7 +3873,7 @@ def test_progress_write_limiter_retries_prepublication_failure(
 
     limiter = progress.ProgressWriteLimiter.start(
         10,
-        clock=SequenceClock([20, 20, 21]),
+        clock=SequenceClock([20, 20, 21, 21]),
     )
     with monkeypatch.context() as context:
         context.setattr(progress, "write_atomic", fail_before_commit)
