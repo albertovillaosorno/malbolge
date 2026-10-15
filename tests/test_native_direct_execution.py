@@ -271,6 +271,50 @@ def test_native_process_posix_staging_allocation_failures(
     assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or platform.machine().lower() not in X86_64_HOST_NAMES,
+    reason="POSIX broken-pipe worker check requires Linux x86-64",
+)
+def test_native_process_posix_worker_handles_closed_output_pipe(
+    tmp_path: Path,
+) -> None:
+    """A broken stdout pipe takes the worker cleanup path, not SIGPIPE."""
+    assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"
+    executable = tmp_path / "native-process-posix-broken-pipe"
+    compiled = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            *STRICT_WARNINGS,
+            f"-I{NATIVE_INCLUDE}",
+            str(NATIVE_INCLUDE / "native_process_worker_posix.c"),
+            "-o",
+            str(executable),
+        ),
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    request = b"MBNPM1\0\0" + bytes([0]) + (64).to_bytes(8, "little")
+    request += (65536).to_bytes(8, "little") + bytes([1])
+    frame = len(request).to_bytes(8, "little") + request
+    # The executable is compiled from tracked local C, not user input.
+    with sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(executable)],
+        stdin=sp.PIPE,
+        stdout=sp.PIPE,
+        stderr=sp.DEVNULL,
+    ) as child:
+        assert child.stdout is not None
+        assert child.stdin is not None
+        child.stdout.close()
+        assert child.stdin.write(frame) == len(frame)
+        child.stdin.flush()
+        child.stdin.close()
+        expected_write_failure_exit = 3
+        assert child.wait(timeout=5) == expected_write_failure_exit
+
+
 def test_native_process_protocol_c_conformance(tmp_path: Path) -> None:
     """Compile and run the tracked C mirror of MBNPM1 and MBNPC1."""
     assert CLANG.is_file(), f"pinned Clang missing: {CLANG}"

@@ -1289,6 +1289,12 @@ allocate a second incoming frame body after one published allocation. Neither
 publishes a partial frame; both exit with the required failure status and
 release the one live backing reservation without double-unmapping it.
 
+A host-real broken-output-pipe fixture also reproduces the POSIX default
+`SIGPIPE` process death while an allocated mapping's response is written.
+The worker now ignores `SIGPIPE` so a broken stdout pipe fails the framed
+write with exit code 3 and executes normal mapping-table cleanup instead of
+terminating at the signal boundary.
+
 A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
 with deterministic allocation faults at those same two staging steps. Each
 failed call frees the counterpart buffer, emits no partial MBNPC1 response,

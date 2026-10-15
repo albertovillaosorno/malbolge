@@ -973,6 +973,11 @@ A distinct single-resident lease cache
   response encoding failure, and second-frame payload allocation failure.
   Every path reclaims the exact backing reservation without double release.
 
+  Closing a real POSIX worker's output pipe previously killed the process by
+  `SIGPIPE` during allocation-response writing. The worker now turns that
+  signal into a failed write (exit 3), preserving explicit cleanup of live
+  mappings; a real subprocess test verifies the exit rather than a signal.
+
   The real POSIX framing fixture also rejects announced `u64::MAX` payload
   lengths and zero-length frames with their distinct failure exit codes,
   without emitting any response bytes.

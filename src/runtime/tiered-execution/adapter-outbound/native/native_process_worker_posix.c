@@ -37,6 +37,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -839,6 +840,10 @@ static int mb_worker_read_frame(mb_u8 **payload, size_t *len)
 
 int main(void)
 {
+    // Convert broken stdout pipes into failed framed writes, so cleanup runs.
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+        return 2;
+    }
     struct mb_worker_state worker = {
         .mappings = NULL,
         .count = 0U,
