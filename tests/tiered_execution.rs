@@ -1739,6 +1739,57 @@ for expected_command in expected:
     respond(response)
 "#;
 
+const NATIVE_PROCESS_MEMORY_HOST_DRIFT_RETRY_WORKER: &str = r#"
+import sys
+magic = b"MBNPM1\x00\x00"
+steps = [(0, 96, 0x9001),
+         (0, 97, 0x9200), (1, 97, 0x9200),
+         (2, 97, 0x9200), (4, 97, 0x9200),
+         (3, 97, 0x9200)]
+
+def u64(data, offset):
+    return int.from_bytes(data[offset:offset + 8], "little")
+
+def pack64(*values):
+    return b"".join(value.to_bytes(8, "little") for value in values)
+
+for command, mapping_id, base in steps:
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    frame_len = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(frame_len)
+    if len(request) != frame_len or request[:8] != magic:
+        raise SystemExit(3)
+    if request[8] != command:
+        raise SystemExit(4)
+    response = magic + bytes([command, 0])
+    if command == 0:
+        if request[25] != 1 or u64(request, 9) == 0:
+            raise SystemExit(5)
+        response += pack64(mapping_id, base, u64(request, 9)) + b"\x01"
+    elif command == 1:
+        if (u64(request, 9) != mapping_id
+                or u64(request, 17) != base
+                or u64(request, 34) != len(request[42:])):
+            raise SystemExit(6)
+        response += pack64(mapping_id, base) + request[42:]
+    elif command == 2:
+        if u64(request, 9) != mapping_id or u64(request, 17) != base:
+            raise SystemExit(7)
+        response += request[9:33] + b"\x00"
+    elif command == 4:
+        if u64(request, 9) != mapping_id or u64(request, 17) != base:
+            raise SystemExit(8)
+        response += request[9:33]
+    elif command == 3:
+        if u64(request, 9) != mapping_id or u64(request, 17) != base:
+            raise SystemExit(9)
+    sys.stdout.buffer.write(len(response).to_bytes(8, "little"))
+    sys.stdout.buffer.write(response)
+    sys.stdout.buffer.flush()
+"#;
+
 const NATIVE_PROCESS_MEMORY_HOST_FAILURE_WORKER: &str = r#"
 import sys
 magic = b"MBNPM1\x00\x00"
@@ -74942,6 +74993,59 @@ fn native_process_host_remote_failure_allows_timed_retry_and_release()
             .map_err(|error| format!("remote-retry release: {error:?}"))?;
         if host.session_poisoned() {
             return Err(String::from("remote retry release poisoned host"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_host_rejects_misaligned_remote_allocation_and_recovers()
+-> Result<(), String> {
+    let image = direct_output_load_image(HostIsa::AArch64)?;
+    for timed in [false, true] {
+        let mut config = native_process_session_python_config(
+            NATIVE_PROCESS_MEMORY_HOST_DRIFT_RETRY_WORKER,
+        );
+        if timed {
+            config = config.exchange_timeout(Duration::from_secs(5));
+        }
+        let session = config
+            .spawn()
+            .map_err(|error| format!("wire-shape child spawn: {error:?}"))?;
+        let mut host = NativeProcessHost::new(session);
+        let Err(failure) = load_native_executable(&mut host, &image) else {
+            return Err(String::from("misaligned remote allocation admitted"));
+        };
+        if failure.phase() != NativeExecutableLoadPhase::Allocate
+            || !matches!(
+                failure.adapter_error(),
+                Some(error)
+                    if error.wire_error()
+                        == Some(NativeProcessMemoryWireError::ResponseShape)
+            )
+            || failure.release_error().is_some()
+            || failure.release_request().is_some()
+            || host.session_poisoned()
+        {
+            return Err(format!(
+                "invalid remote allocation drift: {failure:?}"
+            ));
+        }
+        let ready = load_native_executable(&mut host, &image)
+            .map_err(|error| format!("retry after mapping drift: {error:?}"))?;
+        if ready.mapping().mapping_id() != native_executable_mapping_id(97)?
+            || ready.mapping().base_address()
+                != native_executable_address(0x9200)?
+            || ready.mapping().permissions()
+                != NativeExecutablePermission::ReadExecute
+            || host.session_poisoned()
+        {
+            return Err(String::from("remote mapping retry drifted"));
+        }
+        release_native_executable(&mut host, ready)
+            .map_err(|error| format!("drift-retry release: {error:?}"))?;
+        if host.session_poisoned() {
+            return Err(String::from("recovered native host poisoned"));
         }
     }
     Ok(())

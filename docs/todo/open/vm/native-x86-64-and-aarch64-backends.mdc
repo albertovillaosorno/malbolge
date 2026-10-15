@@ -454,6 +454,10 @@ A distinct single-resident lease cache
   from broken transport. In timed and untimed modes, rejection code 77 is
   followed by a successful exact allocation and release without poisoning.
 
+  Timed and untimed host fixtures now reject a misaligned allocation report
+  at MBNPM1 decoding without manufacturing a release from untrusted data;
+  a later valid load, full synchronization, and release retain the same child.
+
   Timed and untimed Python child sessions now independently round-trip explicit
   arguments (including spaces and an empty argument), duplicate environment
   key overrides, and the requested working directory.

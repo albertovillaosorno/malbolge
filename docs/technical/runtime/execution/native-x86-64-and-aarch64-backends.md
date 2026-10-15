@@ -835,6 +835,13 @@ allocation with code 77, then admits an identical allocation and its release
 on the same still-healthy child. Both timed and untimed hosts retain exact
 mapping identity and release authority without poisoning on remote rejection.
 
+A separate timed/untimed host fixture rejects a misaligned remote allocation
+report at MBNPM1 decoding, before it can become loader lifecycle evidence.
+Because the report is not admitted, no release request is synthesized from
+its untrusted address. The framed session stays healthy and later loads,
+synchronizes, and releases a valid independent mapping through the same child.
+
+
 A real Python-child configuration fixture now checks exact argument boundaries,
 including an empty argument and an argument containing spaces. The same
 fixture checks last-write-wins environment overrides and the configured
