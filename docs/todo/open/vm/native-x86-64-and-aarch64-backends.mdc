@@ -1093,6 +1093,11 @@ A distinct single-resident lease cache
   aligned executable pages. The executing child alone is poisoned; a sibling
   still copies, seals, executes, releases, and reallocates without interference.
 
+  Another host-real timeout fixture runs an infinite-loop x86-64 native entry
+  (`jmp -2`) under a 500-ms exchange deadline. Only that worker is killed and
+  poisoned; the independent sibling retains its aligned executable mapping
+  through copy, RX dispatch, release, and another allocation.
+
   A host-real MBNPC1 payload-shape regression also rejects `u64::MAX` guest
   memory, input, or output count fields and truncated or trailing payloads.
   No malformed call publishes response or guest-state evidence.

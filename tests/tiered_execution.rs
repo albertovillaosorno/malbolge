@@ -72948,6 +72948,85 @@ fn assert_posix_worker_native_fault_is_session_local(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_native_loop_timeout_is_session_local(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut looping = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .exchange_timeout(Duration::from_millis(500))
+        .spawn()
+        .map_err(|error| format!("looping worker spawn: {error:?}"))?;
+    let mut healthy = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("loop sibling spawn: {error:?}"))?;
+    let writable = posix_worker_allocate_for_compaction(&mut looping, 65_536)?;
+    let healthy_mapping =
+        posix_worker_allocate_for_compaction(&mut healthy, 65_536)?;
+    // jmp -2: a valid x86-64 entry that never completes a call frame.
+    let copy = NativeProcessMemoryRequest::Copy {
+        code: vec![0xeb, 0xfe].into_boxed_slice(),
+        mapping: writable,
+    };
+    let NativeProcessMemoryResponse::Copy(_copied) =
+        posix_worker_memory_exchange(&mut looping, &copy)?
+    else {
+        return Err(String::from("loop stub copy failed"));
+    };
+    let NativeProcessMemoryResponse::Protect(executable) =
+        posix_worker_memory_exchange(
+            &mut looping,
+            &NativeProcessMemoryRequest::Protect(writable),
+        )?
+    else {
+        return Err(String::from("loop stub RX seal failed"));
+    };
+    assert_posix_worker_loop_call_times_out(&mut looping, executable)?;
+    assert_posix_worker_fault_sibling_reuses_mapping(
+        &mut healthy,
+        healthy_mapping,
+    )
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_loop_call_times_out(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut frame = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    frame
+        .get_mut(8..16)
+        .ok_or("looping native call mapping ID missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    let result = session.exchange(&frame, limit);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(&frame, limit)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(format!("native loop deadline escaped: {result:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_native_infinite_loop_times_out_locally()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("looping_native_deadline")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result =
+        assert_posix_worker_native_loop_timeout_is_session_local(&worker);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn native_process_posix_worker_native_fault_is_session_local()
 -> Result<(), String> {

@@ -1109,6 +1109,12 @@ second child still copies, seals, executes, and releases its existing mapping.
 That child can also allocate again; fault cleanup does not cross process or
 reservation ownership boundaries.
 
+A separate host-real timeout fixture executes a sealed x86-64 `jmp -2`
+entry in a 64-KiB-aligned mapping. The 500-ms exchange deadline kills and
+poisons only that non-returning native worker. Another worker retains its
+existing aligned mapping through code copy, RX sealing, dispatch, release,
+and later allocation, even though the first entry never completes.
+
 A separate pair of host-real cases executes `mov byte ptr [rip - 7], 0xcc`
 from an RX mapping, deliberately writing to its own executable entry byte.
 The write triggers protection failure in both ordinary and 64-KiB-aligned
