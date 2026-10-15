@@ -1282,8 +1282,12 @@ The same host-controlled fixture exercises the complete POSIX worker loop
 with a live 64-KiB-aligned allocation before shutdown. Clean EOF, unknown
 second frames, truncated second headers or payloads, failed response writes
 or flushes, and contradictory EOF/error indicators all exit with the expected
-status. Each path unmaps the exact original backing reservation once; only
-clean EOF exits successfully.
+status. Each path unmaps the original reservation; only clean EOF succeeds.
+
+Two more cases fail to encode the first successful allocation response or to
+allocate a second incoming frame body after one published allocation. Neither
+publishes a partial frame; both exit with the required failure status and
+release the one live backing reservation without double-unmapping it.
 
 A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
 with deterministic allocation faults at those same two staging steps. Each

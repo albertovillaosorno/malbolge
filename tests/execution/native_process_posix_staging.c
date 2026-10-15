@@ -43,6 +43,8 @@
 
 static int fail_next_memory;
 static int fail_next_output;
+static size_t frame_payload_allocations;
+static size_t fail_frame_payload_allocation_number;
 static int fail_next_response;
 static int fail_next_protect;
 static int fail_next_release;
@@ -294,6 +296,14 @@ static int mb_test_munmap(void *address, size_t len)
 
 static void *mb_test_malloc(size_t len)
 {
+    if (len == 26U) {
+        frame_payload_allocations += 1U;
+        if (frame_payload_allocations
+            == fail_frame_payload_allocation_number) {
+            fail_frame_payload_allocation_number = 0U;
+            return NULL;
+        }
+    }
     if (len == 4U && fail_next_memory != 0) {
         fail_next_memory = 0;
         return NULL;
@@ -665,22 +675,36 @@ static int mb_test_process_loop_cleanup(int scenario)
         memcpy(&frames[42], MB_NATIVE_PROCESS_MEMORY_MAGIC, 4U);
         frame_len = 46U;
     }
+    if (scenario == 8) {
+        mb_native_process_write_u64(&frames[34], 26U);
+        memcpy(&frames[42], &frames[8], 26U);
+        frame_len = 68U;
+    }
     mb_test_frame_reset(frames, frame_len, 1, scenario == 6 ? 1 : 0);
     mock_frame_output_pos = 0U;
     mock_frame_short_write = scenario == 4 ? 1 : 0;
     mock_frame_flush_error = scenario == 5 ? 1 : 0;
+    fail_next_lifecycle_response = scenario == 7 ? 35U : 0U;
+    frame_payload_allocations = 0U;
+    fail_frame_payload_allocation_number = scenario == 8 ? 2U : 0U;
     const size_t mapped_before = mapped_reservations;
     const size_t unmapped_before = unmapped_reservations;
     const int exit_code = mb_test_posix_worker_entry();
     const int expected_exit = scenario == 0 ? 0
-        : scenario == 1 || scenario == 4 || scenario == 5 ? 3 : 2;
-    const size_t expected_output = scenario == 4 ? 7U : 43U;
-    if (exit_code != expected_exit
-        || mock_frame_output_pos != expected_output
-        || (scenario != 4
-            && mb_native_process_read_u64(mock_frame_output) != 35U)
-        || mapped_reservations != mapped_before + 1U
-        || unmapped_reservations != unmapped_before + 1U) {
+        : scenario == 1 || scenario == 4 || scenario == 5
+            || scenario == 7 ? 3 : 2;
+    const size_t expected_output = scenario == 4 ? 7U
+        : scenario == 7 ? 0U : 43U;
+    const size_t expected_mappings = 1U;
+    const int valid = exit_code == expected_exit
+        && mock_frame_output_pos == expected_output
+        && (scenario == 4 || scenario == 7
+            || mb_native_process_read_u64(mock_frame_output) == 35U)
+        && mapped_reservations == mapped_before + expected_mappings
+        && unmapped_reservations == unmapped_before + expected_mappings;
+    fail_next_lifecycle_response = 0U;
+    fail_frame_payload_allocation_number = 0U;
+    if (!valid) {
         return 1;
     }
     return 0;
@@ -708,7 +732,7 @@ int main(void)
     if (frame_result != 0) {
         return 80 + frame_result;
     }
-    for (int scenario = 0; scenario < 7; ++scenario) {
+    for (int scenario = 0; scenario < 9; ++scenario) {
         if (mb_test_process_loop_cleanup(scenario) != 0) {
             return 100 + scenario;
         }
