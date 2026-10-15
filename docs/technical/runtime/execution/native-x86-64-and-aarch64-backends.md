@@ -934,6 +934,11 @@ session exchange, and response-decode path inside `NativeProcessHost`.
 The separate semantic completion verifiers remain authoritative per family,
 but transport limits and wire failure mapping can no longer drift between them.
 
+Three additional register-masked host regressions inject an MBNPC1 response
+with the wrong mapping identity for no-op/halt, no-op/no-op, and no-op/rotate
+native calls. Each family rejects it through the common transport boundary,
+keeps the retained session healthy, and leaves caller memory/output unchanged.
+
 Another retained child returns a complete successful first response, then
 stalls on its second request. The deadline resets per exchange: the first
 response is admitted, the second expires, and subsequent use is refused.

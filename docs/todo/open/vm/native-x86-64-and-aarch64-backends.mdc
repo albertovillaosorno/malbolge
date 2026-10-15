@@ -449,6 +449,10 @@ A distinct single-resident lease cache
   exchange helper; each variant retains its own independent semantic response
   verifier. Existing host-real and malformed-wire tests cover that seam.
 
+  Masked no-op/halt, no-op pair, and no-op/rotate runner fixtures also reject
+  hostile mapping IDs over that shared MBNPC1 path, retaining session health
+  and unmodified caller buffers instead of granting the child map authority.
+
   A persistent native child-session transport now retains one process across
   multiple length-framed exchanges. Response lengths are bounded before
   allocation, transport/framing failure poisons and terminates the session, and

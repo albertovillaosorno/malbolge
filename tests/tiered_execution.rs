@@ -75206,6 +75206,159 @@ fn rotate_no_op_process_rejects_mapping_drift() -> Result<(), String> {
 }
 
 #[test]
+fn native_process_host_rejects_masked_halt_mapping_drift() -> Result<(), String>
+{
+    let (_initial, program) = aot_register_masked_multi_step_fixture()?;
+    let CollapsedNoOperationHaltNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_halt_native_fixture(&program, 795, 0x1f_0000)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or("masked halt entry missing")?
+        .before;
+    let mut memory = register_masked_program_memory(&program)?;
+    let initial_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let initial_output = output;
+    let prepared = en::PreparedRegisterMaskedNoOperationHaltInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let failure =
+        en::execute_loaded_verified_register_masked_no_operation_halt_native(
+            &mut host, &ready, prepared,
+        )
+        .err()
+        .ok_or("masked halt mapping drift was admitted")?;
+    let rejected = failure.phase() == NativeExecutableExecutionPhase::Run
+        && failure
+            .runner_error()
+            .copied()
+            .and_then(NativeProcessHostError::call_response_error)
+            == Some(NativeProcessCallResponseError::MappingIdentity)
+        && !host.session_poisoned();
+    en::release_register_masked_no_operation_halt_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if rejected && memory == initial_memory && output == initial_output {
+        Ok(())
+    } else {
+        Err(String::from("masked halt process drift mutated state"))
+    }
+}
+
+#[test]
+fn native_process_host_rejects_masked_pair_mapping_drift() -> Result<(), String>
+{
+    let program = aot_register_masked_no_operation_pair_fixture()?;
+    let CollapsedNoOperationPairNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_pair_native_fixture(&program, 796, 0x20_0000)?;
+    let (entry, _expected) =
+        collapsed_no_operation_pair_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let initial_memory = memory.clone();
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let initial_output = output;
+    let prepared = en::PreparedRegisterMaskedNoOperationPairInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let failure =
+        en::execute_loaded_verified_register_masked_no_operation_pair_native(
+            &mut host, &ready, prepared,
+        )
+        .err()
+        .ok_or("masked pair mapping drift was admitted")?;
+    let rejected = failure.phase() == NativeExecutableExecutionPhase::Run
+        && failure
+            .runner_error()
+            .copied()
+            .and_then(NativeProcessHostError::call_response_error)
+            == Some(NativeProcessCallResponseError::MappingIdentity)
+        && !host.session_poisoned();
+    en::release_register_masked_no_operation_pair_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if rejected && memory == initial_memory && output == initial_output {
+        Ok(())
+    } else {
+        Err(String::from("masked pair process drift mutated state"))
+    }
+}
+
+#[test]
+fn native_process_host_rejects_masked_rotate_mapping_drift()
+-> Result<(), String> {
+    let program = aot_register_masked_no_operation_rotate_fixture()?;
+    let CollapsedNoOperationRotateNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = collapsed_no_operation_rotate_native_fixture(&program, 797, 0x21_0000)?;
+    let (entry, _expected) =
+        collapsed_no_operation_rotate_rebased_observations(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let initial_memory = memory.clone();
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let initial_output = output;
+    let prepared = en::PreparedRegisterMaskedNoOperationRotateInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut host =
+        native_process_host_python(NATIVE_PROCESS_CALL_WRONG_MAPPING_WORKER)?;
+    let failure =
+        en::execute_loaded_verified_register_masked_no_operation_rotate_native(
+            &mut host, &ready, prepared,
+        )
+        .err()
+        .ok_or("masked rotate mapping drift was admitted")?;
+    let rejected = failure.phase() == NativeExecutableExecutionPhase::Run
+        && failure
+            .runner_error()
+            .copied()
+            .and_then(NativeProcessHostError::call_response_error)
+            == Some(NativeProcessCallResponseError::MappingIdentity)
+        && !host.session_poisoned();
+    en::release_register_masked_no_operation_rotate_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| error.to_string())?;
+    if rejected && memory == initial_memory && output == initial_output {
+        Ok(())
+    } else {
+        Err(String::from("masked rotate process drift mutated state"))
+    }
+}
+
+#[test]
 fn native_process_host_rejects_call_mapping_drift_before_mutation()
 -> Result<(), String> {
     let program = native_verified_output_program()?;
