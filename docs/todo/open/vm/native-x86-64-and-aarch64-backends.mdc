@@ -474,6 +474,10 @@ A distinct single-resident lease cache
   small pipe writes (one through seven bytes per chunk). The same child
   allocates a 64-KiB-aligned mapping, copies, seals, synchronizes, releases,
   and exits cleanly on EOF after exact response framing for every command.
+
+  The same real child now also interleaves fragmented MBNPC1 calls after RX
+  synchronization: a denied out-of-range entry followed by two valid entry
+  calls remains framed, reversible, and releasable with clean EOF.
   An adversarial child-announced `2^63` response length also fails as typed
   `ResponseLength` without a capacity-overflow panic, even if the caller's
   response limit is `usize::MAX`; the session remains poisoned.

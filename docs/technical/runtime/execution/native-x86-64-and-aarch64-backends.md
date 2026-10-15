@@ -1081,6 +1081,12 @@ The framing regression also rejects an announced `u64::MAX` byte length
 without payload as a read failure, and a zero-length payload as an unknown
 protocol. Neither case emits a response or grants native-call authority.
 
+A complementary host-real stream fixture interleaves the same fragmented
+memory lifecycle with three MBNPC1 calls sent in one-, two-, and seven-byte
+chunks. An out-of-range entry returns `InvalidArgument`, followed by two
+successful entry-zero `GuardMiss` calls with unchanged guest buffers and
+pointers. The retained child then releases its RX mapping and exits cleanly.
+
 A positive host-real stream fixture sends five valid MBNPM1 commands to one
 POSIX child using one-, two-, three-, five-, and seven-byte pipe writes.
 The worker retains one 64-KiB-aligned mapping through allocate, exact code

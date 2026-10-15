@@ -70298,10 +70298,76 @@ fn posix_worker_fragmented_allocate_and_seal(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_fragmented_call(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    mapping: NativeExecutableMappingReport,
+    case: (usize, usize, i32),
+) -> Result<(), String> {
+    let (entry_offset, chunk_size, expected_status) = case;
+    let (template, _expected) = native_process_call_wire_fixture()?;
+    let mut encoded = encode_native_process_call_request(&template)
+        .map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(8..16)
+        .ok_or("fragmented native mapping ID absent")?
+        .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    let entry =
+        u64::try_from(entry_offset).map_err(|error| error.to_string())?;
+    encoded
+        .get_mut(16..24)
+        .ok_or("fragmented native entry offset absent")?
+        .copy_from_slice(&entry.to_le_bytes());
+    let request = decode_native_process_call_request(&encoded)
+        .map_err(|error| error.to_string())?;
+    let count =
+        u64::try_from(encoded.len()).map_err(|error| error.to_string())?;
+    let frame = [count.to_le_bytes().as_slice(), encoded.as_slice()].concat();
+    for chunk in frame.chunks(chunk_size) {
+        stdin.write_all(chunk).map_err(|error| {
+            format!("fragmented native call write: {error}")
+        })?;
+        thread::yield_now();
+    }
+    stdin.flush().map_err(|error| error.to_string())?;
+    let mut header = [0u8; 8];
+    stdout
+        .read_exact(&mut header)
+        .map_err(|error| format!("fragmented call response header: {error}"))?;
+    let response_len = usize::try_from(u64::from_le_bytes(header))
+        .map_err(|error| error.to_string())?;
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    if response_len != limit {
+        return Err(String::from(
+            "fragmented native call response size drifted",
+        ));
+    }
+    let mut response_bytes = vec![0u8; response_len];
+    stdout
+        .read_exact(&mut response_bytes)
+        .map_err(|error| format!("fragmented call response body: {error}"))?;
+    let response =
+        decode_native_process_call_response(&response_bytes, &request)
+            .map_err(|error| error.to_string())?;
+    if response.mapping_id() != mapping.mapping_id()
+        || response.raw_status() != expected_status
+        || response.state() != request.state()
+        || response.memory() != request.memory()
+        || response.output() != request.output()
+        || !response.pointers_unchanged()
+    {
+        return Err(String::from("fragmented call changed native state"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn posix_worker_fragmented_sync_and_release(
     stdin: &mut ChildStdin,
     stdout: &mut ChildStdout,
     executable: NativeExecutableMappingReport,
+    with_calls: bool,
 ) -> Result<(), String> {
     let sync = NativeProcessMemoryRequest::Synchronize(
         NativeInstructionSyncRequest::new(
@@ -70315,6 +70381,11 @@ fn posix_worker_fragmented_sync_and_release(
         NativeProcessMemoryResponse::Synchronize(_)
     ) {
         return Err(String::from("fragmented cache sync failed"));
+    }
+    if with_calls {
+        posix_worker_fragmented_call(stdin, stdout, executable, (64, 1, 2i32))?;
+        posix_worker_fragmented_call(stdin, stdout, executable, (0, 2, 1i32))?;
+        posix_worker_fragmented_call(stdin, stdout, executable, (0, 7, 1i32))?;
     }
     let release = NativeProcessMemoryRequest::Release(
         NativeExecutableReleaseRequest::from_mapping(executable),
@@ -70330,6 +70401,7 @@ fn posix_worker_fragmented_sync_and_release(
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_fragmented_memory_lifecycle(
     worker: &Path,
+    with_calls: bool,
 ) -> Result<(), String> {
     let mut child = Command::new(worker)
         .stdin(Stdio::piped())
@@ -70348,6 +70420,7 @@ fn assert_posix_worker_fragmented_memory_lifecycle(
         &mut stdin,
         &mut stdout,
         executable,
+        with_calls,
     )?;
     drop(stdin);
     let mut after = [0u8; 1];
@@ -70368,7 +70441,22 @@ fn native_process_posix_worker_reuses_fragmented_memory_frames()
     let (directory, host) =
         native_process_posix_worker_fixture("fragmented_memory_frames")?;
     let worker = directory.join("native-process-worker-posix");
-    let result = assert_posix_worker_fragmented_memory_lifecycle(&worker);
+    let result =
+        assert_posix_worker_fragmented_memory_lifecycle(&worker, false);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_interleaves_fragmented_memory_and_calls()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("fragmented_mixed_protocol")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = assert_posix_worker_fragmented_memory_lifecycle(&worker, true);
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;
