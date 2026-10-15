@@ -602,6 +602,19 @@ static int check_mapping_id_exhaustion(void)
     mb_native_process_write_u64(&request[9], 64U);
     mb_native_process_write_u64(&request[17], 65536U);
     request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    // A failed mmap must not consume the final available mapping identity.
+    fail_next_map = 1;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10]) != (mb_u32)ENOMEM
+        || worker.next_id != UINT64_MAX || worker.count != 0U
+        || mapped_reservations != mapped_before) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 6;
+    }
+    mb_test_free(response);
     if (!mb_worker_handle_allocate(&worker, request, 26U,
             &response, &response_len)
         || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
@@ -655,6 +668,47 @@ static int check_mapping_id_exhaustion(void)
     mb_test_free(response);
     mb_worker_release_all(&worker);
     return mapped_reservations == unmapped_reservations ? 0 : 5;
+}
+
+static int check_exhausted_id_response_failure(void)
+{
+    struct mb_worker_state worker = {.next_id = UINT64_MAX};
+    mb_u8 request[26] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    const size_t mapped_before = mapped_reservations;
+    const size_t unmapped_before = unmapped_reservations;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_lifecycle_response = 35U;
+    if (mb_worker_handle_allocate(&worker, request, sizeof(request),
+            &response, &response_len)
+        || response != NULL || response_len != 0U
+        || worker.count != 1U || worker.next_id != 0U
+        || worker.mappings[0].id != UINT64_MAX
+        || mapped_reservations != mapped_before + 1U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 1;
+    }
+    if (!mb_worker_handle_allocate(&worker, request, sizeof(request),
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10])
+            != MB_WORKER_ALLOCATION_FAILURE
+        || worker.count != 1U || worker.next_id != 0U
+        || mapped_reservations != mapped_before + 1U) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 2;
+    }
+    mb_test_free(response);
+    mb_worker_release_all(&worker);
+    return worker.count == 0U && worker.next_id == 0U
+        && unmapped_reservations == unmapped_before + 1U
+        && mapped_reservations == unmapped_reservations ? 0 : 3;
 }
 
 static int check_lifecycle_response_failures(void)
@@ -794,6 +848,10 @@ int main(void)
     const int exhaustion_result = check_mapping_id_exhaustion();
     if (exhaustion_result != 0) {
         return 55 + exhaustion_result;
+    }
+    const int exhausted_response = check_exhausted_id_response_failure();
+    if (exhausted_response != 0) {
+        return 65 + exhausted_response;
     }
     const int response_result = check_lifecycle_response_failures();
     if (response_result != 0) {

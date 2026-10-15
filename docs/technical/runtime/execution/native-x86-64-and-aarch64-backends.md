@@ -1496,9 +1496,14 @@ failures preserve the next mapping ID; table-growth failure releases only the
 new reservation. Subsequent growth succeeds, and mapped/unmapped counts balance.
 
 The POSIX C23/ASan staging fixture now also seeds the worker's mapping ID at
-`u64::MAX`, issues that last identity exactly once, and releases its backing
-reservation. Allocation after counter wrap returns a bounded failure before
-`mmap`, both before and after release, so a stale ID can never be recycled.
+`u64::MAX`, preserves that final identity through a failed `mmap`, then issues
+and releases it exactly once. Allocation after counter wrap fails before
+another reservation is created, so a stale ID can never be recycled.
+
+If final-ID allocation succeeds but its 35-byte success response allocation
+fails, the POSIX worker retains the unreported mapping for teardown. The next
+allocation still fails rather than reusing zero, and teardown unmaps the
+original backing reservation once; both cases pass pinned C23 and ASan/UBSan.
 
 Independent POSIX lifecycle response-allocation failures now cover the gap
 between a completed syscall and its success frame. Failed allocation response

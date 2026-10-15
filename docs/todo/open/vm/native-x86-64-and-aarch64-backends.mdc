@@ -824,8 +824,10 @@ A distinct single-resident lease cache
   IDs and existing mappings intact, and permits retry with balanced teardown.
 
   POSIX C23/ASan simulation additionally exhausts the monotonic mapping-ID
-  counter. The final `u64::MAX` identity remains releasable, but subsequent
-  allocations never reuse zero or create another backing reservation.
+  counter. A failed `mmap` does not consume the last `u64::MAX` ID, which
+  remains releasable, but allocations after its issuance cannot reuse zero.
+  If the final allocation's success frame fails, teardown still releases its
+  otherwise unreported reservation without consuming or recycling new IDs.
 
   Failed POSIX allocate/protect/release success-frame allocations now preserve
   the real syscall outcome: live allocation stays owned, RX seal stays RX,
