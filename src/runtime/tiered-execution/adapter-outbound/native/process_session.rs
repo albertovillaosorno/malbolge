@@ -41,7 +41,7 @@ use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FRAME_LENGTH_BYTES: usize = size_of::<u64>();
 
@@ -244,6 +244,9 @@ impl NativeProcessSession {
         if timeout.is_zero() {
             return Err(NativeProcessSessionError::ExchangeTimeout);
         }
+        // Include the request clone and thread creation in the caller's
+        // budget, not just the time spent waiting for transport completion.
+        let started = Instant::now();
         // The worker owns the pipe handles. A descendant may inherit stdout,
         // so joining a blocked read thread after killing the direct child
         // would allow that descendant to defeat the exchange deadline.
@@ -274,7 +277,8 @@ impl NativeProcessSession {
             .map_err(|error| {
                 NativeProcessSessionError::WorkerSpawn(error.kind())
             })?;
-        match receiver.recv_timeout(timeout) {
+        let remaining = remaining_exchange_timeout(timeout, started.elapsed())?;
+        match receiver.recv_timeout(remaining) {
             Ok((result, returned_stdin, returned_stdout)) => {
                 self.stdin = Some(returned_stdin);
                 self.stdout = Some(returned_stdout);
@@ -306,6 +310,16 @@ impl Drop for NativeProcessSession {
     fn drop(&mut self) {
         terminate_child(&mut self.child);
     }
+}
+
+fn remaining_exchange_timeout(
+    timeout: Duration,
+    elapsed: Duration,
+) -> Result<Duration, NativeProcessSessionError> {
+    timeout
+        .checked_sub(elapsed)
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or(NativeProcessSessionError::ExchangeTimeout)
 }
 
 fn exchange_framed_bytes(

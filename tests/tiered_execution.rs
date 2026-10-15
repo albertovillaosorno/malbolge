@@ -75156,6 +75156,31 @@ fn native_process_session_applies_configured_child_context()
 }
 
 #[test]
+fn native_process_session_positive_nanosecond_deadline_is_bounded()
+-> Result<(), String> {
+    let request = vec![0xa5u8; 1_048_576];
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_ECHO_WORKER,
+    )
+    .exchange_timeout(Duration::from_nanos(1))
+    .spawn()
+    .map_err(|error| format!("nanosecond-deadline spawn: {error:?}"))?;
+    let started = Instant::now();
+    let result = session.exchange(&request, 16);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"again", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+        || started.elapsed() > Duration::from_secs(2)
+    {
+        return Err(format!(
+            "nanosecond deadline admitted request: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_zero_deadline_is_fail_closed() -> Result<(), String> {
     let large_request = vec![0xa5u8; 1_048_576];
     for request in [b"".as_slice(), large_request.as_slice()] {

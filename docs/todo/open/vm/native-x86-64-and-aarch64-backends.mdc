@@ -478,6 +478,11 @@ A distinct single-resident lease cache
   transport thread. Empty and one-megabyte requests both fail closed, and the
   direct child becomes poisoned before any later exchange.
 
+  Nonzero exchange budgets now also count request cloning and thread startup
+  against the same deadline as response waiting. A host-real positive
+  nanosecond deadline now fails closed on a one-megabyte request and poisons
+  its own session without allowing any later exchange.
+
   A descendant retaining the child's stdout pipe previously delayed the
   request's 300-ms deadline until that descendant exited. Owned pipe handles
   now permit timed transport threads to detach after direct-child termination;

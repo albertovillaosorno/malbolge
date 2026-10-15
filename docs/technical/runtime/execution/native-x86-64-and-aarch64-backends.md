@@ -850,6 +850,12 @@ pipe ownership transfer, or worker-thread creation. Both empty and one-megabyte
 requests return `ExchangeTimeout` immediately, poison the owning session, and
 cannot be retried through that child.
 
+Positive exchange budgets now also start before request cloning and transport
+thread startup. The receiver waits only for the unused remainder, so setup
+cost can no longer silently grant a second full deadline. A host-real
+one-megabyte request with a positive nanosecond deadline fails closed and
+poisons only its retained session, while zero budgets retain early rejection.
+
 A descendant can inherit the child's response pipe. Joining the blocked read
 thread after killing only the direct child formerly extended a 300-ms deadline
 to roughly four seconds in a host-real adversarial fixture. Timed sessions now
