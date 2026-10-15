@@ -493,6 +493,10 @@ A distinct single-resident lease cache
   response headers/bodies and oversized announcements poison with the same
   typed errors, while repeated zero-byte replies remain healthy at limit zero.
 
+  The session-backed native memory host also propagates `ExchangeTimeout` and
+  `ResponseTooLarge` as typed transport failures on allocation and rejects
+  later requests through the poisoned child session.
+
   A separate echo child remains healthy across a sibling's inherited-stdout
   timeout, preserving exact ordered replies while only the failing session
   becomes permanently poisoned.

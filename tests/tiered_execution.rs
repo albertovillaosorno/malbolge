@@ -74792,6 +74792,49 @@ fn native_process_host_executes_real_posix_fused_object() -> Result<(), String>
 }
 
 #[test]
+fn native_process_host_propagates_deadline_and_frame_failures()
+-> Result<(), String> {
+    for (label, script, expected) in [
+        (
+            "blocked allocation",
+            NATIVE_PROCESS_SESSION_BLOCKED_RESPONSE_WORKER,
+            NativeProcessSessionError::ExchangeTimeout,
+        ),
+        (
+            "oversized allocation response",
+            NATIVE_PROCESS_SESSION_OVERSIZED_WORKER,
+            NativeProcessSessionError::ResponseTooLarge,
+        ),
+    ] {
+        let session = native_process_session_python_config(script)
+            .exchange_timeout(Duration::from_millis(350))
+            .spawn()
+            .map_err(|error| format!("{label} spawn: {error:?}"))?;
+        let mut host = NativeProcessHost::new(session);
+        let allocation = NativeExecutableAllocationRequest::new(
+            64,
+            16,
+            NativeExecutablePermission::ReadWrite,
+        );
+        let first = host.allocate_writable(allocation);
+        let second = host.allocate_writable(allocation);
+        let first_failed = matches!(
+            first,
+            Err(error) if error.session_error() == Some(expected)
+        );
+        let second_poisoned = matches!(
+            second,
+            Err(error) if error.session_error()
+                == Some(NativeProcessSessionError::Poisoned)
+        );
+        if !first_failed || !second_poisoned || !host.session_poisoned() {
+            return Err(format!("{label} host session authority drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_host_reports_remote_memory_failure() -> Result<(), String> {
     let mut host =
         native_process_host_python(NATIVE_PROCESS_MEMORY_HOST_FAILURE_WORKER)?;

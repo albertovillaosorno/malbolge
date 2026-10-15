@@ -884,6 +884,11 @@ bodies, and oversized response announcements against the untimed error kinds.
 A retained timed child handles three consecutive zero-length responses with a
 zero-byte limit without becoming poisoned; only failed frames end its session.
 
+The session-backed `NativeProcessHost` preserves those errors across its
+memory-adapter boundary. A stalled allocation reports typed `ExchangeTimeout`,
+while an oversized response reports `ResponseTooLarge`; neither failure admits
+later allocation requests on that now-poisoned child.
+
 Another retained child returns a complete successful first response, then
 stalls on its second request. The deadline resets per exchange: the first
 response is admitted, the second expires, and subsequent use is refused.
