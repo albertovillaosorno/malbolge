@@ -1752,6 +1752,11 @@ def _publish_no_replace(
         os.link(temporary, destination)
 
 
+def _require_complete_payload_write(written: int, expected: int) -> None:
+    if written != expected:
+        _fail(f"short payload write: wrote {written} of {expected} bytes")
+
+
 def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
     try:
         stream = os.fdopen(descriptor, "wb")
@@ -1766,7 +1771,8 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
             error.add_note(note)
         raise
     try:
-        _ = stream.write(payload)
+        written = stream.write(payload)
+        _require_complete_payload_write(written, len(payload))
         stream.flush()
         os.fsync(stream.fileno())
     finally:

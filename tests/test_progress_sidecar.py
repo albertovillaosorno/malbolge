@@ -377,6 +377,38 @@ class FailingPayloadStream:
 
 
 @dataclass(slots=True)
+class ShortPayloadStream:
+    """Real temporary descriptor that reports a truncated payload write."""
+
+    descriptor: int
+
+    def write(self, payload: bytes) -> int:
+        """Write one byte less than requested to simulate a short write.
+
+        Returns:
+            The number of bytes written.
+
+        """
+        return os.write(self.descriptor, payload[:-1])
+
+    def flush(self) -> None:
+        """Complete an unbuffered flush."""
+
+    def fileno(self) -> int:
+        """Return the real temporary-file descriptor.
+
+        Returns:
+            The owned descriptor.
+
+        """
+        return self.descriptor
+
+    def close(self) -> None:
+        """Release the temporary descriptor."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
 class SequenceClock:
     """Deterministic monotonic-clock fixture."""
 
@@ -1692,6 +1724,37 @@ def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
     assert getattr(captured.value, "__notes__", None) == [expected_note]
 
 
+def test_checkpoint_generation_rejects_short_stream_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated immutable checkpoint cannot commit or publish a pointer."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+
+    def short_fdopen(descriptor: int, mode: str) -> ShortPayloadStream:
+        binary_mode = "wb"
+        assert mode == binary_mode
+        return ShortPayloadStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", short_fdopen)
+        with pytest.raises(ERROR, match="short payload write"):
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    checkpoint_destination = Path(sidecar.checkpoint_path or "")
+    assert not checkpoint_destination.exists()
+    checkpoint_temporaries = checkpoint_destination.parent.glob(
+        f".{checkpoint_destination.name}.*.tmp"
+    )
+    assert not tuple(checkpoint_temporaries)
+    assert not Path(sidecar.progress_path).exists()
+
+
 def test_checkpoint_generation_preserves_write_before_close_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2846,6 +2909,35 @@ def test_write_atomic_wraps_mutable_publication_oserror(
     monkeypatch.setattr(progress, "_write_atomic_bytes", fail_publication)
     with pytest.raises(ERROR, match="progress sidecar publication failed"):
         _ = progress.write_atomic(candidate)
+
+
+def test_write_atomic_rejects_short_stream_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated mutable sidecar must not replace the progress pointer."""
+    candidate = _sidecar(tmp_path)
+    destination = progress.write_atomic(candidate)
+    next_candidate = replace(
+        candidate,
+        active_elapsed_ns=601,
+        updated_at="2026-08-06T14:00:03Z",
+        units_completed=15,
+        wall_elapsed_ns=761,
+    )
+
+    def short_fdopen(descriptor: int, mode: str) -> ShortPayloadStream:
+        binary_mode = "wb"
+        assert mode == binary_mode
+        return ShortPayloadStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", short_fdopen)
+        with pytest.raises(ERROR, match="short payload write"):
+            _ = progress.write_atomic(next_candidate)
+
+    assert progress.read(destination) == candidate
+    assert not tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
 
 
 def test_write_atomic_preserves_write_before_close_failure(
