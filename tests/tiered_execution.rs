@@ -75629,6 +75629,45 @@ fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
 }
 
 #[test]
+fn native_process_session_timed_rejects_unreservable_response_lengths()
+-> Result<(), String> {
+    for (label, script, expected) in [
+        (
+            "unrepresentable capacity",
+            NATIVE_PROCESS_SESSION_IMPOSSIBLE_LENGTH_WORKER,
+            NativeProcessSessionError::ResponseLength,
+        ),
+        (
+            "unreservable capacity",
+            NATIVE_PROCESS_SESSION_UNALLOCATABLE_WORKER,
+            if usize::BITS == 64 {
+                NativeProcessSessionError::ResponseAllocation
+            } else {
+                NativeProcessSessionError::ResponseLength
+            },
+        ),
+    ] {
+        let mut session = native_process_session_python_config(script)
+            .exchange_timeout(Duration::from_secs(5))
+            .spawn()
+            .map_err(|error| format!("{label} timed spawn: {error:?}"))?;
+        let response = catch_unwind(AssertUnwindSafe(|| {
+            session.exchange(b"request", usize::MAX)
+        }));
+        if !matches!(response, Ok(Err(error)) if error == expected)
+            || !session.poisoned()
+            || session.exchange(b"again", usize::MAX)
+                != Err(NativeProcessSessionError::Poisoned)
+        {
+            return Err(format!(
+                "{label} timed response drifted: {response:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_rejects_unreservable_response_length()
 -> Result<(), String> {
     let mut session = native_process_session_python(

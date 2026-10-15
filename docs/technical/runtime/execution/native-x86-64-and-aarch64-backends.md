@@ -845,6 +845,12 @@ native child session; the default remains unlimited for compatibility.
 The deadline covers both framed request writes and response reads. When it
 expires, the owning direct child is killed and the session is poisoned.
 
+Timed native sessions also reject child-announced response lengths of 2^63
+or 2^62 bytes without panicking, despite a caller limit of `usize::MAX`.
+Those failures retain the same typed `ResponseLength` or
+`ResponseAllocation` outcome as untimed exchanges and permanently poison the
+owning child rather than treating a malformed length as a deadline timeout.
+
 A zero-duration budget now deterministically expires before request cloning,
 pipe ownership transfer, or worker-thread creation. Both empty and one-megabyte
 requests return `ExchangeTimeout` immediately, poison the owning session, and

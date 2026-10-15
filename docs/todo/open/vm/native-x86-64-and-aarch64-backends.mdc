@@ -502,6 +502,10 @@ A distinct single-resident lease cache
   also obey the cumulative 350-ms exchange deadline. One-megabyte blocked or
   slowly drained writes cannot strand or reuse the poisoned parent session.
 
+  Timed exchanges now likewise reject hostile announced 2^63 and 2^62
+  response lengths with the same typed capacity errors as untimed exchanges,
+  without panicking the parent or allowing session reuse afterward.
+
   Finite-deadline exchanges also preserve ordinary framing results: truncated
   response headers/bodies and oversized announcements poison with the same
   typed errors, while repeated zero-byte replies remain healthy at limit zero.
