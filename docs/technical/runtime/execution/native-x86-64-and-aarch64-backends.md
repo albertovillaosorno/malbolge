@@ -855,6 +855,11 @@ A symmetric test has a descendant inherit the request pipe without consuming
 bytes. A one-megabyte request now returns within the same 300-ms deadline even
 when the descendant still holds the read end after direct-child termination.
 
+A sibling-session regression runs a separate responsive echo child before and
+after a failed deadline exchange with a descendant-held response pipe. The
+timeout is isolated to its own poisoned session; the healthy sibling retains
+response order, original stream identity, and its full exchange deadline.
+
 Host-real Python fixtures sleep instead of consuming a large request or
 answering a completed request. Both return typed `ExchangeTimeout` within
 the configured bound, while a responsive echo child completes three exchanges

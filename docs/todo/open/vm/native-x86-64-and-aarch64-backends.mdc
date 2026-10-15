@@ -481,6 +481,10 @@ A distinct single-resident lease cache
   Symmetrically, descendants retaining the request pipe cannot extend the
   deadline for blocked writes of a one-megabyte request after child termination.
 
+  A separate echo child remains healthy across a sibling's inherited-stdout
+  timeout, preserving exact ordered replies while only the failing session
+  becomes permanently poisoned.
+
   Partial header and partial payload stalls also expire cleanly, poisoning
   their retained sessions without admitting incomplete response framing.
   A first successful exchange followed by a stalled second exchange also

@@ -75129,6 +75129,44 @@ fn native_process_session_timeout_ignores_descendant_input_holders()
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn native_process_session_descendant_timeout_preserves_sibling()
+-> Result<(), String> {
+    let mut sibling = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_ECHO_WORKER,
+    )
+    .exchange_timeout(Duration::from_secs(5))
+    .spawn()
+    .map_err(|error| format!("independent sibling spawn: {error:?}"))?;
+    let first = sibling
+        .exchange(b"before", 16)
+        .map_err(|error| format!("sibling first exchange: {error:?}"))?;
+    let mut failing = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_INHERITED_PIPE_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(300))
+    .spawn()
+    .map_err(|error| format!("independent timeout spawn: {error:?}"))?;
+    let started = Instant::now();
+    let timeout = failing.exchange(b"inherited", 16);
+    let second = sibling
+        .exchange(b"after", 16)
+        .map_err(|error| format!("sibling second exchange: {error:?}"))?;
+    if first != b"\x01before"
+        || second != b"\x02after"
+        || timeout != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !failing.poisoned()
+        || sibling.poisoned()
+        || started.elapsed() > Duration::from_secs(2)
+    {
+        return Err(format!(
+            "descendant timeout affected sibling: {timeout:?}"
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn native_process_session_deadline_poison_after_healthy_exchange()
 -> Result<(), String> {
