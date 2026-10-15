@@ -628,6 +628,11 @@ fn validate_success_response_shape(
             report.mapping_id() == sync.mapping_id()
                 && report.start_address() == sync.start_address()
                 && report.byte_len() == sync.byte_len()
+                && sync
+                    .start_address()
+                    .get()
+                    .checked_add(sync.byte_len())
+                    .is_some()
         },
         _ => false,
     };

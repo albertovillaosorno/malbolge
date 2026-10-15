@@ -75141,6 +75141,44 @@ fn native_process_memory_wire_rejects_mapping_extent_overflow()
 }
 
 #[test]
+fn native_process_memory_wire_rejects_sync_extent_overflow()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original = requests.get(4).ok_or("synchronization fixture missing")?;
+    let valid = native_process_memory_success_response(original, executable);
+    let mut forged = encode_native_process_memory_response(original, &valid)
+        .map_err(|error| error.to_string())?;
+    let impossible_address = usize::MAX
+        .checked_sub(1)
+        .ok_or("host address width too small")?;
+    let start = native_executable_address(impossible_address)?;
+    forged
+        .get_mut(18..26)
+        .ok_or("synchronization response address missing")?
+        .copy_from_slice(
+            &u64::try_from(impossible_address)
+                .map_err(|error| error.to_string())?
+                .to_le_bytes(),
+        );
+    let sync =
+        NativeInstructionSyncRequest::new(executable.mapping_id(), start, 3);
+    let request = NativeProcessMemoryRequest::Synchronize(sync);
+    let response = NativeProcessMemoryResponse::Synchronize(
+        NativeInstructionSyncReport::new(sync.mapping_id(), start, 3),
+    );
+    if encode_native_process_memory_response(&request, &response)
+        != Err(NativeProcessMemoryWireError::ResponseShape)
+        || decode_native_process_memory_response(&forged, &request)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        return Err(String::from(
+            "memory wire accepted overflowing synchronization extent",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_rejects_success_shape_before_encoding()
 -> Result<(), String> {
     let (executable, requests) = native_process_memory_wire_fixture()?;

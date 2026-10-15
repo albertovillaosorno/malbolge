@@ -478,6 +478,8 @@ A distinct single-resident lease cache
   the original request. Forged wire fields return typed `ResponseShape`.
   Allocation and protection evidence also fails if base plus mapping size
   overflows the host address space, even with otherwise valid alignment.
+  Synchronization evidence also rejects a wrapped host address range, even
+  when the response echoes the forged request exactly.
 
   Failure encoding now reserves only its fixed 14-byte frame, rather than the
   full potential successful copy payload. A 4096-byte copy request has a

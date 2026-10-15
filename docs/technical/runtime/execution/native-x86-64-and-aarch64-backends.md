@@ -861,6 +861,10 @@ Allocation and protection success reports also reject address ranges whose
 base plus mapped length wraps `usize`. Such otherwise-aligned child evidence
 fails as `ResponseShape` before the trusted executable lifecycle sees it.
 
+Successful synchronization responses likewise reject ranges whose start plus
+requested byte count overflows `usize`. Even byte-exact matching of forged
+request and child report cannot confer authority over an impossible range.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.
