@@ -49,7 +49,10 @@ use super::platform::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
     NativeExecutableMemoryAdapter, NativeInstructionSyncRequest,
 };
-use super::process_call::NativeProcessCallResponseError;
+use super::process_call::{
+    NativeProcessCallRequest, NativeProcessCallResponse,
+    NativeProcessCallResponseError,
+};
 use super::process_call_wire::{
     NativeProcessCallWireError, decode_native_process_call_response,
     encode_native_process_call_request,
@@ -266,19 +269,26 @@ impl NativeProcessHost {
         invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
+        let decoded = self.exchange_call_request(&request)?;
+        invocation
+            .apply_process_response(&decoded)
+            .map_err(NativeProcessHostError::call_response)
+    }
+
+    fn exchange_call_request(
+        &mut self,
+        request: &NativeProcessCallRequest,
+    ) -> Result<NativeProcessCallResponse, NativeProcessHostError> {
+        let encoded = encode_native_process_call_request(request)
             .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
+        let response_limit = native_process_call_response_byte_limit(request)
             .map_err(NativeProcessHostError::call_wire)?;
         let response = self
             .session
             .exchange(&encoded, response_limit)
             .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        invocation
-            .apply_process_response(&decoded)
-            .map_err(NativeProcessHostError::call_response)
+        decode_native_process_call_response(&response, request)
+            .map_err(NativeProcessHostError::call_wire)
     }
 
     fn exchange_fused_call(
@@ -286,16 +296,7 @@ impl NativeProcessHost {
         invocation: &mut PreparedDirectFusedNativeInvocation<'_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response = self
-            .session
-            .exchange(&encoded, response_limit)
-            .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
+        let decoded = self.exchange_call_request(&request)?;
         invocation
             .apply_process_response(&decoded)
             .map_err(NativeProcessHostError::call_response)
@@ -335,16 +336,7 @@ impl NativeProcessHost {
         >,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response = self
-            .session
-            .exchange(&encoded, response_limit)
-            .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
+        let decoded = self.exchange_call_request(&request)?;
         invocation
             .apply_process_response(&decoded)
             .map_err(NativeProcessHostError::call_response)
@@ -358,16 +350,7 @@ impl NativeProcessHost {
         >,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response = self
-            .session
-            .exchange(&encoded, response_limit)
-            .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
+        let decoded = self.exchange_call_request(&request)?;
         invocation
             .apply_process_response(&decoded)
             .map_err(NativeProcessHostError::call_response)
@@ -378,16 +361,7 @@ impl NativeProcessHost {
         invocation: &mut NoOperationRotateNativeInvocation<'_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response = self
-            .session
-            .exchange(&encoded, response_limit)
-            .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
+        let decoded = self.exchange_call_request(&request)?;
         invocation
             .apply_process_response(&decoded)
             .map_err(NativeProcessHostError::call_response)
@@ -398,16 +372,7 @@ impl NativeProcessHost {
         invocation: &mut RotateNoOperationNativeInvocation<'_, '_>,
     ) -> Result<i32, NativeProcessHostError> {
         let request = invocation.process_request();
-        let encoded = encode_native_process_call_request(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response_limit = native_process_call_response_byte_limit(&request)
-            .map_err(NativeProcessHostError::call_wire)?;
-        let response = self
-            .session
-            .exchange(&encoded, response_limit)
-            .map_err(NativeProcessHostError::session)?;
-        let decoded = decode_native_process_call_response(&response, &request)
-            .map_err(NativeProcessHostError::call_wire)?;
+        let decoded = self.exchange_call_request(&request)?;
         invocation
             .apply_process_response(&decoded)
             .map_err(NativeProcessHostError::call_response)

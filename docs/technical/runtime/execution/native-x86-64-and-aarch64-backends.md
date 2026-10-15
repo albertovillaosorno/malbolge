@@ -929,6 +929,11 @@ memory-adapter boundary. A stalled allocation reports typed `ExchangeTimeout`,
 while an oversized response reports `ResponseTooLarge`; neither failure admits
 later allocation requests on that now-poisoned child.
 
+All six native call invocation families now share one MBNPC1 encode, bounded
+session exchange, and response-decode path inside `NativeProcessHost`.
+The separate semantic completion verifiers remain authoritative per family,
+but transport limits and wire failure mapping can no longer drift between them.
+
 Another retained child returns a complete successful first response, then
 stalls on its second request. The deadline resets per exchange: the first
 response is admitted, the second expires, and subsequent use is refused.

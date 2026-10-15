@@ -445,6 +445,10 @@ A distinct single-resident lease cache
   so one child keeps mapping identity across memory operations and the later
   native call.
 
+  Six session-backed native call families now use one request-bounded MBNPC1
+  exchange helper; each variant retains its own independent semantic response
+  verifier. Existing host-real and malformed-wire tests cover that seam.
+
   A persistent native child-session transport now retains one process across
   multiple length-framed exchanges. Response lengths are bounded before
   allocation, transport/framing failure poisons and terminates the session, and
