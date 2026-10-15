@@ -1477,6 +1477,26 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_STALLED_SECOND_WORKER: &str = r#"
+import sys
+import time
+for count in (1, 2):
+    header = sys.stdin.buffer.read(8)
+    if len(header) != 8:
+        raise SystemExit(2)
+    length = int.from_bytes(header, "little")
+    request = sys.stdin.buffer.read(length)
+    if len(request) != length:
+        raise SystemExit(3)
+    if count == 1:
+        payload = b"ok:" + request
+        sys.stdout.buffer.write(len(payload).to_bytes(8, "little"))
+        sys.stdout.buffer.write(payload)
+        sys.stdout.buffer.flush()
+    else:
+        time.sleep(30)
+"#;
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -75022,6 +75042,34 @@ fn native_process_session_deadline_bounds_partial_responses()
         {
             return Err(format!("{label} deadline drifted: {result:?}"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_poison_after_healthy_exchange()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_STALLED_SECOND_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(400))
+    .spawn()
+    .map_err(|error| format!("second exchange spawn: {error:?}"))?;
+    let first = session
+        .exchange(b"hello", 16)
+        .map_err(|error| format!("first exchange: {error:?}"))?;
+    if first != b"ok:hello" || session.poisoned() {
+        return Err(String::from("first response corrupted healthy session"));
+    }
+    let started = Instant::now();
+    let second = session.exchange(b"next", 16);
+    if second != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"third", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+        || started.elapsed() > Duration::from_secs(5)
+    {
+        return Err(format!("second exchange timeout drifted: {second:?}"));
     }
     Ok(())
 }

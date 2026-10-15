@@ -850,6 +850,10 @@ after announcing four payload bytes but delivering only two. Both time out,
 terminate the direct child, and refuse subsequent exchange on the poisoned
 session; neither partial frame becomes an admitted response.
 
+Another retained child returns a complete successful first response, then
+stalls on its second request. The deadline resets per exchange: the first
+response is admitted, the second expires, and subsequent use is refused.
+
 `native/process_memory_wire.rs` now defines the transport-neutral `MBNPM1`
 little-endian command protocol for writable allocation, exact code copy, RX
 protection, instruction synchronization, and release. Mapping/address/length/
