@@ -465,6 +465,11 @@ A distinct single-resident lease cache
   zero-byte response limit without poisoning; a four-byte response-length
   header fails as `UnexpectedEof` and permanently poisons the session.
 
+  An optional session exchange deadline now bounds blocked request writes and
+  stalled responses. Timeout kills the direct child, poisons the session, and
+  prevents reuse; a responsive child retains all three framed exchanges.
+  Existing configurations default to no deadline.
+
   The pinned C23 conformance fixture now also asserts the complete 80-byte
   native ABI state layout, twelve exact field offsets, three raw statuses,
   and three normative termination tag values across the worker header.

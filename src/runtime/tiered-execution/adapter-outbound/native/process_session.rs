@@ -39,12 +39,17 @@ use std::ffi::OsString;
 use std::io::{ErrorKind, Read as _, Write as _};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 const FRAME_LENGTH_BYTES: usize = size_of::<u64>();
 
 /// Stable transport failure for one persistent native child session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeProcessSessionError {
+    /// The child exceeded its configured request/response exchange deadline.
+    ExchangeTimeout,
     /// Failed to flush one complete request frame.
     Flush(ErrorKind),
     /// Spawned child did not expose piped stdin.
@@ -74,6 +79,7 @@ pub enum NativeProcessSessionError {
 pub struct NativeProcessSessionConfig {
     arguments: Vec<OsString>,
     environment: Vec<(OsString, OsString)>,
+    exchange_timeout: Option<Duration>,
     program: PathBuf,
     working_directory: Option<PathBuf>,
 }
@@ -82,6 +88,7 @@ pub struct NativeProcessSessionConfig {
 #[derive(Debug)]
 pub struct NativeProcessSession {
     child: Child,
+    exchange_timeout: Option<Duration>,
     poisoned: bool,
     stdin: ChildStdin,
     stdout: ChildStdout,
@@ -103,12 +110,23 @@ impl NativeProcessSessionConfig {
         self
     }
 
+    /// Sets a per-exchange deadline for sending and receiving framed bytes.
+    ///
+    /// The default is no deadline. A timed-out child is terminated and the
+    /// retained session is poisoned rather than risking stream reuse.
+    #[must_use]
+    pub const fn exchange_timeout(mut self, timeout: Duration) -> Self {
+        self.exchange_timeout = Some(timeout);
+        self
+    }
+
     /// Creates one explicit persistent-session process configuration.
     #[must_use]
     pub const fn new(program: PathBuf) -> Self {
         Self {
             arguments: Vec::new(),
             environment: Vec::new(),
+            exchange_timeout: None,
             program,
             working_directory: None,
         }
@@ -147,6 +165,7 @@ impl NativeProcessSessionConfig {
         };
         Ok(NativeProcessSession {
             child,
+            exchange_timeout: self.exchange_timeout,
             poisoned: false,
             stdin,
             stdout,
@@ -182,7 +201,12 @@ impl NativeProcessSession {
         if self.poisoned {
             return Err(NativeProcessSessionError::Poisoned);
         }
-        let result = self.exchange_inner(request, response_limit);
+        let result = match self.exchange_timeout {
+            Some(timeout) => {
+                self.exchange_with_timeout(request, response_limit, timeout)
+            },
+            None => self.exchange_inner(request, response_limit),
+        };
         if result.is_err() {
             self.poison();
         }
@@ -194,44 +218,47 @@ impl NativeProcessSession {
         request: &[u8],
         response_limit: usize,
     ) -> Result<Vec<u8>, NativeProcessSessionError> {
-        let request_len = u64::try_from(request.len())
-            .map_err(|_error| NativeProcessSessionError::RequestLength)?;
-        self.stdin
-            .write_all(&request_len.to_le_bytes())
-            .map_err(|error| NativeProcessSessionError::Write(error.kind()))?;
-        self.stdin
-            .write_all(request)
-            .map_err(|error| NativeProcessSessionError::Write(error.kind()))?;
-        self.stdin
-            .flush()
-            .map_err(|error| NativeProcessSessionError::Flush(error.kind()))?;
-        let mut length = [0u8; FRAME_LENGTH_BYTES];
-        self.stdout
-            .read_exact(&mut length)
-            .map_err(|error| NativeProcessSessionError::Read(error.kind()))?;
-        let announced = u64::from_le_bytes(length);
-        let response_len = usize::try_from(announced)
-            .map_err(|_error| NativeProcessSessionError::ResponseLength)?;
-        // A u64 can fit usize while exceeding Rust's maximum Vec capacity.
-        // Reject that child-supplied length before a zero-initialized reserve.
-        if response_len > isize::MAX.unsigned_abs() {
-            return Err(NativeProcessSessionError::ResponseLength);
-        }
-        if response_len > response_limit {
-            return Err(NativeProcessSessionError::ResponseTooLarge);
-        }
-        // Even representable lengths can exceed the host's available virtual
-        // memory. A fallible reservation keeps a hostile child from aborting
-        // the parent process on allocation failure.
-        let mut response = Vec::new();
-        response
-            .try_reserve_exact(response_len)
-            .map_err(|_error| NativeProcessSessionError::ResponseAllocation)?;
-        response.resize(response_len, 0);
-        self.stdout
-            .read_exact(&mut response)
-            .map_err(|error| NativeProcessSessionError::Read(error.kind()))?;
-        Ok(response)
+        exchange_framed_bytes(
+            &mut self.stdin,
+            &mut self.stdout,
+            request,
+            response_limit,
+        )
+    }
+
+    fn exchange_with_timeout(
+        &mut self,
+        request: &[u8],
+        response_limit: usize,
+        timeout: Duration,
+    ) -> Result<Vec<u8>, NativeProcessSessionError> {
+        let child = &mut self.child;
+        let stdin = &mut self.stdin;
+        let stdout = &mut self.stdout;
+        thread::scope(|scope| {
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let exchange = scope.spawn(move || {
+                let result = exchange_framed_bytes(
+                    stdin,
+                    stdout,
+                    request,
+                    response_limit,
+                );
+                let _sent = sender.send(result);
+            });
+            let result = match receiver.recv_timeout(timeout) {
+                Ok(result) => result,
+                Err(RecvTimeoutError::Timeout) => {
+                    terminate_child(child);
+                    Err(NativeProcessSessionError::ExchangeTimeout)
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    Err(NativeProcessSessionError::Read(ErrorKind::BrokenPipe))
+                },
+            };
+            let _join = exchange.join();
+            result
+        })
     }
 
     fn poison(&mut self) {
@@ -250,6 +277,52 @@ impl Drop for NativeProcessSession {
     fn drop(&mut self) {
         terminate_child(&mut self.child);
     }
+}
+
+fn exchange_framed_bytes(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    request: &[u8],
+    response_limit: usize,
+) -> Result<Vec<u8>, NativeProcessSessionError> {
+    let request_len = u64::try_from(request.len())
+        .map_err(|_error| NativeProcessSessionError::RequestLength)?;
+    stdin
+        .write_all(&request_len.to_le_bytes())
+        .map_err(|error| NativeProcessSessionError::Write(error.kind()))?;
+    stdin
+        .write_all(request)
+        .map_err(|error| NativeProcessSessionError::Write(error.kind()))?;
+    stdin
+        .flush()
+        .map_err(|error| NativeProcessSessionError::Flush(error.kind()))?;
+    let mut length = [0u8; FRAME_LENGTH_BYTES];
+    stdout
+        .read_exact(&mut length)
+        .map_err(|error| NativeProcessSessionError::Read(error.kind()))?;
+    let announced = u64::from_le_bytes(length);
+    let response_len = usize::try_from(announced)
+        .map_err(|_error| NativeProcessSessionError::ResponseLength)?;
+    // A u64 can fit usize while exceeding Rust's maximum Vec capacity.
+    // Reject that child-supplied length before a zero-initialized reserve.
+    if response_len > isize::MAX.unsigned_abs() {
+        return Err(NativeProcessSessionError::ResponseLength);
+    }
+    if response_len > response_limit {
+        return Err(NativeProcessSessionError::ResponseTooLarge);
+    }
+    // Even representable lengths can exceed the host's available virtual
+    // memory. A fallible reservation keeps a hostile child from aborting
+    // the parent process on allocation failure.
+    let mut response = Vec::new();
+    response
+        .try_reserve_exact(response_len)
+        .map_err(|_error| NativeProcessSessionError::ResponseAllocation)?;
+    response.resize(response_len, 0);
+    stdout
+        .read_exact(&mut response)
+        .map_err(|error| NativeProcessSessionError::Read(error.kind()))?;
+    Ok(response)
 }
 
 fn terminate_child(child: &mut Child) {

@@ -835,6 +835,16 @@ payloads to zero-limit exchanges (including empty requests) without session
 poisoning; a separate child emits only four of the required eight response-
 length bytes and triggers `Read(UnexpectedEof)` and permanent session poisoning.
 
+A caller may now configure an explicit per-exchange deadline on the retained
+native child session; the default remains unlimited for compatibility.
+The deadline covers both framed request writes and response reads. When it
+expires, the owning direct child is killed and the session is poisoned.
+
+Host-real Python fixtures sleep instead of consuming a large request or
+answering a completed request. Both return typed `ExchangeTimeout` within
+the configured bound, while a responsive echo child completes three exchanges
+and retains its session under the same optional deadline policy.
+
 `native/process_memory_wire.rs` now defines the transport-neutral `MBNPM1`
 little-endian command protocol for writable allocation, exact code copy, RX
 protection, instruction synchronization, and release. Mapping/address/length/

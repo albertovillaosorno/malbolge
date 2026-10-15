@@ -286,7 +286,7 @@ use std::process::{ChildStdin, ChildStdout, Command, Stdio, id as process_id};
 use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 use blob_pair_persistence::{
@@ -1429,6 +1429,23 @@ if len(request) != length:
     raise SystemExit(3)
 sys.stdout.buffer.write(b"\x04\x00\x00\x00")
 sys.stdout.buffer.flush()
+"#;
+
+const NATIVE_PROCESS_SESSION_BLOCKED_REQUEST_WORKER: &str = "
+import time
+time.sleep(30)
+";
+
+const NATIVE_PROCESS_SESSION_BLOCKED_RESPONSE_WORKER: &str = r#"
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+time.sleep(30)
 "#;
 
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
@@ -69564,9 +69581,9 @@ fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
     }
 }
 
-fn native_process_session_python(
+fn native_process_session_python_config(
     script: &str,
-) -> Result<NativeProcessSession, String> {
+) -> NativeProcessSessionConfig {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let python = if cfg!(windows) {
         root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
@@ -69577,6 +69594,12 @@ fn native_process_session_python(
         .argument(OsString::from("-u"))
         .argument(OsString::from("-c"))
         .argument(OsString::from(script))
+}
+
+fn native_process_session_python(
+    script: &str,
+) -> Result<NativeProcessSession, String> {
+    native_process_session_python_config(script)
         .spawn()
         .map_err(|error| format!("native process session spawn: {error:?}"))
 }
@@ -74900,6 +74923,73 @@ fn native_process_host_executes_call_over_same_session() -> Result<(), String> {
     } else {
         Err(String::from("native process host call execution drifted"))
     }
+}
+
+#[test]
+fn native_process_session_deadline_bounds_request() -> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_BLOCKED_REQUEST_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(400))
+    .spawn()
+    .map_err(|error| format!("blocked request spawn: {error:?}"))?;
+    let large_request = vec![0xa5u8; 1_048_576];
+    let elapsed = Instant::now();
+    let result = session.exchange(&large_request, 8);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"again", 8)
+            != Err(NativeProcessSessionError::Poisoned)
+        || elapsed.elapsed() > Duration::from_secs(5)
+    {
+        return Err(format!("blocked write missed deadline: {result:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_bounds_blocked_response()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_BLOCKED_RESPONSE_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(400))
+    .spawn()
+    .map_err(|error| format!("blocked response spawn: {error:?}"))?;
+    let elapsed = Instant::now();
+    let result = session.exchange(b"request", 16);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"again", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+        || elapsed.elapsed() > Duration::from_secs(5)
+    {
+        return Err(format!("blocked read missed deadline: {result:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_retains_responsive_child()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_ECHO_WORKER,
+    )
+    .exchange_timeout(Duration::from_secs(5))
+    .spawn()
+    .map_err(|error| format!("responsive child spawn: {error:?}"))?;
+    for (request, count) in [(b"abc".as_slice(), 1u8), (b"", 2), (b"xyz", 3)] {
+        let received = session
+            .exchange(request, 16)
+            .map_err(|error| format!("responsive exchange: {error:?}"))?;
+        if received.first() != Some(&count)
+            || received.get(1..) != Some(request)
+            || session.poisoned()
+        {
+            return Err(String::from("deadline poisoned healthy child"));
+        }
+    }
+    Ok(())
 }
 
 #[test]
