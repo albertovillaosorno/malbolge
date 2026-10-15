@@ -505,6 +505,10 @@ A distinct single-resident lease cache
   timeout, preserving exact ordered replies while only the failing session
   becomes permanently poisoned.
 
+  An actual concurrent timed exchange also stalls on one worker thread while
+  its sibling responds. The stalled child alone expires and is poisoned; the
+  echo child retains ordered replies during and after the timeout.
+
   Partial header and partial payload stalls also expire cleanly, poisoning
   their retained sessions without admitting incomplete response framing.
   A first successful exchange followed by a stalled second exchange also

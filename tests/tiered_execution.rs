@@ -75312,6 +75312,55 @@ fn native_process_session_descendant_timeout_preserves_sibling()
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn native_process_session_concurrent_timeout_spares_sibling()
+-> Result<(), String> {
+    let mut failing = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_BLOCKED_RESPONSE_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(650))
+    .spawn()
+    .map_err(|error| format!("concurrent blocked spawn: {error:?}"))?;
+    let mut sibling = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_ECHO_WORKER,
+    )
+    .exchange_timeout(Duration::from_secs(5))
+    .spawn()
+    .map_err(|error| format!("concurrent sibling spawn: {error:?}"))?;
+    let rendezvous = Arc::new(Barrier::new(2));
+    let failing_barrier = Arc::clone(&rendezvous);
+    let failing_worker = thread::spawn(move || {
+        let _synchronized = failing_barrier.wait();
+        let started = Instant::now();
+        let result = failing.exchange(b"stall", 16);
+        (result, failing.poisoned(), started.elapsed())
+    });
+    let _synchronized = rendezvous.wait();
+    let first = sibling.exchange(b"simultaneous", 32);
+    let (failure, poisoned, elapsed) = failing_worker
+        .join()
+        .map_err(|_panic| String::from("concurrent timed worker panicked"))?;
+    let second = sibling.exchange(b"after", 32);
+    if failure != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !poisoned
+        || elapsed > Duration::from_secs(3)
+        || !first
+            .as_ref()
+            .is_ok_and(|bytes| bytes.as_slice() == b"\x01simultaneous")
+        || !second
+            .as_ref()
+            .is_ok_and(|bytes| bytes.as_slice() == b"\x02after")
+        || sibling.poisoned()
+    {
+        return Err(format!(
+            "concurrent timeout crossed sessions: \
+            failure={failure:?} first={first:?} second={second:?}",
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn native_process_session_deadline_bounds_progressive_request_writes()
 -> Result<(), String> {

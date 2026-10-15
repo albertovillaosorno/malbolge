@@ -865,6 +865,11 @@ after a failed deadline exchange with a descendant-held response pipe. The
 timeout is isolated to its own poisoned session; the healthy sibling retains
 response order, original stream identity, and its full exchange deadline.
 
+A separate concurrent fixture rendezvous-starts a stalled-response exchange
+on a background thread alongside an active sibling echo exchange. The stalled
+child expires its independent 650-ms deadline and becomes poisoned while the
+echo child returns ordered frames both during and after that timeout.
+
 Host-real Python fixtures sleep instead of consuming a large request or
 answering a completed request. Both return typed `ExchangeTimeout` within
 the configured bound, while a responsive echo child completes three exchanges
