@@ -44,24 +44,52 @@
 static int fail_next_memory;
 static int fail_next_output;
 static int fail_next_response;
+static int fail_next_protect;
+static int fail_next_release;
 static size_t frees;
 static size_t entries;
 
 static void *mb_test_malloc(size_t len);
 static void *mb_test_calloc(size_t count, size_t width);
 static void mb_test_free(void *ptr);
+static int mb_test_mprotect(void *address, size_t len, int permissions);
+static int mb_test_munmap(void *address, size_t len);
 
 int mb_test_posix_worker_entry(void);
 
 #define malloc mb_test_malloc
 #define calloc mb_test_calloc
 #define free mb_test_free
+#define mprotect mb_test_mprotect
+#define munmap mb_test_munmap
 #define main mb_test_posix_worker_entry
 #include "native_process_worker_posix.c"
 #undef main
 #undef malloc
 #undef calloc
 #undef free
+#undef mprotect
+#undef munmap
+
+static int mb_test_mprotect(void *address, size_t len, int permissions)
+{
+    if (fail_next_protect != 0) {
+        fail_next_protect = 0;
+        errno = EACCES;
+        return -1;
+    }
+    return mprotect(address, len, permissions);
+}
+
+static int mb_test_munmap(void *address, size_t len)
+{
+    if (fail_next_release != 0) {
+        fail_next_release = 0;
+        errno = EINVAL;
+        return -1;
+    }
+    return munmap(address, len);
+}
 
 static void *mb_test_malloc(size_t len)
 {
@@ -218,7 +246,78 @@ static int check_call_allocations(void)
     return 0;
 }
 
+static int check_lifecycle_fault_recovery(void)
+{
+    struct mb_worker_state worker = {.next_id = 1U};
+    mb_u8 request[34] = {0};
+    mb_u8 *response = NULL;
+    size_t response_len = 0U;
+    memcpy(request, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    mb_native_process_write_u64(&request[9], 64U);
+    mb_native_process_write_u64(&request[17], 65536U);
+    request[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_allocate(&worker, request, 26U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || worker.count != 1U) {
+        mb_test_free(response);
+        return 1;
+    }
+    const mb_u64 id = mb_native_process_read_u64(&response[10]);
+    const mb_u64 base = mb_native_process_read_u64(&response[18]);
+    mb_test_free(response);
+    mb_native_process_write_u64(&request[9], id);
+    mb_native_process_write_u64(&request[17], base);
+    mb_native_process_write_u64(&request[25], 64U);
+    request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    fail_next_protect = 1;
+    if (!mb_worker_handle_protect(&worker, request, 34U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || worker.mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
+        mb_test_free(response);
+        return 2;
+    }
+    mb_test_free(response);
+    if (!mb_worker_handle_protect(&worker, request, 34U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES
+        || response[34] != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
+        || worker.mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
+        mb_test_free(response);
+        return 3;
+    }
+    mb_test_free(response);
+    fail_next_release = 1;
+    if (!mb_worker_handle_release(&worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || worker.count != 1U
+        || worker.mappings[0].base != (mb_u8 *)(uintptr_t)base) {
+        mb_test_free(response);
+        return 4;
+    }
+    mb_test_free(response);
+    if (!mb_worker_handle_release(&worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES
+        || worker.count != 0U) {
+        mb_test_free(response);
+        return 5;
+    }
+    mb_test_free(response);
+    mb_worker_release_all(&worker);
+    return 0;
+}
+
 int main(void)
 {
-    return check_call_allocations();
+    const int call_result = check_call_allocations();
+    if (call_result != 0) {
+        return call_result;
+    }
+    const int lifecycle_result = check_lifecycle_fault_recovery();
+    return lifecycle_result == 0 ? 0 : 20 + lifecycle_result;
 }

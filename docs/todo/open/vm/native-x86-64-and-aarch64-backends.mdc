@@ -724,6 +724,10 @@ A distinct single-resident lease cache
   after native dispatch, requiring no partial frame and full staging cleanup.
   Direct-handler retry succeeds; the session does not replay implicitly.
 
+  The same sanitized POSIX C23 harness now injects failed `mprotect` and
+  `munmap` calls on an over-aligned live reservation. Permission and mapping
+  ownership survive each failure, and retry seals and releases successfully.
+
   Failed 81-byte MBNPC1 response allocation after simulated native dispatch
   also produces no partial response while retaining executable mapping state.
   Direct handler retry reserializes the request; the process-loop exit policy

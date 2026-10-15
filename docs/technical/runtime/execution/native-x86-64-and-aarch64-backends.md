@@ -1284,6 +1284,11 @@ frame, frees both staging buffers, and retains executable mapping identity;
 a direct-handler retry can re-execute the expected transition. A persistent
 session must treat the absent frame as fatal rather than replaying implicitly.
 
+The sanitized POSIX harness now also injects `mprotect` and `munmap` failures
+against a real 64-KiB-aligned reservation. Failed protection leaves the
+mapping writable; failed release preserves the exact mapping address and ID.
+Both operations succeed when retried, and the original reservation is unmapped.
+
 The simulated Win32 heap also injects response-buffer allocation failures
 after real memory operations. Failed copy response encoding leaves the staged
 RW bytes and ID intact; failed sync encoding retains RX ownership and permits
