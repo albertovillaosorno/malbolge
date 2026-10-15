@@ -870,6 +870,11 @@ instruction-cache synchronization must describe nonempty mapped ranges.
 The codec rejects matching but impossible child success evidence instead of
 letting it reach trusted mapping lifecycle admission.
 
+Invalid lifecycle requests still admit the worker's independent 14-byte
+failure response without allocating successful-copy evidence. A codec test
+round-trips failures for invalid allocation, copy, protection, release, and
+synchronization requests while leaving their forged success forms rejected.
+
 Allocation and protection success reports also reject address ranges whose
 base plus mapped length wraps `usize`. Such otherwise-aligned child evidence
 fails as `ResponseShape` before the trusted executable lifecycle sees it.

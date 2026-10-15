@@ -75280,6 +75280,58 @@ fn native_process_memory_wire_rejects_empty_lifecycle_successes()
 }
 
 #[test]
+fn native_process_memory_wire_keeps_invalid_requests_as_remote_failures()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original_copy = requests.get(1).ok_or("copy fixture missing")?;
+    let NativeProcessMemoryRequest::Copy { code, .. } = original_copy else {
+        return Err(String::from("copy fixture variant drifted"));
+    };
+    let empty_mapping = NativeExecutableMappingReport::new(
+        executable.mapping_id(),
+        executable.base_address(),
+        0,
+        NativeExecutablePermission::ReadExecute,
+    );
+    let invalid = [
+        NativeProcessMemoryRequest::Allocate(
+            NativeExecutableAllocationRequest::new(
+                0,
+                3,
+                NativeExecutablePermission::ReadExecute,
+            ),
+        ),
+        NativeProcessMemoryRequest::Copy {
+            code: code.clone(),
+            mapping: executable,
+        },
+        NativeProcessMemoryRequest::Protect(executable),
+        NativeProcessMemoryRequest::Release(
+            NativeExecutableReleaseRequest::from_mapping(empty_mapping),
+        ),
+        NativeProcessMemoryRequest::Synchronize(
+            NativeInstructionSyncRequest::new(
+                executable.mapping_id(),
+                executable.base_address(),
+                0,
+            ),
+        ),
+    ];
+    let failure = NativeProcessMemoryResponse::Failure(4);
+    for request in invalid {
+        let encoded = encode_native_process_memory_response(&request, &failure)
+            .map_err(|error| error.to_string())?;
+        let decoded = decode_native_process_memory_response(&encoded, &request)
+            .map_err(|error| error.to_string())?;
+        if encoded.len() != 14 || encoded.capacity() > 64 || decoded != failure
+        {
+            return Err(String::from("invalid request lost remote failure"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_rejects_mapping_extent_overflow()
 -> Result<(), String> {
     let (executable, requests) = native_process_memory_wire_fixture()?;

@@ -492,6 +492,8 @@ A distinct single-resident lease cache
   since both transitions require nonempty RW staging. Release and cache-sync
   success evidence requires nonempty mapped byte ranges. Matching responses
   cannot turn worker-denied operations into authoritative success.
+  All five invalid command families still round-trip fixed 14-byte remote
+  failures; success preflight does not suppress normal worker rejection.
 
   Release successes also reject wrapped mapping extents derived from the
   original release request, since the response itself has no range fields.
