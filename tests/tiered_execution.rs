@@ -72950,6 +72950,7 @@ fn assert_posix_worker_native_fault_is_session_local(
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_native_loop_timeout_is_session_local(
     worker: &Path,
+    code: &[u8],
 ) -> Result<(), String> {
     let mut looping = NativeProcessSessionConfig::new(worker.to_path_buf())
         .exchange_timeout(Duration::from_millis(500))
@@ -72961,9 +72962,8 @@ fn assert_posix_worker_native_loop_timeout_is_session_local(
     let writable = posix_worker_allocate_for_compaction(&mut looping, 65_536)?;
     let healthy_mapping =
         posix_worker_allocate_for_compaction(&mut healthy, 65_536)?;
-    // jmp -2: a valid x86-64 entry that never completes a call frame.
     let copy = NativeProcessMemoryRequest::Copy {
-        code: vec![0xeb, 0xfe].into_boxed_slice(),
+        code: code.to_vec().into_boxed_slice(),
         mapping: writable,
     };
     let NativeProcessMemoryResponse::Copy(_copied) =
@@ -73000,9 +73000,15 @@ fn assert_posix_worker_loop_call_times_out(
         .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
     let limit = native_process_call_response_byte_limit(&request)
         .map_err(|error| error.to_string())?;
+    let original_frame = frame.clone();
+    let original_memory = request.memory().to_vec();
+    let original_output = request.output().to_vec();
     let result = session.exchange(&frame, limit);
     if result != Err(NativeProcessSessionError::ExchangeTimeout)
         || !session.poisoned()
+        || frame != original_frame
+        || request.memory() != original_memory
+        || request.output() != original_output
         || session.exchange(&frame, limit)
             != Err(NativeProcessSessionError::Poisoned)
     {
@@ -73018,8 +73024,33 @@ fn native_process_posix_worker_native_infinite_loop_times_out_locally()
     let (directory, host) =
         native_process_posix_worker_fixture("looping_native_deadline")?;
     let worker = directory.join("native-process-worker-posix");
+    // jmp -2: a valid x86-64 entry that never completes a call frame.
     let result =
-        assert_posix_worker_native_loop_timeout_is_session_local(&worker);
+        assert_posix_worker_native_loop_timeout_is_session_local(&worker, &[
+            0xeb, 0xfe,
+        ]);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_partial_native_mutation_times_out_locally()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("mutating_loop_deadline")?;
+    let worker = directory.join("native-process-worker-posix");
+    // mov rax,[rcx]; mov dword ptr [rax],0xcc;
+    // mov rax,[rcx+0x28]; mov byte ptr [rax],0xee; jmp -2.
+    let code = [
+        0x48, 0x8b, 0x01, 0xc7, 0x00, 0xcc, 0, 0, 0, 0x48, 0x8b, 0x41, 0x28,
+        0xc6, 0x00, 0xee, 0xeb, 0xfe,
+    ];
+    let result = assert_posix_worker_native_loop_timeout_is_session_local(
+        &worker, &code,
+    );
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;
