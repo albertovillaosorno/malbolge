@@ -72891,6 +72891,32 @@ fn assert_posix_worker_fault_sibling_reuses_mapping(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_call_causes_child_fault(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let (request, _expected) = native_process_call_wire_fixture()?;
+    let mut bytes = encode_native_process_call_request(&request)
+        .map_err(|error| error.to_string())?;
+    bytes
+        .get_mut(8..16)
+        .ok_or("native fault mapping ID missing")?
+        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
+    let limit = native_process_call_response_byte_limit(&request)
+        .map_err(|error| error.to_string())?;
+    if !matches!(
+        session.exchange(&bytes, limit),
+        Err(NativeProcessSessionError::Read(ErrorKind::UnexpectedEof))
+    ) || !session.poisoned()
+        || session.exchange(&bytes, limit)
+            != Err(NativeProcessSessionError::Poisoned)
+    {
+        return Err(String::from("native fault did not isolate child"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_native_fault_is_session_local(
     worker: &Path,
     alignment: usize,
@@ -72923,24 +72949,7 @@ fn assert_posix_worker_native_fault_is_session_local(
     else {
         return Err(String::from("native fault trap RX seal failed"));
     };
-    let (request, _expected) = native_process_call_wire_fixture()?;
-    let mut bytes = encode_native_process_call_request(&request)
-        .map_err(|error| error.to_string())?;
-    bytes
-        .get_mut(8..16)
-        .ok_or("native fault mapping ID missing")?
-        .copy_from_slice(&executable.mapping_id().get().to_le_bytes());
-    let limit = native_process_call_response_byte_limit(&request)
-        .map_err(|error| error.to_string())?;
-    if !matches!(
-        failed.exchange(&bytes, limit),
-        Err(NativeProcessSessionError::Read(ErrorKind::UnexpectedEof))
-    ) || !failed.poisoned()
-        || failed.exchange(&bytes, limit)
-            != Err(NativeProcessSessionError::Poisoned)
-    {
-        return Err(String::from("native fault did not isolate child"));
-    }
+    assert_posix_worker_call_causes_child_fault(&mut failed, executable)?;
     assert_posix_worker_fault_sibling_reuses_mapping(
         &mut healthy,
         healthy_mapping,
@@ -73132,6 +73141,53 @@ fn native_process_posix_worker_native_fault_is_session_local()
         assert_posix_worker_native_fault_is_session_local(&worker, 16, &[
             0x0f, 0x0b,
         ]);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_rw_target_is_not_executable(
+    worker: &Path,
+) -> Result<(), String> {
+    let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("RW target child spawn: {error:?}"))?;
+    let mut healthy = NativeProcessSessionConfig::new(worker.to_path_buf())
+        .spawn()
+        .map_err(|error| format!("RW target sibling spawn: {error:?}"))?;
+    let target = posix_worker_allocate_for_compaction(&mut failed, 65_536)?;
+    let copied = NativeProcessMemoryRequest::Copy {
+        code: vec![0xb8, 1, 0, 0, 0, 0xc3].into_boxed_slice(),
+        mapping: target,
+    };
+    if !matches!(
+        posix_worker_memory_exchange(&mut failed, &copied)?,
+        NativeProcessMemoryResponse::Copy(_)
+    ) {
+        return Err(String::from("RW target stub copy failed"));
+    }
+    let writable = posix_worker_allocate_for_compaction(&mut failed, 65_536)?;
+    let sibling = posix_worker_allocate_for_compaction(&mut healthy, 65_536)?;
+    // movabs rax, target; jmp rax. Target has valid code but only RW access.
+    let mut jump = vec![0x48, 0xb8];
+    jump.extend_from_slice(&target.base_address().get().to_le_bytes());
+    jump.extend_from_slice(&[0xff, 0xe0]);
+    let executable =
+        posix_worker_install_loop_entry(&mut failed, writable, &jump)?;
+    assert_posix_worker_call_causes_child_fault(&mut failed, executable)?;
+    assert_posix_worker_fault_sibling_reuses_mapping(&mut healthy, sibling)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_refuses_indirect_jump_into_rw_mapping()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("rw_indirect_jump_fault")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result = assert_posix_worker_rw_target_is_not_executable(&worker);
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;

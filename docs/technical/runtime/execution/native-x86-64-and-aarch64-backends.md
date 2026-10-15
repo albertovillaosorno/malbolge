@@ -1114,6 +1114,12 @@ to the null address. The resulting instruction-fetch fault terminates only the
 executing child and poisons its session; a sibling still uses its existing
 aligned mapping through copy, RX execution, release, and reallocation.
 
+The host-real W^X boundary also keeps an otherwise valid six-byte native
+return stub writable and unsealed in one mapping. A separate RX entry in the
+same worker jumps indirectly to that RW address. Instruction fetch fails
+instead of executing the writable code; only that child is poisoned, while
+its sibling continues to copy, execute, release, and allocate normally.
+
 A separate host-real timeout fixture executes a sealed x86-64 `jmp -2`
 entry in a 64-KiB-aligned mapping. The 500-ms exchange deadline kills and
 poisons only that non-returning native worker. Another worker retains its
