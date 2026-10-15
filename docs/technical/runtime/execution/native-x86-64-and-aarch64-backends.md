@@ -983,6 +983,12 @@ second child still copies, seals, executes, and releases its existing mapping.
 That child can also allocate again; fault cleanup does not cross process or
 reservation ownership boundaries.
 
+A separate pair of host-real cases executes `mov byte ptr [rip - 7], 0xcc`
+from an RX mapping, deliberately writing to its own executable entry byte.
+The write triggers protection failure in both ordinary and 64-KiB-aligned
+mappings, poisoning only the executing child; the sibling retains live code,
+mapping release authority, and further allocation capability.
+
 A host-real MBNPC1 payload-shape fixture also sends valid outer framing but
 forged `u64::MAX` guest-memory, input, and output lengths. Truncated and
 trailing-byte call payloads fail the same dispatch boundary. Each child exits

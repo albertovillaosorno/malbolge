@@ -70667,7 +70667,9 @@ fn native_process_posix_worker_overaligned_native_fault_is_session_local()
         native_process_posix_worker_fixture("overaligned_native_fault")?;
     let worker = directory.join("native-process-worker-posix");
     let result =
-        assert_posix_worker_native_fault_is_session_local(&worker, 65_536);
+        assert_posix_worker_native_fault_is_session_local(&worker, 65_536, &[
+            0x0f, 0x0b,
+        ]);
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;
@@ -72530,6 +72532,7 @@ fn assert_posix_worker_fault_sibling_reuses_mapping(
 fn assert_posix_worker_native_fault_is_session_local(
     worker: &Path,
     alignment: usize,
+    code: &[u8],
 ) -> Result<(), String> {
     let mut failed = NativeProcessSessionConfig::new(worker.to_path_buf())
         .spawn()
@@ -72542,7 +72545,7 @@ fn assert_posix_worker_native_fault_is_session_local(
     let healthy_mapping =
         posix_worker_allocate_for_compaction(&mut healthy, alignment)?;
     let trap = NativeProcessMemoryRequest::Copy {
-        code: vec![0x0f, 0x0b].into_boxed_slice(),
+        code: code.to_vec().into_boxed_slice(),
         mapping: writable,
     };
     let NativeProcessMemoryResponse::Copy(_copied) =
@@ -72589,7 +72592,45 @@ fn native_process_posix_worker_native_fault_is_session_local()
     let (directory, host) =
         native_process_posix_worker_fixture("native_fault_isolation")?;
     let worker = directory.join("native-process-worker-posix");
-    let result = assert_posix_worker_native_fault_is_session_local(&worker, 16);
+    let result =
+        assert_posix_worker_native_fault_is_session_local(&worker, 16, &[
+            0x0f, 0x0b,
+        ]);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_rx_self_write_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("rx_self_write_fault")?;
+    let worker = directory.join("native-process-worker-posix");
+    // mov byte ptr [rip - 7], 0xcc; ret: writing RX entry must fault.
+    let result =
+        assert_posix_worker_native_fault_is_session_local(&worker, 16, &[
+            0xc6, 0x05, 0xf9, 0xff, 0xff, 0xff, 0xcc, 0xc3,
+        ]);
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_overaligned_rx_self_write_is_session_local()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("aligned_rx_self_write_fault")?;
+    let worker = directory.join("native-process-worker-posix");
+    let result =
+        assert_posix_worker_native_fault_is_session_local(&worker, 65_536, &[
+            0xc6, 0x05, 0xf9, 0xff, 0xff, 0xff, 0xcc, 0xc3,
+        ]);
     drop(host);
     let cleanup = remove_file_blob_store_fixture(&directory);
     result?;

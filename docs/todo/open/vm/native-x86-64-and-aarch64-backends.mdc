@@ -998,6 +998,10 @@ A distinct single-resident lease cache
   poisons only the executing child. The surviving sibling retains its already
   allocated mapping through copy, RX sealing, dispatch, release, and reuse.
 
+  Real RX self-write machine code now faults on both ordinary and 64-KiB-
+  aligned executable pages. The executing child alone is poisoned; a sibling
+  still copies, seals, executes, releases, and reallocates without interference.
+
   A host-real MBNPC1 payload-shape regression also rejects `u64::MAX` guest
   memory, input, or output count fields and truncated or trailing payloads.
   No malformed call publishes response or guest-state evidence.
