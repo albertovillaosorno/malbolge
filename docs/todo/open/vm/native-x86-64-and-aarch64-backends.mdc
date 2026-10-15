@@ -826,6 +826,8 @@ A distinct single-resident lease cache
   POSIX C23/ASan simulation additionally exhausts the monotonic mapping-ID
   counter. A failed `mmap` does not consume the last `u64::MAX` ID, which
   remains releasable, but allocations after its issuance cannot reuse zero.
+  A failed last-ID `munmap` also keeps the mapping live for release retry
+  without resetting the exhausted counter.
   If the final allocation's success frame fails, teardown still releases its
   otherwise unreported reservation without consuming or recycling new IDs.
 

@@ -641,6 +641,18 @@ static int check_mapping_id_exhaustion(void)
     mb_native_process_write_u64(&request[9], UINT64_MAX);
     mb_native_process_write_u64(&request[17], address);
     mb_native_process_write_u64(&request[25], 64U);
+    fail_next_release = 1;
+    if (!mb_worker_handle_release(&worker, request, 33U,
+            &response, &response_len)
+        || response_len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || mb_native_process_read_u32(&response[10]) != (mb_u32)EINVAL
+        || worker.count != 1U || worker.next_id != 0U
+        || unmapped_reservations != unmapped_before) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 7;
+    }
+    mb_test_free(response);
     if (!mb_worker_handle_release(&worker, request, 33U,
             &response, &response_len)
         || response_len != MB_NATIVE_PROCESS_MEMORY_RELEASE_RESPONSE_BYTES

@@ -1497,8 +1497,10 @@ new reservation. Subsequent growth succeeds, and mapped/unmapped counts balance.
 
 The POSIX C23/ASan staging fixture now also seeds the worker's mapping ID at
 `u64::MAX`, preserves that final identity through a failed `mmap`, then issues
-and releases it exactly once. Allocation after counter wrap fails before
-another reservation is created, so a stale ID can never be recycled.
+and releases it exactly once. A failed `munmap` at that last ID preserves
+mapping ownership and exhausted counter state for a successful release retry.
+Allocation after counter wrap fails before another reservation is created, so
+a stale ID can never be recycled.
 
 If final-ID allocation succeeds but its 35-byte success response allocation
 fails, the POSIX worker retains the unreported mapping for teardown. The next
