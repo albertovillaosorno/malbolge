@@ -484,6 +484,9 @@ A distinct single-resident lease cache
   Copy success also rejects code larger than its original mapping capacity
   or mappings whose complete host address interval wraps `usize`.
 
+  Release successes also reject wrapped mapping extents derived from the
+  original release request, since the response itself has no range fields.
+
   Failure encoding now reserves only its fixed 14-byte frame, rather than the
   full potential successful copy payload. A 4096-byte copy request has a
   measured over-reservation regression without changing failure evidence.

@@ -623,9 +623,13 @@ fn validate_success_response_shape(
             NativeProcessMemoryResponse::Copy(report),
         ) => copy_report_shape_matches(code, mapping, report),
         (
-            NativeProcessMemoryRequest::Release(_),
+            NativeProcessMemoryRequest::Release(release),
             NativeProcessMemoryResponse::Release,
-        ) => true,
+        ) => release
+            .base_address()
+            .get()
+            .checked_add(release.mapped_len())
+            .is_some(),
         (
             NativeProcessMemoryRequest::Synchronize(sync),
             NativeProcessMemoryResponse::Synchronize(report),

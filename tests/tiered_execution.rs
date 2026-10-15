@@ -75233,6 +75233,36 @@ fn native_process_memory_wire_rejects_copy_outside_mapping()
 }
 
 #[test]
+fn native_process_memory_wire_rejects_release_extent_overflow()
+-> Result<(), String> {
+    let (executable, requests) = native_process_memory_wire_fixture()?;
+    let original = requests.get(3).ok_or("release fixture missing")?;
+    let success = NativeProcessMemoryResponse::Release;
+    let original_wire =
+        encode_native_process_memory_response(original, &success)
+            .map_err(|error| error.to_string())?;
+    let mapping = NativeExecutableMappingReport::new(
+        executable.mapping_id(),
+        native_executable_address(usize::MAX & !15usize)?,
+        64,
+        NativeExecutablePermission::ReadExecute,
+    );
+    let request = NativeProcessMemoryRequest::Release(
+        NativeExecutableReleaseRequest::from_mapping(mapping),
+    );
+    if encode_native_process_memory_response(&request, &success)
+        != Err(NativeProcessMemoryWireError::ResponseShape)
+        || decode_native_process_memory_response(&original_wire, &request)
+            != Err(NativeProcessMemoryWireError::ResponseShape)
+    {
+        return Err(String::from(
+            "native wire accepted release of impossible mapped extent",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_memory_wire_rejects_success_shape_before_encoding()
 -> Result<(), String> {
     let (executable, requests) = native_process_memory_wire_fixture()?;

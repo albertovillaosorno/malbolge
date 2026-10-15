@@ -870,6 +870,11 @@ original mapping capacity, and the complete mapped interval to fit `usize`.
 Matching a forged request is insufficient when the mapping geometry is
 impossible, even if the child returns the exact requested code bytes.
 
+Release success has no returned address fields, so its only geometry evidence
+comes from the exact original release request. The MBNPM1 success codec now
+rejects that request when the base plus mapped length would wrap `usize`,
+even if the child replies with an otherwise correctly framed release tag.
+
 The copied-code request decoder and successful response decoder now check the
 complete framed payload before allocating owned copies. Truncated payloads and
 trailing bytes fail closed without duplicating otherwise valid code first.
