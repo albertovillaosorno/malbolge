@@ -962,6 +962,11 @@ A distinct single-resident lease cache
   headers, incomplete announced payloads, unknown protocol tags, and short
   call messages. Each exits without a response or guest-state publication.
 
+  A host-controlled POSIX stdio fixture now rejects short header and payload
+  reads, short writes, failed flushes, and a zero-byte read with both EOF and
+  error indicators. Genuine error-free EOF remains a normal stream close;
+  prior code incorrectly classified the contradictory error case as EOF.
+
   The real POSIX framing fixture also rejects announced `u64::MAX` payload
   lengths and zero-length frames with their distinct failure exit codes,
   without emitting any response bytes.

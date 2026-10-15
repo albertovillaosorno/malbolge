@@ -21,16 +21,16 @@
 // - Merge-When:
 //   - One host-side runtime simulator covers both worker implementations.
 // - Summary:
-//   - Simulates both guest call-buffer allocation failure paths.
+//   - Simulates native-call staging failures and POSIX stream framing.
 // - Description:
-//   - Links the real POSIX handler with controlled staging malloc failures.
+//   - Links actual POSIX handlers with injected malloc and stdio faults.
 // - Usage:
 //   - Compile and run through pinned Clang and pytest on Linux x86-64.
 // - Defaults:
 //   - No subprocess isolation; all native entries are controlled C stubs.
 //
 
-//! Host fault injection against the real POSIX native-call handler.
+//! Host fault injection against native-call and POSIX frame handlers.
 
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
@@ -53,6 +53,15 @@ static size_t mapped_reservations;
 static size_t unmapped_reservations;
 static size_t frees;
 static size_t entries;
+static const unsigned char *mock_frame_input;
+static size_t mock_frame_input_len;
+static size_t mock_frame_input_pos;
+static int mock_frame_eof;
+static int mock_frame_error;
+static unsigned char mock_frame_output[64];
+static size_t mock_frame_output_pos;
+static int mock_frame_short_write;
+static int mock_frame_flush_error;
 
 static void *mb_test_malloc(size_t len);
 static void *mb_test_realloc(void *ptr, size_t len);
@@ -63,6 +72,13 @@ static void *mb_test_calloc(size_t count, size_t width);
 static void mb_test_free(void *ptr);
 static int mb_test_mprotect(void *address, size_t len, int permissions);
 static int mb_test_munmap(void *address, size_t len);
+static size_t mb_test_fread(
+    void *bytes, size_t width, size_t count, FILE *stream);
+static size_t mb_test_fwrite(
+    const void *bytes, size_t width, size_t count, FILE *stream);
+static int mb_test_feof(FILE *stream);
+static int mb_test_ferror(FILE *stream);
+static int mb_test_fflush(FILE *stream);
 
 int mb_test_posix_worker_entry(void);
 
@@ -73,6 +89,11 @@ int mb_test_posix_worker_entry(void);
 #define free mb_test_free
 #define mprotect mb_test_mprotect
 #define munmap mb_test_munmap
+#define fread mb_test_fread
+#define fwrite mb_test_fwrite
+#define feof mb_test_feof
+#define ferror mb_test_ferror
+#define fflush mb_test_fflush
 #define main mb_test_posix_worker_entry
 #include "native_process_worker_posix.c"
 #undef main
@@ -83,6 +104,144 @@ int mb_test_posix_worker_entry(void);
 #undef free
 #undef mprotect
 #undef munmap
+#undef fread
+#undef fwrite
+#undef feof
+#undef ferror
+#undef fflush
+
+static size_t mb_test_fread(
+    void *bytes, size_t width, size_t count, FILE *stream)
+{
+    (void)stream;
+    if (width != 1U) {
+        return 0U;
+    }
+    const size_t available = mock_frame_input_len - mock_frame_input_pos;
+    const size_t length = count < available ? count : available;
+    if (length != 0U) {
+        memcpy(bytes, &mock_frame_input[mock_frame_input_pos], length);
+    }
+    mock_frame_input_pos += length;
+    return length;
+}
+
+static size_t mb_test_fwrite(
+    const void *bytes, size_t width, size_t count, FILE *stream)
+{
+    (void)stream;
+    if (width != 1U || count > sizeof(mock_frame_output)
+        || mock_frame_output_pos > sizeof(mock_frame_output) - count) {
+        return 0U;
+    }
+    const size_t actual = mock_frame_short_write != 0 && count != 0U
+        ? count - 1U : count;
+    memcpy(&mock_frame_output[mock_frame_output_pos], bytes, actual);
+    mock_frame_output_pos += actual;
+    return actual;
+}
+
+static int mb_test_feof(FILE *stream)
+{
+    (void)stream;
+    return mock_frame_eof;
+}
+
+static int mb_test_ferror(FILE *stream)
+{
+    (void)stream;
+    return mock_frame_error;
+}
+
+static int mb_test_fflush(FILE *stream)
+{
+    (void)stream;
+    return mock_frame_flush_error != 0 ? EOF : 0;
+}
+
+static void mb_test_frame_reset(
+    const unsigned char *bytes, size_t len, int eof, int error)
+{
+    mock_frame_input = bytes;
+    mock_frame_input_len = len;
+    mock_frame_input_pos = 0U;
+    mock_frame_eof = eof;
+    mock_frame_error = error;
+}
+
+static int mb_test_frame_io(void)
+{
+    unsigned char frame[11] = {0};
+    mb_u8 *payload = NULL;
+    size_t len = 0U;
+    mb_native_process_write_u64(frame, 3U);
+    memcpy(&frame[8], "xyz", 3U);
+    mb_test_frame_reset(frame, sizeof(frame), 0, 0);
+    if (mb_worker_read_frame(&payload, &len) != 1
+        || len != 3U || memcmp(payload, "xyz", 3U) != 0
+        || mock_frame_input_pos != sizeof(frame)) {
+        free(payload);
+        return 1;
+    }
+    free(payload);
+    mb_test_frame_reset(frame, 0U, 1, 0);
+    if (mb_worker_read_frame(&payload, &len) != 0) {
+        return 2;
+    }
+    mb_test_frame_reset(frame, 0U, 1, 1);
+    if (mb_test_ferror(stdin) != 1) {
+        return 11;
+    }
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 3;
+    }
+    mb_test_frame_reset(frame, 4U, 1, 0);
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 4;
+    }
+    mb_test_frame_reset(frame, 9U, 1, 0);
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 5;
+    }
+    mb_native_process_write_u64(frame, 0U);
+    mb_test_frame_reset(frame, 8U, 0, 0);
+    if (mb_worker_read_frame(&payload, &len) != 1
+        || len != 0U || payload != NULL) {
+        return 6;
+    }
+    mock_frame_output_pos = 0U;
+    mock_frame_short_write = 0;
+    mock_frame_flush_error = 0;
+    if (!mb_worker_write_frame((const mb_u8 *)"xyz", 3U)
+        || mock_frame_output_pos != sizeof(frame)) {
+        return 7;
+    }
+    mb_native_process_write_u64(frame, 3U);
+    memcpy(&frame[8], "xyz", 3U);
+    if (memcmp(mock_frame_output, frame, sizeof(frame)) != 0) {
+        return 8;
+    }
+    mock_frame_short_write = 1;
+    if (mb_worker_write_frame(NULL, 0U) != 0) {
+        return 9;
+    }
+    mock_frame_short_write = 0;
+    mock_frame_flush_error = 1;
+    if (mb_worker_write_frame(NULL, 0U) != 0) {
+        return 10;
+    }
+    mock_frame_flush_error = 0;
+    mock_frame_output_pos = 0U;
+    if (!mb_worker_write_frame(NULL, 0U)
+        || mock_frame_output_pos != 8U) {
+        return 12;
+    }
+    mb_test_frame_reset(frame, 0U, 0, 1);
+    if (mb_worker_read_frame(&payload, &len) != -1) {
+        return 13;
+    }
+    return 0;
+}
 
 static void *mb_test_realloc(void *ptr, size_t len)
 {
@@ -499,5 +658,9 @@ int main(void)
         return 40 + allocation_result;
     }
     const int response_result = check_lifecycle_response_failures();
-    return response_result == 0 ? 0 : 60 + response_result;
+    if (response_result != 0) {
+        return 60 + response_result;
+    }
+    const int frame_result = mb_test_frame_io();
+    return frame_result == 0 ? 0 : 80 + frame_result;
 }

@@ -1271,6 +1271,13 @@ allocated staging buffer, returns no partial response, and leaves the RX
 mapping and native invocation count unchanged. A valid call on the same
 mapping still executes and returns its exact expected state.
 
+A deterministic POSIX stdio fixture now exercises the actual outer framing
+handlers with complete, empty, and truncated requests, plus short writes and
+failed flushes. Before the fix, simultaneous EOF and stream-error indicators
+at the first header byte were misclassified as clean termination. The worker
+now admits clean EOF only when the stream has no error; all other simulated
+transport failures remain fatal, with C23 and ASan/UBSan evidence.
+
 A separate Linux x86-64 C23/ASan fixture links the real POSIX call handler
 with deterministic allocation faults at those same two staging steps. Each
 failed call frees the counterpart buffer, emits no partial MBNPC1 response,

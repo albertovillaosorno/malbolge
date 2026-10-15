@@ -815,7 +815,8 @@ static int mb_worker_read_frame(mb_u8 **payload, size_t *len)
 {
     mb_u8 header[MB_NATIVE_PROCESS_FRAME_LENGTH_BYTES];
     const size_t header_read = fread(header, 1U, sizeof(header), stdin);
-    if (header_read == 0U && feof(stdin) != 0) {
+    if (header_read == 0U && feof(stdin) != 0
+        && ferror(stdin) == 0) {
         return 0;
     }
     if (header_read != sizeof(header)) {
