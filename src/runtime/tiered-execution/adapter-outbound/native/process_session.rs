@@ -60,6 +60,8 @@ pub enum NativeProcessSessionError {
     Poisoned,
     /// Failed while reading the response frame.
     Read(ErrorKind),
+    /// Request clone could not reserve memory for a timed exchange.
+    RequestAllocation,
     /// Request byte length cannot be represented by the session frame.
     RequestLength,
     /// Child announced a response buffer that this host cannot allocate.
@@ -90,8 +92,8 @@ pub struct NativeProcessSession {
     child: Child,
     exchange_timeout: Option<Duration>,
     poisoned: bool,
-    stdin: ChildStdin,
-    stdout: ChildStdout,
+    stdin: Option<ChildStdin>,
+    stdout: Option<ChildStdout>,
 }
 
 impl NativeProcessSessionConfig {
@@ -167,8 +169,8 @@ impl NativeProcessSessionConfig {
             child,
             exchange_timeout: self.exchange_timeout,
             poisoned: false,
-            stdin,
-            stdout,
+            stdin: Some(stdin),
+            stdout: Some(stdout),
         })
     }
 
@@ -218,12 +220,15 @@ impl NativeProcessSession {
         request: &[u8],
         response_limit: usize,
     ) -> Result<Vec<u8>, NativeProcessSessionError> {
-        exchange_framed_bytes(
-            &mut self.stdin,
-            &mut self.stdout,
-            request,
-            response_limit,
-        )
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or(NativeProcessSessionError::Poisoned)?;
+        let stdout = self
+            .stdout
+            .as_mut()
+            .ok_or(NativeProcessSessionError::Poisoned)?;
+        exchange_framed_bytes(stdin, stdout, request, response_limit)
     }
 
     fn exchange_with_timeout(
@@ -232,33 +237,46 @@ impl NativeProcessSession {
         response_limit: usize,
         timeout: Duration,
     ) -> Result<Vec<u8>, NativeProcessSessionError> {
-        let child = &mut self.child;
-        let stdin = &mut self.stdin;
-        let stdout = &mut self.stdout;
-        thread::scope(|scope| {
-            let (sender, receiver) = mpsc::sync_channel(1);
-            let exchange = scope.spawn(move || {
-                let result = exchange_framed_bytes(
-                    stdin,
-                    stdout,
-                    request,
-                    response_limit,
-                );
-                let _sent = sender.send(result);
-            });
-            let result = match receiver.recv_timeout(timeout) {
-                Ok(result) => result,
-                Err(RecvTimeoutError::Timeout) => {
-                    terminate_child(child);
-                    Err(NativeProcessSessionError::ExchangeTimeout)
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    Err(NativeProcessSessionError::Read(ErrorKind::BrokenPipe))
-                },
-            };
-            let _join = exchange.join();
-            result
-        })
+        // The worker owns the pipe handles. A descendant may inherit stdout,
+        // so joining a blocked read thread after killing the direct child
+        // would allow that descendant to defeat the exchange deadline.
+        let mut stdin = self
+            .stdin
+            .take()
+            .ok_or(NativeProcessSessionError::Poisoned)?;
+        let mut stdout = self
+            .stdout
+            .take()
+            .ok_or(NativeProcessSessionError::Poisoned)?;
+        let mut owned_request = Vec::new();
+        owned_request
+            .try_reserve_exact(request.len())
+            .map_err(|_error| NativeProcessSessionError::RequestAllocation)?;
+        owned_request.extend_from_slice(request);
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let _worker = thread::spawn(move || {
+            let result = exchange_framed_bytes(
+                &mut stdin,
+                &mut stdout,
+                &owned_request,
+                response_limit,
+            );
+            let _sent = sender.send((result, stdin, stdout));
+        });
+        match receiver.recv_timeout(timeout) {
+            Ok((result, returned_stdin, returned_stdout)) => {
+                self.stdin = Some(returned_stdin);
+                self.stdout = Some(returned_stdout);
+                result
+            },
+            Err(RecvTimeoutError::Timeout) => {
+                terminate_child(&mut self.child);
+                Err(NativeProcessSessionError::ExchangeTimeout)
+            },
+            Err(RecvTimeoutError::Disconnected) => {
+                Err(NativeProcessSessionError::Read(ErrorKind::BrokenPipe))
+            },
+        }
     }
 
     fn poison(&mut self) {

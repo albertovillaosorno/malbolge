@@ -1477,6 +1477,42 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_INHERITED_PIPE_WORKER: &str = r#"
+import subprocess
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+# The descendant inherits stdout and outlives its direct parent.
+subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(4)"],
+    stdin=subprocess.DEVNULL,
+    stdout=sys.stdout,
+    stderr=subprocess.DEVNULL,
+)
+sys.stdout.buffer.write(b"\x04\x00\x00\x00")
+sys.stdout.buffer.flush()
+time.sleep(30)
+"#;
+
+const NATIVE_PROCESS_SESSION_INHERITED_INPUT_PIPE_WORKER: &str = r#"
+import subprocess
+import sys
+import time
+# The grandchild holds the request pipe open without consuming its bytes.
+subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(4)"],
+    stdin=sys.stdin,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+time.sleep(30)
+"#;
+
 const NATIVE_PROCESS_SESSION_STALLED_SECOND_WORKER: &str = r#"
 import sys
 import time
@@ -75042,6 +75078,53 @@ fn native_process_session_deadline_bounds_partial_responses()
         {
             return Err(format!("{label} deadline drifted: {result:?}"));
         }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn native_process_session_timeout_ignores_descendant_pipe_holders()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_INHERITED_PIPE_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(300))
+    .spawn()
+    .map_err(|error| format!("inherited pipe spawn: {error:?}"))?;
+    let started = Instant::now();
+    let result = session.exchange(b"forked", 16);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"again", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+        || started.elapsed() > Duration::from_secs(2)
+    {
+        return Err(format!("inherited pipe escaped deadline: {result:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn native_process_session_timeout_ignores_descendant_input_holders()
+-> Result<(), String> {
+    let mut session = native_process_session_python_config(
+        NATIVE_PROCESS_SESSION_INHERITED_INPUT_PIPE_WORKER,
+    )
+    .exchange_timeout(Duration::from_millis(300))
+    .spawn()
+    .map_err(|error| format!("inherited stdin spawn: {error:?}"))?;
+    let large_request = vec![0xa5u8; 1_048_576];
+    let started = Instant::now();
+    let result = session.exchange(&large_request, 16);
+    if result != Err(NativeProcessSessionError::ExchangeTimeout)
+        || !session.poisoned()
+        || session.exchange(b"again", 16)
+            != Err(NativeProcessSessionError::Poisoned)
+        || started.elapsed() > Duration::from_secs(2)
+    {
+        return Err(format!("inherited stdin escaped deadline: {result:?}"));
     }
     Ok(())
 }

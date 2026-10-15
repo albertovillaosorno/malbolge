@@ -840,6 +840,17 @@ native child session; the default remains unlimited for compatibility.
 The deadline covers both framed request writes and response reads. When it
 expires, the owning direct child is killed and the session is poisoned.
 
+A descendant can inherit the child's response pipe. Joining the blocked read
+thread after killing only the direct child formerly extended a 300-ms deadline
+to roughly four seconds in a host-real adversarial fixture. Timed sessions now
+transfer owned pipe handles to a detachable transport thread, return promptly
+on deadline expiry, and never reuse the poisoned stream. A fallible request
+copy avoids parent-process allocation aborts before the timed exchange begins.
+
+A symmetric test has a descendant inherit the request pipe without consuming
+bytes. A one-megabyte request now returns within the same 300-ms deadline even
+when the descendant still holds the read end after direct-child termination.
+
 Host-real Python fixtures sleep instead of consuming a large request or
 answering a completed request. Both return typed `ExchangeTimeout` within
 the configured bound, while a responsive echo child completes three exchanges
