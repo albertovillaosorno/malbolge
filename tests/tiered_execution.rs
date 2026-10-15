@@ -1448,6 +1448,35 @@ if len(sys.stdin.buffer.read(length)) != length:
 time.sleep(30)
 "#;
 
+const NATIVE_PROCESS_SESSION_STALLED_HEADER_WORKER: &str = r#"
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write(b"\x04\x00\x00\x00")
+sys.stdout.buffer.flush()
+time.sleep(30)
+"#;
+
+const NATIVE_PROCESS_SESSION_STALLED_BODY_WORKER: &str = r#"
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+sys.stdout.buffer.write((4).to_bytes(8, "little"))
+sys.stdout.buffer.write(b"ab")
+sys.stdout.buffer.flush()
+time.sleep(30)
+"#;
+
 const NATIVE_PROCESS_SESSION_ECHO_WORKER: &str = r#"
 import sys
 count = 0
@@ -74965,6 +74994,34 @@ fn native_process_session_deadline_bounds_blocked_response()
         || elapsed.elapsed() > Duration::from_secs(5)
     {
         return Err(format!("blocked read missed deadline: {result:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_process_session_deadline_bounds_partial_responses()
+-> Result<(), String> {
+    for (label, script) in [
+        (
+            "partial header",
+            NATIVE_PROCESS_SESSION_STALLED_HEADER_WORKER,
+        ),
+        ("partial body", NATIVE_PROCESS_SESSION_STALLED_BODY_WORKER),
+    ] {
+        let mut session = native_process_session_python_config(script)
+            .exchange_timeout(Duration::from_millis(400))
+            .spawn()
+            .map_err(|error| format!("{label} spawn: {error:?}"))?;
+        let elapsed = Instant::now();
+        let result = session.exchange(b"request", 16);
+        if result != Err(NativeProcessSessionError::ExchangeTimeout)
+            || !session.poisoned()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+            || elapsed.elapsed() > Duration::from_secs(5)
+        {
+            return Err(format!("{label} deadline drifted: {result:?}"));
+        }
     }
     Ok(())
 }

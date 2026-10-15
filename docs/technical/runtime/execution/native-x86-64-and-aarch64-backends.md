@@ -845,6 +845,11 @@ answering a completed request. Both return typed `ExchangeTimeout` within
 the configured bound, while a responsive echo child completes three exchanges
 and retains its session under the same optional deadline policy.
 
+Partial-response fixtures further stall after four response-header bytes or
+after announcing four payload bytes but delivering only two. Both time out,
+terminate the direct child, and refuse subsequent exchange on the poisoned
+session; neither partial frame becomes an admitted response.
+
 `native/process_memory_wire.rs` now defines the transport-neutral `MBNPM1`
 little-endian command protocol for writable allocation, exact code copy, RX
 protection, instruction synchronization, and release. Mapping/address/length/
