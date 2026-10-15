@@ -75156,6 +75156,30 @@ fn native_process_session_applies_configured_child_context()
 }
 
 #[test]
+fn native_process_session_zero_deadline_is_fail_closed() -> Result<(), String> {
+    let large_request = vec![0xa5u8; 1_048_576];
+    for request in [b"".as_slice(), large_request.as_slice()] {
+        let mut session = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_ECHO_WORKER,
+        )
+        .exchange_timeout(Duration::ZERO)
+        .spawn()
+        .map_err(|error| format!("zero-deadline spawn: {error:?}"))?;
+        let started = Instant::now();
+        let result = session.exchange(request, 16);
+        if result != Err(NativeProcessSessionError::ExchangeTimeout)
+            || !session.poisoned()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+            || started.elapsed() > Duration::from_secs(2)
+        {
+            return Err(format!("zero deadline admitted request: {result:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_deadline_bounds_request() -> Result<(), String> {
     let mut session = native_process_session_python_config(
         NATIVE_PROCESS_SESSION_BLOCKED_REQUEST_WORKER,

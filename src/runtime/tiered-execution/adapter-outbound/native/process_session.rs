@@ -239,6 +239,11 @@ impl NativeProcessSession {
         response_limit: usize,
         timeout: Duration,
     ) -> Result<Vec<u8>, NativeProcessSessionError> {
+        // An exhausted budget cannot authorize a racing worker thread or
+        // consume resources copying a request that must not be transmitted.
+        if timeout.is_zero() {
+            return Err(NativeProcessSessionError::ExchangeTimeout);
+        }
         // The worker owns the pipe handles. A descendant may inherit stdout,
         // so joining a blocked read thread after killing the direct child
         // would allow that descendant to defeat the exchange deadline.

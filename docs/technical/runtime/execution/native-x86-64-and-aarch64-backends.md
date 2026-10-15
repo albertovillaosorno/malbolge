@@ -845,6 +845,11 @@ native child session; the default remains unlimited for compatibility.
 The deadline covers both framed request writes and response reads. When it
 expires, the owning direct child is killed and the session is poisoned.
 
+A zero-duration budget now deterministically expires before request cloning,
+pipe ownership transfer, or worker-thread creation. Both empty and one-megabyte
+requests return `ExchangeTimeout` immediately, poison the owning session, and
+cannot be retried through that child.
+
 A descendant can inherit the child's response pipe. Joining the blocked read
 thread after killing only the direct child formerly extended a 300-ms deadline
 to roughly four seconds in a host-real adversarial fixture. Timed sessions now

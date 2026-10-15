@@ -474,6 +474,10 @@ A distinct single-resident lease cache
   prevents reuse; a responsive child retains all three framed exchanges.
   Existing configurations default to no deadline.
 
+  Zero-duration deadlines now expire without cloning a request or launching a
+  transport thread. Empty and one-megabyte requests both fail closed, and the
+  direct child becomes poisoned before any later exchange.
+
   A descendant retaining the child's stdout pipe previously delayed the
   request's 300-ms deadline until that descendant exited. Owned pipe handles
   now permit timed transport threads to detach after direct-child termination;
