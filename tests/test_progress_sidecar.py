@@ -1544,6 +1544,27 @@ def test_fractional_utc_ordering_keeps_all_digits(
         _ = progress.validate(invalid_start)
 
 
+def test_atomic_pointer_rejects_submicrosecond_rollback(
+    tmp_path: Path,
+) -> None:
+    """A later writer cannot replace a durable pointer with an older instant."""
+    first = _sidecar(tmp_path)
+    newer = replace(
+        first,
+        updated_at="2026-08-06T14:00:01.00000095Z",
+    )
+    earlier = replace(
+        first,
+        updated_at="2026-08-06T14:00:01.00000094Z",
+    )
+    path = progress.write_atomic(newer)
+    before = path.read_bytes()
+    with pytest.raises(ERROR, match="updated_at moved backward"):
+        _ = progress.write_atomic(earlier)
+    assert path.read_bytes() == before
+    assert progress.read(path) == newer
+
+
 def test_transition_validation_rejects_stale_or_skipped_state(
     tmp_path: Path,
 ) -> None:
