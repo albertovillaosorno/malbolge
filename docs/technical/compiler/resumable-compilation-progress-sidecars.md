@@ -38,8 +38,12 @@ durable generation writer in `scripts/progress_sidecar.py`. It defines canonical
 sequence-addressed paths, backend-neutral resume identity, exact timing and
 lifecycle invariants, monotonic transition validation, duplicate-key rejection,
 canonical JSON, immutable checkpoint/partial persistence, and atomic sidecar
-replacement after generation payloads are durable. Both immutable payload and
-mutable pointer writes reject short stream writes before sync or publication.
+replacement after generation payloads are durable.
+
+Both immutable payload and
+mutable pointer writes require an exact integer byte count before sync or
+publication. Boolean reports, including `True` for a single byte and `False`
+for an empty checkpoint, cannot be mistaken for completed payload writes.
 Mutable pointer updates are serialized across processes from prior-sidecar
 validation through replacement, so a stale writer cannot overwrite a generation
 committed concurrently.

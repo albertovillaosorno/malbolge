@@ -1983,7 +1983,7 @@ def _publish_no_replace(
 
 
 def _require_complete_payload_write(written: int, expected: int) -> None:
-    if written != expected:
+    if type(written) is not int or written != expected:
         _fail(f"short payload write: wrote {written} of {expected} bytes")
 
 

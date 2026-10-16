@@ -384,6 +384,40 @@ class FailingPayloadStream:
 
 
 @dataclass(slots=True)
+class BooleanWriteStream:
+    """Return deceptive boolean counts for one real temporary descriptor."""
+
+    descriptor: int
+    accepted: bool
+
+    def write(self, payload: bytes) -> int:
+        """Return a boolean count without writing bytes.
+
+        Returns:
+            Invalid boolean byte count for fail-closed regression tests.
+
+        """
+        del payload
+        return cast("int", self.accepted)
+
+    def flush(self) -> None:
+        """Allow a bogus successful count to pass into the sync phase."""
+
+    def fileno(self) -> int:
+        """Return the owned operating-system descriptor.
+
+        Returns:
+            Raw descriptor for the temporary generation member.
+
+        """
+        return self.descriptor
+
+    def close(self) -> None:
+        """Release the owned raw descriptor."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
 class FailingReadStream:
     """Admitted descriptor with injectable read and close failures."""
 
@@ -3457,6 +3491,40 @@ def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
         f"payload descriptor ownership cleanup also failed: {close_failure}"
     )
     assert getattr(captured.value, "__notes__", None) == [expected_note]
+
+
+@pytest.mark.parametrize(
+    ("accepted", "checkpoint"), [(True, b"x"), (False, b"")]
+)
+def test_checkpoint_generation_rejects_boolean_stream_write_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    accepted: bool,
+    checkpoint: bytes,
+) -> None:
+    """Boolean write counts cannot commit empty or truncated state members."""
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    opened: list[int] = []
+    binary_mode = "wb"
+
+    def boolean_fdopen(descriptor: int, mode: str) -> BooleanWriteStream:
+        assert mode == binary_mode
+        opened.append(descriptor)
+        return BooleanWriteStream(descriptor, accepted)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", boolean_fdopen)
+        with pytest.raises(ERROR, match="short payload write"):
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    assert not Path(sidecar.checkpoint_path or "").exists()
+    assert not Path(sidecar.progress_path).exists()
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_checkpoint_generation_rejects_short_stream_write(
