@@ -11697,7 +11697,7 @@ fn assert_register_masked_no_operation_object(
     if !artifact
         .object()
         .windows(6)
-        .any(|window| window == b"MBPF ")
+        .any(|window| window == b"MBPF\x06\x00")
     {
         return Err(format!("v6 {isa:?} no-op lost MBPF v6 marker"));
     }
@@ -12958,7 +12958,7 @@ fn assert_register_masked_rotate_object(
     if !artifact
         .object()
         .windows(6)
-        .any(|window| window == b"MBPF ")
+        .any(|window| window == b"MBPF\x06\x00")
     {
         return Err(format!("v6 {isa:?} rotate lost MBPF v6 marker"));
     }
@@ -16651,7 +16651,7 @@ fn register_masked_v6_halt_objects_honor_reduced_guard_surface()
             || !artifact
                 .object()
                 .windows(6)
-                .any(|window| window == b"MBPF ")
+                .any(|window| window == b"MBPF\x06\x00")
         {
             return Err(format!("v6 {isa:?} mask-aware object drifted"));
         }
@@ -76533,7 +76533,7 @@ fn native_process_session_reuses_one_child_across_exchanges()
     let second = session.exchange(b"de", 3).map_err(|error| {
         format!("native process second exchange: {error:?}")
     })?;
-    if first == b"abc" && second == b"de" && !session.poisoned() {
+    if first == b"\x01abc" && second == b"\x02de" && !session.poisoned() {
         Ok(())
     } else {
         Err(String::from(
