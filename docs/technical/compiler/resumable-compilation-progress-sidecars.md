@@ -49,7 +49,8 @@ filesystem entries, including named pipes, before attempting blocking payload
 reads. The opened file descriptor is independently checked against the regular-
 file requirement. Where available, POSIX nonblocking and no-follow flags
 prevent a FIFO or leaf symlink substituted during path admission from becoming
-trusted progress input.
+trusted progress input. Descriptor read errors remain primary if stream close
+also fails; close-only failures reject the read instead of returning bytes.
 
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. After acquiring the process lock,

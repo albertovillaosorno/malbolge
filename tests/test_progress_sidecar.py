@@ -382,6 +382,40 @@ class FailingPayloadStream:
 
 
 @dataclass(slots=True)
+class FailingReadStream:
+    """Admitted descriptor with injectable read and close failures."""
+
+    descriptor: int
+    payload: bytes
+    close_failure: str
+    read_failure: str | None = None
+
+    def read(self) -> bytes:
+        """Return bytes or raise the injected primary read error.
+
+        Returns:
+            Exact configured bytes for a successful read.
+
+        Raises:
+            OSError: If the injected read failure is configured.
+
+        """
+        if self.read_failure is not None:
+            raise OSError(self.read_failure)
+        return self.payload
+
+    def close(self) -> None:
+        """Close the owned descriptor before reporting an injected failure.
+
+        Raises:
+            OSError: Always, after closing the raw descriptor.
+
+        """
+        os.close(self.descriptor)
+        raise OSError(self.close_failure)
+
+
+@dataclass(slots=True)
 class ShortPayloadStream:
     """Real temporary descriptor that reports a truncated payload write."""
 
@@ -1491,6 +1525,81 @@ def test_progress_read_preserves_stream_failure_before_close_failure(
     assert getattr(primary, "__notes__", None) == [
         f"read descriptor cleanup also failed: {close_failure}"
     ]
+
+
+def test_read_preserves_primary_read_failure_before_stream_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed stream close never hides the original read error."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    read_failure = "injected read failure"
+    close_failure = "injected read stream close failure"
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def fail_read_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> FailingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return FailingReadStream(
+            descriptor=descriptor,
+            payload=b"unused",
+            close_failure=close_failure,
+            read_failure=read_failure,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_read_stream)
+        with pytest.raises(
+            ERROR, match="progress sidecar is unavailable"
+        ) as caught:
+            _ = progress.read(destination)
+
+    primary = caught.value.__context__
+    assert isinstance(primary, OSError)
+    assert str(primary) == read_failure
+    assert getattr(primary, "__notes__", None) == [
+        f"read stream close also failed: {close_failure}"
+    ]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+def test_read_reports_stream_close_failure_after_valid_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A close-only failure never publishes a trusted read result."""
+    sidecar = _sidecar(tmp_path)
+    destination = progress.write_atomic(sidecar)
+    close_failure = "injected successful read close failure"
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def fail_read_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> FailingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return FailingReadStream(
+            descriptor=descriptor,
+            payload=progress.encode(sidecar),
+            close_failure=close_failure,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_read_stream)
+        with pytest.raises(ERROR, match=close_failure):
+            _ = progress.read(destination)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:

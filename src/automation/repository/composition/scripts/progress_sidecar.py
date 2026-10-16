@@ -1597,8 +1597,32 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
                 f"read descriptor cleanup also failed: {close_error}"
             )
         raise
-    with stream:
+    return _read_stream_preserving_primary(stream)
+
+
+def _read_stream_preserving_primary(stream: FileIO) -> bytes:
+    """Keep the read error primary if descriptor close also fails.
+
+    Returns:
+        Exact bytes from the admitted regular-file stream.
+
+    Raises:
+        OSError: If either the stream read or close fails.
+
+    """
+    try:
         return stream.read()
+    finally:
+        primary_error = sys.exception()
+        try:
+            stream.close()
+        except OSError as error:
+            if primary_error is not None:
+                primary_error.add_note(
+                    f"read stream close also failed: {error}"
+                )
+            else:
+                raise
 
 
 def read(path: Path) -> ProgressSidecar:
