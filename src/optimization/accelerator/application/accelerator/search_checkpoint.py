@@ -240,11 +240,14 @@ def _payload_text(document: JsonObject) -> str:
 def _decode_evidence(
     value: JsonValue,
     batch: CandidateEvaluationBatch,
+    completed_units: int,
 ) -> tuple[CandidateEvidence, ...]:
     if type(value) is not list:
         _fail("search checkpoint completed_evidence must be an array")
     if len(value) > len(batch.items):
         _fail("search checkpoint evidence exceeds candidate batch")
+    if completed_units != len(value):
+        _fail("search checkpoint completed_units does not match evidence")
     return tuple(
         _decode_evidence_item(raw_item, batch.items[index].logical_id)
         for index, raw_item in enumerate(value)
@@ -328,7 +331,9 @@ def _validate_document_identity(
         "seed",
         "total_units",
     ):
-        if document[key] != expected[key]:
+        admitted = expected[key]
+        provided = document[key]
+        if type(provided) is not type(admitted) or provided != admitted:
             _fail(f"search checkpoint {key} does not match current search")
 
 
@@ -347,14 +352,13 @@ def decode_search_checkpoint(
     document = _decode_document(payload)
     _validate_document_identity(document, request, batch)
     validated_batch = batch.validated()
-    evidence = _decode_evidence(
-        document["completed_evidence"], validated_batch
-    )
-    completed = _validate_evidence_prefix(validated_batch, evidence)
-    if _integer(document, "completed_units") != len(completed):
-        _fail("search checkpoint completed_units does not match evidence")
+    completed_units = _integer(document, "completed_units")
     if _integer(document, "total_units") != len(validated_batch.items):
         _fail("search checkpoint total_units does not match candidate batch")
+    evidence = _decode_evidence(
+        document["completed_evidence"], validated_batch, completed_units
+    )
+    completed = _validate_evidence_prefix(validated_batch, evidence)
     if encode_search_checkpoint(request, validated_batch, completed) != payload:
         _fail("search checkpoint is not canonical")
     return SearchCheckpointState(

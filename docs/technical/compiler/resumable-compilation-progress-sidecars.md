@@ -166,10 +166,11 @@ prefix of completed `CandidateEvidence`. Backend and device identity are
 omitted, so byte-identical CPU/CUDA evidence has one durable representation.
 Restore requires the current request and batch to match exactly.
 
-A restored completed list longer than the candidate batch is rejected before
-any evidence payload decoding, and each candidate identity is checked against
-its required request-order position before interpreting its opaque base64
-payload.
+Restore preflights exact-typed search identity, declared total and completed
+counts, and the requested evidence-list length before decoding opaque payloads.
+Every candidate identity is checked against its required request-order position
+before interpreting its associated base64 bytes. Malformed counts and boolean
+aliases therefore fail without consuming untrusted evidence payloads.
 
 `evaluated-search-prefix-resume-v1` now consumes that codec for ordinary
 evaluated search. It rebuilds and validates the exact candidate batch, evaluates

@@ -219,6 +219,80 @@ def test_search_checkpoint_rejects_excess_prefix_before_payload_decode(
         _ = decode_search_checkpoint(payload, request, batch)
 
 
+@pytest.mark.parametrize("declared", [0, True, -1])
+def test_search_checkpoint_rejects_invalid_completed_units_before_decode(
+    declared: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid completion metadata cannot trigger opaque payload decoding."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    document["completed_units"] = declared
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload before completion count admission")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="completed_units"):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
+@pytest.mark.parametrize("field", ["seed", "evaluation_budget"])
+def test_search_checkpoint_rejects_boolean_identity_before_decode(
+    field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """JSON bool/int equality cannot defer exact search-identity rejection."""
+    request = replace(_request(), evaluation_budget=1, seed=1)
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    document[field] = True
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload before exact search identity admission")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match=field):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
+def test_search_checkpoint_rejects_boolean_total_before_payload_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A total count disguised as bool cannot trigger opaque decoding."""
+    request = _request()
+    batch = CandidateEvaluationBatch(
+        evaluator_id=EVALUATOR_ID,
+        items=(_batch().items[0],),
+    )
+    evidence = (CandidateEvidence(logical_id="candidate-0", payload=b"a"),)
+    encoded = encode_search_checkpoint(request, batch, evidence)
+    document = cast("dict[str, object]", json.loads(encoded))
+    document["total_units"] = True
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload before total count admission")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="total_units"):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
 def test_search_checkpoint_rejects_wrong_order_before_payload_decode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
