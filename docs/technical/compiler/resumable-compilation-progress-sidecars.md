@@ -46,9 +46,13 @@ committed concurrently.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
-immutable records. Booleans cannot alias counters or sequence numbers, foreign
-objects do not leak decoder/type exceptions, and direct JSON parsing requires
-an exact string instead of accepting byte/bytearray aliases or leaking decoder
+immutable records. Direct resume identity schema admission also requires an
+exact string before any comparison, rejecting arbitrary equality hooks and
+string subclasses without leaking serializer/type exceptions.
+
+Booleans cannot alias counters or sequence numbers, foreign objects do not leak
+decoder/type exceptions, and direct JSON parsing requires an exact string
+instead of accepting byte/bytearray aliases or leaking decoder
 `TypeError`. Oversized JSON integer literals that hit the interpreter conversion
 limit remain inside the stable sidecar error boundary, and impossible UTC
 calendar timestamps are reported the same way.

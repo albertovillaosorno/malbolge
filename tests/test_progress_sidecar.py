@@ -50,6 +50,8 @@ import time
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import final
+from typing import override
 
 import pytest
 from scripts import progress_sidecar as progress
@@ -1057,6 +1059,52 @@ def test_resume_fingerprint_rejects_invalid_direct_identity() -> None:
         _ = progress.resume_compatibility_fingerprint(
             cast("progress.ResumeIdentity", object())
         )
+
+
+def test_resume_identity_rejects_foreign_schema_equality() -> None:
+    """A foreign equality result cannot authorize an invalid schema value."""
+    identity = _resume_identity()
+
+    @final
+    class ForgedSchema:
+        __hash__ = object.__hash__
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            return other == progress.SCHEMA_ID
+
+    @final
+    class ThrowingSchema:
+        __hash__ = object.__hash__
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            message = "foreign schema comparison must not execute"
+            raise RuntimeError(message)
+
+    foreign = cast("str", cast("object", ForgedSchema()))
+    with pytest.raises(ERROR, match="schema must be a non-empty string"):
+        _ = progress.resume_compatibility_fingerprint(
+            replace(identity, schema=foreign),
+        )
+    with pytest.raises(ERROR, match="schema must be a non-empty string"):
+        _ = progress.encode_portable_checkpoint(
+            replace(identity, schema=foreign),
+            progress.PortableCheckpointPosition(
+                checkpoint_sequence=1,
+                stage="candidate-search",
+                units_completed=0,
+            ),
+            "state-v1",
+            payload=b"state",
+        )
+    for candidate in (True, ThrowingSchema()):
+        foreign_schema = cast("str", cast("object", candidate))
+        with pytest.raises(ERROR, match="schema must be a non-empty string"):
+            _ = progress.resume_compatibility_fingerprint(
+                replace(identity, schema=foreign_schema),
+            )
 
 
 def test_direct_sidecar_foreign_fields_fail_typed(tmp_path: Path) -> None:

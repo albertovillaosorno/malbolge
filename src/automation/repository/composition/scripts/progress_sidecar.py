@@ -944,8 +944,9 @@ def _validate_resume_identity(identity: ResumeIdentity) -> ResumeIdentity:
         (identity.target_profile_id, "target_profile_id"),
     ):
         _identifier(value, context)
-    if identity.schema != SCHEMA_ID:
-        _fail(f"unsupported progress schema: {identity.schema}")
+    schema = _string(identity.schema, "schema")
+    if schema != SCHEMA_ID:
+        _fail(f"unsupported progress schema: {schema}")
     if identity.seed is not None:
         _ = _nonnegative_integer(identity.seed, "seed")
     _digest(identity.source_sha256, "source_sha256")
