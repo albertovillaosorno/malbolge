@@ -1030,7 +1030,8 @@ static int mb_worker_read_frame(mb_u8 **payload, size_t *len)
     if (header_read <= 0) {
         return header_read;
     }
-    if (!mb_worker_size_from_u64(mb_native_process_read_u64(header), len)) {
+    if (!mb_worker_size_from_u64(mb_native_process_read_u64(header), len)
+        || *len > MB_NATIVE_PROCESS_MAX_FRAME_BYTES) {
         return -1;
     }
     mb_u8 *bytes = *len == 0U ? NULL : mb_worker_alloc(*len);

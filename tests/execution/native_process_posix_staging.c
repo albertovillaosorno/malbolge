@@ -44,6 +44,7 @@
 static int fail_next_memory;
 static int fail_next_output;
 static size_t frame_payload_allocations;
+static size_t oversized_frame_allocations;
 static size_t fail_frame_payload_allocation_number;
 static int fail_next_response;
 static int fail_next_protect;
@@ -242,6 +243,15 @@ static int mb_test_frame_io(void)
     if (mb_worker_read_frame(&payload, &len) != -1) {
         return 13;
     }
+    // A syntactically valid but unrepresentable object must fail before
+    // any attempt to allocate its attacker-controlled payload length.
+    mb_native_process_write_u64(frame, (mb_u64)__PTRDIFF_MAX__ + 1U);
+    mb_test_frame_reset(frame, 8U, 0, 0);
+    if (mb_worker_read_frame(&payload, &len) != -1
+        || mock_frame_input_pos != 8U
+        || oversized_frame_allocations != 0U) {
+        return 14;
+    }
     return 0;
 }
 
@@ -296,6 +306,10 @@ static int mb_test_munmap(void *address, size_t len)
 
 static void *mb_test_malloc(size_t len)
 {
+    if (len > (size_t)__PTRDIFF_MAX__) {
+        oversized_frame_allocations += 1U;
+        return NULL;
+    }
     if (len == 26U) {
         frame_payload_allocations += 1U;
         if (frame_payload_allocations

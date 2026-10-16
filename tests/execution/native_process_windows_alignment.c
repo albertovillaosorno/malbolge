@@ -2792,7 +2792,7 @@ static int check_process_loop_cleanup(int scenario)
     mock_fail_write_after = (size_t)-1;
     fail_frame_body_allocation_number = 0U;
     const int huge_valid = scenario != 15
-        || rejected_huge_frame_allocations == 1U;
+        || rejected_huge_frame_allocations == 0U;
     return valid && multi_valid && lifecycle_valid && huge_valid ? 0 : 1;
 }
 

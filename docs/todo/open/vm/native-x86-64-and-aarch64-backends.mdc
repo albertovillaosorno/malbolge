@@ -971,8 +971,11 @@ A distinct single-resident lease cache
   The failed frame emits no response or public mapping identity.
 
   Another five-mapping Windows loop rejects an announced sixth payload length
-  of `u64::MAX` when heap reservation fails. All five preceding responses
-  remain exact, and process teardown releases the five original allocations.
+  of `u64::MAX` before attempting any impossible contiguous heap reservation.
+  All five preceding responses remain exact, and process teardown releases the
+  five original allocations. Both POSIX and Windows workers now reject framed
+  lengths above signed pointer-difference capacity before allocation. A POSIX
+  fault-injected frame also verifies that no oversized allocation is attempted.
 
   Further five-mapping loop fixtures fail a sixth request by truncating its
   body or breaking the pipe after two header bytes. Both emit no sixth

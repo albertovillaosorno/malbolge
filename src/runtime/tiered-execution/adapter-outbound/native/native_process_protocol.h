@@ -38,6 +38,9 @@
 
 #define MB_NATIVE_PROCESS_MAGIC_BYTES 8U
 #define MB_NATIVE_PROCESS_FRAME_LENGTH_BYTES 8U
+// A single payload cannot exceed the addressable signed pointer-difference
+// range. Reject larger announced lengths before reserving any worker heap.
+#define MB_NATIVE_PROCESS_MAX_FRAME_BYTES ((size_t)-1 >> 1U)
 
 #define MB_NATIVE_PROCESS_CALL_REQUEST_FIXED_BYTES 77U
 #define MB_NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES 74U

@@ -1081,6 +1081,12 @@ The framing regression also rejects an announced `u64::MAX` byte length
 without payload as a read failure, and a zero-length payload as an unknown
 protocol. Neither case emits a response or grants native-call authority.
 
+Both POSIX and Windows workers now reject announced payload sizes above the
+largest signed pointer-difference range before attempting a heap allocation.
+The bound mirrors Rust's maximum contiguous buffer length without introducing
+an arbitrary application-specific frame limit. Host-simulated tests verify
+no oversized allocation is attempted and preserve preexisting worker cleanup.
+
 A complementary host-real stream fixture interleaves the same fragmented
 memory lifecycle with three MBNPC1 calls sent in one-, two-, and seven-byte
 chunks. An out-of-range entry returns `InvalidArgument`, followed by two
