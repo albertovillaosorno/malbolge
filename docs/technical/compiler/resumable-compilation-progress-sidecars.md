@@ -42,7 +42,9 @@ replacement after generation payloads are durable. Both immutable payload and
 mutable pointer writes reject short stream writes before sync or publication.
 Mutable pointer updates are serialized across processes from prior-sidecar
 validation through replacement, so a stale writer cannot overwrite a generation
-committed concurrently.
+committed concurrently. Reads and immutable-generation collision checks reject
+pre-existing nonregular filesystem entries, including named pipes, before
+attempting blocking payload reads.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and

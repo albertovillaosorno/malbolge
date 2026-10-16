@@ -1177,6 +1177,15 @@ def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
         _ = progress.read(missing)
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
+def test_read_rejects_named_pipe_progress_file(tmp_path: Path) -> None:
+    """A FIFO at the canonical sidecar path must not block inspection."""
+    destination = Path(_sidecar(tmp_path).progress_path)
+    os.mkfifo(destination)
+    with pytest.raises(ERROR, match="progress sidecar must be a regular file"):
+        _ = progress.read(destination)
+
+
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:
     """Reading a sidecar never follows a redirected canonical leaf."""
     sidecar = _sidecar(tmp_path)
@@ -2273,6 +2282,48 @@ def test_checkpoint_generation_publishes_payloads_before_pointer(
     )
     assert Path(sidecar.checkpoint_path or "").read_bytes() == checkpoint
     assert Path(sidecar.partial_path or "").read_bytes() == partial
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
+@pytest.mark.parametrize("member", ["checkpoint", "partial"])
+def test_checkpoint_read_rejects_named_pipe_generation_member(
+    tmp_path: Path,
+    member: str,
+) -> None:
+    """A replaced durable payload must never block checkpoint restoration."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+    payload_paths = {
+        "checkpoint": sidecar.checkpoint_path,
+        "partial": sidecar.partial_path,
+    }
+    selected = payload_paths[member]
+    assert selected is not None
+    payload_path = Path(selected)
+    payload_path.unlink()
+    os.mkfifo(payload_path)
+    with pytest.raises(ERROR, match=f"{member} payload must be a regular file"):
+        _ = progress.read_checkpoint_generation(sidecar)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
+def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
+    """Collided generation FIFOs fail closed without pointer publication."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    destination = Path(sidecar.checkpoint_path or "")
+    os.mkfifo(destination)
+    with pytest.raises(
+        ERROR, match="immutable progress payload must be a regular file"
+    ):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert not Path(sidecar.progress_path).exists()
 
 
 def test_checkpoint_generation_rejects_linked_immutable_path(
