@@ -221,7 +221,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB
   stderr with concurrent bounded pipe drains. The tests under
   `tests/compiler/typed-ir/inspector_transport.rs` prove wide-output recovery,
-  byte limits, diagnostics, launch failure, and prompt stalled-child rejection.
+  byte limits, diagnostics, launch failure, stalled-child rejection, and
+  deadline enforcement when an exited inspector leaves inherited pipes open.
 
   Full descendant-group cancellation and equivalent ternary bridge transport
   limits remain future work.

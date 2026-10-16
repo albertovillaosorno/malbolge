@@ -162,3 +162,20 @@ fn preserves_spawn_failure_category() {
     );
     assert_eq!(observed, Err(InspectorFailure::Launch));
 }
+
+#[cfg(unix)]
+#[test]
+fn rejects_descendant_inherited_pipe_after_inspector_exit() {
+    let started = Instant::now();
+    let observed = run_fixture(
+        concat!(
+            "import subprocess,sys\n",
+            "subprocess.Popen([sys.executable, '-c', ",
+            "'import time;time.sleep(1)'], ",
+            "stdout=sys.stdout, stderr=sys.stderr)\n",
+        ),
+        limits(1024, 1024, Duration::from_millis(180)),
+    );
+    assert_eq!(observed, Err(InspectorFailure::Rejected));
+    assert!(started.elapsed() < Duration::from_secs(3));
+}
