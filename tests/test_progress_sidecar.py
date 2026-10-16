@@ -1619,6 +1619,52 @@ def test_read_preserves_primary_read_failure_before_stream_close(
         _ = os.fstat(opened[0])
 
 
+def test_checkpoint_payload_read_retains_failure_before_stream_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable generation reads preserve primary errors during cleanup."""
+    checkpoint = b"resume-bytes"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    read_failure = "injected immutable read failure"
+    close_failure = "injected immutable read stream close failure"
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def fail_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> FailingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return FailingReadStream(
+            descriptor=descriptor,
+            payload=b"unused",
+            close_failure=close_failure,
+            read_failure=read_failure,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        with pytest.raises(
+            ERROR, match="checkpoint payload is unavailable"
+        ) as caught:
+            _ = progress.read_checkpoint_generation(sidecar)
+
+    primary = caught.value.__context__
+    assert isinstance(primary, OSError)
+    assert str(primary) == read_failure
+    assert getattr(primary, "__notes__", None) == [
+        f"read stream close also failed: {close_failure}"
+    ]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def test_read_reports_stream_close_failure_after_valid_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
