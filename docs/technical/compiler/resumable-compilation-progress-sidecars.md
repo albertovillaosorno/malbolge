@@ -249,6 +249,13 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+Direct Python `read()` permits copies of sidecar records used as crash
+fixture inputs, preserving the original declared progress path without
+publishing state. Operator CLI inspection instead requires the supplied file
+to occupy its declared canonical `progress_path`. Relocated pointers cannot
+impersonate another live job during summary, follow, checkpoint discovery, or
+binary state extraction.
+
 The progress-sidecar inspector provides two verified portable-checkpoint views.
 `--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
 generation bytes, outer checkpoint digest, resume identity and position,

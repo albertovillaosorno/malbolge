@@ -134,7 +134,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked
   canonical typed-IR compiler state, exact binary checkpoint extraction, and
-  exact operator-facing elapsed-time summaries, and malformed stored codec
+  exact operator-facing elapsed-time summaries, operator CLI canonical-path
+  admission with detached Python crash-snapshot reads preserved, and malformed
+  stored codec
   metadata and noncanonical envelope wire spelling rejected before opaque
   checkpoint payload decoding. The tracked typed-IR golden also
   proves byte-identical envelopes, metadata, and decoded state under CPU versus

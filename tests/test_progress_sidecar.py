@@ -1277,6 +1277,79 @@ def test_read_rejects_foreign_path_type() -> None:
         _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
+def test_read_permits_relocated_snapshot_when_bytes_match(
+    tmp_path: Path,
+) -> None:
+    """Direct reads permit copied snapshots without changing original paths."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    relocated = tmp_path / "relocated-progress.json"
+    _ = relocated.write_bytes(destination.read_bytes())
+
+    assert progress.read(relocated).progress_path == str(destination)
+    assert progress.read(destination).progress_path == str(destination)
+
+
+def test_cli_rejects_relocated_checkpoint_pointer_before_extraction(
+    tmp_path: Path,
+) -> None:
+    """Verified state extraction requires the sidecar's declared location."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    state = b"stable-resume-state"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    relocated = tmp_path / "copied-checkpoint-progress.json"
+    _ = relocated.write_bytes(destination.read_bytes())
+
+    assert progress.read(relocated) == durable
+    assert progress.__file__ is not None
+    observed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            progress.__file__,
+            "--extract-checkpoint",
+            TYPED_IR_CRASH_CODEC,
+            str(relocated),
+        ],
+        capture_output=True,
+        check=False,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert observed.returncode != 0
+    expected_diagnostic = b"location does not match"
+    assert observed.stdout == EMPTY_PAYLOAD
+    assert expected_diagnostic in observed.stderr
+
+
+@pytest.mark.parametrize("mode", ["inspect", "info", "follow"])
+def test_cli_rejects_relocated_pointer_for_all_read_modes(
+    mode: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator inspection and follow require the canonical pointer path."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    relocated = tmp_path / "detached-pointer.json"
+    _ = relocated.write_bytes(destination.read_bytes())
+    args = {
+        "inspect": [],
+        "info": ["--checkpoint-info"],
+        "follow": ["--follow"],
+    }[mode]
+    assert progress.main([*args, str(relocated)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    expected_diagnostic = "location does not match"
+    assert expected_diagnostic in captured.err
+
+
 def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
     """Direct reads keep missing storage inside the stable error boundary."""
     missing = tmp_path / PROGRESS_NAME

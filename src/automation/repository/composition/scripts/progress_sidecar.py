@@ -2430,15 +2430,30 @@ def _write_binary_stdout(payload: bytes) -> None:
     stream.flush()
 
 
-def _portable_payload_from_path(path: Path, state_codec: str) -> bytes:
+def _read_canonical_pointer(path: Path) -> ProgressSidecar:
+    """Bind operator-visible inspection to the declared pointer location.
+
+    Returns:
+        Verified sidecar at its own canonical progress pathname.
+
+    """
     sidecar = read(path)
+    if path != Path(sidecar.progress_path):
+        _fail("progress sidecar location does not match declared progress_path")
+    return sidecar
+
+
+def _portable_payload_from_path(path: Path, state_codec: str) -> bytes:
+    sidecar = _read_canonical_pointer(path)
     payload, _ = read_portable_checkpoint_generation(sidecar, state_codec)
     return payload
 
 
 def _checkpoint_info_path(path: Path) -> int:
     try:
-        metadata = read_portable_checkpoint_metadata(read(path))
+        metadata = read_portable_checkpoint_metadata(
+            _read_canonical_pointer(path)
+        )
     except (OSError, ProgressSidecarError) as error:
         message = f"portable checkpoint inspection failed: {error}\n"
         _ = sys.stderr.write(message)
@@ -2460,7 +2475,7 @@ def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
 
 def _inspect_path(path: Path) -> int:
     try:
-        sidecar = read(path)
+        sidecar = _read_canonical_pointer(path)
     except (OSError, ProgressSidecarError) as error:
         message = f"progress sidecar inspection failed: {error}\n"
         _ = sys.stderr.write(message)
@@ -2485,7 +2500,9 @@ def _next_observed_change(
 ) -> ProgressSidecar:
     while True:
         _follow_wait(wait)
-        observed = _validate_observed_transition(current, read(path))
+        observed = _validate_observed_transition(
+            current, _read_canonical_pointer(path)
+        )
         if observed != current:
             return observed
 
@@ -2494,7 +2511,7 @@ def _follow_validated_path(
     path: Path,
     wait: Callable[[float], None],
 ) -> int:
-    current = read(path)
+    current = _read_canonical_pointer(path)
     while True:
         _ = sys.stdout.write(render_summary(current))
         _ = sys.stdout.flush()
