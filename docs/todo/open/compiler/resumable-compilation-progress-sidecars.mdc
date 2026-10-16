@@ -74,6 +74,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   immutable target races away, direct-construction type admission,
   referenced-generation validation before pointer replacement, regular-file
   read descriptor/path inode identity matching against replacement or unlink,
+  and pre/post read size and nanosecond modification/change-time admission for
+  same-inode rewrite detection,
   post-`mkdir` mutable pointer path
   re-admission against directory-swap races, post-staging mutable/immutable
   path re-admission before publication, stable read with read-before-close
@@ -133,7 +135,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   parent-link swaps in mutable and immutable publication, post-open parent
   link swaps for regular pointer and checkpoint reads plus parent-link
   substitution after reading, same-inode parent links during lock
-  acquisition, exact-string JSON parser admission,
+  acquisition, in-place payload rewrites with stable inode during read,
+  exact-string JSON parser admission,
   bounded routine-write cadence with committed/prepublication retry semantics,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
