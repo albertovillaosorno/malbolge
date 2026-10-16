@@ -1823,6 +1823,50 @@ def test_checkpoint_read_rejects_member_replaced_during_stream_read(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Directory rename and symlink substitution require POSIX semantics",
+)
+def test_progress_read_rejects_parent_link_swapped_after_stream_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-read admission rejects a newly redirecting parent component."""
+    work = tmp_path / "work"
+    work.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    destination = progress.write_atomic(_sidecar(work))
+    _ = (foreign / destination.name).write_bytes(destination.read_bytes())
+    verifier_name = "_verify_opened_read_identity"
+    original_verify = cast("Callable[..., None]", vars(progress)[verifier_name])
+    opened: list[int] = []
+    post_read_phase = "file read"
+
+    def swap_before_postread_verification(
+        path: Path,
+        descriptor: int,
+        context: str,
+        *,
+        phase: str = "file open",
+    ) -> None:
+        """Replace the directory after stream reading, before revalidation."""
+        if phase == post_read_phase:
+            opened.append(descriptor)
+            _ = work.rename(tmp_path / "original-work")
+            work.symlink_to(foreign, target_is_directory=True)
+        original_verify(path, descriptor, context, phase=phase)
+
+    monkeypatch.setattr(
+        progress, verifier_name, swap_before_postread_verification
+    )
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.read(destination)
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def test_progress_read_closes_descriptor_after_type_rejection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

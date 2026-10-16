@@ -66,7 +66,9 @@ These are bounded admission checks, not a promise of immunity to subsequent
 filesystem mutation after the stream closes. Descriptor read errors remain
 primary if stream close also fails; close-only failures reject the read.
 Deterministic parent and regular-inode substitutions cover both progress-pointer
-and immutable checkpoint reads, including descriptor cleanup.
+and immutable checkpoint reads, including descriptor cleanup. A further
+read-completion regression replaces the progress parent with a linked directory
+before the second admission check and proves the original descriptor closes.
 
 Mutable pointer publication rechecks the destination and its parent after
 creating the parent directory and before opening a temporary file. This closes
