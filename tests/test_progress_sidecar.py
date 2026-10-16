@@ -1177,11 +1177,19 @@ def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
         _ = progress.read(missing)
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
+def _make_named_pipe(path: Path) -> None:
+    """Create a POSIX FIFO for filesystem entry-type regressions."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("named pipes need POSIX mkfifo")
+    # The POSIX-only function is absent from the cross-platform os stubs.
+    make_fifo = cast("Callable[[Path], None]", vars(os)["mkfifo"])
+    make_fifo(path)
+
+
 def test_read_rejects_named_pipe_progress_file(tmp_path: Path) -> None:
     """A FIFO at the canonical sidecar path must not block inspection."""
     destination = Path(_sidecar(tmp_path).progress_path)
-    os.mkfifo(destination)
+    _make_named_pipe(destination)
     with pytest.raises(ERROR, match="progress sidecar must be a regular file"):
         _ = progress.read(destination)
 
@@ -2284,7 +2292,6 @@ def test_checkpoint_generation_publishes_payloads_before_pointer(
     assert Path(sidecar.partial_path or "").read_bytes() == partial
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
 @pytest.mark.parametrize("member", ["checkpoint", "partial"])
 def test_checkpoint_read_rejects_named_pipe_generation_member(
     tmp_path: Path,
@@ -2305,12 +2312,11 @@ def test_checkpoint_read_rejects_named_pipe_generation_member(
     assert selected is not None
     payload_path = Path(selected)
     payload_path.unlink()
-    os.mkfifo(payload_path)
+    _make_named_pipe(payload_path)
     with pytest.raises(ERROR, match=f"{member} payload must be a regular file"):
         _ = progress.read_checkpoint_generation(sidecar)
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX named pipes")
 def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     """Collided generation FIFOs fail closed without pointer publication."""
     checkpoint = b"checkpoint-state-v1"
@@ -2318,7 +2324,7 @@ def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
         _sidecar(tmp_path), checkpoint=checkpoint, partial=None
     )
     destination = Path(sidecar.checkpoint_path or "")
-    os.mkfifo(destination)
+    _make_named_pipe(destination)
     with pytest.raises(
         ERROR, match="immutable progress payload must be a regular file"
     ):
