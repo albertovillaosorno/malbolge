@@ -83,7 +83,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   fails, durable-pointer evidence when writer-lock or immutable temporary
   cleanup fails after commit, exact committed-generation evidence when a later
   partial member or mutable sidecar fails prepublication, regular writer-lock
-  descriptor admission rejects FIFO/link substitution and lock-inode drift,
+  descriptor admission rejects FIFO/link substitution, lock-inode drift,
+  and same-inode parent links installed after lock acquisition,
   and writer-lock teardown preserves an earlier
   acquisition/body/release failure as primary, shared mutable/immutable payload
   writing with raw-descriptor ownership cleanup on stream-open failure and
@@ -129,7 +130,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   payload aliases, foreign path arguments, post-`mkdir` parent-link substitution
   during pointer, immutable generation, and writer-lock setup, post-open parent
   link swaps for regular pointer and checkpoint reads plus parent-link
-  substitution after reading, exact-string JSON parser admission,
+  substitution after reading, same-inode parent links during lock
+  acquisition, exact-string JSON parser admission,
   bounded routine-write cadence with committed/prepublication retry semantics,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery

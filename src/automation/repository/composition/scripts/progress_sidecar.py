@@ -1831,7 +1831,8 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
 
 
 def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
-    """Reject a lock-path replacement between file open and lock acquire."""
+    """Reject a linked or replaced lock after acquiring serialization."""
+    _reject_path_redirect(lock_path, "progress writer lock")
     try:
         opened = os.fstat(stream.fileno())
         current = lock_path.stat(follow_symlinks=False)

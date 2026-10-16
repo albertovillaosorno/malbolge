@@ -82,11 +82,14 @@ immutable checkpoint publication at the post-creation boundary.
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. Its lock-path recheck after
 creating the parent directory rejects a parent-link substitution before the
-writer-lock file is opened. After acquiring the process lock,
-the publisher checks that the lock pathname still identifies that descriptor's
-device and inode. A substituted or detached lock fails closed before the
-publication body can execute; this guards acquisition interleavings, not
-external deletion after the identity check.
+writer-lock file is opened.
+
+After acquiring the process lock,
+the publisher rechecks every path component for links and confirms that the
+lock pathname still identifies the acquired descriptor's device and inode.
+A same-inode parent symlink or substituted/detached lock fails closed before
+the publication body can execute. These checks guard acquisition
+interleavings, not external mutation after the identity check.
 
 Canonical output-path helpers and direct sidecar reads reject embedded NUL
 and ill-formed or host-unencodable Unicode filenames before storage access.

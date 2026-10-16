@@ -2441,6 +2441,44 @@ def test_writer_lock_rejects_replaced_inode_after_acquisition(
         assert lock_path.is_file()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Renaming an acquired lock's parent requires POSIX semantics",
+)
+def test_writer_lock_rejects_parent_link_after_acquisition_with_same_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock descriptor matching its inode cannot admit a new parent link."""
+    work = tmp_path / "work"
+    work.mkdir()
+    moved = tmp_path / "work-moved"
+    destination = work / PROGRESS_NAME
+    original_lock = moved / f"{PROGRESS_NAME}.lock"
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+
+    def acquire_then_link_parent(stream: object) -> Callable[[], None]:
+        release = acquire(stream)
+        _ = work.rename(moved)
+        work.symlink_to(moved, target_is_directory=True)
+        return release
+
+    monkeypatch.setattr(
+        progress, "_acquire_writer_lock", acquire_then_link_parent
+    )
+    with (
+        pytest.raises(ERROR, match="progress writer lock path is linked"),
+        writer_lock(destination),
+    ):
+        pytest.fail("linked lock parent entered serialization")
+    assert original_lock.is_file()
+    assert not (moved / PROGRESS_NAME).exists()
+
+
 def test_writer_lock_rejects_missing_path_after_acquisition(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
