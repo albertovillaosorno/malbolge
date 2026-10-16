@@ -35,8 +35,12 @@
 
 //! Verified progress-sidecar composition for typed compiler IR resume.
 
+#[path = "progress_inspector.rs"]
+mod inspector_transport;
+
 use std::path::Path;
-use std::process::{Command, Stdio};
+
+use inspector_transport::{InspectorFailure, extract_checkpoint};
 
 use super::encode::TYPED_IR_CODEC_ID;
 use super::frontend_semantics::FrontendArtifact;
@@ -44,8 +48,6 @@ use super::module::Module;
 use super::stage::{
     TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage,
 };
-
-const EXTRACT_CHECKPOINT_ARGUMENT: &str = "--extract-checkpoint";
 
 /// Product compiler selection for entering the typed-IR stage.
 #[derive(Clone, Copy, Debug)]
@@ -101,18 +103,17 @@ pub fn resume_typed_ir_from_progress(
     inspector: &Path,
     progress: &Path,
 ) -> Result<Module, ProgressCheckpointError> {
-    let output = Command::new(interpreter)
-        .arg(inspector)
-        .arg(EXTRACT_CHECKPOINT_ARGUMENT)
-        .arg(TYPED_IR_CODEC_ID)
-        .arg(progress)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|_error| ProgressCheckpointError::InspectorLaunch)?;
-    if !output.status.success() || !output.stderr.is_empty() {
-        return Err(ProgressCheckpointError::InspectorRejected);
-    }
-    enter_typed_ir_stage(TypedIrStageInput::Checkpoint(&output.stdout))
+    let bytes =
+        extract_checkpoint(interpreter, inspector, TYPED_IR_CODEC_ID, progress)
+            .map_err(|error| match error {
+                InspectorFailure::Launch => {
+                    ProgressCheckpointError::InspectorLaunch
+                },
+                InspectorFailure::Rejected => {
+                    ProgressCheckpointError::InspectorRejected
+                },
+            })?;
+    enter_typed_ir_stage(TypedIrStageInput::Checkpoint(&bytes))
         .map_err(Into::into)
 }
 

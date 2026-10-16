@@ -321,7 +321,21 @@ while regression fails closed. The reference poll interval is one second.
 The optimizer still consumes an explicit extracted file. Typed-IR compiler
 composition now has `resume_typed_ir_from_progress()`, a composition bridge that
 invokes the verified extractor for `malbolge-typed-ir-v1` and immediately reruns
-complete typed-IR checkpoint admission. The product `malbolge` CLI now exposes
+complete typed-IR checkpoint admission.
+
+The typed-IR bridge now owns one bounded inspector child transport: a
+60-second direct-child deadline, a 64 MiB opaque-state stdout budget, and an
+8 KiB diagnostic stderr budget. Both pipes are drained concurrently to avoid
+blocking a valid state larger than the operating-system pipe buffer. Timeout,
+truncated output, excessive output, diagnostics, and child failure are rejected;
+spawn failure retains its separate launch error.
+
+These resource limits apply
+to this typed-IR Rust bridge, not the Python sidecar or the ternary bridge.
+Descendants inheriting open pipes may leave detached reader workers after a
+failed call; terminating entire descendant process groups is not yet provided.
+
+The product `malbolge` CLI now exposes
 `--checkpoint-info PROGRESS.json`,
 `--extract-checkpoint STATE_CODEC PROGRESS.json`, and
 `--follow-progress PROGRESS.json`. Command-line composition selects the

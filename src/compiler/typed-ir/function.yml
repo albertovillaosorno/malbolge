@@ -148,6 +148,12 @@ parts:
     language: rust
     responsibility: >-
       Select fresh typed-IR lowering or verified progress-sidecar resume.
+  - id: part-0023
+    path: composition/progress_inspector.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Bound typed-IR progress-inspector child execution and pipe outputs.
 projects: []
 tests: []
 graph:

@@ -216,6 +216,15 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   parsing sidecar JSON in compiler code. It requires the exact typed-IR codec,
   rejects launch/status/diagnostic failures, and revalidates extracted bytes
   through the stage entrypoint.
+
+  Its new `composition/progress_inspector.rs`
+  limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB
+  stderr with concurrent bounded pipe drains. The tests under
+  `tests/compiler/typed-ir/inspector_transport.rs` prove wide-output recovery,
+  byte limits, diagnostics, launch failure, and prompt stalled-child rejection.
+
+  Full descendant-group cancellation and equivalent ternary bridge transport
+  limits remain future work.
   `tests/compiler_ir.rs` also drives the production Python sidecar writer
   through
   ten typed-IR checkpoint/pointer crash boundaries and resumes each result via
