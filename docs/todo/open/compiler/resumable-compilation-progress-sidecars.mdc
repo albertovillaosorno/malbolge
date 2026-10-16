@@ -224,8 +224,7 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   byte limits, diagnostics, launch failure, stalled-child rejection, and
   deadline enforcement when an exited inspector leaves inherited pipes open.
 
-  Full descendant-group cancellation and equivalent ternary bridge transport
-  limits remain future work.
+  Full descendant-group cancellation remains future work.
   `tests/compiler_ir.rs` also drives the production Python sidecar writer
   through
   ten typed-IR checkpoint/pointer crash boundaries and resumes each result via
@@ -241,6 +240,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 - `src/compiler/ternary-lowering/composition/progress_resume.rs` consumes
   the exact ternary codec through caller-selected progress-inspector paths,
   rejects launch/status/diagnostic failures, and revalidates extracted bytes.
+  Ternary composition now owns `composition/ternary_inspector.rs`: independent
+  channel-driven concurrent stdout/stderr drains with a 60-second deadline,
+  64 MiB recovered-state limit, and 8 KiB diagnostics limit. Its tests in
+  `tests/compiler/ternary-lowering/inspector_transport.rs` prove wide-pipe
+  success, stdout and stderr overflow rejection, nonzero status, zero-status
+  diagnostics, child cancellation, inherited-pipe deadline, and launch failure.
+
   `tests/ternary_lowering.rs` publishes two real canonical ternary
   generations through the production Python writer, injects process death at
   ten checkpoint/pointer boundaries, and restores only the sidecar-committed

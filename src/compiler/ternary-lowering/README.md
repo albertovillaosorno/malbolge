@@ -51,6 +51,12 @@ explicit progress-sidecar bridge that requires caller-selected inspector paths,
 delegates envelope/codec validation, and revalidates extracted bytes through
 the ternary stage before returning state.
 
+The ternary progress adapter uses an owned bounded process transport with a
+60-second direct-child deadline, 64 MiB stdout cap, and 8 KiB stderr cap.
+Two concurrent pipe readers prevent large valid state from blocking behind
+filled pipes, while every rejected status or resource breach fails closed.
+This transport does not yet terminate entire descendant process groups.
+
 Integration coverage publishes two canonical ternary generations through the
 production sidecar writer, labels the first CPU and the second CUDA, and
 injects process death at ten checkpoint/pointer publication boundaries. Resume

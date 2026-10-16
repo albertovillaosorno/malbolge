@@ -179,6 +179,12 @@ parts:
     language: rust
     responsibility: >-
       Select fresh ternary lowering or verified progress-sidecar resume.
+  - id: part-0029
+    path: composition/ternary_inspector.rs
+    kind: composition
+    language: rust
+    responsibility: >-
+      Bound ternary checkpoint-inspector execution and pipe resource use.
 projects: []
 tests: []
 graph:

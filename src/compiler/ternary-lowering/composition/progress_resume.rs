@@ -33,14 +33,16 @@
 
 //! Verified progress-sidecar composition for pre-layout ternary resume.
 
+#[path = "ternary_inspector.rs"]
+mod inspector_transport;
+
 use std::path::Path;
-use std::process::{Command, Stdio};
+
+use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
 use super::model::TernaryProgram;
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
-
-const EXTRACT_CHECKPOINT_ARGUMENT: &str = "--extract-checkpoint";
 
 /// Product compiler selection for entering the ternary-lowering stage.
 #[derive(Clone, Copy, Debug)]
@@ -96,18 +98,21 @@ pub fn resume_ternary_from_progress(
     inspector: &Path,
     progress: &Path,
 ) -> Result<TernaryProgram, TernaryProgressCheckpointError> {
-    let output = Command::new(interpreter)
-        .arg(inspector)
-        .arg(EXTRACT_CHECKPOINT_ARGUMENT)
-        .arg(TERNARY_PROGRAM_CODEC_ID)
-        .arg(progress)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|_error| TernaryProgressCheckpointError::InspectorLaunch)?;
-    if !output.status.success() || !output.stderr.is_empty() {
-        return Err(TernaryProgressCheckpointError::InspectorRejected);
-    }
-    enter_ternary_stage(TernaryStageInput::Checkpoint(&output.stdout))
+    let bytes = extract_ternary_checkpoint(
+        interpreter,
+        inspector,
+        TERNARY_PROGRAM_CODEC_ID,
+        progress,
+    )
+    .map_err(|error| match error {
+        TransportError::Launch => {
+            TernaryProgressCheckpointError::InspectorLaunch
+        },
+        TransportError::Rejected => {
+            TernaryProgressCheckpointError::InspectorRejected
+        },
+    })?;
+    enter_ternary_stage(TernaryStageInput::Checkpoint(&bytes))
         .map_err(Into::into)
 }
 
