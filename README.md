@@ -204,12 +204,19 @@ Read [AGENTS.md](AGENTS.md) before making repository changes. It is a compact
 handoff; owning TODOs, specifications, contracts, and ADRs remain authoritative
 when they are more specific.
 
-Run the repository-owned validation required by the work you change. The active
-mathematics and research work in particular declares the following gate.
+Run the repository-owned validation required by the work you change. On Linux,
+the following entrypoint ensures the installed Jig sees pinned ChkTeX and
+LaTeXmk tools instead of conflicting user-local aliases:
 
 ```sh
-jig validate --root .
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m scripts.validate.jig_runner doctor
+python3.14 -B -m scripts.validate.jig_runner check
+python3.14 -B -m scripts.validate.jig_runner validate
 ```
+
+The mathematical and research contracts continue to require the full `validate`
+gate. This entrypoint does not suppress Jig diagnostics or evaluation gaps.
 
 Do not weaken semantic verification to make an optimization, benchmark, or
 experimental result pass. Bounded evidence must remain visibly bounded.

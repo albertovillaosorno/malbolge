@@ -36,6 +36,17 @@ Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;
 bootstrap does not download them.
 
+Jig `check` can resolve ChkTeX through ambient `PATH` even when `doctor`
+correctly identifies the configured repository-local executable. A user-local
+ChkTeX 1.7.10 may therefore shadow pinned 1.7.9 and abort the gate. Linux
+validation now supports `python3.14 -B -m scripts.validate.jig_runner check`.
+This entrypoint constrains tool lookup to `.dependencies/bin` and the system
+default, without altering the installed Jig, its policies, or its exit status.
+
+The same entrypoint supports `doctor` and `validate` and fails if either pinned
+ChkTeX or LaTeXmk launcher is missing. Set
+`PYTHONPATH=src/automation/repository/composition` before invoking it.
+
 Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly
 instead of restoring ambient `PATH` lookup. Jig-facing Cargo aliases replace a
@@ -73,8 +84,12 @@ Focused bootstrap tests cover platform IDs, Windows/POSIX Python launchers,
 neutral validation aliases, exact fast-version output, non-version delegation,
 Git distribution-version suffixes, Rustup no-download admission, stable/nightly
 imports, explicit Linux linker adapters, and idempotent local-state creation.
-Repository closure remains `jig validate --root .`; Linux-only skips remain
-explicit rather than becoming acceptance evidence.
+
+Repository closure uses the repository-owned Jig runner for `validate` on
+Linux. The `scalability.repository-graph` rule still reports `not-evaluated`
+until Jig's graph schema and migration contract become authoritative. This
+entrypoint does not conceal the gap or claim that the upstream rule passed.
+Linux-only skips remain explicit rather than becoming acceptance evidence.
 
 ## References
 
