@@ -2438,7 +2438,9 @@ def _read_canonical_pointer(path: Path) -> ProgressSidecar:
 
     """
     sidecar = read(path)
-    if path != Path(sidecar.progress_path):
+    selected = path.absolute()
+    declared = Path(sidecar.progress_path).absolute()
+    if selected != declared:
         _fail("progress sidecar location does not match declared progress_path")
     return sidecar
 

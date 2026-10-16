@@ -40,7 +40,7 @@ pub mod typed_ir;
 
 use std::env::temp_dir;
 use std::fs::{
-    create_dir_all, read_to_string, remove_dir_all, remove_file, write,
+    copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
 };
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
@@ -1707,6 +1707,37 @@ fn progress_adapter_restores_verified_ternary_state() -> Result<(), String> {
         return Err(String::from(
             "verified progress checkpoint did not restore ternary state",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_rejects_relocated_valid_sidecar() -> Result<(), String> {
+    let program = lowered_return_fixture()?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode ternary checkpoint: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("relocated", &bytes)?;
+    let relocated = directory.join("copied-progress.json");
+    let _copied = copy(&progress, &relocated)
+        .map_err(|error| format!("copy ternary progress pointer: {error}"))?;
+    let rejected = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &relocated,
+    );
+    let accepted = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("remove ternary progress fixture: {error}"))?;
+    if rejected != Err(TernaryProgressCheckpointError::InspectorRejected) {
+        return Err(String::from("relocated ternary pointer was admitted"));
+    }
+    if accepted != Ok(program) {
+        return Err(String::from("original ternary pointer was rejected"));
     }
     Ok(())
 }

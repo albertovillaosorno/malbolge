@@ -135,7 +135,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   using real portable envelopes for both search-labelled state and tracked
   canonical typed-IR compiler state, exact binary checkpoint extraction, and
   exact operator-facing elapsed-time summaries, operator CLI canonical-path
-  admission with detached Python crash-snapshot reads preserved, and malformed
+  admission with detached Python crash-snapshot reads and equivalent relative
+  pathname spelling preserved, and malformed
   stored codec
   metadata and noncanonical envelope wire spelling rejected before opaque
   checkpoint payload decoding. The tracked typed-IR golden also

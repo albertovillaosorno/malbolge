@@ -39,7 +39,7 @@ pub mod typed_ir;
 
 use std::env::temp_dir;
 use std::fs::{
-    create_dir_all, read_to_string, remove_dir_all, remove_file, write,
+    copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
 };
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
@@ -340,20 +340,15 @@ fn compiler_crash_directory(boundary: &str) -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-fn run_compiler_crash_boundary(
+fn launch_compiler_crash(
+    root: &Path,
+    output: &Path,
     boundary: &str,
-    first: &Module,
-    second: &Module,
 ) -> Result<(), String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let directory = compiler_crash_directory(boundary)?;
-    let output = directory.join("program.malbolge");
-    let progress =
-        PathBuf::from(format!("{}.progress.json", output.to_string_lossy()));
     let crashed = Command::new(repository_python())
         .arg("-c")
         .arg(COMPILER_PROGRESS_CRASH_SCRIPT)
-        .arg(&output)
+        .arg(output)
         .arg(root.join(GOLDEN_PATH))
         .arg(root.join(EXTENDED_GOLDEN_PATH))
         .arg(COMPILER_CRASH_EXIT.to_string())
@@ -371,6 +366,20 @@ fn run_compiler_crash_boundary(
             String::from_utf8_lossy(&crashed.stderr),
         ));
     }
+    Ok(())
+}
+
+fn run_compiler_crash_boundary(
+    boundary: &str,
+    first: &Module,
+    second: &Module,
+) -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = compiler_crash_directory(boundary)?;
+    let output = directory.join("program.malbolge");
+    let progress =
+        PathBuf::from(format!("{}.progress.json", output.to_string_lossy()));
+    launch_compiler_crash(root, &output, boundary)?;
     let restored = resume_typed_ir_from_progress(
         &repository_python(),
         &typed_ir_progress_inspector(),
@@ -1514,6 +1523,37 @@ fn progress_sidecar_adapter_restores_verified_typed_ir() -> Result<(), String> {
         return Err(String::from(
             "verified progress checkpoint did not restore typed IR",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_adapter_rejects_relocated_valid_sidecar() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = compiler_crash_directory("relocated-pointer")?;
+    let output = directory.join("program.malbolge");
+    launch_compiler_crash(root, &output, "before-checkpoint-file-sync")?;
+    let progress = directory.join("program.malbolge.progress.json");
+    let relocated = directory.join("copied-progress.json");
+    let _copied = copy(&progress, &relocated)
+        .map_err(|error| format!("copy typed-IR progress pointer: {error}"))?;
+    let rejected = resume_typed_ir_from_progress(
+        &repository_python(),
+        &typed_ir_progress_inspector(),
+        &relocated,
+    );
+    let accepted = resume_typed_ir_from_progress(
+        &repository_python(),
+        &typed_ir_progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("remove typed-IR fixture: {error}"))?;
+    if rejected != Err(ProgressCheckpointError::InspectorRejected) {
+        return Err(String::from("relocated typed-IR pointer was admitted"));
+    }
+    if accepted.is_err() {
+        return Err(String::from("original typed-IR pointer was rejected"));
     }
     Ok(())
 }

@@ -1350,6 +1350,30 @@ def test_cli_rejects_relocated_pointer_for_all_read_modes(
     assert expected_diagnostic in captured.err
 
 
+def test_cli_accepts_relative_path_to_same_canonical_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An equivalent relative path is not a relocated operator pointer."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    state = b"relative-path-state"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(durable, checkpoint)
+    monkeypatch.chdir(tmp_path)
+    assert progress.main(["--checkpoint-info", destination.name]) == 0
+    output = capsys.readouterr()
+    expected_field = "state_codec="
+    assert expected_field in output.out
+    assert not output.err
+
+
 def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
     """Direct reads keep missing storage inside the stable error boundary."""
     missing = tmp_path / PROGRESS_NAME
