@@ -75,7 +75,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   referenced-generation validation before pointer replacement, regular-file
   read descriptor/path inode identity matching against replacement or unlink,
   post-`mkdir` mutable pointer path
-  re-admission against directory-swap races, stable read with read-before-close
+  re-admission against directory-swap races, post-staging mutable/immutable
+  path re-admission before publication, stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
   post-publication directory-sync failures, committed evidence when directory
@@ -128,7 +129,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   boolean counter/sequence aliases, impossible UTC dates, corrupt direct pointer
   targets, non-callable/failing clocks, mutable
   payload aliases, foreign path arguments, post-`mkdir` parent-link substitution
-  during pointer, immutable generation, and writer-lock setup, post-open parent
+  during pointer, immutable generation, and writer-lock setup, post-staging
+  parent-link swaps in mutable and immutable publication, post-open parent
   link swaps for regular pointer and checkpoint reads plus parent-link
   substitution after reading, same-inode parent links during lock
   acquisition, exact-string JSON parser admission,

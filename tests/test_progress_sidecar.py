@@ -2140,6 +2140,39 @@ def test_write_atomic_rejects_linked_progress_parent(tmp_path: Path) -> None:
     assert not (target / f"{PROGRESS_NAME}.lock").exists()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Parent directory rename requires POSIX semantics",
+)
+def test_write_atomic_rechecks_parent_after_staged_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory swapped during temp writing cannot redirect the pointer."""
+    work = tmp_path / "work"
+    work.mkdir()
+    moved = tmp_path / "original-work"
+    sidecar = _sidecar(work)
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+
+    def swap_after_staging(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        _ = work.rename(moved)
+        work.symlink_to(moved, target_is_directory=True)
+
+    monkeypatch.setattr(
+        progress, "_write_payload_descriptor", swap_after_staging
+    )
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.write_atomic(sidecar)
+
+    assert not (moved / PROGRESS_NAME).exists()
+    assert not tuple(moved.glob(".*.tmp"))
+
+
 def test_write_atomic_rechecks_parent_after_mkdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3681,6 +3714,43 @@ def test_immutable_writer_rejects_linked_parent(tmp_path: Path) -> None:
     os.name == progress.WINDOWS_PLATFORM,
     reason="Directory-link substitution requires POSIX filesystem semantics",
 )
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Parent directory rename requires POSIX semantics",
+)
+def test_checkpoint_generation_rechecks_parent_after_staged_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable generation rejects a linked parent before publication."""
+    work = tmp_path / "work"
+    work.mkdir()
+    moved = tmp_path / "original-work"
+    checkpoint = b"immutable-checkpoint"
+    sidecar = _checkpointed(_sidecar(work), checkpoint=checkpoint, partial=None)
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+
+    def swap_after_staging(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        _ = work.rename(moved)
+        work.symlink_to(moved, target_is_directory=True)
+
+    monkeypatch.setattr(
+        progress, "_write_payload_descriptor", swap_after_staging
+    )
+    with pytest.raises(
+        ERROR, match="immutable progress payload path is linked"
+    ):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    assert not (moved / Path(sidecar.checkpoint_path or "").name).exists()
+    assert not (moved / PROGRESS_NAME).exists()
+    assert not tuple(moved.glob(".*.tmp"))
+
+
 def test_checkpoint_generation_rechecks_parent_after_mkdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

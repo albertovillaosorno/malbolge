@@ -1913,6 +1913,7 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     replaced = False
     try:
         _write_payload_descriptor(descriptor, payload)
+        _reject_path_redirect(destination, "progress sidecar")
         _ = temporary.replace(destination)
         replaced = True
         _confirm_publication_durability(
@@ -2064,6 +2065,7 @@ def _write_immutable(
     durable = False
     try:
         _write_payload_descriptor(descriptor, payload)
+        _reject_path_redirect(destination, "immutable progress payload")
         _publish_immutable_payload(
             temporary,
             destination,
