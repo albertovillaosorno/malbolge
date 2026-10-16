@@ -69,7 +69,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   lifecycle/timing validation, monotonic
   transitions, immutable sequence-addressed checkpoint/partial generations,
   sidecar-last atomic
-  publication, process-shared writer serialization around transition validation
+  publication, a 1 MiB pointer-metadata admission budget checked before
+  immutable publication and via bounded reads (not limiting opaque state),
+  process-shared writer serialization around transition validation
   and pointer replacement, typed fail-closed collision rechecks when an
   immutable target races away, direct-construction type admission,
   referenced-generation validation before pointer replacement, regular-file
@@ -102,7 +104,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `surrogateescape` byte-path round trips for sidecars, checkpoint and partial
   members, and binary CLI extraction; rejection of linked components in
   sidecar/lock/checkpoint/partial paths, and an injected monotonic phase timer.
-- `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
+- `tests/test_progress_sidecar.py` exercises exact-limit pointer round trips,
+  oversized writer admission before any side effects, pre-stream oversized
+  reader rejection, bounded stream returns, and canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes

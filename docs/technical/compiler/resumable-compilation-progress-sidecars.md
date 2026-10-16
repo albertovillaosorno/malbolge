@@ -44,6 +44,13 @@ Mutable pointer updates are serialized across processes from prior-sidecar
 validation through replacement, so a stale writer cannot overwrite a generation
 committed concurrently.
 
+Canonical progress-pointer JSON has a 1,048,576-byte inclusive limit.
+Publication checks that limit before acquiring a writer lock or creating
+immutable checkpoint members; reads reject oversized regular files before
+stream allocation and use a bounded read to catch concurrent growth. The
+limit applies only to mutable metadata, not to immutable checkpoint and
+partial payload bytes.
+
 Reads and immutable-generation collision checks reject pre-existing nonregular
 filesystem entries, including named pipes, before attempting blocking payload
 reads. The opened file descriptor is independently checked against the regular-

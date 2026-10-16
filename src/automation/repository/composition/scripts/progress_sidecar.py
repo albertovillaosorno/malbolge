@@ -82,6 +82,7 @@ _EXTRACT_ARGUMENT_COUNT: Final = 3
 _FOLLOW_FLAG: Final = "--follow"
 _FOLLOW_ARGUMENT_COUNT: Final = 2
 _FOLLOW_INTERVAL_SECONDS: Final = 1.0
+_MAX_SIDECAR_BYTES: Final = 1_048_576
 WINDOWS_PLATFORM: Final = "nt"
 _NUL_PATH_CHARACTER: Final = "\x00"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
@@ -1591,7 +1592,9 @@ def _verify_opened_read_identity(
         _fail(f"{context} path changed during {phase}")
 
 
-def _read_regular_bytes(path: Path, context: str) -> bytes:
+def _read_regular_bytes(
+    path: Path, context: str, *, max_bytes: int | None = None
+) -> bytes:
     """Read only a regular file, checking the opened descriptor as authority.
 
     Where supported, nonblocking/no-follow opens close the FIFO and leaf-link
@@ -1612,6 +1615,8 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
     try:
         _verify_opened_read_identity(path, descriptor, context)
         initial = os.fstat(descriptor)
+        if max_bytes is not None and initial.st_size > max_bytes:
+            _fail(f"{context} exceeds maximum byte length")
         stream = FileIO(descriptor, "rb", closefd=True)
     except BaseException as error:
         try:
@@ -1622,7 +1627,10 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
             )
         raise
     return _read_stream_preserving_primary(
-        stream, descriptor=descriptor, admission=(path, context, initial)
+        stream,
+        descriptor=descriptor,
+        admission=(path, context, initial),
+        max_bytes=max_bytes,
     )
 
 
@@ -1631,6 +1639,7 @@ def _read_stream_preserving_primary(
     *,
     descriptor: int,
     admission: tuple[Path, str, os.stat_result],
+    max_bytes: int | None,
 ) -> bytes:
     """Keep the read error primary if descriptor close also fails.
 
@@ -1643,7 +1652,11 @@ def _read_stream_preserving_primary(
     """
     path, context, initial = admission
     try:
-        payload = stream.read()
+        payload = (
+            stream.read() if max_bytes is None else stream.read(max_bytes + 1)
+        )
+        if max_bytes is not None and len(payload) > max_bytes:
+            _fail(f"{context} exceeds maximum byte length")
         _verify_opened_read_identity(
             path, descriptor, context, phase="file read"
         )
@@ -1677,9 +1690,9 @@ def read(path: Path) -> ProgressSidecar:
     """
     admitted_path = _read_path(path)
     try:
-        text = _read_regular_bytes(admitted_path, "progress sidecar").decode(
-            "utf-8-sig"
-        )
+        text = _read_regular_bytes(
+            admitted_path, "progress sidecar", max_bytes=_MAX_SIDECAR_BYTES
+        ).decode("utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid progress UTF-8: {error}")
     except OSError as error:
@@ -2170,6 +2183,19 @@ def _validate_referenced_generation(sidecar: ProgressSidecar) -> None:
     )
 
 
+def _admit_sidecar_wire_size(sidecar: ProgressSidecar) -> bytes:
+    """Bound canonical pointer bytes before durable publication begins.
+
+    Returns:
+        Exact canonical metadata bytes within the sidecar resource budget.
+
+    """
+    payload = encode(sidecar)
+    if len(payload) > _MAX_SIDECAR_BYTES:
+        _fail("progress sidecar exceeds maximum byte length")
+    return payload
+
+
 def write_atomic(sidecar: ProgressSidecar) -> Path:
     """Atomically replace one sidecar after transition and payload validation.
 
@@ -2178,6 +2204,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
 
     """
     validated = validate(sidecar)
+    payload = _admit_sidecar_wire_size(validated)
     destination = Path(validated.progress_path)
     _reject_path_redirect(destination, "progress sidecar")
     with _writer_publication_lock(destination):
@@ -2186,7 +2213,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             _ = validate_transition(read(destination), validated)
         _validate_referenced_generation(validated)
         try:
-            return _write_atomic_bytes(destination, encode(validated))
+            return _write_atomic_bytes(destination, payload)
         except OSError as error:
             _fail(f"progress sidecar publication failed: {error}")
 
@@ -2284,6 +2311,7 @@ def write_checkpoint_generation(
 
     """
     validated = validate(sidecar)
+    _ = _admit_sidecar_wire_size(validated)
     _preflight_generation_destination(validated)
     checkpoint_payload, partial_payload = _validated_generation_payloads(
         validated,

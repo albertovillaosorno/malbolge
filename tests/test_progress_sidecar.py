@@ -70,6 +70,7 @@ COMPLETED = "2026-08-06T14:00:02Z"
 ERROR = progress.ProgressSidecarError
 SCHEMA_FIELD = '"schema":"malbolge-progress-v1"'
 PROGRESS_NAME = "program.malbolge.progress.json"
+SIDECAR_WIRE_LIMIT = 1_048_576
 CHECKPOINT_NAME = "program.malbolge.checkpoint.00000000000000000001"
 PARTIAL_NAME = "program.malbolge.partial.00000000000000000001"
 SUMMARY_FIELDS = (
@@ -391,7 +392,7 @@ class FailingReadStream:
     close_failure: str
     read_failure: str | None = None
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         """Return bytes or raise the injected primary read error.
 
         Returns:
@@ -403,7 +404,7 @@ class FailingReadStream:
         """
         if self.read_failure is not None:
             raise OSError(self.read_failure)
-        return self.payload
+        return self.payload if size < 0 else self.payload[:size]
 
     def close(self) -> None:
         """Close the owned descriptor before reporting an injected failure.
@@ -424,14 +425,17 @@ class SwappingReadStream:
     destination: Path
     replacement: Path
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         """Replace the path after reading the original regular descriptor.
 
         Returns:
             Exact bytes of the original file, before its pathname replacement.
 
         """
-        payload = os.read(self.descriptor, os.fstat(self.descriptor).st_size)
+        available = os.fstat(self.descriptor).st_size
+        payload = os.read(
+            self.descriptor, available if size < 0 else min(available, size)
+        )
         _ = self.replacement.replace(self.destination)
         return payload
 
@@ -447,14 +451,17 @@ class MutatingReadStream:
     descriptor: int
     destination: Path
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         """Return original bytes after an in-place same-inode rewrite.
 
         Returns:
             Bytes read before the in-place rewrite was completed.
 
         """
-        payload = os.read(self.descriptor, os.fstat(self.descriptor).st_size)
+        available = os.fstat(self.descriptor).st_size
+        payload = os.read(
+            self.descriptor, available if size < 0 else min(available, size)
+        )
         with self.destination.open("r+b") as writer:
             _ = writer.write(b"x" * len(payload))
         observed = self.destination.stat()
@@ -1322,6 +1329,123 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
             )
         )
     )
+
+
+def test_sidecar_exact_byte_ceiling_round_trips(tmp_path: Path) -> None:
+    """The metadata ceiling is inclusive for ordinary publication and reads."""
+    baseline = _sidecar(tmp_path)
+    original_size = len(progress.encode(baseline))
+    available = SIDECAR_WIRE_LIMIT - original_size
+    admitted = replace(
+        baseline, source_path=baseline.source_path + ("s" * available)
+    )
+    assert len(progress.encode(admitted)) == SIDECAR_WIRE_LIMIT
+    destination = progress.write_atomic(admitted)
+    assert destination.stat().st_size == SIDECAR_WIRE_LIMIT
+    assert progress.read(destination) == admitted
+
+
+def test_large_opaque_checkpoint_is_not_limited_as_sidecar_metadata(
+    tmp_path: Path,
+) -> None:
+    """Opaque recoverable state may exceed the mutable metadata budget."""
+    checkpoint = b"q" * (SIDECAR_WIRE_LIMIT + 1)
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert progress.read(destination) == sidecar
+    assert progress.read_checkpoint_generation(sidecar) == (checkpoint, None)
+
+
+def test_oversized_sidecar_rejected_before_immutable_generation(
+    tmp_path: Path,
+) -> None:
+    """A known-invalid pointer cannot leave unpublished checkpoint members."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    oversized = replace(sidecar, source_path="s" * SIDECAR_WIRE_LIMIT)
+    with pytest.raises(ERROR, match="progress sidecar exceeds maximum byte"):
+        _ = progress.write_checkpoint_generation(oversized, checkpoint)
+    assert not Path(oversized.checkpoint_path or "").exists()
+    assert not Path(oversized.progress_path).exists()
+    assert not Path(f"{oversized.progress_path}.lock").exists()
+
+
+def test_oversized_sidecar_rejected_before_publication(tmp_path: Path) -> None:
+    """Invalidly large metadata cannot create a pointer or writer lock."""
+    sidecar = replace(
+        _sidecar(tmp_path), source_path="s" * SIDECAR_WIRE_LIMIT
+    )
+    destination = Path(sidecar.progress_path)
+    with pytest.raises(ERROR, match="progress sidecar exceeds maximum byte"):
+        _ = progress.write_atomic(sidecar)
+    assert not destination.exists()
+    assert not Path(f"{destination}.lock").exists()
+
+
+def test_oversized_sidecar_rejected_before_stream_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted on-disk progress cannot demand an unbounded file read."""
+    destination = Path(_sidecar(tmp_path).progress_path)
+    _ = destination.write_bytes(b" " * (SIDECAR_WIRE_LIMIT + 1))
+
+    def prohibit_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        del descriptor, mode, closefd
+        pytest.fail("oversized progress was opened as an unbounded stream")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", prohibit_stream)
+        with pytest.raises(
+            ERROR, match="progress sidecar exceeds maximum byte"
+        ):
+            _ = progress.read(destination)
+
+
+def test_sidecar_reader_caps_payload_even_if_stream_overruns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One bounded read cannot accept an unexpectedly large byte result."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    observed_sizes: list[int] = []
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    class OversizedReadStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor: int = descriptor
+
+        @staticmethod
+        def read(size: int = -1) -> bytes:
+            observed_sizes.append(size)
+            return b"x" * (SIDECAR_WIRE_LIMIT + 1)
+
+        def close(self) -> None:
+            os.close(self.descriptor)
+
+    def overfill_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> OversizedReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return OversizedReadStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", overfill_stream)
+        with pytest.raises(
+            ERROR, match="progress sidecar exceeds maximum byte"
+        ):
+            _ = progress.read(destination)
+    assert observed_sizes == [SIDECAR_WIRE_LIMIT + 1]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_read_rejects_foreign_path_type() -> None:
