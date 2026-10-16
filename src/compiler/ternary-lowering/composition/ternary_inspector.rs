@@ -143,6 +143,9 @@ fn collect(
     let mut state: Option<Vec<u8>> = None;
     let mut diagnostics: Option<Vec<u8>> = None;
     loop {
+        if started.elapsed() >= budget.deadline {
+            return Err(TransportError::Rejected);
+        }
         let status = child
             .try_wait()
             .map_err(|_error| TransportError::Rejected)?;
@@ -159,6 +162,12 @@ fn collect(
             .deadline
             .checked_sub(started.elapsed())
             .ok_or(TransportError::Rejected)?;
+        if state.is_some() && diagnostics.is_some() {
+            // Both pipes can close before the child exits. The sender channel
+            // then disconnects; only the child's final status remains pending.
+            thread::sleep(remaining.min(POLL));
+            continue;
+        }
         match receiver.recv_timeout(remaining.min(POLL)) {
             Ok(event) => {
                 accept_event(event, budget, &mut state, &mut diagnostics)?;

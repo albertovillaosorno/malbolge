@@ -105,6 +105,21 @@ fn returns_complete_stdout_larger_than_one_pipe_buffer() {
 }
 
 #[test]
+fn accepts_early_pipe_eof_while_child_still_finishing() {
+    let observed = inspect_script(
+        concat!(
+            "import sys,time\n",
+            "sys.stdout.buffer.write(b'early-state')\n",
+            "sys.stdout.close()\n",
+            "sys.stderr.close()\n",
+            "time.sleep(0.15)\n",
+        ),
+        budget(1024, 1024, Duration::from_secs(3)),
+    );
+    assert_eq!(observed, Ok(b"early-state".to_vec()));
+}
+
+#[test]
 fn rejects_one_byte_beyond_output_budget() {
     let observed = inspect_script(
         "import sys\nsys.stdout.buffer.write(b'state-overflow')\n",
@@ -170,6 +185,47 @@ fn rejects_inherited_pipes_before_descendant_exits() {
     );
     assert_eq!(observed, Err(TransportError::Rejected));
     assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+#[test]
+fn null_stdin_completes_without_inheriting_interactive_input() {
+    let observed = inspect_script(
+        concat!(
+            "import sys\n",
+            "sys.stdout.buffer.write(b'OK'+sys.stdin.buffer.read())\n",
+        ),
+        budget(1024, 1024, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Ok(b"OK".to_vec()));
+}
+
+#[test]
+fn rejects_simultaneously_full_state_and_diagnostic_pipes() {
+    let started = Instant::now();
+    let observed = inspect_script(
+        concat!(
+            "import sys\n",
+            "sys.stdout.buffer.write(b'x'*300000)\n",
+            "sys.stderr.buffer.write(b'!'*300000)\n",
+        ),
+        budget(350_000, 4096, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Err(TransportError::Rejected));
+    assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+#[test]
+fn zero_deadline_rejects_before_child_spawn() {
+    let observed = extract_with_budget(
+        &RequestedInspector {
+            codec: "malbolge-ternary-ir-v1",
+            inspector: Path::new("missing.py"),
+            interpreter: Path::new("/unavailable-interpreter"),
+            sidecar: Path::new("missing.json"),
+        },
+        budget(1024, 1024, Duration::ZERO),
+    );
+    assert_eq!(observed, Err(TransportError::Rejected));
 }
 
 #[test]

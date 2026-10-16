@@ -245,7 +245,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   64 MiB recovered-state limit, and 8 KiB diagnostics limit. Its tests in
   `tests/compiler/ternary-lowering/inspector_transport.rs` prove wide-pipe
   success, stdout and stderr overflow rejection, nonzero status, zero-status
-  diagnostics, child cancellation, inherited-pipe deadline, and launch failure.
+  diagnostics, null stdin, concurrent wide stdout/stderr overflow, zero-budget
+  rejection before spawn, clean early pipe EOF while the child still runs,
+  child cancellation, inherited-pipe deadline, and launch failure.
 
   `tests/ternary_lowering.rs` publishes two real canonical ternary
   generations through the production Python writer, injects process death at
