@@ -180,3 +180,66 @@ def test_main_reports_missing_dependency(
     captured = capsys.readouterr()
     assert not captured.out
     assert expected_error in captured.err
+
+
+def test_child_process_sees_pinned_tool_not_user_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A real child must never inherit a shadowing user-local ChkTeX."""
+    pinned = _pinned_launchers(tmp_path)
+    expected_output = "pinned-version\n"
+    expected_status = 19
+    pinned_chktex = pinned / "chktex"
+    _ = pinned_chktex.write_text(
+        "#!/bin/sh\nprintf 'pinned-version\\n'\n",
+        encoding="utf-8",
+    )
+    host_bin = tmp_path / "user-local/bin"
+    host_bin.mkdir(parents=True)
+    ambient_chktex = host_bin / "chktex"
+    _ = ambient_chktex.write_text(
+        "#!/bin/sh\nprintf 'wrong-version\\n'\n",
+        encoding="utf-8",
+    )
+    ambient_chktex.chmod(0o700)
+    fake_jig = host_bin / "jig"
+    _ = fake_jig.write_text(
+        "#!/bin/sh\nchktex --version\nexit 19\n",
+        encoding="utf-8",
+    )
+    fake_jig.chmod(0o700)
+    with monkeypatch.context() as context:
+        context.setenv("PATH", f"{host_bin}{os.pathsep}{os.defpath}")
+        assert jig_runner.run_jig("check", root=tmp_path) == expected_status
+    captured = capfd.readouterr()
+    assert captured.out == expected_output
+    assert not captured.err
+
+
+def test_subprocess_launch_failure_stays_actionable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed but unstartable Jig must not look like a passing gate."""
+    _ = _pinned_launchers(tmp_path)
+
+    expected_name = "jig"
+
+    def resolve(name: str) -> str:
+        assert name == expected_name
+        return "/unavailable/jig"
+
+    def fail_launch(args: list[str], **options: object) -> None:
+        del args, options
+        message = "injected Jig process failure"
+        raise OSError(message)
+
+    monkeypatch.setattr("scripts.validate.jig_runner.shutil.which", resolve)
+    monkeypatch.setattr("scripts.validate.jig_runner.sp.run", fail_launch)
+    with pytest.raises(
+        jig_runner.JigRunnerError,
+        match="external Jig execution failed: injected Jig process failure",
+    ):
+        _ = jig_runner.run_jig("check", root=tmp_path)
