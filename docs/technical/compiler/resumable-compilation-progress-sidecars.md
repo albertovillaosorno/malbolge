@@ -287,6 +287,11 @@ including `..` segments, without following symlinks. Relocated pointers
 cannot impersonate another live job during
 summary, follow, checkpoint discovery, or binary state extraction.
 
+Binary checkpoint extraction requires an exact integer stdout write count
+and a successful flush after full state validation. A short, invalid, or
+failed write returns failure; callers must ignore any bytes received from a
+failed invocation instead of treating partial stdout as recoverable state.
+
 The progress-sidecar inspector provides two verified portable-checkpoint views.
 `--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
 generation bytes, outer checkpoint digest, resume identity and position,

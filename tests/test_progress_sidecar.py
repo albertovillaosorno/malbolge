@@ -975,6 +975,87 @@ def test_progress_cli_extraction_fails_closed_without_binary_stdout(
     assert BINARY_STDOUT_DIAGNOSTIC in captured.err
 
 
+@pytest.mark.parametrize(
+    ("claimed_count", "payload"),
+    [(True, b"s"), (False, b""), (None, b"s"), (-1, b"s")],
+)
+def test_binary_checkpoint_stdout_requires_exact_integer_write_count(
+    claimed_count: object,
+    payload: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boolean, missing, and short write reports cannot signal success."""
+    flushes: list[bool] = []
+
+    class StubBinaryOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            del data
+            return cast("int", claimed_count)
+
+        @staticmethod
+        def flush() -> None:
+            flushes.append(True)
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    monkeypatch.setattr(progress, "_binary_stdout", StubBinaryOutput)
+    with pytest.raises(ERROR, match="incomplete stdout"):
+        writer(payload)
+    assert not flushes
+
+
+def test_binary_checkpoint_stdout_flushes_after_complete_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact integer byte count is sufficient for verified extraction."""
+    operations: list[str] = []
+    binary_payload = b"verified-state"
+
+    class StubBinaryOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            assert data == binary_payload
+            operations.append("write")
+            return len(data)
+
+        @staticmethod
+        def flush() -> None:
+            operations.append("flush")
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    monkeypatch.setattr(progress, "_binary_stdout", StubBinaryOutput)
+    writer(binary_payload)
+    assert operations == ["write", "flush"]
+
+
+def test_binary_checkpoint_stdout_rejects_flush_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reported full writes are not successful until stdout flushes."""
+    flush_error = "injected binary extraction flush failure"
+    payload = b"verified-state"
+
+    class FailingBinaryOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            return len(data)
+
+        @staticmethod
+        def flush() -> None:
+            raise OSError(flush_error)
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    monkeypatch.setattr(progress, "_binary_stdout", FailingBinaryOutput)
+    with pytest.raises(OSError, match=flush_error):
+        writer(payload)
+
+
 def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

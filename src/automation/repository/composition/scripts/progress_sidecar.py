@@ -2479,7 +2479,7 @@ def _binary_stdout() -> _BinaryOutput:
 def _write_binary_stdout(payload: bytes) -> None:
     stream = _binary_stdout()
     written = stream.write(payload)
-    if written != len(payload):
+    if type(written) is not int or written != len(payload):
         _fail("portable checkpoint extraction wrote incomplete stdout")
     stream.flush()
 
