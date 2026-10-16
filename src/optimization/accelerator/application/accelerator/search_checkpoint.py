@@ -237,27 +237,42 @@ def _payload_text(document: JsonObject) -> str:
     return value
 
 
-def _decode_evidence(value: JsonValue) -> tuple[CandidateEvidence, ...]:
+def _decode_evidence(
+    value: JsonValue,
+    batch: CandidateEvaluationBatch,
+) -> tuple[CandidateEvidence, ...]:
     if type(value) is not list:
         _fail("search checkpoint completed_evidence must be an array")
-    result: list[CandidateEvidence] = []
-    for raw_item in value:
-        item = _mapping(raw_item, "search checkpoint evidence")
-        _exact_keys(item, frozenset({"logical_id", "payload_base64"}))
-        encoded = _payload_text(item)
-        try:
-            payload = b64decode(encoded, validate=True)
-        except (BinasciiError, ValueError) as error:
-            _fail(f"search checkpoint payload_base64 is invalid: {error}")
-        if b64encode(payload).decode("ascii") != encoded:
-            _fail("search checkpoint payload_base64 is not canonical")
-        result.append(
-            CandidateEvidence(
-                logical_id=_string(item, "logical_id"),
-                payload=payload,
-            )
-        )
-    return tuple(result)
+    if len(value) > len(batch.items):
+        _fail("search checkpoint evidence exceeds candidate batch")
+    return tuple(
+        _decode_evidence_item(raw_item, batch.items[index].logical_id)
+        for index, raw_item in enumerate(value)
+    )
+
+
+def _decode_evidence_item(
+    raw_item: JsonValue, expected: str
+) -> CandidateEvidence:
+    """Check a single prefix identity before decoding its opaque payload.
+
+    Returns:
+        Admitted immutable evidence for the expected candidate.
+
+    """
+    item = _mapping(raw_item, "search checkpoint evidence")
+    _exact_keys(item, frozenset({"logical_id", "payload_base64"}))
+    logical_id = _string(item, "logical_id")
+    if logical_id != expected:
+        _fail("search checkpoint evidence is not an exact batch prefix")
+    encoded = _payload_text(item)
+    try:
+        payload = b64decode(encoded, validate=True)
+    except (BinasciiError, ValueError) as error:
+        _fail(f"search checkpoint payload_base64 is invalid: {error}")
+    if b64encode(payload).decode("ascii") != encoded:
+        _fail("search checkpoint payload_base64 is not canonical")
+    return CandidateEvidence(logical_id=logical_id, payload=payload)
 
 
 _TOP_LEVEL_KEYS = frozenset({
@@ -331,8 +346,10 @@ def decode_search_checkpoint(
     """
     document = _decode_document(payload)
     _validate_document_identity(document, request, batch)
-    evidence = _decode_evidence(document["completed_evidence"])
     validated_batch = batch.validated()
+    evidence = _decode_evidence(
+        document["completed_evidence"], validated_batch
+    )
     completed = _validate_evidence_prefix(validated_batch, evidence)
     if _integer(document, "completed_units") != len(completed):
         _fail("search checkpoint completed_units does not match evidence")

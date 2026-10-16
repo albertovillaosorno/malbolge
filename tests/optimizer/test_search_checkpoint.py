@@ -38,6 +38,7 @@ from dataclasses import replace
 import json
 from typing import cast
 
+from accelerator import search_checkpoint as checkpoint_module
 from accelerator.search_checkpoint import SEARCH_CHECKPOINT_CODEC_ID
 from accelerator.search_checkpoint import SearchCheckpointError
 from accelerator.search_checkpoint import decode_search_checkpoint
@@ -193,6 +194,52 @@ def test_search_checkpoint_rejects_foreign_evidence_identity_type() -> None:
 
     with pytest.raises(SearchCheckpointError, match="exact str type"):
         _ = encode_search_checkpoint(request, batch, (invalid,))
+
+
+def test_search_checkpoint_rejects_excess_prefix_before_payload_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Excess completed candidates never trigger their base64 decoder."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    evidence = cast("list[dict[str, object]]", document["completed_evidence"])
+    evidence.extend([dict(evidence[0]), dict(evidence[0])])
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload from excess completed prefix")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="exceeds candidate batch"):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
+def test_search_checkpoint_rejects_wrong_order_before_payload_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign candidate identity fails before decoding the opaque payload."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    evidence = cast("list[dict[str, object]]", document["completed_evidence"])
+    evidence[0]["logical_id"] = "foreign-candidate"
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload from nonprefix evidence")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="exact batch prefix"):
+        _ = decode_search_checkpoint(payload, request, batch)
 
 
 def test_search_checkpoint_rejects_nonprefix_and_mutable_evidence() -> None:
