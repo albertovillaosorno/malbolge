@@ -1553,8 +1553,13 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             _fail(f"{context} must be a regular file")
         stream = FileIO(descriptor, "rb", closefd=True)
-    except BaseException:
-        os.close(descriptor)
+    except BaseException as error:
+        try:
+            os.close(descriptor)
+        except OSError as close_error:
+            error.add_note(
+                f"read descriptor cleanup also failed: {close_error}"
+            )
         raise
     with stream:
         return stream.read()

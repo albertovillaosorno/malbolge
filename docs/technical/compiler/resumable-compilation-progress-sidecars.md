@@ -115,7 +115,12 @@ and cannot mask the primary publication failure.
 Failures before publication retain ordinary `ProgressSidecarError` behavior and
 do not gain committed-path evidence. Failed payload-stream ownership transfer
 closes the raw temporary descriptor, while cleanup failure remains secondary to
-the stream-open failure. Temporary payload-stream teardown likewise keeps an
+the stream-open failure.
+
+Read stream setup failures retain their primary error even when raw descriptor
+cleanup fails; the cleanup exception is attached as secondary evidence.
+
+Temporary payload-stream teardown likewise keeps an
 earlier write, flush, or file-sync failure primary when close also fails.
 
 A crash after writing a later generation but before replacing the sidecar leaves

@@ -1302,6 +1302,40 @@ def test_progress_read_closes_descriptor_on_stream_open_failure(
         _ = os.fstat(observed[0])
 
 
+def test_progress_read_preserves_stream_failure_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing raw-descriptor close cannot replace the read-open failure."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    open_failure = "injected read stream failure"
+    close_failure = "injected descriptor cleanup failure"
+    actual_close = os.close
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        del descriptor, mode, closefd
+        raise OSError(open_failure)
+
+    def fail_close(descriptor: int) -> None:
+        actual_close(descriptor)
+        raise OSError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(
+            ERROR, match="progress sidecar is unavailable"
+        ) as captured:
+            _ = progress.read(destination)
+
+    primary = captured.value.__context__
+    assert isinstance(primary, OSError)
+    assert str(primary) == open_failure
+    assert getattr(primary, "__notes__", None) == [
+        f"read descriptor cleanup also failed: {close_failure}"
+    ]
+
+
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:
     """Reading a sidecar never follows a redirected canonical leaf."""
     sidecar = _sidecar(tmp_path)
