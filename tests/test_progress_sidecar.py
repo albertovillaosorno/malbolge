@@ -1285,6 +1285,32 @@ def test_write_atomic_rejects_unrepresentable_output_before_side_effects(
     assert not Path(f"{original.progress_path}.lock").exists()
 
 
+def test_sidecar_round_trips_posix_non_utf8_filename(tmp_path: Path) -> None:
+    """Surrogateescaped host bytes name durable state without aliasing paths."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("byte-escaped filenames require POSIX")
+    escaped = os.fsdecode(bytes((255,)))
+    assert os.fsencode(escaped) == bytes((255,))
+    output = tmp_path / f"guest{escaped}.malbolge"
+    assert progress.progress_path(output) == Path(f"{output}.progress.json")
+    assert progress.checkpoint_path(output, 1).name.endswith(
+        ".checkpoint.00000000000000000001"
+    )
+    assert progress.partial_path(output, 1).name.endswith(
+        ".partial.00000000000000000001"
+    )
+    original = _sidecar(tmp_path)
+    sidecar = replace(
+        original,
+        output_path=str(output),
+        progress_path=str(progress.progress_path(output)),
+    )
+    destination = progress.write_atomic(sidecar)
+    assert destination.exists()
+    assert progress.read(destination) == sidecar
+    assert os.fsencode(destination).endswith(b".progress.json")
+
+
 def test_progress_read_rejects_fifo_swapped_during_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

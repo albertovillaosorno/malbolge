@@ -573,7 +573,7 @@ def _admit_filesystem_path(text: str, context: str) -> str:
     if _NUL_PATH_CHARACTER in text:
         _fail(f"{context} contains an embedded NUL")
     try:
-        _ = text.encode("utf-8")
+        _ = text.encode("utf-8", errors="surrogateescape")
         _ = os.fsencode(text)
     except UnicodeEncodeError as error:
         _fail(f"{context} cannot be encoded for filesystem access: {error}")
