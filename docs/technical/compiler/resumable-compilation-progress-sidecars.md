@@ -52,6 +52,13 @@ prevent a FIFO or leaf symlink substituted during path admission from becoming
 trusted progress input. Descriptor read errors remain primary if stream close
 also fails; close-only failures reject the read instead of returning bytes.
 
+Mutable pointer publication rechecks the destination and its parent after
+creating the parent directory and before opening a temporary file. This closes
+the directory-creation substitution window in which a newly linked parent
+could redirect the mutable write before the already-enforced replace guard.
+It complements the equivalent post-`mkdir` check for immutable generations;
+concurrent mutation after either check still requires filesystem protection.
+
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. After acquiring the process lock,
 the publisher checks that the lock pathname still identifies that descriptor's

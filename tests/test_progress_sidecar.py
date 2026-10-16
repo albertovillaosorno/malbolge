@@ -100,6 +100,7 @@ NONCANONICAL_WHITESPACE = "whitespace"
 NONCANONICAL_NO_NEWLINE = "no-newline"
 NONCANONICAL_ESCAPE = "escaped"
 CRASH_EXIT = 73
+MUTABLE_PARENT_MKDIR_CALLS = 2
 AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
 AFTER_CHECKPOINT_SYNC = "after-checkpoint-sync"
@@ -1754,6 +1755,46 @@ def test_write_atomic_rejects_linked_progress_parent(tmp_path: Path) -> None:
         _ = progress.write_atomic(sidecar)
     assert not (target / PROGRESS_NAME).exists()
     assert not (target / f"{PROGRESS_NAME}.lock").exists()
+
+
+def test_write_atomic_rechecks_parent_after_mkdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory swapped during mutable setup cannot redirect publication."""
+    work = tmp_path / "work"
+    work.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    moved = tmp_path / "work-moved"
+    sidecar = _sidecar(work)
+    original_mkdir = Path.mkdir
+    work_mkdir_calls = 0
+
+    def swap_after_second_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        """Substitute a parent link between lock acquisition and mkstemp."""
+        nonlocal work_mkdir_calls
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if path == work:
+            work_mkdir_calls += 1
+            if work_mkdir_calls == MUTABLE_PARENT_MKDIR_CALLS:
+                _ = path.rename(moved)
+                path.symlink_to(foreign, target_is_directory=True)
+
+    monkeypatch.setattr(Path, "mkdir", swap_after_second_mkdir)
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.write_atomic(sidecar)
+
+    assert work_mkdir_calls == MUTABLE_PARENT_MKDIR_CALLS
+    assert not (foreign / PROGRESS_NAME).exists()
+    assert not tuple(foreign.glob(f".{PROGRESS_NAME}.*.tmp"))
+    assert (moved / f"{PROGRESS_NAME}.lock").exists()
 
 
 @pytest.mark.skipif(

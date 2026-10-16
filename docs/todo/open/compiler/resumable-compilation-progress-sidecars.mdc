@@ -73,7 +73,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and pointer replacement, typed fail-closed collision rechecks when an
   immutable target races away, direct-construction type admission,
   referenced-generation
-  validation before pointer replacement, stable read with read-before-close
+  validation before pointer replacement, post-`mkdir` mutable pointer path
+  re-admission against directory-swap races, stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
   post-publication directory-sync failures, committed evidence when directory

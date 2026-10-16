@@ -1867,6 +1867,7 @@ def _cleanup_mutable_temporary(
 
 def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    _reject_path_redirect(destination, "progress sidecar")
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
         prefix=f".{destination.name}.",
