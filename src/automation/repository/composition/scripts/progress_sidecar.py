@@ -1576,6 +1576,7 @@ def _verify_opened_read_identity(
     opened = os.fstat(descriptor)
     if not stat.S_ISREG(opened.st_mode):
         _fail(f"{context} must be a regular file")
+    _reject_path_redirect(path, context)
     try:
         current = path.stat(follow_symlinks=False)
     except OSError as error:

@@ -1646,6 +1646,82 @@ def test_checkpoint_read_rejects_detachment_after_open(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Directory rename and symlink substitution require POSIX semantics",
+)
+def test_read_rejects_parent_link_swapped_during_file_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redirected parent cannot pass matching descriptor/inode admission."""
+    work = tmp_path / "work"
+    work.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    moved = tmp_path / "original-work"
+    destination = progress.write_atomic(_sidecar(work))
+    _ = (foreign / destination.name).write_bytes(destination.read_bytes())
+    actual_open = os.open
+    opened: list[int] = []
+
+    def redirect_parent_on_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        _ = work.rename(moved)
+        work.symlink_to(foreign, target_is_directory=True)
+        descriptor = actual_open(path, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", redirect_parent_on_open)
+        with pytest.raises(ERROR, match="progress sidecar path is linked"):
+            _ = progress.read(destination)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Directory rename and symlink substitution require POSIX semantics",
+)
+def test_checkpoint_read_rejects_parent_link_swapped_during_file_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable checkpoint admission also excludes switched parent links."""
+    work = tmp_path / "work"
+    work.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    checkpoint = b"immutable-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(work), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+    _ = (foreign / destination.name).write_bytes(checkpoint)
+    actual_open = os.open
+    opened: list[int] = []
+
+    def redirect_parent_on_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        _ = work.rename(tmp_path / "original-work")
+        work.symlink_to(foreign, target_is_directory=True)
+        descriptor = actual_open(path, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", redirect_parent_on_open)
+        with pytest.raises(ERROR, match="checkpoint payload path is linked"):
+            _ = progress.read_checkpoint_generation(sidecar)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def test_progress_read_closes_descriptor_after_type_rejection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
