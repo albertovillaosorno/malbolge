@@ -186,6 +186,14 @@ state to
 re-encode byte-for-byte to the original input. Canonical typed IR is therefore a
 restorable compiler checkpoint state rather than a one-way cache identity.
 
+Collection decoding no longer reserves an untrusted declared count before
+reading its first element. Count preflight still verifies minimum remaining
+wire bytes, while vectors grow only as elements actually pass decoding.
+Text decoding borrows wire bytes for UTF-8 admission before making one owned
+string, rather than allocating an intermediate byte vector. These changes
+reduce resource amplification from malformed or exaggerated count headers;
+they do not impose a separate global decoded-object memory budget.
+
 Compiler composition enters this stage through `enter_typed_ir_stage()`. Fresh
 execution supplies a normalized `FrontendArtifact`; resumed execution supplies
 canonical `malbolge-typed-ir-v1` checkpoint bytes. Both paths return the same

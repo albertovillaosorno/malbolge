@@ -144,10 +144,11 @@ impl<'bytes> Decoder<'bytes> {
     }
 
     fn string(&mut self) -> Result<String, CanonicalDecodeError> {
-        let bytes = self.bytes()?;
-        let text = str::from_utf8(&bytes)
-            .map_err(|_error| CanonicalDecodeError::InvalidUtf8)?;
-        Ok(text.to_owned())
+        let count = self.count(1)?;
+        let bytes = self.raw(count)?;
+        str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_error| CanonicalDecodeError::InvalidUtf8)
     }
 
     fn u16(&mut self) -> Result<u16, CanonicalDecodeError> {
@@ -237,7 +238,7 @@ fn decode_type_ids(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<TypeId>, CanonicalDecodeError> {
     let count = decoder.count(4)?;
-    let mut values = Vec::with_capacity(count);
+    let mut values = Vec::new();
     for _ in 0..count {
         values.push(TypeId::new(decoder.u32()?));
     }
@@ -299,7 +300,7 @@ fn decode_types(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<TypeEntry>, CanonicalDecodeError> {
     let count = decoder.count(5)?;
-    let mut entries = Vec::with_capacity(count);
+    let mut entries = Vec::new();
     for _ in 0..count {
         let id = TypeId::new(decoder.u32()?);
         entries.push(TypeEntry::new(id, decode_type(decoder)?));
@@ -351,7 +352,7 @@ fn decode_globals(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<Global>, CanonicalDecodeError> {
     let count = decoder.count(1)?;
-    let mut globals = Vec::with_capacity(count);
+    let mut globals = Vec::new();
     for _ in 0..count {
         globals.push(decode_global(decoder)?);
     }
@@ -363,7 +364,7 @@ fn decode_phi(decoder: &mut Decoder<'_>) -> Result<Phi, CanonicalDecodeError> {
     let type_id = TypeId::new(decoder.u32()?);
     let span = decode_span(decoder)?;
     let count = decoder.count(8)?;
-    let mut incoming = Vec::with_capacity(count);
+    let mut incoming = Vec::new();
     for _ in 0..count {
         incoming.push(PhiIncoming::new(
             BlockId::new(decoder.u32()?),
@@ -467,7 +468,7 @@ fn decode_value_ids(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<ValueId>, CanonicalDecodeError> {
     let count = decoder.count(4)?;
-    let mut values = Vec::with_capacity(count);
+    let mut values = Vec::new();
     for _ in 0..count {
         values.push(ValueId::new(decoder.u32()?));
     }
@@ -621,7 +622,7 @@ fn decode_terminator(
             let selector = ValueId::new(decoder.u32()?);
             let default_target = BlockId::new(decoder.u32()?);
             let count = decoder.count(1)?;
-            let mut cases = Vec::with_capacity(count);
+            let mut cases = Vec::new();
             for _ in 0..count {
                 cases.push(decode_switch_case(decoder)?);
             }
@@ -642,12 +643,12 @@ fn decode_block(
     let id = BlockId::new(decoder.u32()?);
     let span = decode_span(decoder)?;
     let phi_count = decoder.count(1)?;
-    let mut phis = Vec::with_capacity(phi_count);
+    let mut phis = Vec::new();
     for _ in 0..phi_count {
         phis.push(decode_phi(decoder)?);
     }
     let instruction_count = decoder.count(1)?;
-    let mut instructions = Vec::with_capacity(instruction_count);
+    let mut instructions = Vec::new();
     for _ in 0..instruction_count {
         instructions.push(decode_located_instruction(decoder)?);
     }
@@ -671,7 +672,7 @@ fn decode_function(
     let signature = TypeId::new(decoder.u32()?);
     let span = decode_span(decoder)?;
     let parameter_count = decoder.count(8)?;
-    let mut parameters = Vec::with_capacity(parameter_count);
+    let mut parameters = Vec::new();
     for _ in 0..parameter_count {
         parameters.push(Parameter::new(
             ValueId::new(decoder.u32()?),
@@ -680,7 +681,7 @@ fn decode_function(
     }
     let entry = BlockId::new(decoder.u32()?);
     let block_count = decoder.count(1)?;
-    let mut blocks = Vec::with_capacity(block_count);
+    let mut blocks = Vec::new();
     for _ in 0..block_count {
         blocks.push(decode_block(decoder)?);
     }
@@ -699,7 +700,7 @@ fn decode_functions(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<Function>, CanonicalDecodeError> {
     let count = decoder.count(1)?;
-    let mut functions = Vec::with_capacity(count);
+    let mut functions = Vec::new();
     for _ in 0..count {
         functions.push(decode_function(decoder)?);
     }
@@ -740,7 +741,7 @@ fn decode_proofs(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<ProofObligation>, CanonicalDecodeError> {
     let count = decoder.count(1)?;
-    let mut proofs = Vec::with_capacity(count);
+    let mut proofs = Vec::new();
     for _ in 0..count {
         proofs.push(decode_proof(decoder)?);
     }

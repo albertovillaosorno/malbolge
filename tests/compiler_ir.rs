@@ -823,6 +823,33 @@ fn canonical_decoder_rejects_unknown_wire_tag() {
 }
 
 #[test]
+fn canonical_decoder_rejects_exaggerated_type_table_without_eager_allocation() {
+    let encoded = canonical_bytes(&valid_module());
+    assert!(encoded.is_ok(), "valid module failed to canonicalize");
+    let canonical = encoded.unwrap_or_default();
+    let first_type_tag = 6
+        + 4
+        + ABI_ID.len()
+        + 4
+        + PROFILE_ID.len()
+        + 4
+        + SOURCE_ID.len()
+        + 32
+        + 4
+        + 4;
+    let count_offset = first_type_tag - 8;
+    let declared_count = 250_000u32;
+    let mut forged = canonical.get(..count_offset).unwrap_or_default().to_vec();
+    forged.extend_from_slice(&declared_count.to_le_bytes());
+    // Enough bytes to pass the count preflight, but not one valid type entry.
+    forged.extend(vec![u8::MAX; 250_000 * 5]);
+    assert_eq!(
+        canonical_module(&forged),
+        Err(CanonicalDecodeError::UnknownTag)
+    );
+}
+
+#[test]
 fn canonical_decoder_revalidates_restored_module() {
     let encoded = canonical_bytes(&valid_module());
     assert!(encoded.is_ok(), "valid module failed to canonicalize");

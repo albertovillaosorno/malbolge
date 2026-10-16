@@ -38,6 +38,12 @@ domain. The pre-layout program retains upstream function/value IDs plus exact
 source spans, source digest, ABI identity, typed-IR version, and target-profile
 identity.
 
+Canonical `MCTR` decoding bounds collection counts against remaining wire
+bytes and grows decoded function/operation vectors only as records are parsed.
+An exaggerated count with just enough trailing padding no longer causes an
+eager count-sized allocation before the first malformed record is rejected.
+The decoder does not yet impose a separate global object-memory ceiling.
+
 Typed `ByteInput`/`ByteOutput` lower in source order to explicit target
 byte-effect operations with SSA type/order validation. These operations preserve
 the typed IR's successful `u8` semantics and do not impersonate the raw profile

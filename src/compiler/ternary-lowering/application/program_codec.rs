@@ -318,7 +318,7 @@ fn decode_function(
     let name = decoder.string()?;
     let span = decode_span(decoder)?;
     let count = decoder.count(1)?;
-    let mut operations = Vec::with_capacity(count);
+    let mut operations = Vec::new();
     for _ in 0..count {
         operations.push(decode_operation(decoder)?);
     }
@@ -334,7 +334,7 @@ fn decode_functions(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<TernaryFunction>, TernaryProgramCodecError> {
     let count = decoder.count(1)?;
-    let mut functions = Vec::with_capacity(count);
+    let mut functions = Vec::new();
     for _ in 0..count {
         functions.push(decode_function(decoder)?);
     }

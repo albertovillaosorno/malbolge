@@ -151,7 +151,8 @@ instruction.
   and exact 21-trit scalars; encode/decode both run independent program
   validation, and restoration requires canonical re-encoding. Tests round-trip
   every current operation tag and reject truncation, malformed tags/trits,
-  identity drift, and forged SSA/function state.
+  identity drift, forged SSA/function state, and exaggerated count headers
+  without eager function/operation vector reservation.
 - A layout-resolved startup request now carries the exact ABI/profile/bind
   symbol,
   guest arena pointer/capacity, and user entry identity. Startup planning

@@ -1549,6 +1549,31 @@ fn ternary_decoder_rejects_malformed_wire_state() -> Result<(), String> {
 }
 
 #[test]
+fn ternary_decoder_rejects_exaggerated_function_count_without_eager_allocation()
+-> Result<(), String> {
+    let canonical = canonical_ternary_bytes(&lowered_return_fixture()?)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let first_id_offset = first_function_id_offset(&canonical)?;
+    let count_offset = first_id_offset
+        .checked_sub(4)
+        .ok_or_else(|| String::from("ternary count offset underflow"))?;
+    let declared_count = 1_000_000u32;
+    let mut forged = canonical
+        .get(..count_offset)
+        .ok_or_else(|| String::from("ternary header missing"))?
+        .to_vec();
+    forged.extend_from_slice(&declared_count.to_le_bytes());
+    // One byte per claimed function passes count preflight, not decoding.
+    forged.extend(vec![u8::MAX; 1_000_000]);
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Truncated)
+    {
+        return Err(String::from("exaggerated function count was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_decoder_rejects_unknown_tag_and_invalid_trit() -> Result<(), String>
 {
     let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)
