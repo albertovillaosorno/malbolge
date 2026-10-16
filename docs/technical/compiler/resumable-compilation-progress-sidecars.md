@@ -58,6 +58,10 @@ device and inode. A substituted or detached lock fails closed before the
 publication body can execute; this guards acquisition interleavings, not
 external deletion after the identity check.
 
+Canonical output-path helpers and direct sidecar reads reject embedded NUL
+and ill-formed or host-unencodable Unicode filenames before storage access.
+Malformed output paths cannot create sidecar pointers or sibling writer locks.
+
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
 immutable records. Direct resume identity schema admission also requires an

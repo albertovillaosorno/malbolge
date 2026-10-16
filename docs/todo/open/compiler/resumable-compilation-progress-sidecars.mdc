@@ -90,8 +90,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   timer state before snapshots, typed containment of injected-clock
   failures, caller-local monotonic write-rate limiting that always admits
   checkpointed/terminal evidence and only advances after commit, exact immutable
-  checkpoint/partial payload bytes, typed public path
-  helper/read admission, rejection of linked components in
+  checkpoint/partial payload bytes, typed public path helper/read admission,
+  rejection of NUL and invalid Unicode filenames before storage access,
+  rejection of linked components in
   sidecar/lock/checkpoint/partial paths, and an injected monotonic phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation

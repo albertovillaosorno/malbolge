@@ -83,6 +83,7 @@ _FOLLOW_FLAG: Final = "--follow"
 _FOLLOW_ARGUMENT_COUNT: Final = 2
 _FOLLOW_INTERVAL_SECONDS: Final = 1.0
 WINDOWS_PLATFORM: Final = "nt"
+_NUL_PATH_CHARACTER: Final = "\x00"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _PROFILE = re.compile(r"malbolge-profile-v1:sha256:[0-9a-f]{64}")
@@ -562,17 +563,35 @@ def _fail(message: str) -> Never:
     raise ProgressSidecarError(message)
 
 
+def _admit_filesystem_path(text: str, context: str) -> str:
+    """Reject strings the host filesystem cannot interpret as pathnames.
+
+    Returns:
+        Unchanged filesystem-representable pathname text.
+
+    """
+    if _NUL_PATH_CHARACTER in text:
+        _fail(f"{context} contains an embedded NUL")
+    try:
+        _ = text.encode("utf-8")
+        _ = os.fsencode(text)
+    except UnicodeEncodeError as error:
+        _fail(f"{context} cannot be encoded for filesystem access: {error}")
+    return text
+
+
 def _output_path_text(output: object) -> str:
     if type(output) is str:
-        return output
+        return _admit_filesystem_path(output, "output path")
     if isinstance(output, Path):
-        return str(output)
+        return _admit_filesystem_path(str(output), "output path")
     _fail("output path must use an exact string or pathlib Path")
 
 
 def _read_path(path: object) -> Path:
     if not isinstance(path, Path):
         _fail("progress sidecar read path must use pathlib Path")
+    _ = _admit_filesystem_path(str(path), "progress sidecar read path")
     return path
 
 

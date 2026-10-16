@@ -1194,6 +1194,65 @@ def test_read_rejects_named_pipe_progress_file(tmp_path: Path) -> None:
         _ = progress.read(destination)
 
 
+@pytest.mark.parametrize(
+    ("bad_segment", "expected"),
+    [
+        ("\x00", "contains an embedded NUL"),
+        ("\ud800", "cannot be encoded for filesystem access"),
+    ],
+)
+def test_read_rejects_unrepresentable_filesystem_path(
+    bad_segment: str,
+    expected: str,
+    tmp_path: Path,
+) -> None:
+    """Host-invalid pathnames remain inside the stable sidecar error type."""
+    destination = tmp_path / f"invalid{bad_segment}.progress.json"
+    with pytest.raises(ERROR, match=expected):
+        _ = progress.read(destination)
+
+
+@pytest.mark.parametrize(
+    ("bad_segment", "expected"),
+    [
+        ("\x00", "contains an embedded NUL"),
+        ("\ud800", "cannot be encoded for filesystem access"),
+    ],
+)
+def test_path_helpers_reject_unrepresentable_output(
+    bad_segment: str,
+    expected: str,
+    tmp_path: Path,
+) -> None:
+    """Every canonical path helper rejects impossible host filenames."""
+    output = f"{tmp_path / 'program.malbolge'}{bad_segment}"
+    with pytest.raises(ERROR, match=expected):
+        _ = progress.progress_path(output)
+    with pytest.raises(ERROR, match=expected):
+        _ = progress.checkpoint_path(output, 1)
+    with pytest.raises(ERROR, match=expected):
+        _ = progress.partial_path(Path(output), 1)
+
+
+@pytest.mark.parametrize("bad_segment", ["\x00", "\ud800"])
+def test_write_atomic_rejects_unrepresentable_output_before_side_effects(
+    bad_segment: str,
+    tmp_path: Path,
+) -> None:
+    """Malformed output names cannot create a lock or canonical pointer."""
+    original = _sidecar(tmp_path)
+    output = f"{original.output_path}{bad_segment}"
+    candidate = replace(
+        original,
+        output_path=output,
+        progress_path=f"{output}.progress.json",
+    )
+    with pytest.raises(ERROR, match="output path"):
+        _ = progress.write_atomic(candidate)
+    assert not Path(original.progress_path).exists()
+    assert not Path(f"{original.progress_path}.lock").exists()
+
+
 def test_progress_read_rejects_fifo_swapped_during_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
