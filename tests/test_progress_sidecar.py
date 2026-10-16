@@ -1875,6 +1875,49 @@ def test_write_atomic_rejects_linked_writer_lock(tmp_path: Path) -> None:
     assert not destination.exists()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Directory-link substitution requires POSIX filesystem semantics",
+)
+def test_writer_lock_rechecks_parent_after_mkdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swapped lock parent cannot admit an unrelated writer-lock inode."""
+    work = tmp_path / "lock-parent"
+    work.mkdir()
+    foreign = tmp_path / "redirect-target"
+    foreign.mkdir()
+    moved = tmp_path / "original-lock-parent"
+    sidecar = _sidecar(work)
+    original_mkdir = Path.mkdir
+    injections = 0
+
+    def swap_after_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        """Swap the parent immediately after writer-lock directory creation."""
+        nonlocal injections
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if path == work:
+            injections += 1
+            _ = path.rename(moved)
+            path.symlink_to(foreign, target_is_directory=True)
+
+    monkeypatch.setattr(Path, "mkdir", swap_after_mkdir)
+    with pytest.raises(ERROR, match="progress writer lock path is linked"):
+        _ = progress.write_atomic(sidecar)
+
+    assert injections == 1
+    assert not (foreign / f"{PROGRESS_NAME}.lock").exists()
+    assert not (foreign / PROGRESS_NAME).exists()
+    assert not tuple(foreign.glob(".*.tmp"))
+
+
 def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
     """A pre-existing FIFO lock cannot block the publisher."""
     destination = tmp_path / PROGRESS_NAME

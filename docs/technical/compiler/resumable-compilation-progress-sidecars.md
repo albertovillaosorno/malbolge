@@ -62,7 +62,9 @@ Deterministic directory-swap regressions cover both mutable pointer and
 immutable checkpoint publication at the post-creation boundary.
 
 The persistent writer-lock file also receives regular-descriptor admission and
-nonblocking/no-follow opens where available. After acquiring the process lock,
+nonblocking/no-follow opens where available. Its lock-path recheck after
+creating the parent directory rejects a parent-link substitution before the
+writer-lock file is opened. After acquiring the process lock,
 the publisher checks that the lock pathname still identifies that descriptor's
 device and inode. A substituted or detached lock fails closed before the
 publication body can execute; this guards acquisition interleavings, not
