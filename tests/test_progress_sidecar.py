@@ -1484,6 +1484,71 @@ def test_progress_read_rejects_leaf_symlink_swapped_during_open(
             _ = progress.read(destination)
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Replacing or unlinking an open file requires POSIX semantics",
+)
+def test_read_rejects_regular_file_replaced_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even byte-identical regular inode substitution invalidates admission."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    replacement = tmp_path / "replacement-progress.json"
+    _ = replacement.write_bytes(destination.read_bytes())
+    original_open = os.open
+    opened: list[int] = []
+
+    def swap_after_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        opened.append(descriptor)
+        _ = replacement.replace(destination)
+        return descriptor
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_after_open)
+        with pytest.raises(ERROR, match="path changed during file open"):
+            _ = progress.read(destination)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Replacing or unlinking an open file requires POSIX semantics",
+)
+def test_checkpoint_read_rejects_detachment_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Removed checkpoint pathname cannot authorize its detached descriptor."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+    original_open = os.open
+    opened: list[int] = []
+
+    def detach_after_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        opened.append(descriptor)
+        destination.unlink()
+        return descriptor
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", detach_after_open)
+        with pytest.raises(ERROR, match="path identity cannot be verified"):
+            _ = progress.read_checkpoint_generation(sidecar)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def test_progress_read_closes_descriptor_after_type_rejection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

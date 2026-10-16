@@ -72,8 +72,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   publication, process-shared writer serialization around transition validation
   and pointer replacement, typed fail-closed collision rechecks when an
   immutable target races away, direct-construction type admission,
-  referenced-generation
-  validation before pointer replacement, post-`mkdir` mutable pointer path
+  referenced-generation validation before pointer replacement, regular-file
+  read descriptor/path inode identity matching against replacement or unlink,
+  post-`mkdir` mutable pointer path
   re-admission against directory-swap races, stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for

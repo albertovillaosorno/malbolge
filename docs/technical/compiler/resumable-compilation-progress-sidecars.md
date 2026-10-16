@@ -49,8 +49,14 @@ filesystem entries, including named pipes, before attempting blocking payload
 reads. The opened file descriptor is independently checked against the regular-
 file requirement. Where available, POSIX nonblocking and no-follow flags
 prevent a FIFO or leaf symlink substituted during path admission from becoming
-trusted progress input. Descriptor read errors remain primary if stream close
-also fails; close-only failures reject the read instead of returning bytes.
+trusted progress input.
+
+The open descriptor's device and inode must still match
+the no-follow pathname immediately after opening; detached or replaced regular
+files fail closed at that point. This is an open-time identity check, not a
+promise of immunity to subsequent concurrent filesystem mutation. Descriptor
+read errors remain primary if stream close also fails; close-only failures
+reject the read instead of returning bytes.
 
 Mutable pointer publication rechecks the destination and its parent after
 creating the parent directory and before opening a temporary file. This closes

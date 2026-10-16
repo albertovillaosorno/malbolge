@@ -1567,6 +1567,27 @@ def loads(text: str) -> ProgressSidecar:
     return validate(_from_document(_mapping(parsed, "progress sidecar")))
 
 
+def _verify_opened_read_identity(
+    path: Path,
+    descriptor: int,
+    context: str,
+) -> None:
+    """Require an admitted regular descriptor to still name the read path."""
+    opened = os.fstat(descriptor)
+    if not stat.S_ISREG(opened.st_mode):
+        _fail(f"{context} must be a regular file")
+    try:
+        current = path.stat(follow_symlinks=False)
+    except OSError as error:
+        _fail(f"{context} path identity cannot be verified: {error}")
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or opened.st_dev != current.st_dev
+        or opened.st_ino != current.st_ino
+    ):
+        _fail(f"{context} path changed during file open")
+
+
 def _read_regular_bytes(path: Path, context: str) -> bytes:
     """Read only a regular file, checking the opened descriptor as authority.
 
@@ -1586,8 +1607,7 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
     flags |= cast("int", getattr(os, "O_BINARY", 0))
     descriptor = os.open(path, flags)
     try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            _fail(f"{context} must be a regular file")
+        _verify_opened_read_identity(path, descriptor, context)
         stream = FileIO(descriptor, "rb", closefd=True)
     except BaseException as error:
         try:
