@@ -46,7 +46,10 @@ committed concurrently.
 
 Reads and immutable-generation collision checks reject pre-existing nonregular
 filesystem entries, including named pipes, before attempting blocking payload
-reads.
+reads. The opened file descriptor is independently checked against the regular-
+file requirement. Where available, POSIX nonblocking and no-follow flags
+prevent a FIFO or leaf symlink substituted during path admission from becoming
+trusted progress input.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and

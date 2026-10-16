@@ -1194,6 +1194,114 @@ def test_read_rejects_named_pipe_progress_file(tmp_path: Path) -> None:
         _ = progress.read(destination)
 
 
+def test_progress_read_rejects_fifo_swapped_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Path-type admission cannot authorize a later substituted FIFO."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("nonblocking file opens are POSIX-only")
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    original_open = os.open
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        assert flags & vars(os)["O_NONBLOCK"]
+        destination.unlink()
+        _make_named_pipe(destination)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with pytest.raises(ERROR, match="must be a regular file"):
+            _ = progress.read(destination)
+
+
+def test_progress_read_rejects_leaf_symlink_swapped_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No-follow descriptor admission rejects a later leaf symlink."""
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("this host cannot atomically reject leaf symlinks")
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    foreign = tmp_path / "foreign-progress"
+    _ = foreign.write_bytes(destination.read_bytes())
+    original_open = os.open
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        assert flags & vars(os)["O_NOFOLLOW"]
+        destination.unlink()
+        destination.symlink_to(foreign)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with pytest.raises(ERROR, match="progress sidecar is unavailable"):
+            _ = progress.read(destination)
+
+
+def test_progress_read_closes_descriptor_after_type_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected open descriptor cannot leak into subsequent recovery."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    original_open = os.open
+    original_is_regular = stat.S_ISREG
+    opened: list[int] = []
+    checks = 0
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_opened_type(mode: int) -> bool:
+        nonlocal checks
+        checks += 1
+        if checks > 1:
+            return False
+        return original_is_regular(mode)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", capture_open)
+        context.setattr(stat, "S_ISREG", reject_opened_type)
+        with pytest.raises(ERROR, match="must be a regular file"):
+            _ = progress.read(destination)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+def test_progress_read_closes_descriptor_on_stream_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed stream conversion retains its error and closes the raw fd."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    observed: list[int] = []
+    failure = "injected read stream failure"
+    binary_mode = "rb"
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        assert mode == binary_mode
+        assert closefd
+        observed.append(descriptor)
+        raise OSError(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        with pytest.raises(ERROR, match="progress sidecar is unavailable"):
+            _ = progress.read(destination)
+
+    assert len(observed) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(observed[0])
+
+
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:
     """Reading a sidecar never follows a redirected canonical leaf."""
     sidecar = _sidecar(tmp_path)
@@ -2317,6 +2425,35 @@ def test_checkpoint_read_rejects_named_pipe_generation_member(
         _ = progress.read_checkpoint_generation(sidecar)
 
 
+def test_immutable_collision_rejects_fifo_swapped_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Collision inspection must validate the opened immutable descriptor."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("nonblocking file opens are POSIX-only")
+    destination = tmp_path / "existing-immutable-generation"
+    payload = b"published-generation"
+    _ = destination.write_bytes(payload)
+    reader = cast(
+        "Callable[[Path, bytes], None]",
+        vars(progress)["_admit_existing_immutable"],
+    )
+    original_open = os.open
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        assert flags & vars(os)["O_NONBLOCK"]
+        destination.unlink()
+        _make_named_pipe(destination)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with pytest.raises(ERROR, match="immutable progress payload must be"):
+            reader(destination, payload)
+
+
 def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     """Collided generation FIFOs fail closed without pointer publication."""
     checkpoint = b"checkpoint-state-v1"
@@ -2330,6 +2467,34 @@ def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     ):
         _ = progress.write_checkpoint_generation(sidecar, checkpoint)
     assert not Path(sidecar.progress_path).exists()
+
+
+def test_checkpoint_read_rejects_fifo_swapped_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Checkpoint descriptors reject post-preflight FIFO substitutions."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("nonblocking file opens are POSIX-only")
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+    original_open = os.open
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == destination
+        assert flags & vars(os)["O_NONBLOCK"]
+        destination.unlink()
+        _make_named_pipe(destination)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with pytest.raises(ERROR, match="checkpoint payload must be a regular"):
+            _ = progress.read_checkpoint_generation(sidecar)
 
 
 def test_checkpoint_generation_rejects_linked_immutable_path(

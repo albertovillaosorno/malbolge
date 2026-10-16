@@ -49,6 +49,7 @@ from datetime import datetime
 from enum import Enum
 from hashlib import sha256
 from importlib import import_module
+from io import FileIO
 from io import TextIOWrapper
 import json
 import os
@@ -1530,10 +1531,33 @@ def loads(text: str) -> ProgressSidecar:
     return validate(_from_document(_mapping(parsed, "progress sidecar")))
 
 
-def _require_regular_file(path: Path, context: str) -> None:
-    """Reject existing non-file entries before reading durable records."""
+def _read_regular_bytes(path: Path, context: str) -> bytes:
+    """Read only a regular file, checking the opened descriptor as authority.
+
+    Where supported, nonblocking/no-follow opens close the FIFO and leaf-link
+    substitution window between path admission and descriptor admission.
+
+    Returns:
+        Exact bytes from one admitted regular-file descriptor.
+
+    """
+    _reject_path_redirect(path, context)
     if not stat.S_ISREG(path.stat().st_mode):
         _fail(f"{context} must be a regular file")
+    flags = os.O_RDONLY
+    flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
+    flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
+    flags |= cast("int", getattr(os, "O_BINARY", 0))
+    descriptor = os.open(path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            _fail(f"{context} must be a regular file")
+        stream = FileIO(descriptor, "rb", closefd=True)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with stream:
+        return stream.read()
 
 
 def read(path: Path) -> ProgressSidecar:
@@ -1544,10 +1568,10 @@ def read(path: Path) -> ProgressSidecar:
 
     """
     admitted_path = _read_path(path)
-    _reject_path_redirect(admitted_path, "progress sidecar")
     try:
-        _require_regular_file(admitted_path, "progress sidecar")
-        text = admitted_path.read_text(encoding="utf-8-sig")
+        text = _read_regular_bytes(admitted_path, "progress sidecar").decode(
+            "utf-8-sig"
+        )
     except UnicodeDecodeError as error:
         _fail(f"invalid progress UTF-8: {error}")
     except OSError as error:
@@ -1826,10 +1850,10 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
 
 
 def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
-    _reject_path_redirect(destination, "immutable progress payload")
     try:
-        _require_regular_file(destination, "immutable progress payload")
-        existing = destination.read_bytes()
+        existing = _read_regular_bytes(
+            destination, "immutable progress payload"
+        )
     except OSError as error:
         _fail(f"immutable progress payload publication failed: {error}")
     if existing != payload:
@@ -1956,10 +1980,8 @@ def _validate_payload(
 
 
 def _read_payload(path: Path, context: str) -> bytes:
-    _reject_path_redirect(path, f"{context} payload")
     try:
-        _require_regular_file(path, f"{context} payload")
-        return path.read_bytes()
+        return _read_regular_bytes(path, f"{context} payload")
     except OSError as error:
         _fail(f"{context} payload is unavailable: {error}")
 
