@@ -263,8 +263,9 @@ Direct Python `read()` permits copies of sidecar records used as crash
 fixture inputs, preserving the original declared progress path without
 publishing state. Operator CLI inspection instead requires the supplied file
 to occupy its declared canonical `progress_path`. Relative filenames are
-admitted when they refer to the same absolute path, without resolving
-symlinks. Relocated pointers cannot impersonate another live job during
+admitted when they refer to the same lexically normalized absolute path,
+including `..` segments, without following symlinks. Relocated pointers
+cannot impersonate another live job during
 summary, follow, checkpoint discovery, or binary state extraction.
 
 The progress-sidecar inspector provides two verified portable-checkpoint views.

@@ -2453,8 +2453,12 @@ def _read_canonical_pointer(path: Path) -> ProgressSidecar:
 
     """
     sidecar = read(path)
-    selected = path.absolute()
-    declared = Path(sidecar.progress_path).absolute()
+    # A lexical absolute path collapses dot segments without following links.
+    # Path.resolve() would follow the very redirects rejected by read().
+    selected = Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath]
+    declared = Path(
+        os.path.abspath(sidecar.progress_path)  # ruff: ignore[os-path-abspath]
+    )
     if selected != declared:
         _fail("progress sidecar location does not match declared progress_path")
     return sidecar

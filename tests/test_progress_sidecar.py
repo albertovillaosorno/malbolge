@@ -1390,12 +1390,18 @@ def test_cli_accepts_relative_path_to_same_canonical_pointer(
     )
     durable = _with_checkpoint_bytes(checkpointed, checkpoint)
     destination = progress.write_checkpoint_generation(durable, checkpoint)
+    (tmp_path / "nested").mkdir()
     monkeypatch.chdir(tmp_path)
-    assert progress.main(["--checkpoint-info", destination.name]) == 0
-    output = capsys.readouterr()
+    candidates = (
+        Path(destination.name),
+        Path("nested") / ".." / destination.name,
+    )
     expected_field = "state_codec="
-    assert expected_field in output.out
-    assert not output.err
+    for candidate in candidates:
+        assert progress.main(["--checkpoint-info", str(candidate)]) == 0
+        output = capsys.readouterr()
+        assert expected_field in output.out
+        assert not output.err
 
 
 def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
