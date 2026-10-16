@@ -58,6 +58,8 @@ the directory-creation substitution window in which a newly linked parent
 could redirect the mutable write before the already-enforced replace guard.
 It complements the equivalent post-`mkdir` check for immutable generations;
 concurrent mutation after either check still requires filesystem protection.
+Deterministic directory-swap regressions cover both mutable pointer and
+immutable checkpoint publication at the post-creation boundary.
 
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. After acquiring the process lock,

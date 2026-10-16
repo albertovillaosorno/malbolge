@@ -3213,6 +3213,52 @@ def test_immutable_writer_rejects_linked_parent(tmp_path: Path) -> None:
     assert not (target / "checkpoint.bin").exists()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Directory-link substitution requires POSIX filesystem semantics",
+)
+def test_checkpoint_generation_rechecks_parent_after_mkdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable parent redirects cannot affect immutable publication."""
+    work = tmp_path / "checkpoint-parent"
+    work.mkdir()
+    foreign = tmp_path / "redirect-target"
+    foreign.mkdir()
+    moved = tmp_path / "original-parent"
+    payload = b"immutable-checkpoint"
+    sidecar = _checkpointed(_sidecar(work), checkpoint=payload, partial=None)
+    original_mkdir = Path.mkdir
+    injections = 0
+
+    def swap_after_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        """Replace the original parent only after mkdir has returned."""
+        nonlocal injections
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if path == work:
+            injections += 1
+            _ = path.rename(moved)
+            path.symlink_to(foreign, target_is_directory=True)
+
+    monkeypatch.setattr(Path, "mkdir", swap_after_mkdir)
+    with pytest.raises(
+        ERROR, match="immutable progress payload path is linked"
+    ):
+        _ = progress.write_checkpoint_generation(sidecar, payload)
+
+    assert injections == 1
+    assert not (foreign / Path(sidecar.checkpoint_path or "").name).exists()
+    assert not (foreign / PROGRESS_NAME).exists()
+    assert not tuple(foreign.glob(".*.tmp"))
+
+
 def test_checkpoint_read_rejects_link_replacing_published_generation(
     tmp_path: Path,
 ) -> None:

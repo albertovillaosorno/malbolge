@@ -125,7 +125,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   with rejected terminal restart, direct field and resume-identity mutations,
   boolean counter/sequence aliases, impossible UTC dates, corrupt direct pointer
   targets, non-callable/failing clocks, mutable
-  payload aliases, foreign path arguments, exact-string JSON parser admission,
+  payload aliases, foreign path arguments, post-`mkdir` parent-link substitution
+  during both pointer and immutable generation writes, exact-string JSON parser
+  admission,
   bounded routine-write cadence with committed/prepublication retry semantics,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
