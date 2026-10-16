@@ -441,6 +441,35 @@ class SwappingReadStream:
 
 
 @dataclass(slots=True)
+class MutatingReadStream:
+    """Rewrite an admitted regular inode before a read returns its bytes."""
+
+    descriptor: int
+    destination: Path
+
+    def read(self) -> bytes:
+        """Return original bytes after an in-place same-inode rewrite.
+
+        Returns:
+            Bytes read before the in-place rewrite was completed.
+
+        """
+        payload = os.read(self.descriptor, os.fstat(self.descriptor).st_size)
+        with self.destination.open("r+b") as writer:
+            _ = writer.write(b"x" * len(payload))
+        observed = self.destination.stat()
+        os.utime(
+            self.destination,
+            ns=(observed.st_atime_ns, observed.st_mtime_ns + 1_000_000_000),
+        )
+        return payload
+
+    def close(self) -> None:
+        """Release the exact admitted descriptor."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
 class ShortPayloadStream:
     """Real temporary descriptor that reports a truncated payload write."""
 
@@ -1865,6 +1894,72 @@ def test_progress_read_rejects_parent_link_swapped_after_stream_read(
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
+
+
+def _assert_in_place_read_mutation_rejected(
+    destination: Path,
+    reader: Callable[[], object],
+    context_name: str,
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assert both stale-read rejection and raw descriptor cleanup."""
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def mutate_after_read(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> MutatingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return MutatingReadStream(descriptor, destination)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", mutate_after_read)
+        with pytest.raises(ERROR, match=f"{context_name} contents changed"):
+            _ = reader()
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+def test_progress_read_rejects_in_place_modified_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rewritten progress file is rejected despite unchanged inode."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+
+    def read_progress() -> object:
+        return progress.read(destination)
+
+    _assert_in_place_read_mutation_rejected(
+        destination, read_progress, "progress sidecar", monkeypatch=monkeypatch
+    )
+
+
+def test_checkpoint_read_rejects_in_place_modified_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rewritten checkpoint member is rejected despite unchanged inode."""
+    checkpoint = b"immutable-checkpoint-state"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+
+    def read_checkpoint() -> object:
+        return progress.read_checkpoint_generation(sidecar)
+
+    _assert_in_place_read_mutation_rejected(
+        destination,
+        read_checkpoint,
+        "checkpoint payload",
+        monkeypatch=monkeypatch,
+    )
 
 
 def test_progress_read_closes_descriptor_after_type_rejection(

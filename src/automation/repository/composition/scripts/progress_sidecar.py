@@ -1611,6 +1611,7 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
     descriptor = os.open(path, flags)
     try:
         _verify_opened_read_identity(path, descriptor, context)
+        initial = os.fstat(descriptor)
         stream = FileIO(descriptor, "rb", closefd=True)
     except BaseException as error:
         try:
@@ -1621,7 +1622,7 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
             )
         raise
     return _read_stream_preserving_primary(
-        stream, descriptor=descriptor, path=path, context=context
+        stream, descriptor=descriptor, admission=(path, context, initial)
     )
 
 
@@ -1629,8 +1630,7 @@ def _read_stream_preserving_primary(
     stream: FileIO,
     *,
     descriptor: int,
-    path: Path,
-    context: str,
+    admission: tuple[Path, str, os.stat_result],
 ) -> bytes:
     """Keep the read error primary if descriptor close also fails.
 
@@ -1641,11 +1641,19 @@ def _read_stream_preserving_primary(
         OSError: If either the stream read or close fails.
 
     """
+    path, context, initial = admission
     try:
         payload = stream.read()
         _verify_opened_read_identity(
             path, descriptor, context, phase="file read"
         )
+        final = os.fstat(descriptor)
+        if (
+            initial.st_size != final.st_size
+            or initial.st_mtime_ns != final.st_mtime_ns
+            or initial.st_ctime_ns != final.st_ctime_ns
+        ):
+            _fail(f"{context} contents changed during file read")
         return payload
     finally:
         primary_error = sys.exception()
