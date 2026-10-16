@@ -128,7 +128,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked
   canonical typed-IR compiler state, exact binary checkpoint extraction, and
-  exact operator-facing elapsed-time summaries. The tracked typed-IR golden also
+  exact operator-facing elapsed-time summaries, and malformed stored codec
+  metadata rejected before opaque checkpoint payload decoding. The tracked
+  typed-IR golden also
   proves byte-identical envelopes, metadata, and decoded state under CPU versus
   CUDA sidecar identity.
 - `src/optimization/accelerator/application/accelerator/search_checkpoint.py`

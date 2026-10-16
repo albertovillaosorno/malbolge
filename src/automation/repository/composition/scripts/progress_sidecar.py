@@ -819,6 +819,7 @@ def _validated_portable_checkpoint(
     envelope = _decode_portable_checkpoint_document(checkpoint)
     if envelope.schema != CHECKPOINT_SCHEMA_ID:
         _fail(f"unsupported checkpoint schema: {envelope.schema}")
+    _identifier(envelope.state_codec, "checkpoint state codec")
     if state_codec is not None and envelope.state_codec != state_codec:
         _fail("checkpoint state codec does not match requested codec")
     _validate_checkpoint_identity(validated, envelope)

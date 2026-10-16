@@ -158,7 +158,9 @@ versioned state codec, payload SHA-256, and canonical base64 payload while
 intentionally omitting CPU/CUDA backend identity. Decoding first requires the
 envelope bytes to match the sidecar checkpoint digest, then revalidates all of
 those fields and rejects malformed, noncanonical, or differently identified
-state.
+state. Metadata discovery validates the stored codec identifier before decoding
+the opaque state bytes, even when no expected codec was supplied by the caller.
+
 The envelope does not define compiler-stage semantics; concrete compiler/search
 state codecs remain owned by their producing subsystems.
 

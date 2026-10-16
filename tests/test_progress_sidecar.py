@@ -942,6 +942,38 @@ def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
         )
 
 
+def test_portable_checkpoint_metadata_rejects_invalid_codec_before_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Metadata discovery rejects codec drift before opaque base64 decoding."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        "compiler.typed-ir-state-v1",
+        payload=b"state",
+    )
+    document = cast("dict[str, object]", json.loads(encoded))
+    document["state_codec"] = "codec with whitespace"
+    malformed = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    durable = _with_checkpoint_bytes(checkpointed, malformed)
+    destination = progress.write_checkpoint_generation(durable, malformed)
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded opaque payload before codec identity admission")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "b64decode", prohibit_decode)
+        with pytest.raises(ERROR, match="checkpoint state codec"):
+            _ = progress.read_portable_checkpoint_metadata(
+                progress.read(destination)
+            )
+
+
 def test_portable_checkpoint_accepts_empty_state_and_binds_outer_digest(
     tmp_path: Path,
 ) -> None:
