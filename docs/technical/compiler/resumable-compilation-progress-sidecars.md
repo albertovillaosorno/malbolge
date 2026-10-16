@@ -164,6 +164,10 @@ those fields and rejects malformed, noncanonical, or differently identified
 state. Metadata discovery validates the stored codec identifier before decoding
 the opaque state bytes, even when no expected codec was supplied by the caller.
 
+The complete envelope's exact canonical JSON spelling is now admitted before
+base64 decoding, rejecting alternate whitespace, escaped-key aliases, and
+missing line termination without interpreting opaque state.
+
 The envelope does not define compiler-stage semantics; concrete compiler/search
 state codecs remain owned by their producing subsystems.
 

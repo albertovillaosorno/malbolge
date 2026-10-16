@@ -772,6 +772,21 @@ def _validate_checkpoint_identity(
         _fail("checkpoint completed units do not match sidecar")
 
 
+def _validate_checkpoint_wire_spelling(
+    envelope: PortableCheckpoint,
+    checkpoint: bytes,
+) -> None:
+    """Reject noncanonical envelope JSON before interpreting opaque state."""
+    canonical = json.dumps(
+        asdict(envelope),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if (canonical + "\n").encode("utf-8") != checkpoint:
+        _fail("portable checkpoint is not canonical")
+
+
 def _decode_checkpoint_payload(envelope: PortableCheckpoint) -> bytes:
     _digest(envelope.payload_sha256, "checkpoint payload_sha256")
     try:
@@ -823,6 +838,7 @@ def _validated_portable_checkpoint(
     if state_codec is not None and envelope.state_codec != state_codec:
         _fail("checkpoint state codec does not match requested codec")
     _validate_checkpoint_identity(validated, envelope)
+    _validate_checkpoint_wire_spelling(envelope, checkpoint)
     payload = _decode_checkpoint_payload(envelope)
     canonical = encode_portable_checkpoint(
         _resume_identity(validated),

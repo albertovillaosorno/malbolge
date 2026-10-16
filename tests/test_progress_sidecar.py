@@ -96,6 +96,9 @@ BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
 WINDOWS_PAYLOAD = b"windows-payload"
 POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
+NONCANONICAL_WHITESPACE = "whitespace"
+NONCANONICAL_NO_NEWLINE = "no-newline"
+NONCANONICAL_ESCAPE = "escaped"
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
@@ -1060,6 +1063,43 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
             codec,
             payload=cast("bytes", cast("object", bytearray(b"state"))),
         )
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [NONCANONICAL_WHITESPACE, NONCANONICAL_NO_NEWLINE, NONCANONICAL_ESCAPE],
+)
+def test_noncanonical_portable_envelope_never_decodes_state(
+    variant: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Canonical JSON admission precedes opaque state base64 interpretation."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "compiler.typed-ir-state-v1"
+    encoded = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=b"secret-state",
+    )
+    if variant == NONCANONICAL_WHITESPACE:
+        malformed = encoded.replace(b'"schema":', b'"schema" :', 1)
+    elif variant == NONCANONICAL_NO_NEWLINE:
+        malformed = encoded.removesuffix(b"\n")
+    else:
+        malformed = encoded.replace(b'"schema"', b'"schem\\u0061"', 1)
+    assert malformed != encoded
+    durable = _with_checkpoint_bytes(checkpointed, malformed)
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded state before checkpoint wire spelling admission")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "b64decode", prohibit_decode)
+        with pytest.raises(ERROR, match="portable checkpoint is not canonical"):
+            _ = progress.decode_portable_checkpoint(durable, codec, malformed)
 
 
 def test_resume_fingerprint_rejects_invalid_direct_identity() -> None:
