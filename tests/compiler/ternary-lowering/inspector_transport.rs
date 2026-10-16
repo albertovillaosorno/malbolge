@@ -33,7 +33,7 @@
 //! Ternary checkpoint process transport resource regressions.
 
 use std::env::temp_dir;
-use std::fs::{remove_file, write};
+use std::fs::{read_to_string, remove_file, write};
 use std::path::{Path, PathBuf};
 use std::process::id;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -226,6 +226,43 @@ fn zero_deadline_rejects_before_child_spawn() {
         budget(1024, 1024, Duration::ZERO),
     );
     assert_eq!(observed, Err(TransportError::Rejected));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn reaps_direct_inspector_child_after_deadline() -> Result<(), String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("fixture clock failure: {error}"))?
+        .as_nanos();
+    let path = temp_dir().join(format!(
+        "malbolge-ternary-inspector-pid-{}-{nonce}.txt",
+        id(),
+    ));
+    let source = format!(
+        concat!(
+            "import os,time\n",
+            "open({:?},'w').write(str(os.getpid()))\n",
+            "time.sleep(20)\n",
+        ),
+        path.to_string_lossy(),
+    );
+    let result =
+        inspect_script(&source, budget(1024, 1024, Duration::from_millis(750)));
+    let pid_text = read_to_string(&path)
+        .map_err(|error| format!("read child PID evidence: {error}"))?;
+    remove_file(&path)
+        .map_err(|error| format!("remove child PID evidence: {error}"))?;
+    let pid = pid_text
+        .parse::<u32>()
+        .map_err(|error| format!("parse child PID evidence: {error}"))?;
+    if result != Err(TransportError::Rejected) {
+        return Err(String::from("expired direct child was not rejected"));
+    }
+    if Path::new(&format!("/proc/{pid}")).exists() {
+        return Err(String::from("expired inspector child was not reaped"));
+    }
+    Ok(())
 }
 
 #[test]

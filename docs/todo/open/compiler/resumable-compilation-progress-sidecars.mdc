@@ -247,7 +247,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   success, stdout and stderr overflow rejection, nonzero status, zero-status
   diagnostics, null stdin, concurrent wide stdout/stderr overflow, zero-budget
   rejection before spawn, clean early pipe EOF while the child still runs,
-  child cancellation, inherited-pipe deadline, and launch failure.
+  child cancellation with Linux PID reaping, inherited-pipe deadline, and
+  launch failure.
 
   `tests/ternary_lowering.rs` publishes two real canonical ternary
   generations through the production Python writer, injects process death at

@@ -336,6 +336,8 @@ The ternary bridge now uses its own bounded channel-driven transport with the
 same 60-second direct-child deadline, 64 MiB state budget, and 8 KiB stderr
 budget. Concurrent readers emit one bounded completion each, and neither stage
 accepts partial output from an inspector failing resource or status admission.
+Timeouts and output overruns terminate and reap the direct inspector child;
+a Linux regression independently verifies that a timed-out PID disappears.
 
 Descendants inheriting open pipes may leave detached reader workers after a
 failed call; terminating entire descendant process groups is not yet provided.
