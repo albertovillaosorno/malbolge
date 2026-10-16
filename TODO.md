@@ -39,18 +39,23 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 
 ### TODO - Tiered native execution engine
 
-Build an AOT-first tiered execution engine where verified precompiled native
-state variants are primary, the JIT covers only uncached mutable states, and the
-interpreter remains the normative fallback.
+Build an AOT-first tiered execution engine over one exact VM contract.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/vm/tiered-native-execution-engine.mdc](docs/todo/open/vm/tiered-native-execution-engine.mdc)
 
+### TODO - Ternary machine lowering
+
+Lower typed C IR into a compact ternary virtual-machine representation suited to
+Malbolge instead of translating C operations directly instruction by
+instruction.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compiler/ternary-machine-lowering.mdc](docs/todo/open/compiler/ternary-machine-lowering.mdc)
+
 ### TODO - Ahead-of-execution native translation
 
-Compile verified reachable code-state regions before guest execution, including
-finite closed self-modification graphs represented as precompiled native state
-variants.
+Make verified ahead-of-execution translation the primary native path.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/vm/ahead-of-execution-native-translation.mdc](docs/todo/open/vm/ahead-of-execution-native-translation.mdc)
@@ -80,15 +85,6 @@ produce capacity curves and Pareto frontiers rather than one pass/fail score.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
-
-### TODO - Ternary machine lowering
-
-Lower typed C IR into a compact ternary virtual-machine representation suited to
-Malbolge instead of translating C operations directly instruction by
-instruction.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/ternary-machine-lowering.mdc](docs/todo/open/compiler/ternary-machine-lowering.mdc)
 
 ## P3 — Optimization, proof, and reusable scale
 
@@ -183,8 +179,8 @@ tiers and native-code cache reuse.
 
 ### TODO - Guarded self-modification JIT
 
-Use a latency-bounded JIT only for hot mutable code-state versions that were not
-covered by verified AOT artifacts, with deterministic interpreter fallback.
+Use JIT compilation as a latency-bounded rescue tier for hot mutable code-state
+versions that were not covered by verified AOT artifacts.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/vm/guarded-self-modification-jit.mdc](docs/todo/open/vm/guarded-self-modification-jit.mdc)
@@ -439,19 +435,19 @@ engineering work.
 
 ### TODO - Malbolge machine-model and C compilation paper
 
-Publish the systems/compiler result using a formal ternary self-modifying
-abstract-machine model for the compilation target while preserving "esoteric
-programming language" as historical terminology rather than the main technical
-classification.
+Publish the systems/compiler result as a reproducible study of compiling a
+modern deterministic C profile to Malbolge's versioned execution model, using
+an explicit abstract-machine description rather than relying on the historical
+"esoteric programming language" label as the technical model.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc](docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc)
 
 ### TODO - Effective transcendental separation paper
 
-Reserve any genuinely new compact effective separation theorem for an
-independent mathematics paper, and keep that research explicitly non-blocking
-for product engineering backed by separately justified finite-domain evidence.
+Keep any genuinely new effective Diophantine/transcendence result needed to
+bound rational or dyadic trigonometric midpoint separation as an independent
+mathematics paper rather than an implicit product-engineering prerequisite.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)

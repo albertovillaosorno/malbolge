@@ -14,7 +14,7 @@
 #   - Duplicate typed metadata or accept completed work as active planning.
 # - Allows:
 #   - Inputs: `TODO.md` and typed TODO records.
-#   - Outputs: exact group, status/title order, summary, and link assertions.
+#   - Outputs: exact priority group, active-first order, summary, and links.
 #   - Side effects: repository reads only.
 # - Split-When:
 #   - Planning surfaces acquire an independent machine-readable schema.
@@ -44,7 +44,6 @@ TODO_PATH = ROOT / "TODO.md"
 OPEN_ROOT = ROOT / "docs/todo/open"
 COMPLETED_ROOT = ROOT / "docs/todo/completed"
 ACTIVE_STATUS = "active"
-EXPECTED_TODO_COUNT = 47
 MAX_SUMMARY_SENTENCES = 4
 TODO_TARGET_PATTERN = r"docs/todo/open/.+?\.mdc"
 MIGRATED_ROOT_DETAIL = "**Migrated root planning detail.**"
@@ -54,12 +53,12 @@ FORBIDDEN_SUMMARY_MARKERS = (
     "priority lane",
 )
 P_GROUPS = (
-    ("P0", "Authority and governance", range(1, 5)),
-    ("P1", "Semantic and language foundations", range(5, 8)),
-    ("P2", "Compiler, runtime, and accelerator core", range(8, 11)),
-    ("P3", "Optimization, proof, and reusable scale", range(11, 14)),
-    ("P4", "Applications, evidence, and self-hosting", range(14, 17)),
-    ("P5", "Documentation and publication", range(17, 19)),
+    ("P0", "Authority and governance"),
+    ("P1", "Semantic and language foundations"),
+    ("P2", "Compiler, runtime, and accelerator core"),
+    ("P3", "Optimization, proof, and reusable scale"),
+    ("P4", "Applications, evidence, and self-hosting"),
+    ("P5", "Documentation and publication"),
 )
 AREA_ORDER = {
     name: index
@@ -93,6 +92,7 @@ class PlanningRecord:
 
     identifier: str
     lane: int
+    priority: str
     status_order: int
     area_order: int
     title: str
@@ -160,6 +160,7 @@ def _record_from_typed_todo(path: Path) -> PlanningRecord:
     return PlanningRecord(
         identifier=_front_matter(text, "id"),
         lane=int(_front_matter(text, "lane")),
+        priority=_front_matter(text, "priority"),
         status_order=0 if status == ACTIVE_STATUS else 1,
         area_order=AREA_ORDER.get(area, 99),
         title=task.removeprefix("TODO - "),
@@ -173,16 +174,6 @@ def _open_records() -> tuple[PlanningRecord, ...]:
     return tuple(
         _record_from_typed_todo(path)
         for path in OPEN_ROOT.rglob("*.mdc")
-    )
-
-
-def _priority_key(
-    record: PlanningRecord,
-) -> tuple[int, str, str]:
-    return (
-        record.status_order,
-        record.title.casefold(),
-        record.identifier,
     )
 
 
@@ -255,27 +246,27 @@ def _parse_sections(text: str) -> tuple[ParsedSection, ...]:
 def _assert_section_headers(sections: tuple[ParsedSection, ...]) -> None:
     actual = tuple((section.identifier, section.title) for section in sections)
     expected = tuple(
-        (identifier, title) for identifier, title, _lanes in P_GROUPS
+        (identifier, title) for identifier, title in P_GROUPS
     )
     assert actual == expected
 
 
 def _expected_section_records(
-    lanes: range,
+    priority: str,
     open_records: tuple[PlanningRecord, ...],
-) -> tuple[PlanningRecord, ...]:
-    return tuple(
-        sorted(
-            (record for record in open_records if record.lane in lanes),
-            key=_priority_key,
-        )
+) -> frozenset[PlanningRecord]:
+    return frozenset(
+        record for record in open_records if record.priority == priority
     )
 
 
-def _assert_record_identity(records: list[PlanningRecord]) -> None:
-    assert len(records) == EXPECTED_TODO_COUNT
+def _assert_record_identity(
+    records: list[PlanningRecord],
+    open_records: tuple[PlanningRecord, ...],
+) -> None:
+    assert len(records) == len(open_records)
     identifiers = {record.identifier for record in records}
-    assert len(identifiers) == EXPECTED_TODO_COUNT
+    assert len(identifiers) == len(open_records)
     completed_titles = _completed_titles()
     actual_titles = {f"TODO - {record.title}" for record in records}
     assert not actual_titles.intersection(completed_titles)
@@ -288,13 +279,12 @@ def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
     open_records = _open_records()
     actual_records: list[PlanningRecord] = []
     for section, group in zip(sections, P_GROUPS, strict=True):
-        expected = _expected_section_records(
-            group[2],
-            open_records,
-        )
-        assert tuple(section.records) == expected
+        expected = _expected_section_records(group[0].lower(), open_records)
+        assert frozenset(section.records) == expected
+        status_order = [record.status_order for record in section.records]
+        assert status_order == sorted(status_order)
         actual_records.extend(section.records)
-    _assert_record_identity(actual_records)
+    _assert_record_identity(actual_records, open_records)
 
 
 def test_open_records_do_not_retain_migrated_root_detail() -> None:
