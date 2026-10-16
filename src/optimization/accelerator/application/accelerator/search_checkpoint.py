@@ -154,9 +154,7 @@ def _document(
         "algorithm_id": validated_request.algorithm_id,
         "batch_fingerprint": _batch_fingerprint(validated_batch),
         "codec": SEARCH_CHECKPOINT_CODEC_ID,
-        "completed_evidence": [
-            _evidence_document(item) for item in completed
-        ],
+        "completed_evidence": [_evidence_document(item) for item in completed],
         "completed_units": len(completed),
         "evaluation_budget": validated_request.evaluation_budget,
         "evaluator_id": validated_batch.evaluator_id,
@@ -237,21 +235,38 @@ def _payload_text(document: JsonObject) -> str:
     return value
 
 
-def _decode_evidence(
+def _admit_evidence_prefix(
     value: JsonValue,
     batch: CandidateEvaluationBatch,
     completed_units: int,
-) -> tuple[CandidateEvidence, ...]:
+) -> tuple[tuple[str, str], ...]:
+    """Admit every candidate header before any opaque payload decoding.
+
+    Returns:
+        Exact request-order identity and encoded-payload pairs.
+
+    """
     if type(value) is not list:
         _fail("search checkpoint completed_evidence must be an array")
     if len(value) > len(batch.items):
         _fail("search checkpoint evidence exceeds candidate batch")
     if completed_units != len(value):
         _fail("search checkpoint completed_units does not match evidence")
-    admitted = tuple(
+    return tuple(
         _admit_evidence_header(raw_item, batch.items[index].logical_id)
         for index, raw_item in enumerate(value)
     )
+
+
+def _decode_admitted_evidence(
+    admitted: tuple[tuple[str, str], ...],
+) -> tuple[CandidateEvidence, ...]:
+    """Decode an admitted request-order prefix of opaque candidate evidence.
+
+    Returns:
+        Immutable decoded candidate evidence.
+
+    """
     return tuple(
         CandidateEvidence(
             logical_id=logical_id,
@@ -371,9 +386,15 @@ def decode_search_checkpoint(
     completed_units = _integer(document, "completed_units")
     if _integer(document, "total_units") != len(validated_batch.items):
         _fail("search checkpoint total_units does not match candidate batch")
-    evidence = _decode_evidence(
+    admitted = _admit_evidence_prefix(
         document["completed_evidence"], validated_batch, completed_units
     )
+    canonical = json.dumps(
+        document, sort_keys=True, ensure_ascii=True, separators=(",", ":")
+    )
+    if (canonical + "\n").encode("utf-8") != payload:
+        _fail("search checkpoint is not canonical")
+    evidence = _decode_admitted_evidence(admitted)
     completed = _validate_evidence_prefix(validated_batch, evidence)
     if encode_search_checkpoint(request, validated_batch, completed) != payload:
         _fail("search checkpoint is not canonical")

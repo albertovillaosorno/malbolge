@@ -362,6 +362,29 @@ def test_search_checkpoint_rejects_later_payload_type_before_any_decoding(
         _ = decode_search_checkpoint(payload, request, batch)
 
 
+def test_search_checkpoint_rejects_noncanonical_json_before_decoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Noncanonical JSON never grants authority to decode evidence bytes."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    variants = (
+        encoded.removesuffix(b"\n"),
+        encoded.replace(b'"schema":', b'"schema" :', 1),
+    )
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded payload before canonical JSON admission")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    for payload in variants:
+        assert payload != encoded
+        with pytest.raises(SearchCheckpointError, match="not canonical"):
+            _ = decode_search_checkpoint(payload, request, batch)
+
+
 def test_search_checkpoint_rejects_nonprefix_and_mutable_evidence() -> None:
     """Only an immutable request-order evidence prefix can be persisted."""
     request = _request()

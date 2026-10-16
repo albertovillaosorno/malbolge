@@ -178,9 +178,11 @@ Restore requires the current request and batch to match exactly.
 Restore preflights exact-typed search identity, declared total and completed
 counts, and the requested evidence-list length before decoding opaque payloads.
 All candidate identities and payload header types are checked in request
-order before decoding the first base64 payload. Malformed counts, boolean
-aliases, and later nonprefix evidence therefore fail without consuming any
-untrusted evidence payload bytes.
+order before decoding the first base64 payload. The normalized JSON
+spelling is checked against the exact checkpoint bytes before base64 decoding;
+missing line termination and whitespace aliases are rejected early. Malformed
+counts, boolean aliases, and later nonprefix evidence also fail without
+consuming untrusted evidence payload bytes.
 
 `evaluated-search-prefix-resume-v1` now consumes that codec for ordinary
 evaluated search. It rebuilds and validates the exact candidate batch, evaluates
