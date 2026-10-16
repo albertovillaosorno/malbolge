@@ -57,11 +57,16 @@ files fail closed at that point. All path components are also rechecked for
 links after opening: replacing a parent with a symlink could otherwise direct
 the open to a different regular inode that still matches its new pathname.
 
-This is an open-time identity check, not a promise of immunity to subsequent
-concurrent filesystem mutation. Descriptor read errors remain primary if
-stream close also fails; close-only failures reject the read instead of
-returning bytes. Deterministic parent-swap regressions cover both mutable
-progress-pointer and immutable checkpoint reads, including descriptor cleanup.
+Identity and path-link admission are repeated after the full payload has
+been read and before the admitted descriptor is closed. Concurrent pathname
+replacement during the read cannot turn a stale regular-file snapshot into
+trusted progress evidence, even when the replacement has identical bytes.
+
+These are bounded admission checks, not a promise of immunity to subsequent
+filesystem mutation after the stream closes. Descriptor read errors remain
+primary if stream close also fails; close-only failures reject the read.
+Deterministic parent and regular-inode substitutions cover both progress-pointer
+and immutable checkpoint reads, including descriptor cleanup.
 
 Mutable pointer publication rechecks the destination and its parent after
 creating the parent directory and before opening a temporary file. This closes

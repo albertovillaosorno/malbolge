@@ -417,6 +417,30 @@ class FailingReadStream:
 
 
 @dataclass(slots=True)
+class SwappingReadStream:
+    """Read an admitted stream and replace its pathname before returning."""
+
+    descriptor: int
+    destination: Path
+    replacement: Path
+
+    def read(self) -> bytes:
+        """Replace the path after reading the original regular descriptor.
+
+        Returns:
+            Exact bytes of the original file, before its pathname replacement.
+
+        """
+        payload = os.read(self.descriptor, os.fstat(self.descriptor).st_size)
+        _ = self.replacement.replace(self.destination)
+        return payload
+
+    def close(self) -> None:
+        """Close the underlying admitted operating-system descriptor."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
 class ShortPayloadStream:
     """Real temporary descriptor that reports a truncated payload write."""
 
@@ -1715,6 +1739,77 @@ def test_checkpoint_read_rejects_parent_link_swapped_during_file_open(
     with monkeypatch.context() as context:
         context.setattr(os, "open", redirect_parent_on_open)
         with pytest.raises(ERROR, match="checkpoint payload path is linked"):
+            _ = progress.read_checkpoint_generation(sidecar)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Replacing a file during an open stream requires POSIX semantics",
+)
+def test_progress_read_rejects_pointer_replaced_during_stream_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even byte-identical pointer swaps during reading fail closed."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    replacement = tmp_path / "replacement-progress.json"
+    _ = replacement.write_bytes(destination.read_bytes())
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def swap_after_read(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> SwappingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return SwappingReadStream(descriptor, destination, replacement)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", swap_after_read)
+        with pytest.raises(ERROR, match="path changed during file read"):
+            _ = progress.read(destination)
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Replacing a file during an open stream requires POSIX semantics",
+)
+def test_checkpoint_read_rejects_member_replaced_during_stream_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Immutable generation readers also verify identity after reading."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+    replacement = tmp_path / "replacement-checkpoint"
+    _ = replacement.write_bytes(checkpoint)
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def swap_after_read(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> SwappingReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return SwappingReadStream(descriptor, destination, replacement)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", swap_after_read)
+        with pytest.raises(ERROR, match="path changed during file read"):
             _ = progress.read_checkpoint_generation(sidecar)
 
     assert len(opened) == 1

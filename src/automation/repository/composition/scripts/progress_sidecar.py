@@ -1571,6 +1571,8 @@ def _verify_opened_read_identity(
     path: Path,
     descriptor: int,
     context: str,
+    *,
+    phase: str = "file open",
 ) -> None:
     """Require an admitted regular descriptor to still name the read path."""
     opened = os.fstat(descriptor)
@@ -1586,7 +1588,7 @@ def _verify_opened_read_identity(
         or opened.st_dev != current.st_dev
         or opened.st_ino != current.st_ino
     ):
-        _fail(f"{context} path changed during file open")
+        _fail(f"{context} path changed during {phase}")
 
 
 def _read_regular_bytes(path: Path, context: str) -> bytes:
@@ -1618,10 +1620,18 @@ def _read_regular_bytes(path: Path, context: str) -> bytes:
                 f"read descriptor cleanup also failed: {close_error}"
             )
         raise
-    return _read_stream_preserving_primary(stream)
+    return _read_stream_preserving_primary(
+        stream, descriptor=descriptor, path=path, context=context
+    )
 
 
-def _read_stream_preserving_primary(stream: FileIO) -> bytes:
+def _read_stream_preserving_primary(
+    stream: FileIO,
+    *,
+    descriptor: int,
+    path: Path,
+    context: str,
+) -> bytes:
     """Keep the read error primary if descriptor close also fails.
 
     Returns:
@@ -1632,7 +1642,11 @@ def _read_stream_preserving_primary(stream: FileIO) -> bytes:
 
     """
     try:
-        return stream.read()
+        payload = stream.read()
+        _verify_opened_read_identity(
+            path, descriptor, context, phase="file read"
+        )
+        return payload
     finally:
         primary_error = sys.exception()
         try:
