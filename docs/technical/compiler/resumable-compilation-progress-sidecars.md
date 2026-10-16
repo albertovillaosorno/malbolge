@@ -51,6 +51,13 @@ file requirement. Where available, POSIX nonblocking and no-follow flags
 prevent a FIFO or leaf symlink substituted during path admission from becoming
 trusted progress input.
 
+The persistent writer-lock file also receives regular-descriptor admission and
+nonblocking/no-follow opens where available. After acquiring the process lock,
+the publisher checks that the lock pathname still identifies that descriptor's
+device and inode. A substituted or detached lock fails closed before the
+publication body can execute; this guards acquisition interleavings, not
+external deletion after the identity check.
+
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
 immutable records. Direct resume identity schema admission also requires an

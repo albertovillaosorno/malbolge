@@ -1658,12 +1658,41 @@ def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
     return release
 
 
+def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
+    """Admit a stable regular descriptor for process-shared writer locking.
+
+    Returns:
+        Open regular-file stream usable by the platform lock primitive.
+
+    """
+    context = "progress writer lock"
+    if lock_path.exists() and not stat.S_ISREG(lock_path.stat().st_mode):
+        _fail(f"{context} must be a regular file")
+    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+    flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
+    flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
+    flags |= cast("int", getattr(os, "O_BINARY", 0))
+    descriptor = os.open(lock_path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            _fail(f"{context} must be a regular file")
+        return FileIO(descriptor, "r+b", closefd=True)
+    except BaseException as error:
+        try:
+            os.close(descriptor)
+        except OSError as close_error:
+            error.add_note(
+                f"writer lock descriptor cleanup also failed: {close_error}"
+            )
+        raise
+
+
 def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
     try:
         _reject_path_redirect(lock_path.parent, "progress writer lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         _reject_path_redirect(lock_path, "progress writer lock")
-        return lock_path.open("a+b")
+        return _open_regular_writer_lock(lock_path)
     except OSError as error:
         _fail(f"progress writer lock cannot be opened: {error}")
 
@@ -1706,6 +1735,21 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
         raise
 
 
+def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
+    """Reject a lock-path replacement between file open and lock acquire."""
+    try:
+        opened = os.fstat(stream.fileno())
+        current = lock_path.stat(follow_symlinks=False)
+    except OSError as error:
+        _fail(f"progress writer lock identity cannot be verified: {error}")
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or opened.st_dev != current.st_dev
+        or opened.st_ino != current.st_ino
+    ):
+        _fail("progress writer lock path changed during acquisition")
+
+
 @contextmanager
 def _writer_lock(destination: Path) -> Generator[None]:
     stream = _open_writer_lock_stream(_writer_lock_path(destination))
@@ -1715,6 +1759,7 @@ def _writer_lock(destination: Path) -> Generator[None]:
         except OSError as error:
             _fail(f"progress writer lock cannot be acquired: {error}")
         try:
+            _verify_acquired_writer_lock(_writer_lock_path(destination), stream)
             yield
         finally:
             _release_writer_lock_preserving_primary(release)

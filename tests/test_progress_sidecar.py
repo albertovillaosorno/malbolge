@@ -1472,6 +1472,244 @@ def test_write_atomic_rejects_linked_writer_lock(tmp_path: Path) -> None:
     assert not destination.exists()
 
 
+def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
+    """A pre-existing FIFO lock cannot block the publisher."""
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    _make_named_pipe(lock_path)
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    with (
+        pytest.raises(ERROR, match="writer lock must be a regular file"),
+        writer_lock(destination),
+    ):
+        pytest.fail("named-pipe lock entered publication")
+    assert not destination.exists()
+
+
+def test_writer_lock_rejects_fifo_substitution_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A FIFO substituted after path preflight cannot block lock acquire."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("nonblocking lock opens require POSIX flags")
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    original_open = os.open
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == lock_path
+        assert flags & vars(os)["O_NONBLOCK"]
+        _make_named_pipe(lock_path)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with (
+            pytest.raises(ERROR, match="writer lock must be a regular file"),
+            writer_lock(destination),
+        ):
+            pytest.fail("substituted FIFO lock entered publication")
+    assert not destination.exists()
+
+
+def test_writer_lock_rejects_symlink_substitution_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No-follow lock admission rejects a substituted leaf symlink."""
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("host has no atomic leaf-symlink rejection")
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    foreign = tmp_path / "foreign-lock"
+    _ = foreign.write_bytes(EMPTY_PAYLOAD)
+    original_open = os.open
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def swap_then_open(path: Path, flags: int) -> int:
+        assert Path(path) == lock_path
+        assert flags & vars(os)["O_NOFOLLOW"]
+        lock_path.symlink_to(foreign)
+        return original_open(path, flags)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", swap_then_open)
+        with (
+            pytest.raises(ERROR, match="writer lock cannot be opened"),
+            writer_lock(destination),
+        ):
+            pytest.fail("substituted symlink entered publication")
+    assert foreign.read_bytes() == EMPTY_PAYLOAD
+    assert not destination.exists()
+
+
+def test_writer_lock_closes_rejected_open_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rejecting the opened descriptor also releases its ownership."""
+    destination = tmp_path / PROGRESS_NAME
+    original_open = os.open
+    opened: list[int] = []
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_descriptor(mode: int) -> bool:
+        del mode
+        return False
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", capture_open)
+        context.setattr(stat, "S_ISREG", reject_descriptor)
+        with (
+            pytest.raises(ERROR, match="writer lock must be a regular file"),
+            writer_lock(destination),
+        ):
+            pytest.fail("nonregular opened lock entered publication")
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+def test_writer_lock_rejects_replaced_inode_after_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock acquisition cannot authorize a replaced serialization inode."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("unlinking an acquired lock requires POSIX")
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+
+    def acquire_then_replace(stream: object) -> Callable[[], None]:
+        release = acquire(stream)
+        lock_path.unlink()
+        _ = lock_path.write_bytes(EMPTY_PAYLOAD)
+        return release
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", acquire_then_replace)
+        with (
+            pytest.raises(ERROR, match="path changed during acquisition"),
+            writer_lock(destination),
+        ):
+            pytest.fail("lock on detached inode entered publication")
+
+    with writer_lock(destination):
+        assert lock_path.is_file()
+
+
+def test_writer_lock_rejects_missing_path_after_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A detached lock path fails closed even though the descriptor exists."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("unlinking an acquired lock requires POSIX")
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+
+    def acquire_then_unlink(stream: object) -> Callable[[], None]:
+        release = acquire(stream)
+        lock_path.unlink()
+        return release
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", acquire_then_unlink)
+        with (
+            pytest.raises(ERROR, match="lock identity cannot be verified"),
+            writer_lock(destination),
+        ):
+            pytest.fail("unlinked writer lock entered publication")
+    assert not lock_path.exists()
+
+
+def test_writer_lock_closes_raw_descriptor_when_stream_setup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock stream setup failure cannot leak its raw descriptor."""
+    destination = tmp_path / PROGRESS_NAME
+    opened: list[int] = []
+    failure = "injected lock stream setup failure"
+    binary_mode = "r+b"
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        assert closefd
+        assert mode == binary_mode
+        opened.append(descriptor)
+        raise OSError(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        with (
+            pytest.raises(ERROR, match="writer lock cannot be opened"),
+            writer_lock(destination),
+        ):
+            pytest.fail("failed lock stream setup entered publication")
+
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+def test_writer_lock_keeps_stream_setup_failure_before_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock-stream cleanup errors remain secondary to setup failure."""
+    destination = tmp_path / PROGRESS_NAME
+    setup_failure = "injected writer lock stream setup failure"
+    close_failure = "injected raw lock descriptor close failure"
+    actual_close = os.close
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        del descriptor, mode, closefd
+        raise OSError(setup_failure)
+
+    def fail_close(descriptor: int) -> None:
+        actual_close(descriptor)
+        raise OSError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        context.setattr(os, "close", fail_close)
+        with (
+            pytest.raises(
+                ERROR, match="writer lock cannot be opened"
+            ) as caught,
+            writer_lock(destination),
+        ):
+            pytest.fail("failed lock stream setup entered publication")
+
+    cause = caught.value.__context__
+    assert isinstance(cause, OSError)
+    assert str(cause) == setup_failure
+    assert getattr(cause, "__notes__", None) == [
+        f"writer lock descriptor cleanup also failed: {close_failure}"
+    ]
+
+
 def test_writer_lock_rejects_linked_parent(tmp_path: Path) -> None:
     """The internal lock primitive rejects a redirected parent directory."""
     linked, target = _linked_directory(tmp_path, "linked-lock-parent")
@@ -3084,12 +3322,8 @@ def test_writer_lock_wraps_descriptor_close_oserror(
     """Descriptor close remains inside the progress error boundary."""
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
 
-    def fake_open(
-        _path: Path,
-        *_args: object,
-        **_kwargs: object,
-    ) -> CloseFailingStream:
-        del _path, _args, _kwargs
+    def fake_open(_path: Path) -> CloseFailingStream:
+        del _path
         return CloseFailingStream()
 
     def release() -> None:
@@ -3099,8 +3333,14 @@ def test_writer_lock_wraps_descriptor_close_oserror(
         del _stream
         return release
 
-    monkeypatch.setattr(Path, "open", fake_open)
+    def admit_fake_lock(path: Path, stream: object) -> None:
+        del path, stream
+
+    monkeypatch.setattr(progress, "_open_writer_lock_stream", fake_open)
     monkeypatch.setattr(progress, "_acquire_writer_lock", fake_acquire)
+    monkeypatch.setattr(
+        progress, "_verify_acquired_writer_lock", admit_fake_lock
+    )
     destination = tmp_path / PROGRESS_NAME
     with (
         pytest.raises(ERROR, match="writer lock cannot be closed"),

@@ -79,8 +79,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   close fails after successful sync, primary-sync preservation when close also
   fails, durable-pointer evidence when writer-lock or immutable temporary
   cleanup fails after commit, exact committed-generation evidence when a later
-  partial member or mutable sidecar fails prepublication, writer-lock teardown
-  preserves an earlier
+  partial member or mutable sidecar fails prepublication, regular writer-lock
+  descriptor admission rejects FIFO/link substitution and lock-inode drift,
+  and writer-lock teardown preserves an earlier
   acquisition/body/release failure as primary, shared mutable/immutable payload
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
