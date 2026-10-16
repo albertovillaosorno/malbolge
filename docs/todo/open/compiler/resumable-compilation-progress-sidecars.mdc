@@ -136,8 +136,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   exact request identity, exact candidate-batch fingerprint, and immutable
   request-order completed evidence. `tests/optimizer/test_search_checkpoint.py`
   covers empty/partial prefixes, packed candidate storage, request/batch drift,
-  invalid counts, boolean header aliases, and oversized/nonprefix evidence
-  rejected before base64 decoding, malformed/noncanonical JSON, mutable aliases,
+  invalid counts, boolean header aliases, and entire-prefix identities and
+  payload header types rejected before any base64 decoding, alongside
+  malformed/noncanonical JSON, mutable aliases,
   and absence of backend/device
   identity.
 - `src/optimization/accelerator/application/accelerator/resumable_search.py`

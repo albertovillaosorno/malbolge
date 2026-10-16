@@ -316,6 +316,52 @@ def test_search_checkpoint_rejects_wrong_order_before_payload_decode(
         _ = decode_search_checkpoint(payload, request, batch)
 
 
+def test_search_checkpoint_rejects_later_identity_before_any_decoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every prefix identity is admitted before decoding the first payload."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    evidence = cast("list[dict[str, object]]", document["completed_evidence"])
+    evidence[-1]["logical_id"] = "out-of-order-candidate"
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded evidence before checking every candidate identity")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="exact batch prefix"):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
+def test_search_checkpoint_rejects_later_payload_type_before_any_decoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every payload header has exact string type before base64 admission."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    document = cast("dict[str, object]", json.loads(encoded))
+    evidence = cast("list[dict[str, object]]", document["completed_evidence"])
+    evidence[-1]["payload_base64"] = True
+    payload = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+    def prohibit_decode(data: object, *, validate: bool) -> bytes:
+        del data, validate
+        pytest.fail("decoded evidence before checking every payload header")
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", prohibit_decode)
+    with pytest.raises(SearchCheckpointError, match="exact string type"):
+        _ = decode_search_checkpoint(payload, request, batch)
+
+
 def test_search_checkpoint_rejects_nonprefix_and_mutable_evidence() -> None:
     """Only an immutable request-order evidence prefix can be persisted."""
     request = _request()

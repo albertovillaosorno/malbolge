@@ -248,19 +248,26 @@ def _decode_evidence(
         _fail("search checkpoint evidence exceeds candidate batch")
     if completed_units != len(value):
         _fail("search checkpoint completed_units does not match evidence")
-    return tuple(
-        _decode_evidence_item(raw_item, batch.items[index].logical_id)
+    admitted = tuple(
+        _admit_evidence_header(raw_item, batch.items[index].logical_id)
         for index, raw_item in enumerate(value)
+    )
+    return tuple(
+        CandidateEvidence(
+            logical_id=logical_id,
+            payload=_decode_payload(encoded),
+        )
+        for logical_id, encoded in admitted
     )
 
 
-def _decode_evidence_item(
+def _admit_evidence_header(
     raw_item: JsonValue, expected: str
-) -> CandidateEvidence:
-    """Check a single prefix identity before decoding its opaque payload.
+) -> tuple[str, str]:
+    """Check one candidate identity without decoding any opaque bytes.
 
     Returns:
-        Admitted immutable evidence for the expected candidate.
+        Expected candidate identity and its still-encoded payload.
 
     """
     item = _mapping(raw_item, "search checkpoint evidence")
@@ -268,14 +275,23 @@ def _decode_evidence_item(
     logical_id = _string(item, "logical_id")
     if logical_id != expected:
         _fail("search checkpoint evidence is not an exact batch prefix")
-    encoded = _payload_text(item)
+    return logical_id, _payload_text(item)
+
+
+def _decode_payload(encoded: str) -> bytes:
+    """Decode one base64 payload only after the entire prefix was admitted.
+
+    Returns:
+        Exact immutable evidence bytes, with canonical spelling confirmed.
+
+    """
     try:
         payload = b64decode(encoded, validate=True)
     except (BinasciiError, ValueError) as error:
         _fail(f"search checkpoint payload_base64 is invalid: {error}")
     if b64encode(payload).decode("ascii") != encoded:
         _fail("search checkpoint payload_base64 is not canonical")
-    return CandidateEvidence(logical_id=logical_id, payload=payload)
+    return payload
 
 
 _TOP_LEVEL_KEYS = frozenset({
