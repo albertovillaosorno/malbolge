@@ -40,6 +40,9 @@ identity.
 
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
+Each function requires at least 36 bytes and each operation at least 29 bytes,
+including the fixed 24-byte provenance span; shorter claimed collections are
+rejected during count preflight before inspecting an invalid operation tag.
 An exaggerated count with just enough trailing padding no longer causes an
 eager count-sized allocation before the first malformed record is rejected.
 The decoder does not yet impose a separate global object-memory ceiling.

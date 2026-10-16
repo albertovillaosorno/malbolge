@@ -49,6 +49,10 @@ const MAGIC: &[u8; 4] = b"MCTR";
 const TARGET_PROFILE: &str = "malbolge-2026";
 const TERNARY_WIRE_VERSION: u16 = 1;
 const TYPED_IR_VERSION: u16 = 1;
+// Conservative wire minima: id + empty name + span + operation count;
+// operation tag + one `u32` value + the required 24-byte source span.
+const FUNCTION_MIN_BYTES: usize = 36;
+const OPERATION_MIN_BYTES: usize = 29;
 
 /// Stable codec identity for canonical pre-layout ternary programs.
 pub const TERNARY_PROGRAM_CODEC_ID: &str = "malbolge-ternary-ir-v1";
@@ -317,7 +321,7 @@ fn decode_function(
     let id = decoder.u32()?;
     let name = decoder.string()?;
     let span = decode_span(decoder)?;
-    let count = decoder.count(1)?;
+    let count = decoder.count(OPERATION_MIN_BYTES)?;
     let mut operations = Vec::new();
     for _ in 0..count {
         operations.push(decode_operation(decoder)?);
@@ -333,7 +337,7 @@ fn decode_function(
 fn decode_functions(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<TernaryFunction>, TernaryProgramCodecError> {
-    let count = decoder.count(1)?;
+    let count = decoder.count(FUNCTION_MIN_BYTES)?;
     let mut functions = Vec::new();
     for _ in 0..count {
         functions.push(decode_function(decoder)?);

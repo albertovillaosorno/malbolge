@@ -189,6 +189,11 @@ restorable compiler checkpoint state rather than a one-way cache identity.
 Collection decoding no longer reserves an untrusted declared count before
 reading its first element. Count preflight still verifies minimum remaining
 wire bytes, while vectors grow only as elements actually pass decoding.
+
+For globals, switches, phi nodes, located instructions, blocks, functions,
+and proof entries, those minima now reflect the smallest possible complete
+record rather than a generic one-byte placeholder. Short padded records
+therefore fail before the decoder examines their malformed nested fields.
 Text decoding borrows wire bytes for UTF-8 admission before making one owned
 string, rather than allocating an intermediate byte vector. These changes
 reduce resource amplification from malformed or exaggerated count headers;

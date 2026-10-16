@@ -1574,6 +1574,35 @@ fn ternary_decoder_rejects_exaggerated_function_count_without_eager_allocation()
 }
 
 #[test]
+fn ternary_operation_count_preflight_rejects_short_unknown_tag()
+-> Result<(), String> {
+    let canonical = canonical_ternary_bytes(&lowered_return_fixture()?)
+        .map_err(|error| format!("encode ternary program: {error:?}"))?;
+    let pattern = materialize_pattern(7, 0);
+    let first_operation = canonical
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+        .ok_or_else(|| String::from("first ternary operation missing"))?;
+    let count_offset = first_operation
+        .checked_sub(4)
+        .ok_or_else(|| String::from("ternary operation count underflow"))?;
+    let mut forged = canonical
+        .get(..count_offset)
+        .ok_or_else(|| String::from("ternary operation header missing"))?
+        .to_vec();
+    forged.extend_from_slice(&1u32.to_le_bytes());
+    // Fewer than 29 bytes for one operation, but enough for the old
+    // one-byte preflight to inspect this unknown tag first.
+    forged.extend_from_slice(&[u8::MAX; 28]);
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Truncated)
+    {
+        return Err(String::from("short operation record passed preflight"));
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_decoder_rejects_unknown_tag_and_invalid_trit() -> Result<(), String>
 {
     let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)

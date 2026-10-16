@@ -823,6 +823,28 @@ fn canonical_decoder_rejects_unknown_wire_tag() {
 }
 
 #[test]
+fn typed_ir_global_count_preflight_rejects_short_invalid_utf8_record() {
+    // The record supplies an invalid name before the required type/span
+    // fields; the count preflight must reject its short wire shape first.
+    let mut forged = b"MCTI\x01\x00".to_vec();
+    for label in [ABI_ID, PROFILE_ID, SOURCE_ID] {
+        let length = u32::try_from(label.len()).unwrap_or_default();
+        forged.extend_from_slice(&length.to_le_bytes());
+        forged.extend_from_slice(label.as_bytes());
+    }
+    forged.extend_from_slice(&[0x5a; 32]);
+    forged.extend_from_slice(&0u32.to_le_bytes());
+    forged.extend_from_slice(&1u32.to_le_bytes());
+    forged.extend_from_slice(&0u32.to_le_bytes());
+    forged.extend_from_slice(&1u32.to_le_bytes());
+    forged.push(u8::MAX);
+    assert_eq!(
+        canonical_module(&forged),
+        Err(CanonicalDecodeError::Truncated)
+    );
+}
+
+#[test]
 fn canonical_decoder_rejects_exaggerated_type_table_without_eager_allocation() {
     let encoded = canonical_bytes(&valid_module());
     assert!(encoded.is_ok(), "valid module failed to canonicalize");

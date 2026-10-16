@@ -54,6 +54,14 @@ use super::types::{TypeDef, TypeEntry};
 use super::validate::validate_module;
 
 const MAGIC: &[u8; 4] = b"MCTI";
+// Conservative minimum bytes for variable-length canonical records.
+const GLOBAL_MIN_BYTES: usize = 37;
+const SWITCH_CASE_MIN_BYTES: usize = 10;
+const PHI_MIN_BYTES: usize = 36;
+const INSTRUCTION_MIN_BYTES: usize = 29;
+const BLOCK_MIN_BYTES: usize = 62;
+const FUNCTION_MIN_BYTES: usize = 48;
+const PROOF_MIN_BYTES: usize = 5;
 type OptionalTypedValue = Option<(ValueId, TypeId)>;
 
 /// Canonical typed-IR restoration failure.
@@ -351,7 +359,7 @@ fn decode_global(
 fn decode_globals(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<Global>, CanonicalDecodeError> {
-    let count = decoder.count(1)?;
+    let count = decoder.count(GLOBAL_MIN_BYTES)?;
     let mut globals = Vec::new();
     for _ in 0..count {
         globals.push(decode_global(decoder)?);
@@ -621,7 +629,7 @@ fn decode_terminator(
         3 => {
             let selector = ValueId::new(decoder.u32()?);
             let default_target = BlockId::new(decoder.u32()?);
-            let count = decoder.count(1)?;
+            let count = decoder.count(SWITCH_CASE_MIN_BYTES)?;
             let mut cases = Vec::new();
             for _ in 0..count {
                 cases.push(decode_switch_case(decoder)?);
@@ -642,12 +650,12 @@ fn decode_block(
 ) -> Result<BasicBlock, CanonicalDecodeError> {
     let id = BlockId::new(decoder.u32()?);
     let span = decode_span(decoder)?;
-    let phi_count = decoder.count(1)?;
+    let phi_count = decoder.count(PHI_MIN_BYTES)?;
     let mut phis = Vec::new();
     for _ in 0..phi_count {
         phis.push(decode_phi(decoder)?);
     }
-    let instruction_count = decoder.count(1)?;
+    let instruction_count = decoder.count(INSTRUCTION_MIN_BYTES)?;
     let mut instructions = Vec::new();
     for _ in 0..instruction_count {
         instructions.push(decode_located_instruction(decoder)?);
@@ -680,7 +688,7 @@ fn decode_function(
         ));
     }
     let entry = BlockId::new(decoder.u32()?);
-    let block_count = decoder.count(1)?;
+    let block_count = decoder.count(BLOCK_MIN_BYTES)?;
     let mut blocks = Vec::new();
     for _ in 0..block_count {
         blocks.push(decode_block(decoder)?);
@@ -699,7 +707,7 @@ fn decode_function(
 fn decode_functions(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<Function>, CanonicalDecodeError> {
-    let count = decoder.count(1)?;
+    let count = decoder.count(FUNCTION_MIN_BYTES)?;
     let mut functions = Vec::new();
     for _ in 0..count {
         functions.push(decode_function(decoder)?);
@@ -740,7 +748,7 @@ fn decode_proof(
 fn decode_proofs(
     decoder: &mut Decoder<'_>,
 ) -> Result<Vec<ProofObligation>, CanonicalDecodeError> {
-    let count = decoder.count(1)?;
+    let count = decoder.count(PROOF_MIN_BYTES)?;
     let mut proofs = Vec::new();
     for _ in 0..count {
         proofs.push(decode_proof(decoder)?);
