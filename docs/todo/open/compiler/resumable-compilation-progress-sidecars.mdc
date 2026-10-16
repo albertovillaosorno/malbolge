@@ -93,8 +93,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   checkpointed/terminal evidence and only advances after commit, exact immutable
   checkpoint/partial payload bytes, typed public path helper/read admission,
   rejection of NUL and invalid Unicode filenames while retaining valid POSIX
-  `surrogateescape` byte-path round trips,
-  rejection of linked components in
+  `surrogateescape` byte-path round trips for sidecars, checkpoint and partial
+  members, and binary CLI extraction; rejection of linked components in
   sidecar/lock/checkpoint/partial paths, and an injected monotonic phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation

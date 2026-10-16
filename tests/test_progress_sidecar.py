@@ -1385,6 +1385,56 @@ def test_sidecar_round_trips_posix_non_utf8_filename(tmp_path: Path) -> None:
     assert os.fsencode(destination).endswith(b".progress.json")
 
 
+def test_posix_byte_path_checkpoint_and_cli_recovery(tmp_path: Path) -> None:
+    """Byte paths survive checkpoint and CLI extraction."""
+    if os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("byte-escaped filenames require POSIX")
+    output = tmp_path / f"compiled{os.fsdecode(bytes((255,)))}.malbolge"
+    sidecar = replace(
+        _sidecar(tmp_path),
+        output_path=str(output),
+        progress_path=str(progress.progress_path(output)),
+    )
+    checkpointed = _checkpointed(sidecar, partial=b"partial-guest-bytes")
+    state = b"resume-state\x00\xff"
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        TYPED_IR_CRASH_CODEC,
+        payload=state,
+    )
+    durable = _with_checkpoint_bytes(checkpointed, checkpoint)
+    destination = progress.write_checkpoint_generation(
+        durable, checkpoint, b"partial-guest-bytes"
+    )
+    restored = progress.read(destination)
+    assert restored == durable
+    assert progress.read_portable_checkpoint_generation(
+        restored, TYPED_IR_CRASH_CODEC
+    ) == (
+        state, b"partial-guest-bytes"
+    )
+    assert Path(restored.checkpoint_path or "").read_bytes() == checkpoint
+    assert progress.__file__ is not None
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            progress.__file__,
+            "--extract-checkpoint",
+            TYPED_IR_CRASH_CODEC,
+            str(destination),
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    assert completed.stdout == state
+    assert not completed.stderr
+
+
 def test_progress_read_rejects_fifo_swapped_during_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

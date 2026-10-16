@@ -63,8 +63,9 @@ Canonical output-path helpers and direct sidecar reads reject embedded NUL
 and ill-formed or host-unencodable Unicode filenames before storage access.
 On POSIX, valid byte-oriented filenames represented through Python's
 `surrogateescape` mechanism remain usable and round-trip through durable
-sidecar publication and inspection. Malformed output paths cannot create
-sidecar pointers or sibling writer locks.
+sidecar publication and inspection. Immutable checkpoint/partial members and
+the product checkpoint extractor also recover using those original byte paths.
+Malformed output paths cannot create sidecar pointers or sibling writer locks.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
