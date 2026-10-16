@@ -89,6 +89,7 @@ _COMPATIBILITY = re.compile(r"malbolge-progress-compat-v1:sha256:[0-9a-f]{64}")
 _UTC_DATE: Final = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T"
 _UTC_TIME: Final = r"[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z"
 _UTC = re.compile(f"{_UTC_DATE}{_UTC_TIME}")
+_UTC_FRACTION_START: Final = len("2000-01-01T00:00:00.")
 
 type JsonScalar = str | int | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -923,6 +924,23 @@ def _timestamp(value: object, context: str) -> datetime:
     return parsed
 
 
+def _timestamp_order_key(value: object, context: str) -> tuple[datetime, str]:
+    """Preserve every admitted fractional digit for exact UTC ordering.
+
+    Returns:
+        UTC whole-second instant plus normalized fractional-second digits.
+
+    """
+    timestamp = _timestamp(value, context)
+    text = cast("str", value)
+    fraction = (
+        text[_UTC_FRACTION_START:-1].rstrip("0")
+        if len(text) > _UTC_FRACTION_START
+        else ""
+    )
+    return timestamp.replace(microsecond=0), fraction
+
+
 def _validate_revision(value: object) -> None:
     text = _string(value, "repository_revision")
     if _REVISION.fullmatch(text) is None:
@@ -1141,15 +1159,15 @@ def _validate_elapsed_times(sidecar: ProgressSidecar) -> None:
 
 
 def _validate_timestamps(sidecar: ProgressSidecar) -> None:
-    started = _timestamp(sidecar.started_at, "started_at")
-    updated = _timestamp(sidecar.updated_at, "updated_at")
+    started = _timestamp_order_key(sidecar.started_at, "started_at")
+    updated = _timestamp_order_key(sidecar.updated_at, "updated_at")
     if updated < started:
         _fail("updated_at precedes started_at")
     terminal = sidecar.status.value in TERMINAL_STATUSES
     if terminal != (sidecar.completed_at is not None):
         _fail("completed_at presence does not match terminal status")
     if sidecar.completed_at is not None:
-        completed = _timestamp(sidecar.completed_at, "completed_at")
+        completed = _timestamp_order_key(sidecar.completed_at, "completed_at")
         if completed < updated:
             _fail("completed_at precedes updated_at")
 
@@ -1401,10 +1419,9 @@ def validate_transition(
     if new.status not in allowed:
         transition = f"{old.status.value}->{new.status.value}"
         _fail(f"invalid progress transition: {transition}")
-    if _timestamp(new.updated_at, "updated_at") < _timestamp(
-        old.updated_at,
-        "previous.updated_at",
-    ):
+    current_time = _timestamp_order_key(new.updated_at, "updated_at")
+    previous_time = _timestamp_order_key(old.updated_at, "previous.updated_at")
+    if current_time < previous_time:
         _fail("updated_at moved backward")
     _validate_total_transition(old, new)
     _validate_checkpoint_transition(old, new)
@@ -1432,10 +1449,9 @@ def _validate_observed_identity_and_status(
     if new.status not in allowed:
         transition = f"{old.status.value}->{new.status.value}"
         _fail(f"invalid observed progress transition: {transition}")
-    if _timestamp(new.updated_at, "updated_at") < _timestamp(
-        old.updated_at,
-        "previous.updated_at",
-    ):
+    current_time = _timestamp_order_key(new.updated_at, "updated_at")
+    previous_time = _timestamp_order_key(old.updated_at, "previous.updated_at")
+    if current_time < previous_time:
         _fail("observed updated_at moved backward")
 
 

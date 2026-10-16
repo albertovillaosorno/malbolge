@@ -1475,6 +1475,75 @@ def test_checkpoint_and_partial_members_are_atomic(tmp_path: Path) -> None:
     assert progress.validate(_checkpointed(sidecar)) == _checkpointed(sidecar)
 
 
+def test_fractional_utc_time_regression_fails_closed(tmp_path: Path) -> None:
+    """Submicrosecond UTC regressions must not pass as equal timestamps."""
+    running = _sidecar(tmp_path)
+    later = replace(
+        running,
+        updated_at="2026-08-06T14:00:01.0000009Z",
+    )
+    earlier = replace(
+        running,
+        updated_at="2026-08-06T14:00:01.0000001Z",
+    )
+    assert progress.validate(later) == later
+    assert progress.validate(earlier) == earlier
+    with pytest.raises(ERROR, match="updated_at moved backward"):
+        _ = progress.validate_transition(later, earlier)
+
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    invalid_completion = replace(
+        completed,
+        updated_at="2026-08-06T14:00:01.0000009Z",
+        completed_at="2026-08-06T14:00:01.0000001Z",
+    )
+    with pytest.raises(ERROR, match="completed_at precedes updated_at"):
+        _ = progress.validate(invalid_completion)
+
+
+def test_fractional_utc_ordering_keeps_all_digits(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Observed transitions and equal fractional forms retain UTC order."""
+    running = _sidecar(tmp_path)
+    high = replace(
+        running,
+        updated_at="2026-08-06T14:00:01.000000900Z",
+    )
+    low = replace(
+        running,
+        updated_at="2026-08-06T14:00:01.000000001Z",
+    )
+    path = progress.write_atomic(high)
+
+    def regress(interval: float) -> None:
+        assert interval == FOLLOW_INTERVAL_SECONDS
+        _ = path.write_bytes(progress.encode(low))
+
+    follow = cast("Callable[..., int]", vars(progress)["_follow_path"])
+    assert follow(path, wait=regress) == 1
+    captured = capsys.readouterr()
+    expected_failure = "observed updated_at moved backward"
+    assert expected_failure in captured.err
+    assert captured.out == progress.render_summary(high)
+
+    same_instant = replace(
+        high,
+        updated_at="2026-08-06T14:00:01.0000009Z",
+    )
+    assert progress.validate_transition(high, same_instant) == same_instant
+    assert progress.validate_transition(same_instant, high) == high
+
+    invalid_start = replace(
+        running,
+        started_at="2026-08-06T14:00:01.0000009Z",
+        updated_at="2026-08-06T14:00:01.0000001Z",
+    )
+    with pytest.raises(ERROR, match="updated_at precedes started_at"):
+        _ = progress.validate(invalid_start)
+
+
 def test_transition_validation_rejects_stale_or_skipped_state(
     tmp_path: Path,
 ) -> None:

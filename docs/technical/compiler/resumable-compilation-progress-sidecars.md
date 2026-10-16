@@ -55,7 +55,12 @@ decoder/type exceptions, and direct JSON parsing requires an exact string
 instead of accepting byte/bytearray aliases or leaking decoder
 `TypeError`. Oversized JSON integer literals that hit the interpreter conversion
 limit remain inside the stable sidecar error boundary, and impossible UTC
-calendar timestamps are reported the same way.
+calendar timestamps are reported the same way. UTC timestamp ordering retains
+all admitted fractional-second digits rather than relying on the six-digit
+microsecond precision of Python `datetime`. Publication transitions, observed
+follow transitions, and completion ordering therefore reject submicrosecond
+regressions while treating trailing-zero representations as equal.
+
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
 
 timing evidence. Non-callable clocks and callback failures remain inside the
