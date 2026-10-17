@@ -42,7 +42,7 @@ use super::input::{
 };
 use super::model::{
     TernaryFunction, TernaryI32Scalar, TernaryOperation, TernaryProgram,
-    TernarySourcePosition, TernarySourceSpan,
+    TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -211,7 +211,7 @@ fn lower_other_instruction(
             result,
             span,
             type_kind,
-        } => lower_constant_i32(
+        } => lower_constant_integer(
             (
                 *bit_width,
                 little_endian.as_slice(),
@@ -306,11 +306,23 @@ fn lower_byte_output(
     })
 }
 
-fn lower_constant_i32(
+fn lower_constant_integer(
     input: ConstantI32Input<'_>,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (bit_width, little_endian, result, span, type_kind) = input;
+    if bit_width == 8 && type_kind == InputScalarType::U8 {
+        let &[byte] = little_endian else {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        };
+        ensure_new_value(state, result)?;
+        state.byte_values.push(result);
+        return Ok(TernaryOperation::MaterializeU8 {
+            result,
+            scalar: TernaryU8Scalar::from_bits(byte),
+            span: copy_span(span),
+        });
+    }
     if bit_width != 32 || type_kind != InputScalarType::I32 {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
@@ -371,7 +383,7 @@ fn validate_projection(
 /// # Errors
 ///
 /// Returns [`TernaryLoweringError`] when the projection is malformed or uses
-/// semantics outside the implemented `i32` constant/bitwise, `i32`-to-`u8`
+/// semantics outside the implemented `u8`/`i32` constant/bitwise, `i32`-to-`u8`
 /// truncation, return, and successful byte-effect slice.
 pub fn lower_typed_ir(
     input: &TypedIrInput,

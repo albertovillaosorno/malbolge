@@ -27,9 +27,10 @@ This document governs the following declared TODO scope:
 model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
-entry block, no phi nodes, exact `i32` constant materialization/return, `i32`
-bitwise AND, `i32`-to-`u8` truncation, and typed-IR `ByteInput`/`ByteOutput`
-effects. Other admitted typed-IR shapes fail explicitly.
+entry block, no phi nodes, exact `u8`/`i32` constant materialization,
+`i32` bitwise AND/OR/XOR, `i32`-to-`u8` truncation, and typed-IR
+`ByteInput`/`ByteOutput` effects with an exact `i32` return. Other admitted
+typed-IR shapes fail explicitly.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
@@ -37,6 +38,11 @@ least-significant-trit-first scalar. Twenty trits are insufficient for every
 domain. The pre-layout program retains upstream function/value IDs plus exact
 source spans, source digest, ABI identity, typed-IR version, and target-profile
 identity.
+
+Every unsigned 8-bit constant is represented by exactly six least-significant
+trits first: five trits cannot span all byte values. A new `MaterializeU8`
+operation carries its upstream SSA result and source span, and its byte value
+can feed `ByteOutput` without host evaluation or signed widening.
 
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
@@ -63,10 +69,14 @@ express the exact low-eight-bit transformation used by
 recognized by this stage.
 
 Canonical `MCTR` version-one encoding retains existing operation tags `0..5`
-byte-for-byte. New closed tags `6` (bitwise OR) and `7` (bitwise XOR) carry
-three `u32` SSA identities followed by the original 24-byte source span.
-Unknown tags still fail closed, and older decoders reject newly emitted tags.
-Resume remains bound to the exact compiler toolchain fingerprint.
+byte-for-byte. Closed tags `6` (bitwise OR) and `7` (bitwise XOR) carry three
+`u32` SSA identities and their 24-byte source span. Tag `8` materializes `u8`
+with a result `u32`, exactly six trits, and the same source span.
+
+Scalar decoding rejects digits outside `0..2`, six-trit values above 255, and
+any noncanonical byte spelling. Unknown tags starting at `9` remain closed,
+and older decoders reject newly emitted tags. Resume remains bound to the
+exact compiler toolchain fingerprint.
 
 Independent `MCTR` restoration rejects forged OR/XOR result IDs, missing SSA
 operand identities, and the next unassigned operation tag even when a producer

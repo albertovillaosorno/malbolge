@@ -388,6 +388,7 @@ sys.stdout.buffer.write(b"bad")
 "#;
 
 type TernaryProgressFixture = (PathBuf, PathBuf);
+type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
 
 struct TernaryCrashPaths {
     directory: PathBuf,
@@ -840,19 +841,35 @@ const fn output_span(span: SourceSpan) -> ternary_lowering::TernarySourceSpan {
 }
 
 fn byte_io_module() -> Module {
+    byte_io_module_with_constant(None)
+}
+
+fn byte_source_instruction(
+    value: Option<u8>,
+    u8_type: TypeId,
+) -> LocatedInstruction {
+    let source = value.map_or_else(
+        || Instruction::ByteInput {
+            result: ValueId::new(0),
+            type_id: u8_type,
+        },
+        |byte| Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: ValueId::new(0),
+            type_id: u8_type,
+        },
+    );
+    LocatedInstruction::new(source, fixture_span(0, 1))
+}
+
+fn byte_io_module_with_constant(value: Option<u8>) -> Module {
     let u8_type = TypeId::new(0);
     let i32_type = TypeId::new(1);
     let function_type = TypeId::new(2);
     let block = BasicBlock::new(BasicBlockSpec {
         id: BlockId::new(0),
         instructions: vec![
-            LocatedInstruction::new(
-                Instruction::ByteInput {
-                    result: ValueId::new(0),
-                    type_id: u8_type,
-                },
-                fixture_span(0, 1),
-            ),
+            byte_source_instruction(value, u8_type),
             LocatedInstruction::new(
                 Instruction::ByteOutput { value: ValueId::new(0) },
                 fixture_span(1, 2),
@@ -1687,7 +1704,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 8;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 9;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -1964,6 +1981,159 @@ fn i32_constant_return_lowers_to_exact_ternary_bits() -> Result<(), String> {
         return Err(String::from("ternary lowering is not deterministic"));
     }
     assert_constant_return_program(&module, &first)
+}
+
+fn lowered_byte_constant_fixture(
+    byte: u8,
+) -> Result<LoweredByteFixture, String> {
+    let module = byte_io_module_with_constant(Some(byte));
+    validate_module(&module)
+        .map_err(|error| format!("validate byte-constant module: {error:?}"))?;
+    let typed_bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode byte-constant module: {error:?}"))?;
+    let restored = canonical_module(&typed_bytes)
+        .map_err(|error| format!("restore byte-constant module: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("byte-constant typed IR round trip drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let program = lower_typed_ir(&input)
+        .map_err(|error| format!("lower byte-constant module: {error:?}"))?;
+    assert_program_provenance(&restored, &program)?;
+    Ok((program, input))
+}
+
+#[test]
+fn every_u8_pattern_uses_exactly_six_trits() -> Result<(), String> {
+    if 3u32.pow(5) >= 256 || 3u32.pow(6) < 256 {
+        return Err(String::from("byte ternary width is not minimal"));
+    }
+    for bits in u8::MIN..=u8::MAX {
+        let scalar = ternary_lowering::TernaryU8Scalar::from_bits(bits);
+        if scalar.bits() != bits
+            || scalar.trits().len() != ternary_lowering::U8_TERNARY_TRITS
+            || scalar.trits().iter().any(|trit| *trit > 2)
+        {
+            return Err(format!("six-trit byte scalar drifted at {bits}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_constant_lowers_to_canonical_byte_output() -> Result<(), String> {
+    for bits in [0u8, 1, 127, 243, 255] {
+        let (program, _input) = lowered_byte_constant_fixture(bits)?;
+        let function = program
+            .functions
+            .first()
+            .ok_or_else(|| String::from("missing byte-constant function"))?;
+        let scalar = ternary_lowering::TernaryU8Scalar::from_bits(bits);
+        let expected = TernaryOperation::MaterializeU8 {
+            result: 0,
+            scalar,
+            span: output_span(fixture_span(0, 1)),
+        };
+        if function.operations.first() != Some(&expected)
+            || function.operations.get(1)
+                != Some(&TernaryOperation::ByteOutput {
+                    span: output_span(fixture_span(1, 2)),
+                    value: 0,
+                })
+        {
+            return Err(String::from("byte literal did not drive byte output"));
+        }
+        let bytes = canonical_ternary_bytes(&program).map_err(|error| {
+            format!("encode byte-constant state: {error:?}")
+        })?;
+        let mut pattern = vec![8, 0, 0, 0, 0];
+        pattern.extend_from_slice(scalar.trits());
+        if !bytes.windows(pattern.len()).any(|window| window == pattern)
+            || canonical_ternary_program(&bytes) != Ok(program)
+        {
+            return Err(String::from(
+                "byte-constant canonical encoding drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_byte_constant_projection_fails_closed() -> Result<(), String> {
+    let (_program, input) = lowered_byte_constant_fixture(255)?;
+    for variant in 0u8..4u8 {
+        let mut malformed = input.clone();
+        let instruction = malformed
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.first_mut())
+            .ok_or_else(|| String::from("missing byte-constant instruction"))?;
+        let InputInstruction::ConstantInteger {
+            bit_width,
+            little_endian,
+            result,
+            type_kind,
+            ..
+        } = instruction
+        else {
+            return Err(String::from("missing projected byte literal"));
+        };
+        match variant {
+            0 => *bit_width = 32,
+            1 => *little_endian = vec![255, 0],
+            2 => *type_kind = InputScalarType::I32,
+            3 => *result = 1,
+            _ => return Err(String::from("unknown byte-constant test case")),
+        }
+        if lower_typed_ir(&malformed)
+            != Err(TernaryLoweringError::UnsupportedInstruction)
+        {
+            return Err(format!(
+                "malformed byte-constant variant {variant} lowered"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
+{
+    let (program, _input) = lowered_byte_constant_fixture(255)?;
+    let encoded = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode byte-constant state: {error:?}"))?;
+    let mut needle = vec![8, 0, 0, 0, 0];
+    needle.extend_from_slice(
+        ternary_lowering::TernaryU8Scalar::from_bits(255).trits(),
+    );
+    let offset = encoded
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .ok_or_else(|| String::from("byte-scalar wire tag not found"))?;
+    for corrupted in [[3u8, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 1]] {
+        let mut forged = encoded.clone();
+        forged
+            .get_mut(offset + 5..offset + 11)
+            .ok_or_else(|| String::from("byte-scalar wire span missing"))?
+            .copy_from_slice(&corrupted);
+        if canonical_ternary_program(&forged)
+            != Err(TernaryProgramCodecError::InvalidScalar)
+        {
+            return Err(String::from("forged six-trit scalar was admitted"));
+        }
+    }
+    let mut forged = encoded;
+    *forged
+        .get_mut(offset)
+        .ok_or_else(|| String::from("byte opcode missing"))? = 9;
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::UnknownTag)
+    {
+        return Err(String::from("next unknown byte opcode was admitted"));
+    }
+    Ok(())
 }
 
 #[test]

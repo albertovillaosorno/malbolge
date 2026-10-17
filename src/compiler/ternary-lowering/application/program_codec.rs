@@ -41,7 +41,8 @@ use std::str;
 
 use super::model::{
     I32_TERNARY_TRITS, TernaryFunction, TernaryI32Scalar, TernaryOperation,
-    TernaryProgram, TernarySourcePosition, TernarySourceSpan,
+    TernaryProgram, TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
+    U8_TERNARY_TRITS,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -110,6 +111,28 @@ struct Decoder<'bytes> {
 }
 
 impl<'bytes> Decoder<'bytes> {
+    fn byte_scalar(
+        &mut self,
+    ) -> Result<TernaryU8Scalar, TernaryProgramCodecError> {
+        let encoded = self.raw(U8_TERNARY_TRITS)?;
+        if encoded.iter().any(|trit| *trit > 2) {
+            return Err(TernaryProgramCodecError::InvalidScalar);
+        }
+        let value = encoded.iter().rev().try_fold(0u16, |value, trit| {
+            value
+                .checked_mul(3)
+                .and_then(|next| next.checked_add(u16::from(*trit)))
+                .ok_or(TernaryProgramCodecError::InvalidScalar)
+        })?;
+        let bits = u8::try_from(value)
+            .map_err(|_error| TernaryProgramCodecError::InvalidScalar)?;
+        let scalar = TernaryU8Scalar::from_bits(bits);
+        if scalar.trits().as_slice() != encoded {
+            return Err(TernaryProgramCodecError::InvalidScalar);
+        }
+        Ok(scalar)
+    }
+
     fn count(
         &mut self,
         minimum_item_bytes: usize,
@@ -206,6 +229,10 @@ struct Encoder {
 }
 
 impl Encoder {
+    fn byte_scalar(&mut self, value: TernaryU8Scalar) {
+        self.raw(value.trits());
+    }
+
     fn finish(self) -> Vec<u8> {
         self.bytes
     }
@@ -389,6 +416,11 @@ fn decode_operation(
             right: decoder.u32()?,
             span: decode_span(decoder)?,
         },
+        8 => TernaryOperation::MaterializeU8 {
+            result: decoder.u32()?,
+            scalar: decoder.byte_scalar()?,
+            span: decode_span(decoder)?,
+        },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -493,6 +525,12 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
             encoder.scalar(&scalar);
             encode_span(encoder, span);
         },
+        TernaryOperation::MaterializeU8 { result, scalar, span } => {
+            encoder.u8(8);
+            encoder.u32(result);
+            encoder.byte_scalar(scalar);
+            encode_span(encoder, span);
+        },
         TernaryOperation::Return { span, value } => {
             encoder.u8(4);
             encode_span(encoder, span);
@@ -539,6 +577,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
+        | TernaryOperation::MaterializeU8 { span, .. }
         | TernaryOperation::Return { span, .. }
         | TernaryOperation::TruncateI32ToU8 { span, .. } => span,
     }
@@ -637,6 +676,15 @@ fn validate_operation(
                 return Err(TernaryProgramValidationError::SsaValue);
             }
             insert_value(values, result, ValueKind::I32)?;
+            Ok(false)
+        },
+        TernaryOperation::MaterializeU8 { result, scalar, .. } => {
+            if scalar.trits().iter().any(|trit| *trit > 2)
+                || TernaryU8Scalar::from_bits(scalar.bits()) != scalar
+            {
+                return Err(TernaryProgramValidationError::SsaValue);
+            }
+            insert_value(values, result, ValueKind::Byte)?;
             Ok(false)
         },
         TernaryOperation::Return { value, .. } => {

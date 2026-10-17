@@ -36,6 +36,8 @@
 
 /// Number of trits required to preserve every 32-bit bit pattern.
 pub const I32_TERNARY_TRITS: usize = 21;
+/// Number of trits required to preserve every 8-bit byte pattern.
+pub const U8_TERNARY_TRITS: usize = 6;
 
 /// One copied normalized source position.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,6 +96,42 @@ impl TernaryI32Scalar {
     /// Returns the fixed-width least-significant-trit-first representation.
     #[must_use]
     pub const fn trits(&self) -> &[u8; I32_TERNARY_TRITS] {
+        &self.trits
+    }
+}
+
+/// Exact unsigned byte represented as six least-significant-first trits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TernaryU8Scalar {
+    trits: [u8; U8_TERNARY_TRITS],
+}
+
+impl TernaryU8Scalar {
+    /// Reconstructs the exact byte from its base-three representation.
+    #[must_use]
+    pub fn bits(self) -> u8 {
+        let value = self.trits.iter().rev().fold(0u16, |value, trit| {
+            value.saturating_mul(3).saturating_add(u16::from(*trit))
+        });
+        u8::try_from(value).unwrap_or(u8::MAX)
+    }
+
+    /// Converts one exact `u8` pattern to fixed-width ternary digits.
+    #[must_use]
+    pub fn from_bits(bits: u8) -> Self {
+        let mut remainder = bits;
+        let mut trits = [0u8; U8_TERNARY_TRITS];
+        for trit in &mut trits {
+            *trit = remainder.checked_rem(3).unwrap_or_default();
+            remainder = remainder.checked_div(3).unwrap_or_default();
+        }
+        debug_assert_eq!(remainder, 0, "six trits encode every byte");
+        Self { trits }
+    }
+
+    /// Returns the exact least-significant-trit-first scalar encoding.
+    #[must_use]
+    pub const fn trits(&self) -> &[u8; U8_TERNARY_TRITS] {
         &self.trits
     }
 }
@@ -842,6 +880,15 @@ pub enum TernaryOperation {
         result: u32,
         /// Exact target ternary scalar.
         scalar: TernaryI32Scalar,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Materialize one exact unsigned byte as a six-trit scalar.
+    MaterializeU8 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact unsigned byte scalar.
+        scalar: TernaryU8Scalar,
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },

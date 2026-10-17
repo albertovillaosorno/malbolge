@@ -151,6 +151,15 @@ instruction.
 
   Separate decoder regressions reject forged OR/XOR result/use identities
   and the first unassigned tag even when the lowering producer is bypassed.
+- Validated `u8` typed-IR constants now lower to exact six-trit
+  `MaterializeU8` operations, retaining their SSA result and source span.
+  `MCTR` tag `8` encodes the byte scalar without rewriting prior tags;
+  `ByteOutput` accepts that exact byte-valued definition. Tests cover all
+  256 unsigned byte patterns and canonical typed-IR and ternary round trips,
+  including malformed width, value length/type/SSA projection rejection.
+
+  Decoder regressions reject illegal ternary digits, in-range trits encoding
+  the out-of-byte-range value 256, and the next unknown operation tag `9`.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,
