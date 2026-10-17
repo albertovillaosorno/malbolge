@@ -2137,6 +2137,99 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
 }
 
 #[test]
+fn six_trit_checkpoint_decoder_accepts_exact_byte_domain() -> Result<(), String>
+{
+    let (program, _input) = lowered_byte_constant_fixture(255)?;
+    let canonical = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode byte scalar: {error:?}"))?;
+    let mut pattern = vec![8u8, 0, 0, 0, 0];
+    pattern.extend_from_slice(
+        ternary_lowering::TernaryU8Scalar::from_bits(255).trits(),
+    );
+    let scalar_offset = canonical
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+        .and_then(|offset| offset.checked_add(5))
+        .ok_or_else(|| String::from("byte scalar wire position missing"))?;
+    for bits in 0u16..729u16 {
+        let mut value = bits;
+        let mut trits = [0u8; ternary_lowering::U8_TERNARY_TRITS];
+        for trit in &mut trits {
+            *trit = u8::try_from(value.checked_rem(3).unwrap_or_default())
+                .map_err(|error| format!("encode trit: {error}"))?;
+            value = value.checked_div(3).unwrap_or_default();
+        }
+        let mut forged = canonical.clone();
+        forged
+            .get_mut(scalar_offset..scalar_offset + trits.len())
+            .ok_or_else(|| String::from("six-trit wire span truncated"))?
+            .copy_from_slice(&trits);
+        let observed = canonical_ternary_program(&forged);
+        if let Ok(admitted_bits) = u8::try_from(bits) {
+            let decoded = observed.map_err(|error| {
+                format!("valid byte {bits} rejected: {error:?}")
+            })?;
+            let expected =
+                ternary_lowering::TernaryU8Scalar::from_bits(admitted_bits);
+            let first = decoded
+                .functions
+                .first()
+                .and_then(|function| function.operations.first());
+            let admitted = matches!(
+                first,
+                Some(TernaryOperation::MaterializeU8 { scalar, .. })
+                    if *scalar == expected
+            );
+            if !admitted || canonical_ternary_bytes(&decoded) != Ok(forged) {
+                return Err(format!("six-trit byte {bits} drifted"));
+            }
+        } else if observed != Err(TernaryProgramCodecError::InvalidScalar) {
+            return Err(format!("out-of-range six-trit value {bits} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_constant_checkpoint_rejects_forged_output_ssa() -> Result<(), String> {
+    let (program, _input) = lowered_byte_constant_fixture(255)?;
+    let canonical = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode byte scalar: {error:?}"))?;
+    let source = [8u8, 0, 0, 0, 0];
+    let tag_offset = canonical
+        .windows(source.len())
+        .position(|window| window == source)
+        .ok_or_else(|| String::from("byte-constant tag missing"))?;
+    let mut wrong_result = canonical;
+    wrong_result
+        .get_mut(tag_offset + 1..tag_offset + 5)
+        .ok_or_else(|| String::from("byte-constant result missing"))?
+        .copy_from_slice(&1u32.to_le_bytes());
+    let expected = Err(TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    ));
+    if canonical_ternary_program(&wrong_result) != expected {
+        return Err(String::from("forged byte definition was admitted"));
+    }
+    let mut wrong_output = program;
+    let operation = wrong_output
+        .functions
+        .first_mut()
+        .and_then(|function| function.operations.get_mut(1))
+        .ok_or_else(|| String::from("byte-output operation missing"))?;
+    let TernaryOperation::ByteOutput { value, .. } = operation else {
+        return Err(String::from("byte-output operation type changed"));
+    };
+    *value = 1;
+    if ternary_lowering::validate_ternary_program(&wrong_output)
+        != Err(TernaryProgramValidationError::SsaValue)
+    {
+        return Err(String::from("byte-output read from i32 was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
 fn byte_io_effects_lower_after_canonical_typed_ir_round_trip()
 -> Result<(), String> {
     let module = admitted_byte_io_fixture()?;

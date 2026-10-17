@@ -44,6 +44,21 @@ trits first: five trits cannot span all byte values. A new `MaterializeU8`
 operation carries its upstream SSA result and source span, and its byte value
 can feed `ByteOutput` without host evaluation or signed widening.
 
+Independent canonical restoration has now been checked across all 729 valid
+six-trit digit combinations, accepting only values `0..255`. Every value
+`256..728` fails scalar admission, and a forged byte-definition SSA ID or
+an output use of the wrong scalar type fails independent stage validation.
+
+Independent canonical restoration has now been checked across all 729 valid
+six-trit digit combinations, accepting only values `0..255`. Every value
+`256..728` fails scalar admission, and a forged byte-definition SSA ID or
+an output use of the wrong scalar type fails independent stage validation.
+
+Independent canonical restoration has now been checked across all 729 valid
+six-trit digit combinations, accepting only values `0..255`. Every value
+`256..728` fails scalar admission, and a forged byte-definition SSA ID or
+an output use of the wrong scalar type fails independent stage validation.
+
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
 Each function requires at least 36 bytes and each operation at least 29 bytes,

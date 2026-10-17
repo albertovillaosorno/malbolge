@@ -158,8 +158,13 @@ instruction.
   256 unsigned byte patterns and canonical typed-IR and ternary round trips,
   including malformed width, value length/type/SSA projection rejection.
 
-  Decoder regressions reject illegal ternary digits, in-range trits encoding
-  the out-of-byte-range value 256, and the next unknown operation tag `9`.
+  Independent decoder regressions now exhaust all 729 six-trit values:
+  the 256 exact bytes round-trip canonically, while all 473 out-of-byte-range
+  patterns fail scalar admission. Tests also reject an altered byte-definition
+  SSA result and type-confused `ByteOutput` after bypassing the lowerer.
+
+  Other decoder regressions reject illegal ternary digits and the next
+  unknown operation tag `9`.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,
