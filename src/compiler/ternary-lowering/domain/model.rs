@@ -883,6 +883,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Materialize one exact unsigned 32-bit bit pattern as 21 trits.
+    MaterializeU32 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact 32-bit bit pattern, independent of signed interpretation.
+        scalar: TernaryI32Scalar,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact unsigned byte as a six-trit scalar.
     MaterializeU8 {
         /// Upstream SSA result identity.
@@ -909,6 +918,13 @@ pub enum TernaryOperation {
         value: u32,
         /// Original terminator provenance.
         span: TernarySourceSpan,
+    },
+    /// Return one previously materialized exact unsigned 32-bit value.
+    ReturnU32 {
+        /// Original terminator provenance.
+        span: TernarySourceSpan,
+        /// Upstream SSA unsigned-value identity.
+        value: u32,
     },
     /// Return one previously materialized successful unsigned byte value.
     ReturnU8 {

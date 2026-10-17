@@ -66,8 +66,9 @@ enum BitwiseI32Kind {
 
 #[derive(Default)]
 struct LoweringState {
-    byte_values: BTreeSet<u32>,
-    i32_values: BTreeSet<u32>,
+    bytes: BTreeSet<u32>,
+    signed: BTreeSet<u32>,
+    unsigned: BTreeSet<u32>,
 }
 
 /// Stable failures for the implemented ternary lowering slice.
@@ -128,19 +129,28 @@ fn lower_function(
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
     let return_operation = match function.return_kind {
-        InputScalarType::I32 if state.i32_values.contains(&return_value) => {
+        InputScalarType::I32 if state.signed.contains(&return_value) => {
             TernaryOperation::Return {
                 span: copy_span(return_span),
                 value: return_value,
             }
         },
-        InputScalarType::U8 if state.byte_values.contains(&return_value) => {
+        InputScalarType::U32 if state.unsigned.contains(&return_value) => {
+            TernaryOperation::ReturnU32 {
+                span: copy_span(return_span),
+                value: return_value,
+            }
+        },
+        InputScalarType::U8 if state.bytes.contains(&return_value) => {
             TernaryOperation::ReturnU8 {
                 span: copy_span(return_span),
                 value: return_value,
             }
         },
-        InputScalarType::I32 | InputScalarType::Other | InputScalarType::U8 => {
+        InputScalarType::I32
+        | InputScalarType::Other
+        | InputScalarType::U32
+        | InputScalarType::U8 => {
             return Err(TernaryLoweringError::UnsupportedTerminator);
         },
     };
@@ -259,13 +269,13 @@ fn lower_binary_i32(
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (left, result, right, span, type_kind) = input;
     if type_kind != InputScalarType::I32
-        || !state.i32_values.contains(&left)
-        || !state.i32_values.contains(&right)
+        || !state.signed.contains(&left)
+        || !state.signed.contains(&right)
     {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.i32_values.insert(result);
+    let inserted = state.signed.insert(result);
     debug_assert!(inserted, "new SSA value was already preflighted");
     let target_span = copy_span(span);
     Ok(match kind {
@@ -299,7 +309,7 @@ fn lower_byte_input(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.byte_values.insert(result);
+    let inserted = state.bytes.insert(result);
     debug_assert!(inserted, "new SSA value was already preflighted");
     Ok(TernaryOperation::ByteInput {
         result,
@@ -312,7 +322,7 @@ fn lower_byte_output(
     value: u32,
     state: &LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
-    if !state.byte_values.contains(&value) {
+    if !state.bytes.contains(&value) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     Ok(TernaryOperation::ByteOutput {
@@ -331,7 +341,7 @@ fn lower_constant_integer(
             return Err(TernaryLoweringError::UnsupportedInstruction);
         };
         ensure_new_value(state, result)?;
-        let inserted = state.byte_values.insert(result);
+        let inserted = state.bytes.insert(result);
         debug_assert!(inserted, "new SSA value was already preflighted");
         return Ok(TernaryOperation::MaterializeU8 {
             result,
@@ -339,20 +349,37 @@ fn lower_constant_integer(
             span: copy_span(span),
         });
     }
-    if bit_width != 32 || type_kind != InputScalarType::I32 {
+    if bit_width != 32 {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     let bytes: [u8; 4] = little_endian
         .try_into()
         .map_err(|_error| TernaryLoweringError::UnsupportedInstruction)?;
+    let scalar = TernaryI32Scalar::from_bits(u32::from_le_bytes(bytes));
     ensure_new_value(state, result)?;
-    let inserted = state.i32_values.insert(result);
-    debug_assert!(inserted, "new SSA value was already preflighted");
-    Ok(TernaryOperation::MaterializeI32 {
-        result,
-        scalar: TernaryI32Scalar::from_bits(u32::from_le_bytes(bytes)),
-        span: copy_span(span),
-    })
+    match type_kind {
+        InputScalarType::I32 => {
+            let inserted = state.signed.insert(result);
+            debug_assert!(inserted, "new SSA value was already preflighted");
+            Ok(TernaryOperation::MaterializeI32 {
+                result,
+                scalar,
+                span: copy_span(span),
+            })
+        },
+        InputScalarType::U32 => {
+            let inserted = state.unsigned.insert(result);
+            debug_assert!(inserted, "new SSA value was already preflighted");
+            Ok(TernaryOperation::MaterializeU32 {
+                result,
+                scalar,
+                span: copy_span(span),
+            })
+        },
+        InputScalarType::Other | InputScalarType::U8 => {
+            Err(TernaryLoweringError::UnsupportedInstruction)
+        },
+    }
 }
 
 fn lower_truncate_i32_to_u8(
@@ -360,11 +387,11 @@ fn lower_truncate_i32_to_u8(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
-    if type_kind != InputScalarType::U8 || !state.i32_values.contains(&value) {
+    if type_kind != InputScalarType::U8 || !state.signed.contains(&value) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.byte_values.insert(result);
+    let inserted = state.bytes.insert(result);
     debug_assert!(inserted, "new SSA value was already preflighted");
     Ok(TernaryOperation::TruncateI32ToU8 {
         result,
@@ -377,7 +404,10 @@ fn ensure_new_value(
     state: &LoweringState,
     value: u32,
 ) -> Result<(), TernaryLoweringError> {
-    if state.byte_values.contains(&value) || state.i32_values.contains(&value) {
+    if state.bytes.contains(&value)
+        || state.signed.contains(&value)
+        || state.unsigned.contains(&value)
+    {
         return Err(TernaryLoweringError::InvalidProjection);
     }
     Ok(())

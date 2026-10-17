@@ -947,6 +947,54 @@ fn byte_io_module_with_return(value: Option<u8>, return_byte: bool) -> Module {
     })
 }
 
+fn unsigned_return_module(bits: u32) -> Module {
+    let u32_type = TypeId::new(0);
+    let signature = TypeId::new(1);
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(0),
+                type_id: u32_type,
+            },
+            fixture_span(0, 1),
+        )],
+        phis: Vec::new(),
+        span: fixture_span(0, 2),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(0)),
+        },
+        terminator_span: fixture_span(1, 2),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![block],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from("unsigned_return"),
+        parameters: Vec::new(),
+        signature,
+        span: fixture_span(0, 2),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![function],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/unsigned-return.c"),
+        source_sha256: [0x8d; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(u32_type, TypeDef::U32),
+            TypeEntry::new(
+                signature,
+                TypeDef::function(Vec::new(), Some(u32_type), false),
+            ),
+        ],
+    })
+}
+
 fn low_byte_module() -> Module {
     low_byte_module_with_binary(BinaryOp::And)
 }
@@ -1260,6 +1308,7 @@ fn input_scalar_type(module: &Module, type_id: TypeId) -> InputScalarType {
     }
     match entry.definition() {
         TypeDef::I32 => InputScalarType::I32,
+        TypeDef::U32 => InputScalarType::U32,
         TypeDef::U8 => InputScalarType::U8,
         TypeDef::Array { .. }
         | TypeDef::Bool
@@ -1274,7 +1323,6 @@ fn input_scalar_type(module: &Module, type_id: TypeId) -> InputScalarType {
         | TypeDef::Pointer { .. }
         | TypeDef::Struct { .. }
         | TypeDef::U16
-        | TypeDef::U32
         | TypeDef::U64
         | TypeDef::Union { .. }
         | TypeDef::Void => InputScalarType::Other,
@@ -1761,7 +1809,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 10;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 12;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2182,6 +2230,198 @@ fn lowered_byte_return_fixture(
     Ok((program, input))
 }
 
+fn lowered_unsigned_return_fixture(
+    bits: u32,
+) -> Result<LoweredByteFixture, String> {
+    let module = unsigned_return_module(bits);
+    validate_module(&module)
+        .map_err(|error| format!("admit unsigned typed IR: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode unsigned typed IR: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("decode unsigned typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("unsigned typed-IR round trip drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower unsigned return: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+#[test]
+fn unsigned_i32_pattern_preserves_unsigned_ssa_and_return_type()
+-> Result<(), String> {
+    for bits in [0u32, 1, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+        let (target, input) = lowered_unsigned_return_fixture(bits)?;
+        if input.functions.first().map(|function| function.return_kind)
+            != Some(InputScalarType::U32)
+        {
+            return Err(String::from("unsigned result signature lost"));
+        }
+        let function = target
+            .functions
+            .first()
+            .ok_or_else(|| String::from("unsigned target function missing"))?;
+        let expected = [
+            TernaryOperation::MaterializeU32 {
+                result: 0,
+                scalar: ternary_lowering::TernaryI32Scalar::from_bits(bits),
+                span: output_span(fixture_span(0, 1)),
+            },
+            TernaryOperation::ReturnU32 {
+                span: output_span(fixture_span(1, 2)),
+                value: 0,
+            },
+        ];
+        if function.operations.as_slice() != expected {
+            return Err(format!("unsigned bits {bits:#x} lost precision/type"));
+        }
+        let canonical = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode unsigned target: {error:?}"))?;
+        if canonical_ternary_program(&canonical) != Ok(target) {
+            return Err(String::from(
+                "unsigned target canonical restore drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
+-> Result<(), String> {
+    let (target, _input) = lowered_unsigned_return_fixture(u32::MAX)?;
+    let encoded = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode unsigned state: {error:?}"))?;
+    let materialization = [10u8, 0, 0, 0, 0];
+    let materialize_offset = encoded
+        .windows(materialization.len())
+        .position(|window| window == materialization)
+        .ok_or_else(|| String::from("unsigned constant wire missing"))?;
+    let return_offset = encoded
+        .len()
+        .checked_sub(29)
+        .ok_or_else(|| String::from("unsigned return wire missing"))?;
+    for (position, tag, expected) in [
+        (
+            materialize_offset,
+            3u8,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ),
+        ),
+        (
+            return_offset,
+            4u8,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ),
+        ),
+        (
+            materialize_offset,
+            12u8,
+            TernaryProgramCodecError::UnknownTag,
+        ),
+        (return_offset, 12u8, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let mut forged = encoded.clone();
+        *forged.get_mut(position).ok_or_else(|| {
+            String::from("unsigned opcode position missing")
+        })? = tag;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!("unsigned forged tag {tag} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_decoder_rejects_valid_trits_above_u32_max() -> Result<(), String> {
+    let (target, _input) = lowered_unsigned_return_fixture(u32::MAX)?;
+    let encoded = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode max unsigned state: {error:?}"))?;
+    let prefix = [10u8, 0, 0, 0, 0];
+    let trit_offset = encoded
+        .windows(prefix.len())
+        .position(|window| window == prefix)
+        .and_then(|index| index.checked_add(prefix.len()))
+        .ok_or_else(|| String::from("unsigned trit position missing"))?;
+    let mut oversized = u64::from(u32::MAX).saturating_add(1);
+    let mut trits = [0u8; I32_TERNARY_TRITS];
+    for digit in &mut trits {
+        *digit = u8::try_from(oversized.checked_rem(3).unwrap_or_default())
+            .map_err(|error| format!("convert oversized trit: {error}"))?;
+        oversized = oversized.checked_div(3).unwrap_or_default();
+    }
+    let end = trit_offset
+        .checked_add(trits.len())
+        .ok_or_else(|| String::from("trit extent overflow"))?;
+    let mut forged = encoded;
+    forged
+        .get_mut(trit_offset..end)
+        .ok_or_else(|| String::from("unsigned scalar bytes missing"))?
+        .copy_from_slice(&trits);
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::InvalidScalar)
+    {
+        return Err(String::from("out-of-range ternary scalar admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_projection_rejects_forged_signedness_or_scalar_width()
+-> Result<(), String> {
+    let (_target, input) = lowered_unsigned_return_fixture(u32::MAX)?;
+    for variant in 0u8..4u8 {
+        let mut forged = input.clone();
+        let function = forged
+            .functions
+            .first_mut()
+            .ok_or_else(|| String::from("unsigned function missing"))?;
+        if variant == 0 {
+            function.return_kind = InputScalarType::I32;
+        } else {
+            let instruction = function
+                .blocks
+                .first_mut()
+                .and_then(|block| block.instructions.first_mut())
+                .ok_or_else(|| String::from("unsigned constant missing"))?;
+            let InputInstruction::ConstantInteger {
+                bit_width,
+                little_endian,
+                type_kind,
+                ..
+            } = instruction
+            else {
+                return Err(String::from("unsigned projection changed shape"));
+            };
+            match variant {
+                1 => *type_kind = InputScalarType::I32,
+                2 => *bit_width = 8,
+                3 => {
+                    let _dropped = little_endian.pop();
+                },
+                _ => return Err(String::from("unknown signedness fixture")),
+            }
+        }
+        let actual = lower_typed_ir(&forged);
+        let expected = if variant == 0 || variant == 1 {
+            TernaryLoweringError::UnsupportedTerminator
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if actual != Err(expected) {
+            return Err(format!(
+                "forged unsigned projection {variant} accepted"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn admitted_byte_return_preserves_signature_and_canonical_target_tag()
 -> Result<(), String> {
@@ -2262,7 +2502,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 10u8] {
+    for forged_tag in [4u8, 12u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -2504,7 +2744,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 10;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 12;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

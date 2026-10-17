@@ -164,14 +164,21 @@ instruction.
   SSA result and type-confused `ByteOutput` after bypassing the lowerer.
 
   Other decoder regressions reject illegal ternary digits and the next
-  unknown operation tag `10`.
+  unknown operation tag `12`.
 - The typed semantic projection now preserves each admitted function's result
   type category. No-argument one-block `u8` functions can return defined byte
   input or constant SSA values using `ReturnU8` (`MCTR` closed tag `9`), while
   existing `i32` returns keep tag `4` unchanged. End-to-end canonical typed IR
   and ternary round trips verify the declared signature, returned SSA ID,
   and terminator provenance. Forged projection result kinds, mismatched
-  scalar uses, rewritten return tags, and unknown tag `10` fail closed.
+  scalar uses, rewritten return tags, and unknown tag `12` fail closed.
+- Exact admitted `u32` constants now remain unsigned throughout projection,
+  pre-layout lowering, and canonical checkpoint admission. `MCTR` tags `10`
+  and `11` encode `MaterializeU32` and `ReturnU32` with distinct SSA value kinds
+  while reusing the exact 21-trit bit representation. Regressions cover zero,
+  signed-boundary and maximum patterns, forged width/type/signedness, swapped
+  target tags, and in-range ternary digits encoding a value beyond `u32`.
+  Historical signed/byte tags remain byte-exact; unknown tag `12` fails closed.
 - The real progress-sidecar inspector now restores the byte-return state with
   exact parity to the fresh compiler selector. The Rust integration harness
   rejects forged `ReturnU8`-to-`Return` wire tags after inspector extraction

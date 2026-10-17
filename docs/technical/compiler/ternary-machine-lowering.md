@@ -27,10 +27,10 @@ This document governs the following declared TODO scope:
 model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
-entry block, no phi nodes, exact `u8`/`i32` constant materialization,
+entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
 `i32` bitwise AND/OR/XOR, `i32`-to-`u8` truncation, and typed-IR
-`ByteInput`/`ByteOutput` effects with a declared `i32` or `u8` return. Other
-admitted typed-IR shapes fail explicitly.
+`ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
+Other admitted typed-IR shapes fail explicitly.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
@@ -46,10 +46,12 @@ can feed `ByteOutput` without host evaluation or signed widening.
 
 The pre-layout projection now copies each validated typed function's result
 category. An admitted `u8` function can return a defined successful byte;
-an `i32` function must still return a defined 32-bit value. The lowerer
-rejects forged result categories and mismatched return SSA value types.
+an `i32` function must still return a defined signed 32-bit value. A `u32`
+function may return only a separately typed, exact unsigned 32-bit value.
+The lowerer rejects forged categories and mismatched return SSA value types.
 
-During lowering, defined byte and `i32` SSA identities are now tracked by
+During lowering, defined byte, signed 32-bit, and unsigned 32-bit SSA
+identities are tracked separately by
 ordered sets rather than scanned in insertion-order vectors. Definition
 checks and operand validation thus take logarithmic lookup time while keeping
 exact duplicate detection, deterministic output order, and canonical bytes.
@@ -91,10 +93,17 @@ with a result `u32`, exactly six trits, and the same source span. Tag `9`
 encodes `ReturnU8` as the 24-byte terminator span and returned byte SSA ID,
 leaving historical `i32` return tag `4` byte-exact.
 
-The independent decoder admits `ReturnU8` only as a final terminator with a
-defined byte-valued SSA use, and continues to admit `Return` only for `i32`.
-Unknown tags starting at `10` remain closed. Older decoders reject newly
-emitted tags; resume remains bound to the exact toolchain fingerprint.
+Tags `10` and `11` add `MaterializeU32` and `ReturnU32` respectively. The
+materialization carries a result ID, the same exact 21-trit bit pattern as
+signed 32-bit materialization, and the original source span. The return tag
+carries the same terminator span and SSA ID as earlier return operations.
+
+The independent decoder admits `ReturnU8` and `ReturnU32` only as final
+terminators using values of the matching unsigned type; tag `4` continues to
+require signed `i32`. Rewriting a signed tag to its unsigned counterpart is
+rejected even when all scalar trits are valid. The next unknown tag is `12`.
+Older decoders reject newly emitted tags, and resume remains bound to the
+exact compiler toolchain fingerprint.
 
 The product compiler's fresh ternary selection and real progress-inspector
 checkpoint restoration now converge for a byte-return function. A forged

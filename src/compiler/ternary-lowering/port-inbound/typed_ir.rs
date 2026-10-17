@@ -60,6 +60,8 @@ pub enum InputScalarType {
     I32,
     /// Any other already-admitted typed-IR type.
     Other,
+    /// Exact unsigned 32-bit C integer semantics.
+    U32,
     /// Exact unsigned 8-bit byte semantics.
     U8,
 }
