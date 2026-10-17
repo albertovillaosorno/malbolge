@@ -49,6 +49,12 @@ category. An admitted `u8` function can return a defined successful byte;
 an `i32` function must still return a defined 32-bit value. The lowerer
 rejects forged result categories and mismatched return SSA value types.
 
+During lowering, defined byte and `i32` SSA identities are now tracked by
+ordered sets rather than scanned in insertion-order vectors. Definition
+checks and operand validation thus take logarithmic lookup time while keeping
+exact duplicate detection, deterministic output order, and canonical bytes.
+The collection change does not weaken the independent program validator.
+
 Independent canonical restoration has now been checked across all 729 valid
 six-trit digit combinations, accepting only values `0..255`. Every value
 `256..728` fails scalar admission, and a forged byte-definition SSA ID or

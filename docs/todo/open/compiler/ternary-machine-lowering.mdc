@@ -172,6 +172,11 @@ instruction.
   and ternary round trips verify the declared signature, returned SSA ID,
   and terminator provenance. Forged projection result kinds, mismatched
   scalar uses, rewritten return tags, and unknown tag `10` fail closed.
+- Scalar SSA admission now uses deterministic ordered sets rather than repeated
+  vector scans in the ternary lowerer. Regressions lower a 16,384-value
+  synthetic byte projection twice with byte-output/return and canonical
+  checkpoint convergence, and reject a duplicated definition near the end of
+  an 8,192-value projection without sacrificing existing SSA type checks.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,

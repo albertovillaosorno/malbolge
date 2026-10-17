@@ -36,6 +36,8 @@
 
 //! Fail-closed typed-IR projection to pre-layout ternary lowering.
 
+use std::collections::BTreeSet;
+
 use super::input::{
     InputFunction, InputInstruction, InputScalarType, InputSourceSpan,
     InputTerminator, TypedIrInput,
@@ -64,8 +66,8 @@ enum BitwiseI32Kind {
 
 #[derive(Default)]
 struct LoweringState {
-    byte_values: Vec<u32>,
-    i32_values: Vec<u32>,
+    byte_values: BTreeSet<u32>,
+    i32_values: BTreeSet<u32>,
 }
 
 /// Stable failures for the implemented ternary lowering slice.
@@ -263,7 +265,8 @@ fn lower_binary_i32(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    state.i32_values.push(result);
+    let inserted = state.i32_values.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
     let target_span = copy_span(span);
     Ok(match kind {
         BitwiseI32Kind::And => TernaryOperation::AndI32 {
@@ -296,7 +299,8 @@ fn lower_byte_input(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    state.byte_values.push(result);
+    let inserted = state.byte_values.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
     Ok(TernaryOperation::ByteInput {
         result,
         span: copy_span(span),
@@ -327,7 +331,8 @@ fn lower_constant_integer(
             return Err(TernaryLoweringError::UnsupportedInstruction);
         };
         ensure_new_value(state, result)?;
-        state.byte_values.push(result);
+        let inserted = state.byte_values.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
         return Ok(TernaryOperation::MaterializeU8 {
             result,
             scalar: TernaryU8Scalar::from_bits(byte),
@@ -341,7 +346,8 @@ fn lower_constant_integer(
         .try_into()
         .map_err(|_error| TernaryLoweringError::UnsupportedInstruction)?;
     ensure_new_value(state, result)?;
-    state.i32_values.push(result);
+    let inserted = state.i32_values.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
     Ok(TernaryOperation::MaterializeI32 {
         result,
         scalar: TernaryI32Scalar::from_bits(u32::from_le_bytes(bytes)),
@@ -358,7 +364,8 @@ fn lower_truncate_i32_to_u8(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    state.byte_values.push(result);
+    let inserted = state.byte_values.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
     Ok(TernaryOperation::TruncateI32ToU8 {
         result,
         span: copy_span(span),

@@ -2207,6 +2207,105 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
     Ok(())
 }
 
+fn large_byte_projection(value_count: u32) -> Result<TypedIrInput, String> {
+    let mut input = project_typed_ir(&byte_return_module(Some(0)))?;
+    let block = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("missing large-projection block"))?;
+    let last = value_count
+        .checked_sub(1)
+        .ok_or_else(|| String::from("empty large-byte projection"))?;
+    for result in 2..value_count {
+        block.instructions.push(InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: vec![
+                u8::try_from(result.checked_rem(256).unwrap_or_default())
+                    .map_err(|error| {
+                        format!("convert fixture byte: {error}")
+                    })?,
+            ],
+            result,
+            span: input_span(fixture_span(2, 3)),
+            type_kind: InputScalarType::U8,
+        });
+    }
+    block.instructions.push(InputInstruction::ByteOutput {
+        span: input_span(fixture_span(2, 3)),
+        value: last,
+    });
+    block.terminator = InputTerminator::Return {
+        span: input_span(fixture_span(3, 4)),
+        value: Some(last),
+    };
+    Ok(input)
+}
+
+#[test]
+fn large_typed_byte_projection_lowers_deterministically_without_linear_scans()
+-> Result<(), String> {
+    let count = 16_384u32;
+    let input = large_byte_projection(count)?;
+    let first = lower_typed_ir(&input)
+        .map_err(|error| format!("lower large-byte projection: {error:?}"))?;
+    let second = lower_typed_ir(&input)
+        .map_err(|error| format!("repeat large-byte projection: {error:?}"))?;
+    if first != second {
+        return Err(String::from("large SSA lowering was nondeterministic"));
+    }
+    let function = first
+        .functions
+        .first()
+        .ok_or_else(|| String::from("missing large SSA function"))?;
+    let expected_count = usize::try_from(count)
+        .unwrap_or_default()
+        .checked_add(3)
+        .ok_or_else(|| String::from("projection length overflow"))?;
+    if function.operations.len() != expected_count
+        || function.operations.last()
+            != Some(&TernaryOperation::ReturnU8 {
+                span: output_span(fixture_span(3, 4)),
+                value: count.saturating_sub(1),
+            })
+    {
+        return Err(String::from("large SSA lowering lost value or return"));
+    }
+    let encoded = canonical_ternary_bytes(&first)
+        .map_err(|error| format!("encode large SSA: {error:?}"))?;
+    if canonical_ternary_program(&encoded) != Ok(first) {
+        return Err(String::from("large SSA checkpoint admission drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn large_typed_byte_projection_rejects_late_duplicate_definition()
+-> Result<(), String> {
+    let mut input = large_byte_projection(8_192)?;
+    let block = input
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("missing duplicate-projection block"))?;
+    let instruction = block
+        .instructions
+        .iter_mut()
+        .rev()
+        .find(|instruction| {
+            matches!(instruction, InputInstruction::ConstantInteger { .. })
+        })
+        .ok_or_else(|| String::from("missing late byte constant"))?;
+    let InputInstruction::ConstantInteger { result, .. } = instruction else {
+        return Err(String::from("last SSA definition is not a byte constant"));
+    };
+    *result = 0;
+    if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
+        return Err(String::from("late duplicated SSA result was admitted"));
+    }
+    Ok(())
+}
+
 #[test]
 fn byte_constant_lowers_to_canonical_byte_output() -> Result<(), String> {
     for bits in [0u8, 1, 127, 243, 255] {
