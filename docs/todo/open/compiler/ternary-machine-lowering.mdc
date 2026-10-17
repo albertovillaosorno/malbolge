@@ -148,6 +148,9 @@ instruction.
   still fail closed. A round-trip fixture proves the AND/truncation path feeds
   `ByteOutput`, while OR/XOR fixtures pass typed-IR admission and then reject
   forged scalar types and undefined SSA operands during lowering.
+
+  Separate decoder regressions reject forged OR/XOR result/use identities
+  and the first unassigned tag even when the lowering producer is bypassed.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,

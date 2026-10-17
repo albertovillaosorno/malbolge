@@ -68,6 +68,10 @@ three `u32` SSA identities followed by the original 24-byte source span.
 Unknown tags still fail closed, and older decoders reject newly emitted tags.
 Resume remains bound to the exact compiler toolchain fingerprint.
 
+Independent `MCTR` restoration rejects forged OR/XOR result IDs, missing SSA
+operand identities, and the next unassigned operation tag even when a producer
+bypasses inbound typed-IR projection and lowering.
+
 A separate pure runtime-helper port now admits exactly
 `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the
 reviewed current profile. It lowers those identities to declarative recipes

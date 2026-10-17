@@ -1656,6 +1656,48 @@ fn ternary_operation_count_preflight_rejects_short_unknown_tag()
 }
 
 #[test]
+fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
+-> Result<(), String> {
+    for (operation, tag) in [(BinaryOp::Or, 6u8), (BinaryOp::Xor, 7u8)] {
+        let module = low_byte_module_with_binary(operation);
+        let input = project_typed_ir(&module)?;
+        let program = lower_typed_ir(&input)
+            .map_err(|error| format!("lower bitwise fixture: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode bitwise fixture: {error:?}"))?;
+        let original = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+        let offset = bytes
+            .windows(original.len())
+            .position(|window| window == original)
+            .ok_or_else(|| String::from("bitwise wire tag missing"))?;
+        for (relative_offset, wrong_identity) in [(5usize, 0u32), (9, 99)] {
+            let mut forged = bytes.clone();
+            forged
+                .get_mut(offset + relative_offset..offset + relative_offset + 4)
+                .ok_or_else(|| String::from("bitwise identity bytes missing"))?
+                .copy_from_slice(&wrong_identity.to_le_bytes());
+            if canonical_ternary_program(&forged)
+                != Err(TernaryProgramCodecError::Validation(
+                    TernaryProgramValidationError::SsaValue,
+                ))
+            {
+                return Err(String::from("forged bitwise SSA was accepted"));
+            }
+        }
+        let mut unknown_tag = bytes;
+        *unknown_tag
+            .get_mut(offset)
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 8;
+        if canonical_ternary_program(&unknown_tag)
+            != Err(TernaryProgramCodecError::UnknownTag)
+        {
+            return Err(String::from("unrecognized bitwise tag was accepted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_decoder_rejects_unknown_tag_and_invalid_trit() -> Result<(), String>
 {
     let bytes = canonical_ternary_bytes(&lowered_return_fixture()?)
