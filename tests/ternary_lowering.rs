@@ -863,6 +863,35 @@ fn byte_source_instruction(
 }
 
 fn byte_io_module_with_constant(value: Option<u8>) -> Module {
+    byte_io_module_with_return(value, false)
+}
+
+fn byte_return_module(value: Option<u8>) -> Module {
+    byte_io_module_with_return(value, true)
+}
+
+fn byte_function_types(return_byte: bool) -> Vec<TypeEntry> {
+    let byte_type = TypeId::new(0);
+    let integer_type = TypeId::new(1);
+    vec![
+        TypeEntry::new(byte_type, TypeDef::U8),
+        TypeEntry::new(integer_type, TypeDef::I32),
+        TypeEntry::new(
+            TypeId::new(2),
+            TypeDef::function(
+                Vec::new(),
+                Some(if return_byte {
+                    byte_type
+                } else {
+                    integer_type
+                }),
+                false,
+            ),
+        ),
+    ]
+}
+
+fn byte_io_module_with_return(value: Option<u8>, return_byte: bool) -> Module {
     let u8_type = TypeId::new(0);
     let i32_type = TypeId::new(1);
     let function_type = TypeId::new(2);
@@ -886,7 +915,7 @@ fn byte_io_module_with_constant(value: Option<u8>) -> Module {
         phis: Vec::new(),
         span: fixture_span(0, 4),
         terminator: Terminator::Return {
-            value: Some(ValueId::new(1)),
+            value: Some(ValueId::new(u32::from(!return_byte))),
         },
         terminator_span: fixture_span(3, 4),
     });
@@ -908,14 +937,7 @@ fn byte_io_module_with_constant(value: Option<u8>) -> Module {
         source_id: String::from("fixtures/byte-io.c"),
         source_sha256: BYTE_IO_SOURCE_HASH,
         target_profile: String::from("malbolge-2026"),
-        types: vec![
-            TypeEntry::new(u8_type, TypeDef::U8),
-            TypeEntry::new(i32_type, TypeDef::I32),
-            TypeEntry::new(
-                function_type,
-                TypeDef::function(Vec::new(), Some(i32_type), false),
-            ),
-        ],
+        types: byte_function_types(return_byte),
     })
 }
 
@@ -1063,6 +1085,34 @@ fn input_block(module: &Module, block: &BasicBlock) -> InputBlock {
 }
 
 fn input_function(module: &Module, function: &Function) -> InputFunction {
+    let return_kind = usize::try_from(function.signature().value())
+        .ok()
+        .and_then(|index| module.types().get(index))
+        .and_then(|entry| match entry.definition() {
+            TypeDef::Function { result: Some(result), .. } => {
+                Some(input_scalar_type(module, *result))
+            },
+            TypeDef::Array { .. }
+            | TypeDef::Bool
+            | TypeDef::Char
+            | TypeDef::F128
+            | TypeDef::F32
+            | TypeDef::F64
+            | TypeDef::Function { result: None, .. }
+            | TypeDef::I16
+            | TypeDef::I32
+            | TypeDef::I64
+            | TypeDef::I8
+            | TypeDef::Pointer { .. }
+            | TypeDef::Struct { .. }
+            | TypeDef::U16
+            | TypeDef::U32
+            | TypeDef::U64
+            | TypeDef::U8
+            | TypeDef::Union { .. }
+            | TypeDef::Void => None,
+        })
+        .unwrap_or(InputScalarType::Other);
     InputFunction {
         blocks: function
             .blocks()
@@ -1073,6 +1123,7 @@ fn input_function(module: &Module, function: &Function) -> InputFunction {
         id: function.id().value(),
         name: String::from(function.name()),
         parameter_count: function.parameters().len(),
+        return_kind,
         span: input_span(function.span()),
     }
 }
@@ -1704,7 +1755,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 9;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 10;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2020,6 +2071,142 @@ fn every_u8_pattern_uses_exactly_six_trits() -> Result<(), String> {
     Ok(())
 }
 
+fn lowered_byte_return_fixture(
+    literal: Option<u8>,
+) -> Result<LoweredByteFixture, String> {
+    let module = byte_return_module(literal);
+    validate_module(&module)
+        .map_err(|error| format!("validate byte-return module: {error:?}"))?;
+    let typed_bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode byte-return typed IR: {error:?}"))?;
+    let restored = canonical_module(&typed_bytes)
+        .map_err(|error| format!("restore byte-return typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("byte-return typed-state round trip drift"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let program = lower_typed_ir(&input)
+        .map_err(|error| format!("lower byte-return function: {error:?}"))?;
+    assert_program_provenance(&restored, &program)?;
+    Ok((program, input))
+}
+
+#[test]
+fn admitted_byte_return_preserves_signature_and_canonical_target_tag()
+-> Result<(), String> {
+    for literal in [None, Some(0), Some(255)] {
+        let (program, input) = lowered_byte_return_fixture(literal)?;
+        if input.functions.first().map(|function| function.return_kind)
+            != Some(InputScalarType::U8)
+        {
+            return Err(String::from("typed byte result type was lost"));
+        }
+        let function = program
+            .functions
+            .first()
+            .ok_or_else(|| String::from("byte return has no function"))?;
+        let expected = TernaryOperation::ReturnU8 {
+            span: output_span(fixture_span(3, 4)),
+            value: 0,
+        };
+        if function.operations.last() != Some(&expected) {
+            return Err(String::from(
+                "byte return lowered with wrong SSA/type",
+            ));
+        }
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode byte-return target: {error:?}"))?;
+        let Some(&9) = bytes.get(bytes.len().saturating_sub(29)) else {
+            return Err(String::from("new byte return wire tag missing"));
+        };
+        if canonical_ternary_program(&bytes) != Ok(program) {
+            return Err(String::from("byte return target round trip drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_return_projection_rejects_wrong_declared_type_or_return_value()
+-> Result<(), String> {
+    let (_program, input) = lowered_byte_return_fixture(Some(255))?;
+    for wrong in [InputScalarType::I32, InputScalarType::Other] {
+        let mut forged = input.clone();
+        let function = forged
+            .functions
+            .first_mut()
+            .ok_or_else(|| String::from("missing byte return function"))?;
+        function.return_kind = wrong;
+        if lower_typed_ir(&forged)
+            != Err(TernaryLoweringError::UnsupportedTerminator)
+        {
+            return Err(String::from("forged return type admitted"));
+        }
+    }
+    let mut wrong_value = input;
+    let block = wrong_value
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("missing byte-return block"))?;
+    let InputTerminator::Return { value, .. } = &mut block.terminator else {
+        return Err(String::from("missing byte-return terminator"));
+    };
+    *value = Some(1);
+    if lower_typed_ir(&wrong_value)
+        != Err(TernaryLoweringError::UnsupportedTerminator)
+    {
+        return Err(String::from("i32 SSA returned from byte function"));
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
+-> Result<(), String> {
+    let (program, _input) = lowered_byte_return_fixture(Some(255))?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode byte return: {error:?}"))?;
+    let tag_offset = bytes
+        .len()
+        .checked_sub(29)
+        .ok_or_else(|| String::from("byte-return wire too short"))?;
+    for forged_tag in [4u8, 10u8] {
+        let mut forged = bytes.clone();
+        *forged
+            .get_mut(tag_offset)
+            .ok_or_else(|| String::from("byte-return tag missing"))? =
+            forged_tag;
+        let expected = if forged_tag == 4 {
+            Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ))
+        } else {
+            Err(TernaryProgramCodecError::UnknownTag)
+        };
+        if canonical_ternary_program(&forged) != expected {
+            return Err(String::from("forged return tag admitted"));
+        }
+    }
+    let mut forged = bytes;
+    let offset = forged
+        .len()
+        .checked_sub(4)
+        .ok_or_else(|| String::from("byte-return value missing"))?;
+    forged
+        .get_mut(offset..)
+        .ok_or_else(|| String::from("byte-return value span missing"))?
+        .copy_from_slice(&1u32.to_le_bytes());
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("i32 use in byte-return checkpoint admitted"));
+    }
+    Ok(())
+}
+
 #[test]
 fn byte_constant_lowers_to_canonical_byte_output() -> Result<(), String> {
     for bits in [0u8, 1, 127, 243, 255] {
@@ -2127,7 +2314,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 9;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 10;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

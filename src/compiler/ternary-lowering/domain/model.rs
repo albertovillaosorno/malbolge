@@ -910,6 +910,13 @@ pub enum TernaryOperation {
         /// Original terminator provenance.
         span: TernarySourceSpan,
     },
+    /// Return one previously materialized successful unsigned byte value.
+    ReturnU8 {
+        /// Original terminator provenance.
+        span: TernarySourceSpan,
+        /// Upstream SSA byte value identity.
+        value: u32,
+    },
     /// Truncate one exact `i32` value to its low eight bits as `u8`.
     TruncateI32ToU8 {
         /// Upstream SSA result identity.

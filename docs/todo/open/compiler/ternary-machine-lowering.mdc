@@ -164,7 +164,14 @@ instruction.
   SSA result and type-confused `ByteOutput` after bypassing the lowerer.
 
   Other decoder regressions reject illegal ternary digits and the next
-  unknown operation tag `9`.
+  unknown operation tag `10`.
+- The typed semantic projection now preserves each admitted function's result
+  type category. No-argument one-block `u8` functions can return defined byte
+  input or constant SSA values using `ReturnU8` (`MCTR` closed tag `9`), while
+  existing `i32` returns keep tag `4` unchanged. End-to-end canonical typed IR
+  and ternary round trips verify the declared signature, returned SSA ID,
+  and terminator provenance. Forged projection result kinds, mismatched
+  scalar uses, rewritten return tags, and unknown tag `10` fail closed.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,

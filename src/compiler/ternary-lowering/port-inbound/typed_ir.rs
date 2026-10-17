@@ -190,6 +190,8 @@ pub struct InputFunction {
     pub name: String,
     /// Number of admitted parameters.
     pub parameter_count: usize,
+    /// Declared result type copied from the validated function signature.
+    pub return_kind: InputScalarType,
     /// Complete normalized source provenance.
     pub span: InputSourceSpan,
 }

@@ -421,6 +421,10 @@ fn decode_operation(
             scalar: decoder.byte_scalar()?,
             span: decode_span(decoder)?,
         },
+        9 => TernaryOperation::ReturnU8 {
+            span: decode_span(decoder)?,
+            value: decoder.u32()?,
+        },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -483,6 +487,17 @@ fn encode_bitwise_operation(
     encode_span(encoder, span);
 }
 
+fn encode_return_operation(
+    encoder: &mut Encoder,
+    tag: u8,
+    span: TernarySourceSpan,
+    value: u32,
+) {
+    encoder.u8(tag);
+    encode_span(encoder, span);
+    encoder.u32(value);
+}
+
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
     match operation {
         TernaryOperation::AndI32 {
@@ -532,9 +547,10 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
             encode_span(encoder, span);
         },
         TernaryOperation::Return { span, value } => {
-            encoder.u8(4);
-            encode_span(encoder, span);
-            encoder.u32(value);
+            encode_return_operation(encoder, 4, span, value);
+        },
+        TernaryOperation::ReturnU8 { span, value } => {
+            encode_return_operation(encoder, 9, span, value);
         },
         TernaryOperation::TruncateI32ToU8 { result, span, value } => {
             encoder.u8(5);
@@ -579,6 +595,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::MaterializeI32 { span, .. }
         | TernaryOperation::MaterializeU8 { span, .. }
         | TernaryOperation::Return { span, .. }
+        | TernaryOperation::ReturnU8 { span, .. }
         | TernaryOperation::TruncateI32ToU8 { span, .. } => span,
     }
 }
@@ -691,6 +708,10 @@ fn validate_operation(
             require_value(values, value, ValueKind::I32)?;
             Ok(true)
         },
+        TernaryOperation::ReturnU8 { value, .. } => {
+            require_value(values, value, ValueKind::Byte)?;
+            Ok(true)
+        },
         TernaryOperation::TruncateI32ToU8 { result, value, .. } => {
             require_value(values, value, ValueKind::I32)?;
             insert_value(values, result, ValueKind::Byte)?;
@@ -721,8 +742,10 @@ fn validate_operations(
     {
         return Err(TernaryProgramValidationError::SourceProvenance);
     }
-    if !matches!(last, TernaryOperation::Return { .. })
-        || !validate_operation(*last, &mut values)?
+    if !matches!(
+        last,
+        TernaryOperation::Return { .. } | TernaryOperation::ReturnU8 { .. }
+    ) || !validate_operation(*last, &mut values)?
     {
         return Err(TernaryProgramValidationError::Terminator);
     }

@@ -125,13 +125,24 @@ fn lower_function(
     let Some(return_value) = value else {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
-    if !state.i32_values.contains(&return_value) {
-        return Err(TernaryLoweringError::UnsupportedTerminator);
-    }
-    operations.push(TernaryOperation::Return {
-        span: copy_span(return_span),
-        value: return_value,
-    });
+    let return_operation = match function.return_kind {
+        InputScalarType::I32 if state.i32_values.contains(&return_value) => {
+            TernaryOperation::Return {
+                span: copy_span(return_span),
+                value: return_value,
+            }
+        },
+        InputScalarType::U8 if state.byte_values.contains(&return_value) => {
+            TernaryOperation::ReturnU8 {
+                span: copy_span(return_span),
+                value: return_value,
+            }
+        },
+        InputScalarType::I32 | InputScalarType::Other | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedTerminator);
+        },
+    };
+    operations.push(return_operation);
 
     Ok(TernaryFunction {
         id: function.id,
