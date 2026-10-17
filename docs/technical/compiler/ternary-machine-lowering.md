@@ -96,6 +96,12 @@ defined byte-valued SSA use, and continues to admit `Return` only for `i32`.
 Unknown tags starting at `10` remain closed. Older decoders reject newly
 emitted tags; resume remains bound to the exact toolchain fingerprint.
 
+The product compiler's fresh ternary selection and real progress-inspector
+checkpoint restoration now converge for a byte-return function. A forged
+checkpoint that rewrites `ReturnU8` to the `i32` return tag fails independent
+post-extraction stage validation. All ten crash publication boundaries have
+been exercised when the committed state changes from `i32` to `u8` return.
+
 Scalar decoding rejects digits outside `0..2`, six-trit values above 255, and
 any noncanonical byte spelling.
 

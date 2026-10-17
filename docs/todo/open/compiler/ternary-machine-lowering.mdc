@@ -172,6 +172,12 @@ instruction.
   and ternary round trips verify the declared signature, returned SSA ID,
   and terminator provenance. Forged projection result kinds, mismatched
   scalar uses, rewritten return tags, and unknown tag `10` fail closed.
+- The real progress-sidecar inspector now restores the byte-return state with
+  exact parity to the fresh compiler selector. The Rust integration harness
+  rejects forged `ReturnU8`-to-`Return` wire tags after inspector extraction
+  and exercises all ten immutable-publication crash boundaries while changing
+  the committed return type from `i32` to `u8`. Per-run atomic fixture IDs
+  prevent unrelated parallel crash tests from deleting each other's state.
 - Scalar SSA admission now uses deterministic ordered sets rather than repeated
   vector scans in the ternary lowerer. Regressions lower a 16,384-value
   synthetic byte projection twice with byte-output/return and canonical

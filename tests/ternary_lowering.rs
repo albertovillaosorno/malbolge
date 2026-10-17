@@ -45,6 +45,7 @@ use std::fs::{
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::str::from_utf8;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use malbolge::{current_profile, decode_profile_instruction};
 use ternary_lowering::{
@@ -387,6 +388,8 @@ const TERNARY_INSPECTOR_INVALID_SCRIPT: &str = r#"import sys
 sys.stdout.buffer.write(b"bad")
 "#;
 
+static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+
 type TernaryProgressFixture = (PathBuf, PathBuf);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
 
@@ -488,8 +491,11 @@ fn publish_ternary_progress_fixture(
 }
 
 fn ternary_crash_directory(boundary: &str) -> Result<PathBuf, String> {
-    let directory =
-        temp_dir().join(format!("malbolge-ternary-crash-{}-{boundary}", id()));
+    let sequence = NEXT_TERNARY_CRASH_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let directory = temp_dir().join(format!(
+        "malbolge-ternary-crash-{}-{boundary}-{sequence}",
+        id(),
+    ));
     if directory.exists() {
         remove_dir_all(&directory).map_err(|error| {
             format!("remove stale ternary crash fixture: {error}")
@@ -1838,6 +1844,91 @@ fn ternary_compiler_selector_converges() -> Result<(), String> {
         return Err(String::from(
             "ternary compiler selector paths did not converge",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_byte_return_compiler_selector_converges_through_progress()
+-> Result<(), String> {
+    let (expected, projection) = lowered_byte_return_fixture(Some(255))?;
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &projection,
+    ))
+    .map_err(|error| format!("select byte-return fresh state: {error:?}"))?;
+    if fresh != expected {
+        return Err(String::from(
+            "fresh compiler byte-return selection drifted",
+        ));
+    }
+    let bytes = canonical_ternary_bytes(&fresh).map_err(|error| {
+        format!("encode byte-return selector state: {error:?}")
+    })?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("byte-return-selector", &bytes)?;
+    let resumed =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory).map_err(|error| {
+        format!("remove byte-return selector fixture: {error}")
+    })?;
+    if resumed != Ok(expected) {
+        return Err(String::from(
+            "byte-return progress selector did not converge",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_byte_return_progress_rejects_forged_terminator_kind()
+-> Result<(), String> {
+    let (program, _projection) = lowered_byte_return_fixture(Some(255))?;
+    let mut bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode byte-return checkpoint: {error:?}"))?;
+    let tag_offset = bytes
+        .len()
+        .checked_sub(29)
+        .ok_or_else(|| String::from("byte-return terminator span missing"))?;
+    *bytes
+        .get_mut(tag_offset)
+        .ok_or_else(|| String::from("byte-return terminator tag missing"))? = 4;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("byte-return-forged", &bytes)?;
+    let rejected = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory).map_err(|error| {
+        format!("remove forged byte-return fixture: {error}")
+    })?;
+    let expected = Err(TernaryProgressCheckpointError::Stage(
+        TernaryStageError::Checkpoint(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        )),
+    ));
+    if rejected != expected {
+        return Err(String::from("forged byte-return checkpoint was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_byte_return_crash_resume_recovers_committed_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    let (next, _projection) = lowered_byte_return_fixture(None)?;
+    if previous == next {
+        return Err(String::from(
+            "crash generations must have distinct returns",
+        ));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, &previous, &next)?;
     }
     Ok(())
 }
