@@ -377,6 +377,18 @@ fn decode_operation(
             span: decode_span(decoder)?,
             value: decoder.u32()?,
         },
+        6 => TernaryOperation::OrI32 {
+            left: decoder.u32()?,
+            result: decoder.u32()?,
+            right: decoder.u32()?,
+            span: decode_span(decoder)?,
+        },
+        7 => TernaryOperation::XorI32 {
+            left: decoder.u32()?,
+            result: decoder.u32()?,
+            right: decoder.u32()?,
+            span: decode_span(decoder)?,
+        },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -426,6 +438,19 @@ fn encode_functions(
     Ok(())
 }
 
+fn encode_bitwise_operation(
+    encoder: &mut Encoder,
+    tag: u8,
+    operands: (u32, u32, u32, TernarySourceSpan),
+) {
+    let (left, result, right, span) = operands;
+    encoder.u8(tag);
+    encoder.u32(left);
+    encoder.u32(result);
+    encoder.u32(right);
+    encode_span(encoder, span);
+}
+
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
     match operation {
         TernaryOperation::AndI32 {
@@ -434,11 +459,23 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
             right,
             span,
         } => {
-            encoder.u8(0);
-            encoder.u32(left);
-            encoder.u32(result);
-            encoder.u32(right);
-            encode_span(encoder, span);
+            encode_bitwise_operation(encoder, 0, (left, result, right, span));
+        },
+        TernaryOperation::OrI32 {
+            left,
+            result,
+            right,
+            span,
+        } => {
+            encode_bitwise_operation(encoder, 6, (left, result, right, span));
+        },
+        TernaryOperation::XorI32 {
+            left,
+            result,
+            right,
+            span,
+        } => {
+            encode_bitwise_operation(encoder, 7, (left, result, right, span));
         },
         TernaryOperation::ByteInput { result, span } => {
             encoder.u8(1);
@@ -497,6 +534,8 @@ fn insert_value(
 const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
     match operation {
         TernaryOperation::AndI32 { span, .. }
+        | TernaryOperation::OrI32 { span, .. }
+        | TernaryOperation::XorI32 { span, .. }
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
@@ -577,7 +616,9 @@ fn validate_operation(
     values: &mut BTreeMap<u32, ValueKind>,
 ) -> Result<bool, TernaryProgramValidationError> {
     match operation {
-        TernaryOperation::AndI32 { left, result, right, .. } => {
+        TernaryOperation::AndI32 { left, result, right, .. }
+        | TernaryOperation::OrI32 { left, result, right, .. }
+        | TernaryOperation::XorI32 { left, result, right, .. } => {
             require_value(values, left, ValueKind::I32)?;
             require_value(values, right, ValueKind::I32)?;
             insert_value(values, result, ValueKind::I32)?;

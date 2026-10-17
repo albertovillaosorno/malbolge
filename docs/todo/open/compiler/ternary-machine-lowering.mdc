@@ -140,11 +140,14 @@ instruction.
   realized opcode at an already-chosen code position; tests exhaust all 94 VM
   decode phases for both current-profile I/O operations and reject missing or
   ambiguous inverse decoders.
-- The typed semantic slice now also lowers `i32` bitwise AND and validated
-  `i32`-to-`u8` truncation. A canonical round-trip fixture proves the exact
-  `value & 255` then truncate path can feed `ByteOutput`, matching the operation
-  vocabulary required by `malbolge_guest_output_byte`; fabricated type or SSA
-  drift fails closed. Direct runtime-helper call recognition remains separate.
+- The typed semantic slice lowers exact `i32` bitwise AND, OR, and XOR,
+  plus validated `i32`-to-`u8` truncation. Canonical round trips preserve SSA
+  operands, return values, and provenance; direct runtime-helper call
+  recognition remains separate. New `MCTR` closed tags `6` and `7` encode OR
+  and XOR without changing the existing `0..5` byte spellings; unknown tags
+  still fail closed. A round-trip fixture proves the AND/truncation path feeds
+  `ByteOutput`, while OR/XOR fixtures pass typed-IR admission and then reject
+  forged scalar types and undefined SSA operands during lowering.
 - The main pre-layout program now has concrete canonical wire identity
   `malbolge-ternary-ir-v1`. `MCTR` version-one bytes use explicit little-endian
   fields, length-prefixed identities, fixed operation tags, source provenance,

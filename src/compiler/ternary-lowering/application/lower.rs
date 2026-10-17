@@ -49,11 +49,18 @@ const ABI_ID: &str = "malbolge-c32-v1";
 const TARGET_PROFILE: &str = "malbolge-2026";
 const TYPED_IR_VERSION: u16 = 1;
 
-type BinaryAndInput = (u32, u32, u32, InputSourceSpan, InputScalarType);
+type BinaryI32Input = (u32, u32, u32, InputSourceSpan, InputScalarType);
 type ByteInput = (u32, InputSourceSpan, InputScalarType);
 type ConstantI32Input<'input> =
     (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
 type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
+
+#[derive(Clone, Copy)]
+enum BitwiseI32Kind {
+    And,
+    Or,
+    Xor,
+}
 
 #[derive(Default)]
 struct LoweringState {
@@ -145,9 +152,53 @@ fn lower_instruction(
             right,
             span,
             type_kind,
+        }
+        | InputInstruction::BinaryOr {
+            left,
+            result,
+            right,
+            span,
+            type_kind,
+        }
+        | InputInstruction::BinaryXor {
+            left,
+            result,
+            right,
+            span,
+            type_kind,
         } => {
-            lower_binary_and((*left, *result, *right, *span, *type_kind), state)
+            let kind =
+                if matches!(instruction, InputInstruction::BinaryAnd { .. }) {
+                    BitwiseI32Kind::And
+                } else if matches!(
+                    instruction,
+                    InputInstruction::BinaryOr { .. }
+                ) {
+                    BitwiseI32Kind::Or
+                } else {
+                    BitwiseI32Kind::Xor
+                };
+            lower_binary_i32(
+                (*left, *result, *right, *span, *type_kind),
+                kind,
+                state,
+            )
         },
+        InputInstruction::ByteInput { .. }
+        | InputInstruction::ByteOutput { .. }
+        | InputInstruction::ConstantInteger { .. }
+        | InputInstruction::TruncateInteger { .. }
+        | InputInstruction::Unsupported => {
+            lower_other_instruction(instruction, state)
+        },
+    }
+}
+
+fn lower_other_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    match instruction {
         InputInstruction::ByteInput { result, span, type_kind } => {
             lower_byte_input((*result, *span, *type_kind), state)
         },
@@ -179,14 +230,18 @@ fn lower_instruction(
             (*result, *span, *type_kind, *value),
             state,
         ),
-        InputInstruction::Unsupported => {
+        InputInstruction::Unsupported
+        | InputInstruction::BinaryAnd { .. }
+        | InputInstruction::BinaryOr { .. }
+        | InputInstruction::BinaryXor { .. } => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
 }
 
-fn lower_binary_and(
-    input: BinaryAndInput,
+fn lower_binary_i32(
+    input: BinaryI32Input,
+    kind: BitwiseI32Kind,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (left, result, right, span, type_kind) = input;
@@ -198,11 +253,26 @@ fn lower_binary_and(
     }
     ensure_new_value(state, result)?;
     state.i32_values.push(result);
-    Ok(TernaryOperation::AndI32 {
-        left,
-        result,
-        right,
-        span: copy_span(span),
+    let target_span = copy_span(span);
+    Ok(match kind {
+        BitwiseI32Kind::And => TernaryOperation::AndI32 {
+            left,
+            result,
+            right,
+            span: target_span,
+        },
+        BitwiseI32Kind::Or => TernaryOperation::OrI32 {
+            left,
+            result,
+            right,
+            span: target_span,
+        },
+        BitwiseI32Kind::Xor => TernaryOperation::XorI32 {
+            left,
+            result,
+            right,
+            span: target_span,
+        },
     })
 }
 
@@ -301,7 +371,7 @@ fn validate_projection(
 /// # Errors
 ///
 /// Returns [`TernaryLoweringError`] when the projection is malformed or uses
-/// semantics outside the implemented `i32` constant/AND, `i32`-to-`u8`
+/// semantics outside the implemented `i32` constant/bitwise, `i32`-to-`u8`
 /// truncation, return, and successful byte-effect slice.
 pub fn lower_typed_ir(
     input: &TypedIrInput,

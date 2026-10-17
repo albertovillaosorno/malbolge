@@ -52,12 +52,21 @@ byte-effect operations with SSA type/order validation. These operations preserve
 the typed IR's successful `u8` semantics and do not impersonate the raw profile
 input word or its EOF case.
 
-The same SSA boundary now lowers typed `i32` bitwise AND and validated
-`i32`-to-`u8` truncation. Together with constant materialization and
-`ByteOutput`, these operations express the exact low-eight-bit transformation
-used by `malbolge_guest_output_byte` without evaluating guest values on the
-host.
-Direct calls to that runtime helper are not yet recognized by this stage.
+The same SSA boundary lowers exact typed `i32` bitwise AND, OR, and XOR,
+plus validated `i32`-to-`u8` truncation. All three bitwise operations preserve
+original operand/result SSA identities and source spans without evaluating
+guest values on the host.
+
+Together with constant materialization and `ByteOutput`, AND and truncation
+express the exact low-eight-bit transformation used by
+`malbolge_guest_output_byte`. Direct calls to that runtime helper are not yet
+recognized by this stage.
+
+Canonical `MCTR` version-one encoding retains existing operation tags `0..5`
+byte-for-byte. New closed tags `6` (bitwise OR) and `7` (bitwise XOR) carry
+three `u32` SSA identities followed by the original 24-byte source span.
+Unknown tags still fail closed, and older decoders reject newly emitted tags.
+Resume remains bound to the exact compiler toolchain fingerprint.
 
 A separate pure runtime-helper port now admits exactly
 `malbolge_guest_decode_input_word` and `malbolge_guest_output_byte` under the

@@ -845,6 +845,17 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Apply exact 32-bit bitwise OR to two previously materialized values.
+    OrI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Return one previously materialized scalar value.
     Return {
         /// Upstream SSA value identity retained until later allocation/layout.
@@ -860,6 +871,17 @@ pub enum TernaryOperation {
         span: TernarySourceSpan,
         /// Upstream SSA source value identity.
         value: u32,
+    },
+    /// Apply exact 32-bit bitwise XOR to two previously materialized values.
+    XorI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
     },
 }
 

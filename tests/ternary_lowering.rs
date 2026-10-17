@@ -903,12 +903,16 @@ fn byte_io_module() -> Module {
 }
 
 fn low_byte_module() -> Module {
+    low_byte_module_with_binary(BinaryOp::And)
+}
+
+fn low_byte_module_with_binary(operation: BinaryOp) -> Module {
     let u8_type = TypeId::new(0);
     let i32_type = TypeId::new(1);
     let function_type = TypeId::new(2);
     let block = BasicBlock::new(BasicBlockSpec {
         id: BlockId::new(0),
-        instructions: low_byte_instructions(u8_type, i32_type),
+        instructions: low_byte_instructions(u8_type, i32_type, operation),
         phis: Vec::new(),
         span: fixture_span(0, 6),
         terminator: Terminator::Return {
@@ -948,6 +952,7 @@ fn low_byte_module() -> Module {
 fn low_byte_instructions(
     u8_type: TypeId,
     i32_type: TypeId,
+    operation: BinaryOp,
 ) -> Vec<LocatedInstruction> {
     vec![
         low_byte_constant(0xffff_ffff, 0, 0, i32_type),
@@ -955,7 +960,7 @@ fn low_byte_instructions(
         LocatedInstruction::new(
             Instruction::Binary {
                 left: ValueId::new(0),
-                operation: BinaryOp::And,
+                operation,
                 result: ValueId::new(2),
                 right: ValueId::new(1),
                 type_id: i32_type,
@@ -1055,25 +1060,73 @@ fn input_function(module: &Module, function: &Function) -> InputFunction {
     }
 }
 
-fn input_instruction(
+fn projected_bitwise_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
-) -> InputInstruction {
+) -> Option<InputInstruction> {
     if let Instruction::Binary {
         left,
-        operation: BinaryOp::And,
+        operation,
         result,
         right,
         type_id,
     } = instruction.instruction()
     {
-        return InputInstruction::BinaryAnd {
-            left: left.value(),
-            result: result.value(),
-            right: right.value(),
-            span: input_span(instruction.span()),
-            type_kind: input_scalar_type(module, *type_id),
-        };
+        let left_id = left.value();
+        let result_id = result.value();
+        let right_id = right.value();
+        let span = input_span(instruction.span());
+        let type_kind = input_scalar_type(module, *type_id);
+        match operation {
+            BinaryOp::And => {
+                return Some(InputInstruction::BinaryAnd {
+                    left: left_id,
+                    result: result_id,
+                    right: right_id,
+                    span,
+                    type_kind,
+                });
+            },
+            BinaryOp::Or => {
+                return Some(InputInstruction::BinaryOr {
+                    left: left_id,
+                    result: result_id,
+                    right: right_id,
+                    span,
+                    type_kind,
+                });
+            },
+            BinaryOp::Xor => {
+                return Some(InputInstruction::BinaryXor {
+                    left: left_id,
+                    result: result_id,
+                    right: right_id,
+                    span,
+                    type_kind,
+                });
+            },
+            BinaryOp::Add
+            | BinaryOp::DivideFloat
+            | BinaryOp::DivideSigned
+            | BinaryOp::DivideUnsigned
+            | BinaryOp::Multiply
+            | BinaryOp::RemainderSigned
+            | BinaryOp::RemainderUnsigned
+            | BinaryOp::ShiftLeft
+            | BinaryOp::ShiftRightArithmetic
+            | BinaryOp::ShiftRightLogical
+            | BinaryOp::Subtract => {},
+        }
+    }
+    None
+}
+
+fn input_instruction(
+    module: &Module,
+    instruction: &LocatedInstruction,
+) -> InputInstruction {
+    if let Some(bitwise) = projected_bitwise_instruction(module, instruction) {
+        return bitwise;
     }
     if let Instruction::ByteInput { result, type_id } =
         instruction.instruction()
@@ -1947,6 +2000,113 @@ fn assert_low_byte_truncate(
         || *truncate_span != output_span(fixture_span(3, 4))
     {
         return Err(String::from("low-byte truncation operands drifted"));
+    }
+    Ok(())
+}
+
+fn assert_bitwise_projection_rejections(
+    input: TypedIrInput,
+) -> Result<(), String> {
+    let mut wrong_type = input.clone();
+    let wrong_instruction = wrong_type
+        .functions
+        .first_mut()
+        .and_then(|item| item.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("missing projected bitwise instruction"))?;
+    let (InputInstruction::BinaryOr { type_kind, .. }
+    | InputInstruction::BinaryXor { type_kind, .. }) = wrong_instruction
+    else {
+        return Err(String::from("missing projected bitwise variant"));
+    };
+    *type_kind = InputScalarType::Other;
+    if lower_typed_ir(&wrong_type)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("invalid bitwise scalar type was lowered"));
+    }
+    let mut undefined = input;
+    let undefined_instruction = undefined
+        .functions
+        .first_mut()
+        .and_then(|item| item.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("missing projected bitwise instruction"))?;
+    let (InputInstruction::BinaryOr { right, .. }
+    | InputInstruction::BinaryXor { right, .. }) = undefined_instruction
+    else {
+        return Err(String::from("missing projected bitwise variant"));
+    };
+    *right = 99;
+    if lower_typed_ir(&undefined)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("undefined bitwise SSA operand was lowered"));
+    }
+    Ok(())
+}
+
+#[test]
+fn i32_or_xor_lower_from_canonical_typed_ir_with_closed_wire_tags()
+-> Result<(), String> {
+    for (operation, target_tag) in [(BinaryOp::Or, 6u8), (BinaryOp::Xor, 7u8)] {
+        let module = low_byte_module_with_binary(operation);
+        validate_module(&module)
+            .map_err(|error| format!("bitwise typed admission: {error:?}"))?;
+        let typed_bytes = canonical_bytes(&module)
+            .map_err(|error| format!("encode typed bitwise: {error:?}"))?;
+        let restored = canonical_module(&typed_bytes)
+            .map_err(|error| format!("restore typed bitwise: {error:?}"))?;
+        if restored != module {
+            return Err(String::from("bitwise typed state round trip drifted"));
+        }
+        let input = project_typed_ir(&restored)?;
+        let ternary = lower_typed_ir(&input)
+            .map_err(|error| format!("lower bitwise: {error:?}"))?;
+        assert_program_provenance(&restored, &ternary)?;
+        let function = ternary
+            .functions
+            .first()
+            .ok_or_else(|| String::from("missing lowered function"))?;
+        let actual = function
+            .operations
+            .get(2)
+            .ok_or_else(|| String::from("missing lowered bitwise operation"))?;
+        let expected = if operation == BinaryOp::Or {
+            TernaryOperation::OrI32 {
+                left: 0,
+                result: 2,
+                right: 1,
+                span: output_span(fixture_span(2, 3)),
+            }
+        } else {
+            TernaryOperation::XorI32 {
+                left: 0,
+                result: 2,
+                right: 1,
+                span: output_span(fixture_span(2, 3)),
+            }
+        };
+        if *actual != expected {
+            return Err(String::from("lowered bitwise SSA/provenance drifted"));
+        }
+        let encoded = canonical_ternary_bytes(&ternary)
+            .map_err(|error| format!("encode bitwise ternary: {error:?}"))?;
+        let pattern = [target_tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+        if !encoded
+            .windows(pattern.len())
+            .any(|window| window == pattern)
+        {
+            return Err(String::from("bitwise target opcode encoding drifted"));
+        }
+        let decoded = canonical_ternary_program(&encoded)
+            .map_err(|error| format!("decode bitwise ternary: {error:?}"))?;
+        if decoded != ternary {
+            return Err(String::from(
+                "bitwise ternary canonical round trip drifted",
+            ));
+        }
+        assert_bitwise_projection_rejections(input)?;
     }
     Ok(())
 }

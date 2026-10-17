@@ -80,6 +80,32 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Apply bitwise OR to two previously defined exact `i32` values.
+    BinaryOr {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
+    /// Apply bitwise XOR to two previously defined exact `i32` values.
+    BinaryXor {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
     /// Read one deterministic successful guest byte effect.
     ByteInput {
         /// Upstream SSA result identity.
