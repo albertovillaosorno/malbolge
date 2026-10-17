@@ -1897,6 +1897,88 @@ fn ternary_compiler_selector_converges() -> Result<(), String> {
 }
 
 #[test]
+fn ternary_unsigned_return_selector_converges_through_progress()
+-> Result<(), String> {
+    let (expected, projection) = lowered_unsigned_return_fixture(u32::MAX)?;
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &projection,
+    ))
+    .map_err(|error| format!("select unsigned fresh state: {error:?}"))?;
+    if fresh != expected {
+        return Err(String::from("unsigned fresh compiler projection drifted"));
+    }
+    let bytes = canonical_ternary_bytes(&fresh).map_err(|error| {
+        format!("encode unsigned compiler state: {error:?}")
+    })?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("unsigned-return-selector", &bytes)?;
+    let resumed =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean unsigned selector state: {error}"))?;
+    if resumed != Ok(expected) {
+        return Err(String::from(
+            "unsigned progress selector did not converge",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_unsigned_progress_rejects_signed_tag() -> Result<(), String> {
+    let (target, _projection) = lowered_unsigned_return_fixture(u32::MAX)?;
+    let mut bytes = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode unsigned checkpoint: {error:?}"))?;
+    let tag_offset = bytes
+        .len()
+        .checked_sub(29)
+        .ok_or_else(|| String::from("unsigned return terminator missing"))?;
+    *bytes
+        .get_mut(tag_offset)
+        .ok_or_else(|| String::from("unsigned return tag missing"))? = 4;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("unsigned-return-forged", &bytes)?;
+    let rejected = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean forged unsigned progress: {error}"))?;
+    let expected = Err(TernaryProgressCheckpointError::Stage(
+        TernaryStageError::Checkpoint(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        )),
+    ));
+    if rejected != expected {
+        return Err(String::from(
+            "signed return tag passed progress admission",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_unsigned_crash_resume_recovers_committed_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    let (next, _projection) = lowered_unsigned_return_fixture(u32::MAX)?;
+    if previous == next {
+        return Err(String::from(
+            "crash versions must have distinct signedness",
+        ));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, &previous, &next)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_byte_return_compiler_selector_converges_through_progress()
 -> Result<(), String> {
     let (expected, projection) = lowered_byte_return_fixture(Some(255))?;

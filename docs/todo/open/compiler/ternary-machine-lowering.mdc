@@ -179,6 +179,12 @@ instruction.
   signed-boundary and maximum patterns, forged width/type/signedness, swapped
   target tags, and in-range ternary digits encoding a value beyond `u32`.
   Historical signed/byte tags remain byte-exact; unknown tag `12` fails closed.
+
+  Product compiler selection now converges between fresh `u32` typed lowering
+  and real inspector-backed progress restoration. Invalid signed-return tag
+  substitutions are rejected after checkpoint extraction; all ten immutable
+  publication crash boundaries restore the correct signed or unsigned
+  committed generation, with concurrent tests using independent fixtures.
 - The real progress-sidecar inspector now restores the byte-return state with
   exact parity to the fresh compiler selector. The Rust integration harness
   rejects forged `ReturnU8`-to-`Return` wire tags after inspector extraction

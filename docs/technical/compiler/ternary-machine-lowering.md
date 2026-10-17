@@ -105,6 +105,12 @@ rejected even when all scalar trits are valid. The next unknown tag is `12`.
 Older decoders reject newly emitted tags, and resume remains bound to the
 exact compiler toolchain fingerprint.
 
+The real compiler progress inspector restores canonical unsigned 32-bit
+returns with the same output as fresh typed lowering. A checkpoint whose
+`ReturnU32` tag is rewritten to signed `Return` is rejected after opaque-state
+extraction, and all ten crash boundaries preserve the committed generation
+while the return type changes from signed to unsigned.
+
 The product compiler's fresh ternary selection and real progress-inspector
 checkpoint restoration now converge for a byte-return function. A forged
 checkpoint that rewrites `ReturnU8` to the `i32` return tag fails independent
