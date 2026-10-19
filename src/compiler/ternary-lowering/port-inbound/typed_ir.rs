@@ -137,6 +137,17 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Reinterpret an exact 32-bit integer without changing its bits.
+    IntegerBitcast {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Destination signedness category copied from validated typed IR.
+        type_kind: InputScalarType,
+        /// Upstream SSA source identity.
+        value: u32,
+    },
     /// Truncate one previously defined exact `i32` value to `u8`.
     TruncateInteger {
         /// Upstream SSA result identity.

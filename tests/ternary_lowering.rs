@@ -1008,6 +1008,81 @@ fn unsigned_module_with_result(
     })
 }
 
+fn integer_bitcast_types(source_signed: bool) -> Vec<TypeEntry> {
+    let source_kind = if source_signed {
+        TypeDef::I32
+    } else {
+        TypeDef::U32
+    };
+    let dest_kind = if source_signed {
+        TypeDef::U32
+    } else {
+        TypeDef::I32
+    };
+    vec![
+        TypeEntry::new(TypeId::new(0), source_kind),
+        TypeEntry::new(
+            TypeId::new(1),
+            TypeDef::function(Vec::new(), Some(TypeId::new(2)), false),
+        ),
+        TypeEntry::new(TypeId::new(2), dest_kind),
+    ]
+}
+
+fn integer_bitcast_module(source_signed: bool, bits: u32) -> Module {
+    let source_type = TypeId::new(0);
+    let function_type = TypeId::new(1);
+    let destination_type = TypeId::new(2);
+    let instructions = vec![
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(0),
+                type_id: source_type,
+            },
+            fixture_span(0, 1),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerBitcast,
+                result: ValueId::new(1),
+                type_id: destination_type,
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    let function = Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(0),
+            instructions,
+            phis: Vec::new(),
+            span: fixture_span(0, 3),
+            terminator: Terminator::Return {
+                value: Some(ValueId::new(1)),
+            },
+            terminator_span: fixture_span(2, 3),
+        })],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from("integer_bitcast"),
+        parameters: Vec::new(),
+        signature: function_type,
+        span: fixture_span(0, 3),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![function],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/integer-bitcast.c"),
+        source_sha256: [0x8e; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: integer_bitcast_types(source_signed),
+    })
+}
+
 fn unsigned_zero_extend_module(source: Option<u8>) -> Module {
     let u32_type = TypeId::new(0);
     let u8_type = TypeId::new(2);
@@ -1412,6 +1487,14 @@ fn projected_cast_instruction(
     }
     if *operation == CastOp::ZeroExtend {
         return Some(InputInstruction::ZeroExtendInteger {
+            result: result_id,
+            span,
+            type_kind,
+            value: source_id,
+        });
+    }
+    if *operation == CastOp::IntegerBitcast {
+        return Some(InputInstruction::IntegerBitcast {
             result: result_id,
             span,
             type_kind,
@@ -1976,7 +2059,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 17;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 19;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2141,6 +2224,113 @@ fn ternary_unsigned_crash_resume_recovers_committed_generation()
     }
     for boundary in TERNARY_CRASH_BOUNDARIES {
         run_ternary_crash_boundary(boundary, &previous, &next)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_integer_bitcast_selector_matches_inspector_progress()
+-> Result<(), String> {
+    for (source_signed, label) in [
+        (true, "signed-to-unsigned-bitcast"),
+        (false, "unsigned-to-signed-bitcast"),
+    ] {
+        let (expected, projection) =
+            lowered_integer_bitcast_fixture(source_signed, 0x8000_0080)?;
+        let fresh = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::Fresh(&projection),
+        )
+        .map_err(|error| format!("select fresh integer bitcast: {error:?}"))?;
+        if fresh != expected {
+            return Err(String::from("bitcast fresh stage drifted"));
+        }
+        let bytes = canonical_ternary_bytes(&fresh)
+            .map_err(|error| format!("encode bitcast progress: {error:?}"))?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let resumed =
+            enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+                inspector: &progress_inspector(),
+                interpreter: &repository_python(),
+                progress: &progress,
+            });
+        remove_dir_all(&directory)
+            .map_err(|error| format!("clean bitcast progress: {error}"))?;
+        if resumed != Ok(expected) {
+            return Err(String::from("bitcast inspector recovery drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_integer_bitcast_progress_rejects_direction_forgery()
+-> Result<(), String> {
+    for (source_signed, label) in [
+        (true, "forged-i32-to-u32-bitcast"),
+        (false, "forged-u32-to-i32-bitcast"),
+    ] {
+        let (target, _projection) =
+            lowered_integer_bitcast_fixture(source_signed, u32::MAX)?;
+        let mut bytes = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode forged bitcast: {error:?}"))?;
+        let tag = if source_signed {
+            17u8
+        } else {
+            18u8
+        };
+        let flipped = if source_signed {
+            18u8
+        } else {
+            17u8
+        };
+        let offset = bytes
+            .windows(5)
+            .position(|wire| wire == [tag, 1, 0, 0, 0])
+            .ok_or_else(|| String::from("bitcast progress tag missing"))?;
+        *bytes
+            .get_mut(offset)
+            .ok_or_else(|| String::from("bitcast wire offset missing"))? =
+            flipped;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let rejected = resume_ternary_from_progress(
+            &repository_python(),
+            &progress_inspector(),
+            &progress,
+        );
+        remove_dir_all(&directory).map_err(|error| {
+            format!("clean forged bitcast progress: {error}")
+        })?;
+        let expected = Err(TernaryProgressCheckpointError::Stage(
+            TernaryStageError::Checkpoint(
+                TernaryProgramCodecError::Validation(
+                    TernaryProgramValidationError::SsaValue,
+                ),
+            ),
+        ));
+        if rejected != expected {
+            return Err(String::from(
+                "forged bitcast direction passed inspector",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_integer_bitcast_crashes_preserve_committed_direction()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for source_signed in [true, false] {
+        let (next, _projection) =
+            lowered_integer_bitcast_fixture(source_signed, 0x8000_0080)?;
+        if previous == next {
+            return Err(String::from("bitcast generation is not distinct"));
+        }
+        for boundary in TERNARY_CRASH_BOUNDARIES {
+            run_ternary_crash_boundary(boundary, &previous, &next)?;
+        }
     }
     Ok(())
 }
@@ -2877,6 +3067,237 @@ fn expected_unsigned_alias_operation(
     }
 }
 
+fn lowered_integer_bitcast_fixture(
+    source_signed: bool,
+    bits: u32,
+) -> Result<LoweredByteFixture, String> {
+    let module = integer_bitcast_module(source_signed, bits);
+    validate_module(&module)
+        .map_err(|error| format!("admit integer bitcast: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode typed bitcast: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore typed bitcast: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("typed integer bitcast bytes drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower integer bitcast: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn check_bitcast_target(
+    source_signed: bool,
+    bits: u32,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let function = target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("missing bitcast target function"))?;
+    let expected_scalar = ternary_lowering::TernaryI32Scalar::from_bits(bits);
+    let source = if source_signed {
+        TernaryOperation::MaterializeI32 {
+            result: 0,
+            scalar: expected_scalar,
+            span: output_span(fixture_span(0, 1)),
+        }
+    } else {
+        TernaryOperation::MaterializeU32 {
+            result: 0,
+            scalar: expected_scalar,
+            span: output_span(fixture_span(0, 1)),
+        }
+    };
+    let expected_cast = if source_signed {
+        TernaryOperation::BitcastI32ToU32 {
+            result: 1,
+            span: output_span(fixture_span(1, 2)),
+            value: 0,
+        }
+    } else {
+        TernaryOperation::BitcastU32ToI32 {
+            result: 1,
+            span: output_span(fixture_span(1, 2)),
+            value: 0,
+        }
+    };
+    let expected_return = if source_signed {
+        TernaryOperation::ReturnU32 {
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        }
+    } else {
+        TernaryOperation::Return {
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        }
+    };
+    if function.operations.as_slice()
+        != [source, expected_cast, expected_return]
+    {
+        return Err(String::from(
+            "integer bitcast SSA/bits/provenance drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn bitcast_signedness_preserves_all_32_bits_and_canonical_wire()
+-> Result<(), String> {
+    for source_signed in [true, false] {
+        for bits in [0u32, 1, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+            let (target, input) =
+                lowered_integer_bitcast_fixture(source_signed, bits)?;
+            let destination = if source_signed {
+                InputScalarType::U32
+            } else {
+                InputScalarType::I32
+            };
+            if input.functions.first().map(|function| function.return_kind)
+                != Some(destination)
+            {
+                return Err(String::from("bitcast return signedness drifted"));
+            }
+            check_bitcast_target(source_signed, bits, &target)?;
+            let encoded =
+                canonical_ternary_bytes(&target).map_err(|error| {
+                    format!("encode ternary bitcast: {error:?}")
+                })?;
+            let tag = if source_signed {
+                17u8
+            } else {
+                18u8
+            };
+            if !encoded.windows(5).any(|wire| wire == [tag, 1, 0, 0, 0])
+                || canonical_ternary_program(&encoded) != Ok(target)
+            {
+                return Err(String::from("integer bitcast checkpoint drifted"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn integer_bitcast_projection_rejects_wrong_signedness_and_ssa()
+-> Result<(), String> {
+    for source_signed in [true, false] {
+        let wrong_type = if source_signed {
+            InputScalarType::I32
+        } else {
+            InputScalarType::U32
+        };
+        let (_target, input) =
+            lowered_integer_bitcast_fixture(source_signed, 0x8000_0080)?;
+        for variation in 0u8..5u8 {
+            let mut forged = input.clone();
+            let instruction = forged
+                .functions
+                .first_mut()
+                .and_then(|function| function.blocks.first_mut())
+                .and_then(|block| block.instructions.get_mut(1))
+                .ok_or_else(|| String::from("bitcast projection missing"))?;
+            let InputInstruction::IntegerBitcast {
+                result,
+                type_kind,
+                value,
+                ..
+            } = instruction
+            else {
+                return Err(String::from("bitcast projection changed"));
+            };
+            match variation {
+                0 => *type_kind = wrong_type,
+                1 => *value = 99,
+                2 => *result = 0,
+                3 => *value = 1,
+                4 => *type_kind = InputScalarType::U8,
+                _ => {
+                    return Err(String::from(
+                        "unknown integer-bitcast forgery",
+                    ));
+                },
+            }
+            let expected = if variation == 2 {
+                TernaryLoweringError::InvalidProjection
+            } else {
+                TernaryLoweringError::UnsupportedInstruction
+            };
+            if lower_typed_ir(&forged) != Err(expected) {
+                return Err(format!(
+                    "forged bitcast projection {variation} admitted"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn integer_bitcast_decoder_rejects_retyped_and_unknown_opcodes()
+-> Result<(), String> {
+    for source_signed in [true, false] {
+        let (target, _projection) =
+            lowered_integer_bitcast_fixture(source_signed, u32::MAX)?;
+        let bytes = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode bitcast checkpoint: {error:?}"))?;
+        let tag = if source_signed {
+            17u8
+        } else {
+            18u8
+        };
+        let flipped = if source_signed {
+            18u8
+        } else {
+            17u8
+        };
+        let pattern = [tag, 1, 0, 0, 0];
+        let offset = bytes
+            .windows(pattern.len())
+            .position(|window| window == pattern)
+            .ok_or_else(|| String::from("bitcast opcode missing"))?;
+        let wrong_ssa = TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        );
+        for (forged_tag, expected) in [
+            (flipped, wrong_ssa),
+            (16u8, wrong_ssa),
+            (19u8, TernaryProgramCodecError::UnknownTag),
+        ] {
+            let mut forged = bytes.clone();
+            *forged
+                .get_mut(offset)
+                .ok_or_else(|| String::from("bitcast tag missing"))? =
+                forged_tag;
+            if canonical_ternary_program(&forged) != Err(expected) {
+                return Err(format!(
+                    "forged bitcast tag {forged_tag} admitted"
+                ));
+            }
+        }
+        let source_offset = offset
+            .checked_add(29)
+            .ok_or_else(|| String::from("bitcast source offset overflow"))?;
+        let mut missing = bytes;
+        missing
+            .get_mut(source_offset..source_offset + 4)
+            .ok_or_else(|| String::from("bitcast source ID missing"))?
+            .copy_from_slice(&99u32.to_le_bytes());
+        if canonical_ternary_program(&missing)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ))
+        {
+            return Err(String::from("undefined bitcast source admitted"));
+        }
+    }
+    Ok(())
+}
+
 fn lowered_unsigned_zero_extend_fixture(
     source: Option<u8>,
 ) -> Result<LoweredByteFixture, String> {
@@ -3002,7 +3423,7 @@ fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (17u8, TernaryProgramCodecError::UnknownTag),
+        (19u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -3158,7 +3579,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (17u8, TernaryProgramCodecError::UnknownTag),
+        (19u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -3263,7 +3684,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (17u8, TernaryProgramCodecError::UnknownTag),
+            (19u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -3324,10 +3745,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            17u8,
+            19u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 17u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 19u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -3505,7 +3926,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 17u8] {
+    for forged_tag in [4u8, 19u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -3747,7 +4168,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 17;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 19;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

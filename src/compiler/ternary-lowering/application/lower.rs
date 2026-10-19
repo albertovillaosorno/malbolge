@@ -209,6 +209,7 @@ fn lower_instruction(
         },
         InputInstruction::ByteInput { .. }
         | InputInstruction::ByteOutput { .. }
+        | InputInstruction::IntegerBitcast { .. }
         | InputInstruction::ConstantInteger { .. }
         | InputInstruction::TruncateInteger { .. }
         | InputInstruction::Unsupported
@@ -254,6 +255,12 @@ fn lower_other_instruction(
             (*result, *span, *type_kind, *value),
             state,
         ),
+        InputInstruction::IntegerBitcast {
+            result,
+            span,
+            type_kind,
+            value,
+        } => lower_integer_bitcast((*result, *span, *type_kind, *value), state),
         InputInstruction::ZeroExtendInteger {
             result,
             span,
@@ -490,6 +497,44 @@ fn lower_zero_extend_u8_to_u32(
         span: copy_span(span),
         value,
     })
+}
+
+fn lower_integer_bitcast(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    let signed_to_unsigned = match type_kind {
+        InputScalarType::U32 if state.signed.contains(&value) => true,
+        InputScalarType::I32 if state.unsigned.contains(&value) => false,
+        InputScalarType::I32
+        | InputScalarType::U32
+        | InputScalarType::Other
+        | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    };
+    ensure_new_value(state, result)?;
+    let inserted = if signed_to_unsigned {
+        state.unsigned.insert(result)
+    } else {
+        state.signed.insert(result)
+    };
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    let target_span = copy_span(span);
+    if signed_to_unsigned {
+        Ok(TernaryOperation::BitcastI32ToU32 {
+            result,
+            span: target_span,
+            value,
+        })
+    } else {
+        Ok(TernaryOperation::BitcastU32ToI32 {
+            result,
+            span: target_span,
+            value,
+        })
+    }
 }
 
 fn ensure_new_value(

@@ -866,6 +866,24 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Reinterpret a signed 32-bit SSA scalar as unsigned without bit changes.
+    BitcastI32ToU32 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Defined signed 32-bit source SSA identity.
+        value: u32,
+    },
+    /// Reinterpret an unsigned 32-bit SSA scalar as signed without bit changes.
+    BitcastU32ToI32 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned 32-bit source SSA identity.
+        value: u32,
+    },
     /// Read one successful guest `u8` byte effect.
     ///
     /// This is not the raw profile input word and therefore cannot represent

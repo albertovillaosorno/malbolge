@@ -29,7 +29,8 @@ validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
 `i32`/`u32` bitwise AND/OR/XOR, unsigned byte-to-word extension,
-32-bit-to-`u8` truncation, and typed-IR
+signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
+typed-IR
 `ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
 Other admitted typed-IR shapes fail explicitly.
 
@@ -140,7 +141,15 @@ byte-valued SSA operand and produces a distinct unsigned 32-bit SSA result;
 the target stage does not evaluate guest bytes or invent EOF behavior.
 Canonical admission rejects retagging this cast as either truncation form.
 
-The next unknown operation tag is `17`. Older decoders reject newly emitted
+Tags `17` and `18` add `BitcastI32ToU32` and `BitcastU32ToI32` with the
+same result-ID, 24-byte source span, and SSA-use layout as existing casts.
+Each direction preserves all 32 original bits without host execution and
+creates a new result under the required destination signedness. Independent
+checkpoint admission rejects swapped direction tags and undefined uses.
+The exact scalar bits, SSA IDs, and source provenance round-trip without
+changing any older operation tag.
+
+The next unknown operation tag is `19`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for
