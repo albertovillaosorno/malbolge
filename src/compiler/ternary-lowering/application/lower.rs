@@ -438,17 +438,30 @@ fn lower_truncate_i32_to_u8(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
-    if type_kind != InputScalarType::U8 || !state.signed.contains(&value) {
+    if type_kind != InputScalarType::U8 {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let source_signed = state.signed.contains(&value);
+    if !source_signed && !state.unsigned.contains(&value) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
     let inserted = state.bytes.insert(result);
     debug_assert!(inserted, "new SSA value was already preflighted");
-    Ok(TernaryOperation::TruncateI32ToU8 {
-        result,
-        span: copy_span(span),
-        value,
-    })
+    let target_span = copy_span(span);
+    if source_signed {
+        Ok(TernaryOperation::TruncateI32ToU8 {
+            result,
+            span: target_span,
+            value,
+        })
+    } else {
+        Ok(TernaryOperation::TruncateU32ToU8 {
+            result,
+            span: target_span,
+            value,
+        })
+    }
 }
 
 fn ensure_new_value(
@@ -482,8 +495,8 @@ fn validate_projection(
 /// # Errors
 ///
 /// Returns [`TernaryLoweringError`] when the projection is malformed or uses
-/// semantics outside the implemented 32-bit typed constant/bitwise, `u8`
-/// constant, `i32`-to-`u8` truncation, return, and byte-effect slice.
+/// semantics outside typed 32-bit constant/bitwise operations, `u8`
+/// constants, narrowing to `u8`, return, and byte effects.
 pub fn lower_typed_ir(
     input: &TypedIrInput,
 ) -> Result<TernaryProgram, TernaryLoweringError> {

@@ -964,6 +964,15 @@ pub enum TernaryOperation {
         /// Upstream SSA source value identity.
         value: u32,
     },
+    /// Truncate an unsigned `u32` scalar to the exact low eight bits.
+    TruncateU32ToU8 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned 32-bit source SSA identity.
+        value: u32,
+    },
     /// Apply exact 32-bit bitwise XOR to two previously materialized values.
     XorI32 {
         /// Left upstream SSA value identity.

@@ -952,7 +952,22 @@ fn unsigned_module(
     returned: u32,
     end: u32,
 ) -> Module {
+    unsigned_module_with_result(instructions, returned, end, false)
+}
+
+fn unsigned_module_with_result(
+    instructions: Vec<LocatedInstruction>,
+    returned: u32,
+    end: u32,
+    byte_return: bool,
+) -> Module {
     let u32_type = TypeId::new(0);
+    let u8_type = TypeId::new(2);
+    let return_type = if byte_return {
+        u8_type
+    } else {
+        u32_type
+    };
     let signature = TypeId::new(1);
     let block = BasicBlock::new(BasicBlockSpec {
         id: BlockId::new(0),
@@ -986,10 +1001,36 @@ fn unsigned_module(
             TypeEntry::new(u32_type, TypeDef::U32),
             TypeEntry::new(
                 signature,
-                TypeDef::function(Vec::new(), Some(u32_type), false),
+                TypeDef::function(Vec::new(), Some(return_type), false),
             ),
+            TypeEntry::new(u8_type, TypeDef::U8),
         ],
     })
+}
+
+fn unsigned_truncate_module(bits: u32) -> Module {
+    let u32_type = TypeId::new(0);
+    let u8_type = TypeId::new(2);
+    let instructions = vec![
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(0),
+                type_id: u32_type,
+            },
+            fixture_span(0, 1),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::Truncate,
+                result: ValueId::new(1),
+                type_id: u8_type,
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    unsigned_module_with_result(instructions, 1, 3, true)
 }
 
 fn unsigned_return_module(bits: u32) -> Module {
@@ -1878,7 +1919,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 15;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 16;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2728,6 +2769,163 @@ fn expected_unsigned_alias_operation(
     }
 }
 
+fn lowered_unsigned_truncate_fixture(
+    bits: u32,
+) -> Result<LoweredByteFixture, String> {
+    let module = unsigned_truncate_module(bits);
+    validate_module(&module)
+        .map_err(|error| format!("admit unsigned truncation IR: {error:?}"))?;
+    let typed_bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode unsigned truncation IR: {error:?}"))?;
+    let restored = canonical_module(&typed_bytes).map_err(|error| {
+        format!("restore unsigned truncation IR: {error:?}")
+    })?;
+    if restored != module {
+        return Err(String::from("unsigned truncation typed IR drifted"));
+    }
+    let projected = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&projected)
+        .map_err(|error| format!("lower unsigned truncation: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, projected))
+}
+
+#[test]
+fn unsigned_truncation_preserves_exact_low_byte_and_ssa() -> Result<(), String>
+{
+    for bits in [0u32, 1, 0xff, 0x100, 0x1234_5678, 0x8000_0080, u32::MAX] {
+        let (program, input) = lowered_unsigned_truncate_fixture(bits)?;
+        if input.functions.first().map(|function| function.return_kind)
+            != Some(InputScalarType::U8)
+        {
+            return Err(String::from("truncated unsigned return type changed"));
+        }
+        let function = program.functions.first().ok_or_else(|| {
+            String::from("unsigned truncate function missing")
+        })?;
+        if function.operations.get(1)
+            != Some(&TernaryOperation::TruncateU32ToU8 {
+                result: 1,
+                span: output_span(fixture_span(1, 2)),
+                value: 0,
+            })
+            || function.operations.last()
+                != Some(&TernaryOperation::ReturnU8 {
+                    span: output_span(fixture_span(2, 3)),
+                    value: 1,
+                })
+        {
+            return Err(String::from(
+                "unsigned truncation SSA/provenance drifted",
+            ));
+        }
+        let actual_low_byte = u8::try_from(bits & 0xff)
+            .map_err(|error| format!("convert low byte: {error}"))?;
+        if actual_low_byte != bits.to_le_bytes()[0] {
+            return Err(String::from("low-byte truncation contract drifted"));
+        }
+        let encoded = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode unsigned truncate: {error:?}"))?;
+        let prefix = [15u8, 1, 0, 0, 0];
+        if !encoded.windows(prefix.len()).any(|window| window == prefix)
+            || canonical_ternary_program(&encoded) != Ok(program)
+        {
+            return Err(String::from(
+                "unsigned truncate canonical tag drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_truncation_rejects_wrong_source_and_destination()
+-> Result<(), String> {
+    let (_program, projected) = lowered_unsigned_truncate_fixture(0xffff_ff80)?;
+    for variation in 0u8..4u8 {
+        let mut forged = projected.clone();
+        let instruction = forged
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(1))
+            .ok_or_else(|| {
+                String::from("unsigned truncate projection missing")
+            })?;
+        let InputInstruction::TruncateInteger {
+            result, type_kind, value, ..
+        } = instruction
+        else {
+            return Err(String::from("unsigned truncate projection changed"));
+        };
+        match variation {
+            0 => *type_kind = InputScalarType::I32,
+            1 => *value = 99,
+            2 => *result = 0,
+            3 => *value = 1,
+            _ => return Err(String::from("unknown truncate forgery")),
+        }
+        let expected = if variation == 2 {
+            TernaryLoweringError::InvalidProjection
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if lower_typed_ir(&forged) != Err(expected) {
+            return Err(format!(
+                "forged unsigned truncation {variation} was admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
+-> Result<(), String> {
+    let (program, _input) = lowered_unsigned_truncate_fixture(u32::MAX)?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode unsigned truncate: {error:?}"))?;
+    let prefix = [15u8, 1, 0, 0, 0];
+    let offset = bytes
+        .windows(prefix.len())
+        .position(|window| window == prefix)
+        .ok_or_else(|| String::from("unsigned truncate opcode missing"))?;
+    for (forged_tag, expected) in [
+        (
+            5u8,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ),
+        ),
+        (16u8, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let mut forged = bytes.clone();
+        *forged
+            .get_mut(offset)
+            .ok_or_else(|| String::from("unsigned truncate tag absent"))? =
+            forged_tag;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!("forged truncation tag {forged_tag} admitted"));
+        }
+    }
+    let mut forged = bytes;
+    let value_offset = offset.checked_add(29).ok_or_else(|| {
+        String::from("unsigned truncate value offset overflow")
+    })?;
+    forged
+        .get_mut(value_offset..value_offset + 4)
+        .ok_or_else(|| String::from("unsigned truncate value missing"))?
+        .copy_from_slice(&99u32.to_le_bytes());
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("undefined truncated SSA use was admitted"));
+    }
+    Ok(())
+}
+
 #[test]
 fn unsigned_bitwise_accepts_aliased_typed_operands() -> Result<(), String> {
     for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
@@ -2804,7 +3002,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (15u8, TernaryProgramCodecError::UnknownTag),
+            (16u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -2865,10 +3063,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            15u8,
+            16u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 15u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 16u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -3046,7 +3244,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 15u8] {
+    for forged_tag in [4u8, 16u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -3288,7 +3486,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 15;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 16;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {
