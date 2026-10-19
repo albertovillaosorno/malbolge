@@ -186,6 +186,11 @@ instruction.
   and ternary round-trip tests reject forged operand type, undefined use,
   duplicate definition, swapped signed opcode, and unknown opcode `15`.
 
+  Fresh compiler selection and inspector-backed restoration now converge for
+  all three unsigned bitwise operations. Production checkpoint extraction
+  rejects signed-tag substitutions, and all ten immutable crash boundaries
+  preserve the committed signed or unsigned bitwise generation.
+
   Product compiler selection now converges between fresh `u32` typed lowering
   and real inspector-backed progress restoration. Invalid signed-return tag
   substitutions are rejected after checkpoint extraction; all ten immutable

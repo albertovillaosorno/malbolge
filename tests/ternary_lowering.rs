@@ -2017,6 +2017,113 @@ fn ternary_unsigned_crash_resume_recovers_committed_generation()
 }
 
 #[test]
+fn ternary_unsigned_bitwise_selector_converges_with_progress()
+-> Result<(), String> {
+    for (operation, label) in [
+        (BinaryOp::And, "unsigned-bitwise-and-selector"),
+        (BinaryOp::Or, "unsigned-bitwise-or-selector"),
+        (BinaryOp::Xor, "unsigned-bitwise-xor-selector"),
+    ] {
+        let (expected, projection) =
+            lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, operation)?;
+        let fresh = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::Fresh(&projection),
+        )
+        .map_err(|error| format!("select fresh unsigned bitwise: {error:?}"))?;
+        if fresh != expected {
+            return Err(String::from(
+                "fresh unsigned bitwise compiler drifted",
+            ));
+        }
+        let bytes = canonical_ternary_bytes(&fresh).map_err(|error| {
+            format!("encode unsigned bitwise progress: {error:?}")
+        })?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let resumed =
+            enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+                inspector: &progress_inspector(),
+                interpreter: &repository_python(),
+                progress: &progress,
+            });
+        remove_dir_all(&directory).map_err(|error| {
+            format!("clean unsigned bitwise progress: {error}")
+        })?;
+        if resumed != Ok(expected) {
+            return Err(String::from(
+                "unsigned bitwise progress did not converge",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_unsigned_bitwise_progress_rejects_signed_opcode()
+-> Result<(), String> {
+    for (operation, tag, signed_tag, label) in [
+        (BinaryOp::And, 12u8, 0u8, "forged-unsigned-and"),
+        (BinaryOp::Or, 13u8, 6u8, "forged-unsigned-or"),
+        (BinaryOp::Xor, 14u8, 7u8, "forged-unsigned-xor"),
+    ] {
+        let (program, _projection) =
+            lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, operation)?;
+        let mut bytes = canonical_ternary_bytes(&program).map_err(|error| {
+            format!("encode forged unsigned bitwise: {error:?}")
+        })?;
+        let pattern = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+        let offset = bytes
+            .windows(pattern.len())
+            .position(|window| window == pattern)
+            .ok_or_else(|| {
+                String::from("unsigned bitwise wire position missing")
+            })?;
+        *bytes
+            .get_mut(offset)
+            .ok_or_else(|| String::from("unsigned bitwise tag missing"))? =
+            signed_tag;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let rejected = resume_ternary_from_progress(
+            &repository_python(),
+            &progress_inspector(),
+            &progress,
+        );
+        remove_dir_all(&directory).map_err(|error| {
+            format!("clean forged bitwise progress: {error}")
+        })?;
+        let expected = Err(TernaryProgressCheckpointError::Stage(
+            TernaryStageError::Checkpoint(
+                TernaryProgramCodecError::Validation(
+                    TernaryProgramValidationError::SsaValue,
+                ),
+            ),
+        ));
+        if rejected != expected {
+            return Err(String::from(
+                "forged signed bitwise tag passed inspector",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_unsigned_bitwise_crash_resume_preserves_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    let (next, _projection) =
+        lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, BinaryOp::Xor)?;
+    if previous == next {
+        return Err(String::from("signed and unsigned generations coincide"));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, &previous, &next)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_byte_return_compiler_selector_converges_through_progress()
 -> Result<(), String> {
     let (expected, projection) = lowered_byte_return_fixture(Some(255))?;

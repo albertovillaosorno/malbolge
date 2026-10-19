@@ -112,6 +112,12 @@ forged signed tags, missing SSA uses, or duplicate result identities.
 The next unknown operation tag is `15`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
+Real progress-inspector restoration now converges with fresh compilation for
+all three unsigned bitwise operations. Rewritten signed bitwise tags are
+rejected by independent canonical stage admission after checkpoint extraction.
+All ten crash publication boundaries also preserve the committed generation
+when moving from signed to unsigned bitwise-return state.
+
 The real compiler progress inspector restores canonical unsigned 32-bit
 returns with the same output as fresh typed lowering. A checkpoint whose
 `ReturnU32` tag is rewritten to signed `Return` is rejected after opaque-state
