@@ -1033,6 +1033,37 @@ fn unsigned_bitwise_module(left: u32, right: u32, op: BinaryOp) -> Module {
     unsigned_module(instructions, 2, 4)
 }
 
+fn unsigned_alias_bitwise_module(bits: u32, operation: BinaryOp) -> Module {
+    let u32_type = TypeId::new(0);
+    unsigned_module(
+        vec![
+            LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(
+                        32,
+                        bits.to_le_bytes().to_vec(),
+                    ),
+                    result: ValueId::new(0),
+                    type_id: u32_type,
+                },
+                fixture_span(0, 1),
+            ),
+            LocatedInstruction::new(
+                Instruction::Binary {
+                    left: ValueId::new(0),
+                    operation,
+                    result: ValueId::new(1),
+                    right: ValueId::new(0),
+                    type_id: u32_type,
+                },
+                fixture_span(1, 2),
+            ),
+        ],
+        1,
+        3,
+    )
+}
+
 fn low_byte_module() -> Module {
     low_byte_module_with_binary(BinaryOp::And)
 }
@@ -2662,6 +2693,83 @@ fn unsigned_bitwise_projection_rejects_type_and_ssa_forgery()
             if lower_typed_ir(&forged) != Err(expected) {
                 return Err(String::from(
                     "forged unsigned bitwise projection admitted",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn expected_unsigned_alias_operation(
+    operation: BinaryOp,
+    span: ternary_lowering::TernarySourceSpan,
+) -> TernaryOperation {
+    if operation == BinaryOp::And {
+        TernaryOperation::AndU32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    } else if operation == BinaryOp::Or {
+        TernaryOperation::OrU32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    } else {
+        TernaryOperation::XorU32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    }
+}
+
+#[test]
+fn unsigned_bitwise_accepts_aliased_typed_operands() -> Result<(), String> {
+    for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+        for bits in [0u32, 1, 0x8000_0000, 0x5555_5555, u32::MAX] {
+            let module = unsigned_alias_bitwise_module(bits, operation);
+            validate_module(&module).map_err(|error| {
+                format!("admit aliased unsigned IR: {error:?}")
+            })?;
+            let typed = canonical_bytes(&module).map_err(|error| {
+                format!("encode aliased typed IR: {error:?}")
+            })?;
+            let restored = canonical_module(&typed).map_err(|error| {
+                format!("restore aliased typed IR: {error:?}")
+            })?;
+            if restored != module {
+                return Err(String::from("aliased typed IR drifted"));
+            }
+            let projected = project_typed_ir(&restored)?;
+            let program = lower_typed_ir(&projected).map_err(|error| {
+                format!("lower aliased unsigned: {error:?}")
+            })?;
+            let function = program.functions.first().ok_or_else(|| {
+                String::from("aliased target function missing")
+            })?;
+            let span = output_span(fixture_span(1, 2));
+            let expected = expected_unsigned_alias_operation(operation, span);
+            if function.operations.get(1) != Some(&expected)
+                || function.operations.last()
+                    != Some(&TernaryOperation::ReturnU32 {
+                        span: output_span(fixture_span(2, 3)),
+                        value: 1,
+                    })
+            {
+                return Err(String::from("aliased unsigned operand drifted"));
+            }
+            let encoded =
+                canonical_ternary_bytes(&program).map_err(|error| {
+                    format!("encode aliased ternary: {error:?}")
+                })?;
+            if canonical_ternary_program(&encoded) != Ok(program) {
+                return Err(String::from(
+                    "aliased unsigned checkpoint drifted",
                 ));
             }
         }

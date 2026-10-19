@@ -109,6 +109,24 @@ same three SSA IDs and 24-byte source span as signed tags `0`, `6`, and `7`.
 Their independent stage validation rejects wrong-typed operand definitions,
 forged signed tags, missing SSA uses, or duplicate result identities.
 
+Both operands may legally reference the same previously defined unsigned SSA
+value. An admitted typed-IR fixture verifies all three bitwise operations over
+zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
+checks complete canonical ternary checkpoint restoration without duplicating
+the shared operand's definition.
+
+Both operands may legally reference the same previously defined unsigned SSA
+value. An admitted typed-IR fixture verifies all three bitwise operations over
+zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
+checks complete canonical ternary checkpoint restoration without duplicating
+the shared operand's definition.
+
+Both operands may legally reference the same previously defined unsigned SSA
+value. An admitted typed-IR fixture verifies all three bitwise operations over
+zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
+checks complete canonical ternary checkpoint restoration without duplicating
+the shared operand's definition.
+
 The next unknown operation tag is `15`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 

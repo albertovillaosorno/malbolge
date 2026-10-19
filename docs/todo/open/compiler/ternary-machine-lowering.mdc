@@ -186,6 +186,18 @@ instruction.
   and ternary round-trip tests reject forged operand type, undefined use,
   duplicate definition, swapped signed opcode, and unknown opcode `15`.
 
+  A separate round-trip fixture confirms all unsigned bitwise operations
+  accept both operands referencing the same valid SSA definition, across
+  five boundary bit patterns, without inventing a duplicate definition.
+
+  A separate round-trip fixture confirms all unsigned bitwise operations
+  accept both operands referencing the same valid SSA definition, across
+  five boundary bit patterns, without inventing a duplicate definition.
+
+  A separate round-trip fixture confirms all unsigned bitwise operations
+  accept both operands referencing the same valid SSA definition, across
+  five boundary bit patterns, without inventing a duplicate definition.
+
   Fresh compiler selection and inspector-backed restoration now converge for
   all three unsigned bitwise operations. Production checkpoint extraction
   rejects signed-tag substitutions, and all ten immutable crash boundaries
