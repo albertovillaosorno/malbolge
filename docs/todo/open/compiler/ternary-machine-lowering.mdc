@@ -164,14 +164,14 @@ instruction.
   SSA result and type-confused `ByteOutput` after bypassing the lowerer.
 
   Other decoder regressions reject illegal ternary digits and the next
-  unknown operation tag `16`.
+  unknown operation tag `17`.
 - The typed semantic projection now preserves each admitted function's result
   type category. No-argument one-block `u8` functions can return defined byte
   input or constant SSA values using `ReturnU8` (`MCTR` closed tag `9`), while
   existing `i32` returns keep tag `4` unchanged. End-to-end canonical typed IR
   and ternary round trips verify the declared signature, returned SSA ID,
   and terminator provenance. Forged projection result kinds, mismatched
-  scalar uses, rewritten return tags, and unknown tag `16` fail closed.
+  scalar uses, rewritten return tags, and unknown tag `17` fail closed.
 - Exact admitted `u32` constants now remain unsigned throughout projection,
   pre-layout lowering, and canonical checkpoint admission. `MCTR` tags `10`
   and `11` encode `MaterializeU32` and `ReturnU32` with distinct SSA value kinds
@@ -179,18 +179,26 @@ instruction.
   signed-boundary and maximum patterns, forged width/type/signedness, swapped
   target tags, and in-range ternary digits encoding a value beyond `u32`.
   Historical signed/byte tags remain byte-exact; unknown tag `15` fails closed.
+- Admitted `u8` to `u32` zero extension now lowers to a separate target
+  `ZeroExtendU8ToU32` operation at closed `MCTR` tag `16`. It requires a
+  defined byte-valued source and yields an unsigned 32-bit SSA result.
+  Canonical typed and target round trips cover byte literals and successful
+  byte input, while tests reject type/identity forgeries, truncation-tag
+  substitution, and unknown tag `17`. Real inspector progress restoration
+  converges with fresh compiler selection; all ten crash boundaries preserve
+  the committed generation during signed-to-widened state publication.
 - Admitted `u32` to `u8` typed truncation now lowers to a distinct unsigned
   `TruncateU32ToU8` operation at closed `MCTR` tag `15`, without changing
   existing signed truncation tag `5`. Typed-IR admission and target canonical
   round trips preserve the low-byte result and source SSA provenance.
   Regressions reject destination-type drift, duplicate and undefined operands,
-  a forged signed truncation tag, and the next unassigned tag `16`.
+  a forged signed truncation tag, and the next unassigned tag `17`.
 - The typed semantic slice now also lowers exact unsigned `u32` bitwise AND,
   OR, and XOR with signedness-specific SSA validation. Closed `MCTR` tags
   `12`, `13`, and `14` preserve three operand/result IDs and full source
   spans without changing existing signed opcode encodings. Canonical typed
   and ternary round-trip tests reject forged operand type, undefined use,
-  duplicate definition, swapped signed opcode, and unknown opcode `16`.
+  duplicate definition, swapped signed opcode, and unknown opcode `17`.
 
   A separate round-trip fixture confirms all unsigned bitwise operations
   accept both operands referencing the same valid SSA definition, across

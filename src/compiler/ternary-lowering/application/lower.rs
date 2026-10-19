@@ -211,7 +211,8 @@ fn lower_instruction(
         | InputInstruction::ByteOutput { .. }
         | InputInstruction::ConstantInteger { .. }
         | InputInstruction::TruncateInteger { .. }
-        | InputInstruction::Unsupported => {
+        | InputInstruction::Unsupported
+        | InputInstruction::ZeroExtendInteger { .. } => {
             lower_other_instruction(instruction, state)
         },
     }
@@ -250,6 +251,15 @@ fn lower_other_instruction(
             type_kind,
             value,
         } => lower_truncate_i32_to_u8(
+            (*result, *span, *type_kind, *value),
+            state,
+        ),
+        InputInstruction::ZeroExtendInteger {
+            result,
+            span,
+            type_kind,
+            value,
+        } => lower_zero_extend_u8_to_u32(
             (*result, *span, *type_kind, *value),
             state,
         ),
@@ -462,6 +472,24 @@ fn lower_truncate_i32_to_u8(
             value,
         })
     }
+}
+
+fn lower_zero_extend_u8_to_u32(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    if type_kind != InputScalarType::U32 || !state.bytes.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.unsigned.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    Ok(TernaryOperation::ZeroExtendU8ToU32 {
+        result,
+        span: copy_span(span),
+        value,
+    })
 }
 
 fn ensure_new_value(

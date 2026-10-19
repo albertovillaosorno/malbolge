@@ -150,6 +150,17 @@ pub enum InputInstruction {
     },
     /// An admitted typed-IR instruction not implemented by this lowering slice.
     Unsupported,
+    /// Zero-extend a successful byte to an unsigned 32-bit SSA value.
+    ZeroExtendInteger {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted destination scalar category.
+        type_kind: InputScalarType,
+        /// Previously defined byte-valued source SSA identity.
+        value: u32,
+    },
 }
 
 /// One projected typed-IR block terminator.

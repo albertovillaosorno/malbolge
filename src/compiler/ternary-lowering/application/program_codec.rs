@@ -477,6 +477,11 @@ fn decode_operation(
             span: decode_span(decoder)?,
             value: decoder.u32()?,
         },
+        16 => TernaryOperation::ZeroExtendU8ToU32 {
+            result: decoder.u32()?,
+            span: decode_span(decoder)?,
+            value: decoder.u32()?,
+        },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -641,7 +646,8 @@ fn encode_bitwise_model(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::ReturnU32 { .. }
         | TernaryOperation::ReturnU8 { .. }
         | TernaryOperation::TruncateI32ToU8 { .. }
-        | TernaryOperation::TruncateU32ToU8 { .. } => {
+        | TernaryOperation::TruncateU32ToU8 { .. }
+        | TernaryOperation::ZeroExtendU8ToU32 { .. } => {
             debug_assert!(
                 false,
                 "non-bitwise instruction reached bitwise encoder"
@@ -650,6 +656,44 @@ fn encode_bitwise_model(encoder: &mut Encoder, operation: TernaryOperation) {
         },
     };
     encode_bitwise_operation(encoder, tag, operands);
+}
+
+fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
+    let (result, span, value) = match operation {
+        TernaryOperation::TruncateI32ToU8 { result, span, value }
+        | TernaryOperation::TruncateU32ToU8 { result, span, value }
+        | TernaryOperation::ZeroExtendU8ToU32 { result, span, value } => {
+            (result, span, value)
+        },
+        TernaryOperation::AndI32 { .. }
+        | TernaryOperation::AndU32 { .. }
+        | TernaryOperation::ByteInput { .. }
+        | TernaryOperation::ByteOutput { .. }
+        | TernaryOperation::MaterializeI32 { .. }
+        | TernaryOperation::MaterializeU32 { .. }
+        | TernaryOperation::MaterializeU8 { .. }
+        | TernaryOperation::OrI32 { .. }
+        | TernaryOperation::OrU32 { .. }
+        | TernaryOperation::Return { .. }
+        | TernaryOperation::ReturnU32 { .. }
+        | TernaryOperation::ReturnU8 { .. }
+        | TernaryOperation::XorI32 { .. }
+        | TernaryOperation::XorU32 { .. } => {
+            debug_assert!(false, "non-cast instruction reached cast encoder");
+            return;
+        },
+    };
+    let tag = if matches!(operation, TernaryOperation::TruncateI32ToU8 { .. }) {
+        5
+    } else if matches!(operation, TernaryOperation::TruncateU32ToU8 { .. }) {
+        15
+    } else {
+        16
+    };
+    encoder.u8(tag);
+    encoder.u32(result);
+    encode_span(encoder, span);
+    encoder.u32(value);
 }
 
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
@@ -694,20 +738,10 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
             };
             encode_return_operation(encoder, tag, span, value);
         },
-        TernaryOperation::TruncateI32ToU8 { result, span, value }
-        | TernaryOperation::TruncateU32ToU8 { result, span, value } => {
-            let tag = if matches!(
-                operation,
-                TernaryOperation::TruncateI32ToU8 { .. }
-            ) {
-                5
-            } else {
-                15
-            };
-            encoder.u8(tag);
-            encoder.u32(result);
-            encode_span(encoder, span);
-            encoder.u32(value);
+        TernaryOperation::TruncateI32ToU8 { .. }
+        | TernaryOperation::TruncateU32ToU8 { .. }
+        | TernaryOperation::ZeroExtendU8ToU32 { .. } => {
+            encode_cast_model(encoder, operation);
         },
     }
 }
@@ -753,7 +787,8 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::ReturnU32 { span, .. }
         | TernaryOperation::ReturnU8 { span, .. }
         | TernaryOperation::TruncateI32ToU8 { span, .. }
-        | TernaryOperation::TruncateU32ToU8 { span, .. } => span,
+        | TernaryOperation::TruncateU32ToU8 { span, .. }
+        | TernaryOperation::ZeroExtendU8ToU32 { span, .. } => span,
     }
 }
 
@@ -933,6 +968,11 @@ fn validate_operation(
         },
         TernaryOperation::TruncateU32ToU8 { result, value, .. } => {
             validate_truncated_value(values, result, value, ValueKind::U32)
+        },
+        TernaryOperation::ZeroExtendU8ToU32 { result, value, .. } => {
+            require_value(values, value, ValueKind::Byte)?;
+            insert_value(values, result, ValueKind::U32)?;
+            Ok(false)
         },
     }
 }

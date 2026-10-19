@@ -995,6 +995,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Zero-extend one defined `u8` value to an exact unsigned 32-bit value.
+    ZeroExtendU8ToU32 {
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Defined source byte SSA identity.
+        value: u32,
+    },
 }
 
 /// One lowered function before target layout and encoding.

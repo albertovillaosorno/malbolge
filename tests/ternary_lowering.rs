@@ -1008,6 +1008,38 @@ fn unsigned_module_with_result(
     })
 }
 
+fn unsigned_zero_extend_module(source: Option<u8>) -> Module {
+    let u32_type = TypeId::new(0);
+    let u8_type = TypeId::new(2);
+    let source_instruction = source.map_or_else(
+        || Instruction::ByteInput {
+            result: ValueId::new(0),
+            type_id: u8_type,
+        },
+        |byte| Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: ValueId::new(0),
+            type_id: u8_type,
+        },
+    );
+    unsigned_module(
+        vec![
+            LocatedInstruction::new(source_instruction, fixture_span(0, 1)),
+            LocatedInstruction::new(
+                Instruction::Cast {
+                    operation: CastOp::ZeroExtend,
+                    result: ValueId::new(1),
+                    type_id: u32_type,
+                    value: ValueId::new(0),
+                },
+                fixture_span(1, 2),
+            ),
+        ],
+        1,
+        3,
+    )
+}
+
 fn unsigned_truncate_module(bits: u32) -> Module {
     let u32_type = TypeId::new(0);
     let u8_type = TypeId::new(2);
@@ -1353,6 +1385,42 @@ fn projected_bitwise_instruction(
     None
 }
 
+fn projected_cast_instruction(
+    module: &Module,
+    instruction: &LocatedInstruction,
+) -> Option<InputInstruction> {
+    let Instruction::Cast {
+        operation,
+        result,
+        type_id,
+        value,
+    } = instruction.instruction()
+    else {
+        return None;
+    };
+    let result_id = result.value();
+    let span = input_span(instruction.span());
+    let type_kind = input_scalar_type(module, *type_id);
+    let source_id = value.value();
+    if *operation == CastOp::Truncate {
+        return Some(InputInstruction::TruncateInteger {
+            result: result_id,
+            span,
+            type_kind,
+            value: source_id,
+        });
+    }
+    if *operation == CastOp::ZeroExtend {
+        return Some(InputInstruction::ZeroExtendInteger {
+            result: result_id,
+            span,
+            type_kind,
+            value: source_id,
+        });
+    }
+    None
+}
+
 fn input_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
@@ -1389,19 +1457,8 @@ fn input_instruction(
             type_kind: input_scalar_type(module, *type_id),
         };
     }
-    if let Instruction::Cast {
-        operation: CastOp::Truncate,
-        result,
-        type_id,
-        value,
-    } = instruction.instruction()
-    {
-        return InputInstruction::TruncateInteger {
-            result: result.value(),
-            span: input_span(instruction.span()),
-            type_kind: input_scalar_type(module, *type_id),
-            value: value.value(),
-        };
+    if let Some(cast) = projected_cast_instruction(module, instruction) {
+        return cast;
     }
     InputInstruction::Unsupported
 }
@@ -1919,7 +1976,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 16;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 17;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2081,6 +2138,57 @@ fn ternary_unsigned_crash_resume_recovers_committed_generation()
         return Err(String::from(
             "crash versions must have distinct signedness",
         ));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, &previous, &next)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_zero_extension_selector_converges_with_progress()
+-> Result<(), String> {
+    for (source, label) in [
+        (None, "zero-extend-byte-input"),
+        (Some(255), "zero-extend-byte-literal"),
+    ] {
+        let (expected, projection) =
+            lowered_unsigned_zero_extend_fixture(source)?;
+        let fresh = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::Fresh(&projection),
+        )
+        .map_err(|error| format!("fresh zero-extension stage: {error:?}"))?;
+        if fresh != expected {
+            return Err(String::from(
+                "fresh zero-extension projection drifted",
+            ));
+        }
+        let bytes = canonical_ternary_bytes(&fresh)
+            .map_err(|error| format!("encode widening progress: {error:?}"))?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let resumed =
+            enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+                inspector: &progress_inspector(),
+                interpreter: &repository_python(),
+                progress: &progress,
+            });
+        remove_dir_all(&directory)
+            .map_err(|error| format!("clean widening progress: {error}"))?;
+        if resumed != Ok(expected) {
+            return Err(String::from("widening inspector recovery drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_zero_extension_crash_resume_preserves_signedness()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    let (next, _projection) = lowered_unsigned_zero_extend_fixture(Some(255))?;
+    if previous == next {
+        return Err(String::from("widened and signed checkpoints coincide"));
     }
     for boundary in TERNARY_CRASH_BOUNDARIES {
         run_ternary_crash_boundary(boundary, &previous, &next)?;
@@ -2769,6 +2877,159 @@ fn expected_unsigned_alias_operation(
     }
 }
 
+fn lowered_unsigned_zero_extend_fixture(
+    source: Option<u8>,
+) -> Result<LoweredByteFixture, String> {
+    let module = unsigned_zero_extend_module(source);
+    validate_module(&module)
+        .map_err(|error| format!("admit unsigned widening IR: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode unsigned widening IR: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore unsigned widening IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("unsigned widening typed-IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower unsigned widening: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+#[test]
+fn unsigned_zero_extension_lowers_typed_byte_sources() -> Result<(), String> {
+    for source in [None, Some(0), Some(1), Some(127), Some(128), Some(255)] {
+        let (target, input) = lowered_unsigned_zero_extend_fixture(source)?;
+        if input.functions.first().map(|function| function.return_kind)
+            != Some(InputScalarType::U32)
+        {
+            return Err(String::from("zero-extended result type drifted"));
+        }
+        let function = target
+            .functions
+            .first()
+            .ok_or_else(|| String::from("zero-extended target missing"))?;
+        let operation = TernaryOperation::ZeroExtendU8ToU32 {
+            result: 1,
+            span: output_span(fixture_span(1, 2)),
+            value: 0,
+        };
+        let terminal = TernaryOperation::ReturnU32 {
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        };
+        if function.operations.get(1) != Some(&operation)
+            || function.operations.last() != Some(&terminal)
+        {
+            return Err(String::from("zero-extended SSA/provenance drifted"));
+        }
+        let bytes = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode widened state: {error:?}"))?;
+        let tag = [16u8, 1, 0, 0, 0];
+        if !bytes.windows(tag.len()).any(|wire| wire == tag)
+            || canonical_ternary_program(&bytes) != Ok(target)
+        {
+            return Err(String::from(
+                "zero-extension canonical round trip drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_zero_extension_rejects_projection_forgery() -> Result<(), String> {
+    let (_program, input) = lowered_unsigned_zero_extend_fixture(Some(255))?;
+    for variation in 0u8..4u8 {
+        let mut forged = input.clone();
+        let instruction = forged
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(1))
+            .ok_or_else(|| String::from("zero-extension projection missing"))?;
+        let InputInstruction::ZeroExtendInteger {
+            result,
+            type_kind,
+            value,
+            ..
+        } = instruction
+        else {
+            return Err(String::from("zero-extension projection changed"));
+        };
+        match variation {
+            0 => *type_kind = InputScalarType::I32,
+            1 => *value = 99,
+            2 => *result = 0,
+            3 => *value = 1,
+            _ => return Err(String::from("unknown widening forgery")),
+        }
+        let expected = if variation == 2 {
+            TernaryLoweringError::InvalidProjection
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if lower_typed_ir(&forged) != Err(expected) {
+            return Err(format!("forged zero-extension {variation} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
+-> Result<(), String> {
+    let (program, _input) = lowered_unsigned_zero_extend_fixture(Some(255))?;
+    let bytes = canonical_ternary_bytes(&program).map_err(|error| {
+        format!("encode zero-extension checkpoint: {error:?}")
+    })?;
+    let prefix = [16u8, 1, 0, 0, 0];
+    let offset = bytes
+        .windows(prefix.len())
+        .position(|wire| wire == prefix)
+        .ok_or_else(|| String::from("zero-extension opcode missing"))?;
+    for (tag, expected) in [
+        (
+            5u8,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ),
+        ),
+        (
+            15u8,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ),
+        ),
+        (17u8, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let mut forged = bytes.clone();
+        *forged
+            .get_mut(offset)
+            .ok_or_else(|| String::from("zero-extension tag missing"))? = tag;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!("forged widening opcode {tag} admitted"));
+        }
+    }
+    let mut missing = bytes;
+    let source_offset = offset
+        .checked_add(29)
+        .ok_or_else(|| String::from("widening source offset overflow"))?;
+    missing
+        .get_mut(source_offset..source_offset + 4)
+        .ok_or_else(|| String::from("widening source bytes absent"))?
+        .copy_from_slice(&99u32.to_le_bytes());
+    if canonical_ternary_program(&missing)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("undefined widening source admitted"));
+    }
+    Ok(())
+}
+
 fn lowered_unsigned_truncate_fixture(
     bits: u32,
 ) -> Result<LoweredByteFixture, String> {
@@ -2897,7 +3158,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (16u8, TernaryProgramCodecError::UnknownTag),
+        (17u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -3002,7 +3263,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (16u8, TernaryProgramCodecError::UnknownTag),
+            (17u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -3063,10 +3324,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            16u8,
+            17u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 16u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 17u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -3244,7 +3505,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 16u8] {
+    for forged_tag in [4u8, 17u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -3486,7 +3747,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 16;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 17;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {
