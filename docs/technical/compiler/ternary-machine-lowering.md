@@ -28,7 +28,7 @@ model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
-`i32` bitwise AND/OR/XOR, `i32`-to-`u8` truncation, and typed-IR
+`i32`/`u32` bitwise AND/OR/XOR, `i32`-to-`u8` truncation, and typed-IR
 `ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
 Other admitted typed-IR shapes fail explicitly.
 
@@ -76,10 +76,11 @@ byte-effect operations with SSA type/order validation. These operations preserve
 the typed IR's successful `u8` semantics and do not impersonate the raw profile
 input word or its EOF case.
 
-The same SSA boundary lowers exact typed `i32` bitwise AND, OR, and XOR,
-plus validated `i32`-to-`u8` truncation. All three bitwise operations preserve
-original operand/result SSA identities and source spans without evaluating
-guest values on the host.
+The same SSA boundary lowers exact typed `i32` and `u32` bitwise AND, OR,
+and XOR, plus validated `i32`-to-`u8` truncation. Each bitwise operation
+requires both prior SSA operands to have the declared signed or unsigned
+32-bit type and preserves operand/result identities and provenance without
+executing guest values on the host.
 
 Together with constant materialization and `ByteOutput`, AND and truncation
 express the exact low-eight-bit transformation used by
@@ -101,9 +102,15 @@ carries the same terminator span and SSA ID as earlier return operations.
 The independent decoder admits `ReturnU8` and `ReturnU32` only as final
 terminators using values of the matching unsigned type; tag `4` continues to
 require signed `i32`. Rewriting a signed tag to its unsigned counterpart is
-rejected even when all scalar trits are valid. The next unknown tag is `12`.
-Older decoders reject newly emitted tags, and resume remains bound to the
-exact compiler toolchain fingerprint.
+rejected even when all scalar trits are valid.
+
+Tags `12`, `13`, and `14` encode unsigned 32-bit AND, OR, and XOR with the
+same three SSA IDs and 24-byte source span as signed tags `0`, `6`, and `7`.
+Their independent stage validation rejects wrong-typed operand definitions,
+forged signed tags, missing SSA uses, or duplicate result identities.
+
+The next unknown operation tag is `15`. Older decoders reject newly emitted
+tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 The real compiler progress inspector restores canonical unsigned 32-bit
 returns with the same output as fresh typed lowering. A checkpoint whose

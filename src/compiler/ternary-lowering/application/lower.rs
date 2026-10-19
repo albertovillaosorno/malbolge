@@ -51,14 +51,14 @@ const ABI_ID: &str = "malbolge-c32-v1";
 const TARGET_PROFILE: &str = "malbolge-2026";
 const TYPED_IR_VERSION: u16 = 1;
 
-type BinaryI32Input = (u32, u32, u32, InputSourceSpan, InputScalarType);
+type Binary32Input = (u32, u32, u32, InputSourceSpan, InputScalarType);
 type ByteInput = (u32, InputSourceSpan, InputScalarType);
 type ConstantI32Input<'input> =
     (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
 type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
 
 #[derive(Clone, Copy)]
-enum BitwiseI32Kind {
+enum Bitwise32Kind {
     And,
     Or,
     Xor,
@@ -192,16 +192,16 @@ fn lower_instruction(
         } => {
             let kind =
                 if matches!(instruction, InputInstruction::BinaryAnd { .. }) {
-                    BitwiseI32Kind::And
+                    Bitwise32Kind::And
                 } else if matches!(
                     instruction,
                     InputInstruction::BinaryOr { .. }
                 ) {
-                    BitwiseI32Kind::Or
+                    Bitwise32Kind::Or
                 } else {
-                    BitwiseI32Kind::Xor
+                    Bitwise32Kind::Xor
                 };
-            lower_binary_i32(
+            lower_binary_word32(
                 (*left, *result, *right, *span, *type_kind),
                 kind,
                 state,
@@ -262,40 +262,91 @@ fn lower_other_instruction(
     }
 }
 
-fn lower_binary_i32(
-    input: BinaryI32Input,
-    kind: BitwiseI32Kind,
+fn lower_binary_word32(
+    input: Binary32Input,
+    kind: Bitwise32Kind,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (left, result, right, span, type_kind) = input;
-    if type_kind != InputScalarType::I32
-        || !state.signed.contains(&left)
-        || !state.signed.contains(&right)
-    {
+    let uses = match type_kind {
+        InputScalarType::I32 => &state.signed,
+        InputScalarType::U32 => &state.unsigned,
+        InputScalarType::Other | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    };
+    if !uses.contains(&left) || !uses.contains(&right) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.signed.insert(result);
+    let inserted = match type_kind {
+        InputScalarType::I32 => state.signed.insert(result),
+        InputScalarType::U32 => state.unsigned.insert(result),
+        InputScalarType::Other | InputScalarType::U8 => false,
+    };
     debug_assert!(inserted, "new SSA value was already preflighted");
-    let target_span = copy_span(span);
-    Ok(match kind {
-        BitwiseI32Kind::And => TernaryOperation::AndI32 {
-            left,
-            result,
-            right,
-            span: target_span,
+    construct_bitwise_operation(
+        kind,
+        type_kind,
+        (left, result, right),
+        copy_span(span),
+    )
+}
+
+const fn construct_bitwise_operation(
+    kind: Bitwise32Kind,
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match (kind, type_kind) {
+        (Bitwise32Kind::And, InputScalarType::I32) => {
+            TernaryOperation::AndI32 {
+                left,
+                result,
+                right,
+                span,
+            }
         },
-        BitwiseI32Kind::Or => TernaryOperation::OrI32 {
-            left,
-            result,
-            right,
-            span: target_span,
+        (Bitwise32Kind::And, InputScalarType::U32) => {
+            TernaryOperation::AndU32 {
+                left,
+                result,
+                right,
+                span,
+            }
         },
-        BitwiseI32Kind::Xor => TernaryOperation::XorI32 {
+        (Bitwise32Kind::Or, InputScalarType::I32) => TernaryOperation::OrI32 {
             left,
             result,
             right,
-            span: target_span,
+            span,
+        },
+        (Bitwise32Kind::Or, InputScalarType::U32) => TernaryOperation::OrU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        (Bitwise32Kind::Xor, InputScalarType::I32) => {
+            TernaryOperation::XorI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Bitwise32Kind::Xor, InputScalarType::U32) => {
+            TernaryOperation::XorU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (_, InputScalarType::Other | InputScalarType::U8) => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
         },
     })
 }
@@ -431,8 +482,8 @@ fn validate_projection(
 /// # Errors
 ///
 /// Returns [`TernaryLoweringError`] when the projection is malformed or uses
-/// semantics outside the implemented `u8`/`i32` constant/bitwise, `i32`-to-`u8`
-/// truncation, return, and successful byte-effect slice.
+/// semantics outside the implemented 32-bit typed constant/bitwise, `u8`
+/// constant, `i32`-to-`u8` truncation, return, and byte-effect slice.
 pub fn lower_typed_ir(
     input: &TypedIrInput,
 ) -> Result<TernaryProgram, TernaryLoweringError> {

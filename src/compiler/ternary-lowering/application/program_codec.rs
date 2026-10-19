@@ -400,6 +400,24 @@ fn decode_bitwise_operation(
             right,
             span,
         },
+        12 => TernaryOperation::AndU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        13 => TernaryOperation::OrU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        14 => TernaryOperation::XorU32 {
+            left,
+            result,
+            right,
+            span,
+        },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -451,6 +469,9 @@ fn decode_operation(
             span: decode_span(decoder)?,
             value: decoder.u32()?,
         },
+        12 => decode_bitwise_operation(decoder, 12)?,
+        13 => decode_bitwise_operation(decoder, 13)?,
+        14 => decode_bitwise_operation(decoder, 14)?,
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -568,34 +589,72 @@ fn encode_ternary_scalar(
     encode_span(encoder, span);
 }
 
-fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
-    match operation {
+fn encode_bitwise_model(encoder: &mut Encoder, operation: TernaryOperation) {
+    let (tag, operands) = match operation {
         TernaryOperation::AndI32 {
             left,
             result,
             right,
             span,
-        }
-        | TernaryOperation::OrI32 {
+        } => (0, (left, result, right, span)),
+        TernaryOperation::AndU32 {
             left,
             result,
             right,
             span,
-        }
-        | TernaryOperation::XorI32 {
+        } => (12, (left, result, right, span)),
+        TernaryOperation::OrI32 {
             left,
             result,
             right,
             span,
-        } => {
-            let tag = if matches!(operation, TernaryOperation::AndI32 { .. }) {
-                0
-            } else if matches!(operation, TernaryOperation::OrI32 { .. }) {
-                6
-            } else {
-                7
-            };
-            encode_bitwise_operation(encoder, tag, (left, result, right, span));
+        } => (6, (left, result, right, span)),
+        TernaryOperation::OrU32 {
+            left,
+            result,
+            right,
+            span,
+        } => (13, (left, result, right, span)),
+        TernaryOperation::XorI32 {
+            left,
+            result,
+            right,
+            span,
+        } => (7, (left, result, right, span)),
+        TernaryOperation::XorU32 {
+            left,
+            result,
+            right,
+            span,
+        } => (14, (left, result, right, span)),
+        TernaryOperation::ByteInput { .. }
+        | TernaryOperation::ByteOutput { .. }
+        | TernaryOperation::MaterializeI32 { .. }
+        | TernaryOperation::MaterializeU32 { .. }
+        | TernaryOperation::MaterializeU8 { .. }
+        | TernaryOperation::Return { .. }
+        | TernaryOperation::ReturnU32 { .. }
+        | TernaryOperation::ReturnU8 { .. }
+        | TernaryOperation::TruncateI32ToU8 { .. } => {
+            debug_assert!(
+                false,
+                "non-bitwise instruction reached bitwise encoder"
+            );
+            return;
+        },
+    };
+    encode_bitwise_operation(encoder, tag, operands);
+}
+
+fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
+    match operation {
+        TernaryOperation::AndI32 { .. }
+        | TernaryOperation::AndU32 { .. }
+        | TernaryOperation::OrI32 { .. }
+        | TernaryOperation::OrU32 { .. }
+        | TernaryOperation::XorI32 { .. }
+        | TernaryOperation::XorU32 { .. } => {
+            encode_bitwise_model(encoder, operation);
         },
         TernaryOperation::ByteInput { result, span } => {
             encode_byte_input(encoder, result, span);
@@ -603,23 +662,31 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         TernaryOperation::ByteOutput { span, value } => {
             encode_byte_output(encoder, span, value);
         },
-        TernaryOperation::MaterializeI32 { result, scalar, span } => {
-            encode_ternary_scalar(encoder, 3, (result, scalar, span));
-        },
-        TernaryOperation::MaterializeU32 { result, scalar, span } => {
-            encode_ternary_scalar(encoder, 10, (result, scalar, span));
+        TernaryOperation::MaterializeI32 { result, scalar, span }
+        | TernaryOperation::MaterializeU32 { result, scalar, span } => {
+            let tag =
+                if matches!(operation, TernaryOperation::MaterializeI32 { .. })
+                {
+                    3
+                } else {
+                    10
+                };
+            encode_ternary_scalar(encoder, tag, (result, scalar, span));
         },
         TernaryOperation::MaterializeU8 { result, scalar, span } => {
             encode_byte_scalar(encoder, result, scalar, span);
         },
-        TernaryOperation::Return { span, value } => {
-            encode_return_operation(encoder, 4, span, value);
-        },
-        TernaryOperation::ReturnU32 { span, value } => {
-            encode_return_operation(encoder, 11, span, value);
-        },
-        TernaryOperation::ReturnU8 { span, value } => {
-            encode_return_operation(encoder, 9, span, value);
+        TernaryOperation::Return { span, value }
+        | TernaryOperation::ReturnU32 { span, value }
+        | TernaryOperation::ReturnU8 { span, value } => {
+            let tag = if matches!(operation, TernaryOperation::Return { .. }) {
+                4
+            } else if matches!(operation, TernaryOperation::ReturnU32 { .. }) {
+                11
+            } else {
+                9
+            };
+            encode_return_operation(encoder, tag, span, value);
         },
         TernaryOperation::TruncateI32ToU8 { result, span, value } => {
             encoder.u8(5);
@@ -657,6 +724,9 @@ fn insert_value(
 const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
     match operation {
         TernaryOperation::AndI32 { span, .. }
+        | TernaryOperation::AndU32 { span, .. }
+        | TernaryOperation::OrU32 { span, .. }
+        | TernaryOperation::XorU32 { span, .. }
         | TernaryOperation::OrI32 { span, .. }
         | TernaryOperation::XorI32 { span, .. }
         | TernaryOperation::ByteInput { span, .. }
@@ -738,6 +808,33 @@ fn validate_function(
     validate_operations(function)
 }
 
+fn validate_bitwise_values(
+    values: &mut BTreeMap<u32, ValueKind>,
+    operands: (u32, u32, u32),
+    kind: ValueKind,
+) -> Result<bool, TernaryProgramValidationError> {
+    let (left, result, right) = operands;
+    require_value(values, left, kind)?;
+    require_value(values, right, kind)?;
+    insert_value(values, result, kind)?;
+    Ok(false)
+}
+
+fn validate_large_scalar(
+    values: &mut BTreeMap<u32, ValueKind>,
+    result: u32,
+    scalar: TernaryI32Scalar,
+    kind: ValueKind,
+) -> Result<bool, TernaryProgramValidationError> {
+    if scalar.trits().iter().any(|trit| *trit > 2)
+        || TernaryI32Scalar::from_bits(scalar.bits()) != scalar
+    {
+        return Err(TernaryProgramValidationError::SsaValue);
+    }
+    insert_value(values, result, kind)?;
+    Ok(false)
+}
+
 fn validate_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
@@ -746,10 +843,20 @@ fn validate_operation(
         TernaryOperation::AndI32 { left, result, right, .. }
         | TernaryOperation::OrI32 { left, result, right, .. }
         | TernaryOperation::XorI32 { left, result, right, .. } => {
-            require_value(values, left, ValueKind::I32)?;
-            require_value(values, right, ValueKind::I32)?;
-            insert_value(values, result, ValueKind::I32)?;
-            Ok(false)
+            validate_bitwise_values(
+                values,
+                (left, result, right),
+                ValueKind::I32,
+            )
+        },
+        TernaryOperation::AndU32 { left, result, right, .. }
+        | TernaryOperation::OrU32 { left, result, right, .. }
+        | TernaryOperation::XorU32 { left, result, right, .. } => {
+            validate_bitwise_values(
+                values,
+                (left, result, right),
+                ValueKind::U32,
+            )
         },
         TernaryOperation::ByteInput { result, .. } => {
             insert_value(values, result, ValueKind::Byte)?;
@@ -760,20 +867,10 @@ fn validate_operation(
             Ok(false)
         },
         TernaryOperation::MaterializeI32 { result, scalar, .. } => {
-            if scalar.trits().iter().any(|trit| *trit > 2) {
-                return Err(TernaryProgramValidationError::SsaValue);
-            }
-            insert_value(values, result, ValueKind::I32)?;
-            Ok(false)
+            validate_large_scalar(values, result, scalar, ValueKind::I32)
         },
         TernaryOperation::MaterializeU32 { result, scalar, .. } => {
-            if scalar.trits().iter().any(|trit| *trit > 2)
-                || TernaryI32Scalar::from_bits(scalar.bits()) != scalar
-            {
-                return Err(TernaryProgramValidationError::SsaValue);
-            }
-            insert_value(values, result, ValueKind::U32)?;
-            Ok(false)
+            validate_large_scalar(values, result, scalar, ValueKind::U32)
         },
         TernaryOperation::MaterializeU8 { result, scalar, .. } => {
             if scalar.trits().iter().any(|trit| *trit > 2)

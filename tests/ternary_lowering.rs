@@ -947,25 +947,22 @@ fn byte_io_module_with_return(value: Option<u8>, return_byte: bool) -> Module {
     })
 }
 
-fn unsigned_return_module(bits: u32) -> Module {
+fn unsigned_module(
+    instructions: Vec<LocatedInstruction>,
+    returned: u32,
+    end: u32,
+) -> Module {
     let u32_type = TypeId::new(0);
     let signature = TypeId::new(1);
     let block = BasicBlock::new(BasicBlockSpec {
         id: BlockId::new(0),
-        instructions: vec![LocatedInstruction::new(
-            Instruction::ConstantInteger {
-                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
-                result: ValueId::new(0),
-                type_id: u32_type,
-            },
-            fixture_span(0, 1),
-        )],
+        instructions,
         phis: Vec::new(),
-        span: fixture_span(0, 2),
+        span: fixture_span(0, end),
         terminator: Terminator::Return {
-            value: Some(ValueId::new(0)),
+            value: Some(ValueId::new(returned)),
         },
-        terminator_span: fixture_span(1, 2),
+        terminator_span: fixture_span(end.saturating_sub(1), end),
     });
     let function = Function::new(FunctionSpec {
         blocks: vec![block],
@@ -974,7 +971,7 @@ fn unsigned_return_module(bits: u32) -> Module {
         name: String::from("unsigned_return"),
         parameters: Vec::new(),
         signature,
-        span: fixture_span(0, 2),
+        span: fixture_span(0, end),
     });
     Module::new(ModuleSpec {
         abi_id: String::from("malbolge-c32-v1"),
@@ -993,6 +990,47 @@ fn unsigned_return_module(bits: u32) -> Module {
             ),
         ],
     })
+}
+
+fn unsigned_return_module(bits: u32) -> Module {
+    unsigned_module(
+        vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(0),
+                type_id: TypeId::new(0),
+            },
+            fixture_span(0, 1),
+        )],
+        0,
+        2,
+    )
+}
+
+fn unsigned_bitwise_module(left: u32, right: u32, op: BinaryOp) -> Module {
+    let u32_type = TypeId::new(0);
+    let mut instructions = Vec::new();
+    for (index, bits) in [(0u32, left), (1, right)] {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(index),
+                type_id: u32_type,
+            },
+            fixture_span(index, index.saturating_add(1)),
+        ));
+    }
+    instructions.push(LocatedInstruction::new(
+        Instruction::Binary {
+            left: ValueId::new(0),
+            operation: op,
+            result: ValueId::new(2),
+            right: ValueId::new(1),
+            type_id: u32_type,
+        },
+        fixture_span(2, 3),
+    ));
+    unsigned_module(instructions, 2, 4)
 }
 
 fn low_byte_module() -> Module {
@@ -1809,7 +1847,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 12;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 15;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2371,6 +2409,215 @@ fn unsigned_i32_pattern_preserves_unsigned_ssa_and_return_type()
     Ok(())
 }
 
+fn lowered_unsigned_bitwise_fixture(
+    left: u32,
+    right: u32,
+    operation: BinaryOp,
+) -> Result<LoweredByteFixture, String> {
+    let module = unsigned_bitwise_module(left, right, operation);
+    validate_module(&module).map_err(|error| {
+        format!("unsigned bitwise typed IR admission: {error:?}")
+    })?;
+    let encoded = canonical_bytes(&module).map_err(|error| {
+        format!("encode unsigned bitwise typed IR: {error:?}")
+    })?;
+    let restored = canonical_module(&encoded).map_err(|error| {
+        format!("restore unsigned bitwise typed IR: {error:?}")
+    })?;
+    if restored != module {
+        return Err(String::from("unsigned bitwise typed IR round trip drift"));
+    }
+    let projected = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&projected)
+        .map_err(|error| format!("lower unsigned bitwise: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, projected))
+}
+
+fn expected_unsigned_bitwise_operation(
+    operation: BinaryOp,
+) -> TernaryOperation {
+    let span = output_span(fixture_span(2, 3));
+    if operation == BinaryOp::And {
+        TernaryOperation::AndU32 {
+            left: 0,
+            result: 2,
+            right: 1,
+            span,
+        }
+    } else if operation == BinaryOp::Or {
+        TernaryOperation::OrU32 {
+            left: 0,
+            result: 2,
+            right: 1,
+            span,
+        }
+    } else {
+        TernaryOperation::XorU32 {
+            left: 0,
+            result: 2,
+            right: 1,
+            span,
+        }
+    }
+}
+
+#[test]
+fn unsigned_bitwise_operations_preserve_typed_ssa_and_canonical_tags()
+-> Result<(), String> {
+    for (operation, tag) in [
+        (BinaryOp::And, 12u8),
+        (BinaryOp::Or, 13u8),
+        (BinaryOp::Xor, 14u8),
+    ] {
+        let (target, projected) =
+            lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, operation)?;
+        if projected
+            .functions
+            .first()
+            .map(|function| function.return_kind)
+            != Some(InputScalarType::U32)
+        {
+            return Err(String::from("unsigned bitwise return type was lost"));
+        }
+        let function = target
+            .functions
+            .first()
+            .ok_or_else(|| String::from("missing unsigned bitwise function"))?;
+        let actual = function
+            .operations
+            .get(2)
+            .ok_or_else(|| String::from("unsigned bitwise result missing"))?;
+        let expected = expected_unsigned_bitwise_operation(operation);
+        if *actual != expected {
+            return Err(String::from("unsigned bitwise SSA or span changed"));
+        }
+        let encoded = canonical_ternary_bytes(&target).map_err(|error| {
+            format!("encode unsigned bitwise target: {error:?}")
+        })?;
+        let pattern = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+        if !encoded
+            .windows(pattern.len())
+            .any(|window| window == pattern)
+            || canonical_ternary_program(&encoded) != Ok(target)
+        {
+            return Err(String::from("unsigned bitwise canonical tag drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_bitwise_projection_rejects_type_and_ssa_forgery()
+-> Result<(), String> {
+    for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+        let (_target, projected) =
+            lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, operation)?;
+        for variation in 0u8..3u8 {
+            let mut forged = projected.clone();
+            let instruction = forged
+                .functions
+                .first_mut()
+                .and_then(|function| function.blocks.first_mut())
+                .and_then(|block| block.instructions.get_mut(2))
+                .ok_or_else(|| {
+                    String::from("missing projected unsigned bitwise")
+                })?;
+            let (InputInstruction::BinaryAnd {
+                type_kind, right, result, ..
+            }
+            | InputInstruction::BinaryOr {
+                type_kind, right, result, ..
+            }
+            | InputInstruction::BinaryXor {
+                type_kind, right, result, ..
+            }) = instruction
+            else {
+                return Err(String::from(
+                    "unexpected unsigned bitwise projection",
+                ));
+            };
+            match variation {
+                0 => *type_kind = InputScalarType::I32,
+                1 => *right = 99,
+                2 => *result = 0,
+                _ => {
+                    return Err(String::from(
+                        "unknown invalid unsigned bitwise case",
+                    ));
+                },
+            }
+            let expected = if variation == 2 {
+                TernaryLoweringError::InvalidProjection
+            } else {
+                TernaryLoweringError::UnsupportedInstruction
+            };
+            if lower_typed_ir(&forged) != Err(expected) {
+                return Err(String::from(
+                    "forged unsigned bitwise projection admitted",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
+-> Result<(), String> {
+    for (operation, tag, signed_tag) in [
+        (BinaryOp::And, 12u8, 0u8),
+        (BinaryOp::Or, 13u8, 6u8),
+        (BinaryOp::Xor, 14u8, 7u8),
+    ] {
+        let (target, _projection) =
+            lowered_unsigned_bitwise_fixture(u32::MAX, 0x8000_0000, operation)?;
+        let bytes = canonical_ternary_bytes(&target).map_err(|error| {
+            format!("encode unsigned forged fixture: {error:?}")
+        })?;
+        let pattern = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+        let offset = bytes
+            .windows(pattern.len())
+            .position(|window| window == pattern)
+            .ok_or_else(|| {
+                String::from("unsigned operation wire tag missing")
+            })?;
+        for (mutated_tag, expected) in [
+            (
+                signed_tag,
+                TernaryProgramCodecError::Validation(
+                    TernaryProgramValidationError::SsaValue,
+                ),
+            ),
+            (15u8, TernaryProgramCodecError::UnknownTag),
+        ] {
+            let mut forged = bytes.clone();
+            *forged
+                .get_mut(offset)
+                .ok_or_else(|| String::from("unsigned tag byte missing"))? =
+                mutated_tag;
+            if canonical_ternary_program(&forged) != Err(expected) {
+                return Err(String::from(
+                    "forged unsigned operation tag admitted",
+                ));
+            }
+        }
+        let mut wrong_operand = bytes;
+        wrong_operand
+            .get_mut(offset + 9..offset + 13)
+            .ok_or_else(|| String::from("unsigned operand bytes missing"))?
+            .copy_from_slice(&99u32.to_le_bytes());
+        if canonical_ternary_program(&wrong_operand)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ))
+        {
+            return Err(String::from("undefined unsigned operand admitted"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
 -> Result<(), String> {
@@ -2403,10 +2650,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            12u8,
+            15u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 12u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 15u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -2584,7 +2831,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 12u8] {
+    for forged_tag in [4u8, 15u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -2826,7 +3073,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 12;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 15;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

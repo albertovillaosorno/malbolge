@@ -855,6 +855,17 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Apply bitwise AND to exact unsigned 32-bit SSA operands.
+    AndU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Read one successful guest `u8` byte effect.
     ///
     /// This is not the raw profile input word and therefore cannot represent
@@ -912,6 +923,17 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Apply bitwise OR to exact unsigned 32-bit SSA operands.
+    OrU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Return one previously materialized scalar value.
     Return {
         /// Upstream SSA value identity retained until later allocation/layout.
@@ -944,6 +966,17 @@ pub enum TernaryOperation {
     },
     /// Apply exact 32-bit bitwise XOR to two previously materialized values.
     XorI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Apply bitwise XOR to exact unsigned 32-bit SSA operands.
+    XorU32 {
         /// Left upstream SSA value identity.
         left: u32,
         /// Upstream SSA result identity.
