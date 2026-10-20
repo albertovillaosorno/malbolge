@@ -101,6 +101,7 @@ pub enum TernaryProgramValidationError {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ValueKind {
+    Bool,
     Byte,
     I32,
     U32,
@@ -422,6 +423,43 @@ fn decode_bitwise_operation(
     })
 }
 
+fn decode_comparison_operation(
+    decoder: &mut Decoder<'_>,
+    tag: u8,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let left = decoder.u32()?;
+    let result = decoder.u32()?;
+    let right = decoder.u32()?;
+    let span = decode_span(decoder)?;
+    Ok(match tag {
+        35 => TernaryOperation::EqualI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        36 => TernaryOperation::EqualU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        37 => TernaryOperation::NotEqualI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        38 => TernaryOperation::NotEqualU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        _ => return Err(TernaryProgramCodecError::UnknownTag),
+    })
+}
+
 fn decode_arithmetic_operation(
     decoder: &mut Decoder<'_>,
     tag: u8,
@@ -603,6 +641,10 @@ fn decode_operation(
             scalar: decoder.scalar()?,
             span: decode_span(decoder)?,
         },
+        39 => TernaryOperation::ReturnBool {
+            span: decode_span(decoder)?,
+            value: decoder.u32()?,
+        },
         11 => TernaryOperation::ReturnU32 {
             span: decode_span(decoder)?,
             value: decoder.u32()?,
@@ -614,6 +656,7 @@ fn decode_operation(
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
         25..=28 => decode_shift_operation(decoder, tag)?,
         29..=32 => decode_divrem_operation(decoder, tag)?,
+        35..=38 => decode_comparison_operation(decoder, tag)?,
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -696,6 +739,47 @@ fn encode_bitwise_operation(
     encoder.u32(result);
     encoder.u32(right);
     encode_span(encoder, span);
+}
+
+fn encode_comparison_model(encoder: &mut Encoder, operation: TernaryOperation) {
+    if let TernaryOperation::EqualI32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::EqualU32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::NotEqualI32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::NotEqualU32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        let tag = if matches!(operation, TernaryOperation::EqualI32 { .. }) {
+            35
+        } else if matches!(operation, TernaryOperation::EqualU32 { .. }) {
+            36
+        } else if matches!(operation, TernaryOperation::NotEqualI32 { .. }) {
+            37
+        } else {
+            38
+        };
+        encode_bitwise_operation(encoder, tag, (left, result, right, span));
+        return;
+    }
+    debug_assert!(false, "non-comparison reached comparison encoder");
 }
 
 fn encode_byte_input(
@@ -1022,6 +1106,11 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::Return { .. }
         | TernaryOperation::ReturnU32 { .. }
         | TernaryOperation::ReturnU8 { .. }
+        | TernaryOperation::ReturnBool { .. }
+        | TernaryOperation::EqualI32 { .. }
+        | TernaryOperation::EqualU32 { .. }
+        | TernaryOperation::NotEqualI32 { .. }
+        | TernaryOperation::NotEqualU32 { .. }
         | TernaryOperation::XorI32 { .. }
         | TernaryOperation::XorU32 { .. } => {
             debug_assert!(false, "non-cast instruction reached cast encoder");
@@ -1045,6 +1134,8 @@ fn encode_return_model(
         4
     } else if matches!(operation, TernaryOperation::ReturnU32 { .. }) {
         11
+    } else if matches!(operation, TernaryOperation::ReturnBool { .. }) {
+        39
     } else {
         9
     };
@@ -1077,36 +1168,72 @@ fn encode_byte_effect(encoder: &mut Encoder, operation: TernaryOperation) {
     debug_assert!(false, "non-byte effect reached byte encoder");
 }
 
-fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
-    match operation {
+fn try_encode_word_operation(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) -> bool {
+    if matches!(
+        operation,
         TernaryOperation::AddI32 { .. }
-        | TernaryOperation::AddU32 { .. }
-        | TernaryOperation::SubtractI32 { .. }
-        | TernaryOperation::SubtractU32 { .. }
-        | TernaryOperation::MultiplyI32 { .. }
-        | TernaryOperation::MultiplyU32 { .. } => {
-            encode_arithmetic_model(encoder, operation);
-        },
+            | TernaryOperation::AddU32 { .. }
+            | TernaryOperation::SubtractI32 { .. }
+            | TernaryOperation::SubtractU32 { .. }
+            | TernaryOperation::MultiplyI32 { .. }
+            | TernaryOperation::MultiplyU32 { .. }
+    ) {
+        encode_arithmetic_model(encoder, operation);
+        return true;
+    }
+    if matches!(
+        operation,
         TernaryOperation::DivideI32 { .. }
-        | TernaryOperation::DivideU32 { .. }
-        | TernaryOperation::RemainderI32 { .. }
-        | TernaryOperation::RemainderU32 { .. } => {
-            encode_divrem_model(encoder, operation);
-        },
+            | TernaryOperation::DivideU32 { .. }
+            | TernaryOperation::RemainderI32 { .. }
+            | TernaryOperation::RemainderU32 { .. }
+    ) {
+        encode_divrem_model(encoder, operation);
+        return true;
+    }
+    if matches!(
+        operation,
         TernaryOperation::ShiftLeftI32 { .. }
-        | TernaryOperation::ShiftLeftU32 { .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { .. }
-        | TernaryOperation::ShiftRightLogicalU32 { .. } => {
-            encode_shift_model(encoder, operation);
-        },
+            | TernaryOperation::ShiftLeftU32 { .. }
+            | TernaryOperation::ShiftRightArithmeticI32 { .. }
+            | TernaryOperation::ShiftRightLogicalU32 { .. }
+    ) {
+        encode_shift_model(encoder, operation);
+        return true;
+    }
+    if matches!(
+        operation,
         TernaryOperation::AndI32 { .. }
-        | TernaryOperation::AndU32 { .. }
-        | TernaryOperation::OrI32 { .. }
-        | TernaryOperation::OrU32 { .. }
-        | TernaryOperation::XorI32 { .. }
-        | TernaryOperation::XorU32 { .. } => {
-            encode_bitwise_model(encoder, operation);
-        },
+            | TernaryOperation::AndU32 { .. }
+            | TernaryOperation::OrI32 { .. }
+            | TernaryOperation::OrU32 { .. }
+            | TernaryOperation::XorI32 { .. }
+            | TernaryOperation::XorU32 { .. }
+    ) {
+        encode_bitwise_model(encoder, operation);
+        return true;
+    }
+    if matches!(
+        operation,
+        TernaryOperation::EqualI32 { .. }
+            | TernaryOperation::EqualU32 { .. }
+            | TernaryOperation::NotEqualI32 { .. }
+            | TernaryOperation::NotEqualU32 { .. }
+    ) {
+        encode_comparison_model(encoder, operation);
+        return true;
+    }
+    false
+}
+
+fn encode_non_word_operation(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) {
+    match operation {
         TernaryOperation::ByteInput { .. }
         | TernaryOperation::ByteOutput { .. } => {
             encode_byte_effect(encoder, operation);
@@ -1123,6 +1250,7 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
             encode_byte_scalar(encoder, result, scalar, span);
         },
         TernaryOperation::Return { span, value }
+        | TernaryOperation::ReturnBool { span, value }
         | TernaryOperation::ReturnU32 { span, value }
         | TernaryOperation::ReturnU8 { span, value } => {
             encode_return_model(encoder, operation, span, value);
@@ -1136,6 +1264,38 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::BitcastU32ToU32 { .. } => {
             encode_cast_model(encoder, operation);
         },
+        TernaryOperation::AddI32 { .. }
+        | TernaryOperation::AddU32 { .. }
+        | TernaryOperation::SubtractI32 { .. }
+        | TernaryOperation::SubtractU32 { .. }
+        | TernaryOperation::MultiplyI32 { .. }
+        | TernaryOperation::MultiplyU32 { .. }
+        | TernaryOperation::DivideI32 { .. }
+        | TernaryOperation::DivideU32 { .. }
+        | TernaryOperation::RemainderI32 { .. }
+        | TernaryOperation::RemainderU32 { .. }
+        | TernaryOperation::ShiftLeftI32 { .. }
+        | TernaryOperation::ShiftLeftU32 { .. }
+        | TernaryOperation::ShiftRightArithmeticI32 { .. }
+        | TernaryOperation::ShiftRightLogicalU32 { .. }
+        | TernaryOperation::AndI32 { .. }
+        | TernaryOperation::AndU32 { .. }
+        | TernaryOperation::OrI32 { .. }
+        | TernaryOperation::OrU32 { .. }
+        | TernaryOperation::XorI32 { .. }
+        | TernaryOperation::XorU32 { .. }
+        | TernaryOperation::EqualI32 { .. }
+        | TernaryOperation::EqualU32 { .. }
+        | TernaryOperation::NotEqualI32 { .. }
+        | TernaryOperation::NotEqualU32 { .. } => {
+            debug_assert!(false, "word operation reached scalar encoder");
+        },
+    }
+}
+
+fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
+    if !try_encode_word_operation(encoder, operation) {
+        encode_non_word_operation(encoder, operation);
     }
 }
 
@@ -1185,6 +1345,11 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::XorU32 { span, .. }
         | TernaryOperation::OrI32 { span, .. }
         | TernaryOperation::XorI32 { span, .. }
+        | TernaryOperation::EqualI32 { span, .. }
+        | TernaryOperation::EqualU32 { span, .. }
+        | TernaryOperation::NotEqualI32 { span, .. }
+        | TernaryOperation::NotEqualU32 { span, .. }
+        | TernaryOperation::ReturnBool { span, .. }
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
@@ -1380,6 +1545,11 @@ fn validate_widen_or_bitcast(
         | TernaryOperation::Return { .. }
         | TernaryOperation::ReturnU32 { .. }
         | TernaryOperation::ReturnU8 { .. }
+        | TernaryOperation::ReturnBool { .. }
+        | TernaryOperation::EqualI32 { .. }
+        | TernaryOperation::EqualU32 { .. }
+        | TernaryOperation::NotEqualI32 { .. }
+        | TernaryOperation::NotEqualU32 { .. }
         | TernaryOperation::TruncateI32ToU8 { .. }
         | TernaryOperation::TruncateU32ToU8 { .. }
         | TernaryOperation::XorI32 { .. }
@@ -1399,6 +1569,8 @@ fn validate_return_value(
         ValueKind::I32
     } else if matches!(operation, TernaryOperation::ReturnU32 { .. }) {
         ValueKind::U32
+    } else if matches!(operation, TernaryOperation::ReturnBool { .. }) {
+        ValueKind::Bool
     } else {
         ValueKind::Byte
     };
@@ -1406,66 +1578,121 @@ fn validate_return_value(
     Ok(true)
 }
 
+fn validate_comparison_values(
+    values: &mut BTreeMap<u32, ValueKind>,
+    operands: (u32, u32, u32),
+    kind: ValueKind,
+) -> Result<bool, TernaryProgramValidationError> {
+    let (left, result, right) = operands;
+    require_value(values, left, kind)?;
+    require_value(values, right, kind)?;
+    insert_value(values, result, ValueKind::Bool)?;
+    Ok(false)
+}
+
+fn validate_comparison_operation(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let TernaryOperation::EqualI32 { left, result, right, .. }
+    | TernaryOperation::NotEqualI32 { left, result, right, .. } = operation
+    {
+        return Some(validate_comparison_values(
+            values,
+            (left, result, right),
+            ValueKind::I32,
+        ));
+    }
+    if let TernaryOperation::EqualU32 { left, result, right, .. }
+    | TernaryOperation::NotEqualU32 { left, result, right, .. } = operation
+    {
+        return Some(validate_comparison_values(
+            values,
+            (left, result, right),
+            ValueKind::U32,
+        ));
+    }
+    None
+}
+
 fn validate_binary_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
 ) -> Option<Result<bool, TernaryProgramValidationError>> {
-    match operation {
-        TernaryOperation::AddI32 { left, result, right, .. }
-        | TernaryOperation::SubtractI32 { left, result, right, .. }
-        | TernaryOperation::DivideI32 { left, result, right, .. }
-        | TernaryOperation::RemainderI32 { left, result, right, .. }
-        | TernaryOperation::MultiplyI32 { left, result, right, .. }
-        | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
-        | TernaryOperation::ShiftRightArithmeticI32 {
-            left,
-            result,
-            right,
-            ..
-        }
-        | TernaryOperation::AndI32 { left, result, right, .. }
-        | TernaryOperation::OrI32 { left, result, right, .. }
-        | TernaryOperation::XorI32 { left, result, right, .. } => {
-            Some(validate_bitwise_values(
-                values,
-                (left, result, right),
-                ValueKind::I32,
-            ))
-        },
-        TernaryOperation::AddU32 { left, result, right, .. }
-        | TernaryOperation::SubtractU32 { left, result, right, .. }
-        | TernaryOperation::DivideU32 { left, result, right, .. }
-        | TernaryOperation::RemainderU32 { left, result, right, .. }
-        | TernaryOperation::MultiplyU32 { left, result, right, .. }
-        | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
-        | TernaryOperation::ShiftRightLogicalU32 {
-            left, result, right, ..
-        }
-        | TernaryOperation::AndU32 { left, result, right, .. }
-        | TernaryOperation::OrU32 { left, result, right, .. }
-        | TernaryOperation::XorU32 { left, result, right, .. } => {
-            Some(validate_bitwise_values(
-                values,
-                (left, result, right),
-                ValueKind::U32,
-            ))
-        },
-        TernaryOperation::ByteInput { .. }
-        | TernaryOperation::ByteOutput { .. }
-        | TernaryOperation::MaterializeI32 { .. }
-        | TernaryOperation::MaterializeU32 { .. }
-        | TernaryOperation::MaterializeU8 { .. }
-        | TernaryOperation::Return { .. }
-        | TernaryOperation::ReturnU32 { .. }
-        | TernaryOperation::ReturnU8 { .. }
-        | TernaryOperation::TruncateI32ToU8 { .. }
-        | TernaryOperation::TruncateU32ToU8 { .. }
-        | TernaryOperation::ZeroExtendU8ToU32 { .. }
-        | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. }
-        | TernaryOperation::BitcastI32ToI32 { .. }
-        | TernaryOperation::BitcastU32ToU32 { .. } => None,
+    if let Some(outcome) = validate_comparison_operation(operation, values) {
+        return Some(outcome);
     }
+    if let TernaryOperation::AddI32 { left, result, right, .. }
+    | TernaryOperation::SubtractI32 { left, result, right, .. }
+    | TernaryOperation::DivideI32 { left, result, right, .. }
+    | TernaryOperation::RemainderI32 { left, result, right, .. }
+    | TernaryOperation::MultiplyI32 { left, result, right, .. }
+    | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
+    | TernaryOperation::ShiftRightArithmeticI32 {
+        left,
+        result,
+        right,
+        ..
+    }
+    | TernaryOperation::AndI32 { left, result, right, .. }
+    | TernaryOperation::OrI32 { left, result, right, .. }
+    | TernaryOperation::XorI32 { left, result, right, .. } = operation
+    {
+        return Some(validate_bitwise_values(
+            values,
+            (left, result, right),
+            ValueKind::I32,
+        ));
+    }
+    if let TernaryOperation::AddU32 { left, result, right, .. }
+    | TernaryOperation::SubtractU32 { left, result, right, .. }
+    | TernaryOperation::DivideU32 { left, result, right, .. }
+    | TernaryOperation::RemainderU32 { left, result, right, .. }
+    | TernaryOperation::MultiplyU32 { left, result, right, .. }
+    | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
+    | TernaryOperation::ShiftRightLogicalU32 {
+        left, result, right, ..
+    }
+    | TernaryOperation::AndU32 { left, result, right, .. }
+    | TernaryOperation::OrU32 { left, result, right, .. }
+    | TernaryOperation::XorU32 { left, result, right, .. } = operation
+    {
+        return Some(validate_bitwise_values(
+            values,
+            (left, result, right),
+            ValueKind::U32,
+        ));
+    }
+    None
+}
+
+fn validate_byte_effect_operation(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Result<bool, TernaryProgramValidationError> {
+    if let TernaryOperation::ByteInput { result, .. } = operation {
+        return insert_value(values, result, ValueKind::Byte).map(|()| false);
+    }
+    if let TernaryOperation::ByteOutput { value, .. } = operation {
+        return require_value(values, value, ValueKind::Byte).map(|()| false);
+    }
+    Err(TernaryProgramValidationError::SsaValue)
+}
+
+fn validate_materialize_operation(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Result<bool, TernaryProgramValidationError> {
+    if let TernaryOperation::MaterializeI32 { result, scalar, .. } = operation {
+        return validate_large_scalar(values, result, scalar, ValueKind::I32);
+    }
+    if let TernaryOperation::MaterializeU32 { result, scalar, .. } = operation {
+        return validate_large_scalar(values, result, scalar, ValueKind::U32);
+    }
+    if let TernaryOperation::MaterializeU8 { result, scalar, .. } = operation {
+        return validate_byte_scalar(values, result, scalar);
+    }
+    Err(TernaryProgramValidationError::SsaValue)
 }
 
 fn validate_operation(
@@ -1476,24 +1703,19 @@ fn validate_operation(
         return outcome;
     }
     match operation {
-        TernaryOperation::ByteInput { result, .. } => {
-            insert_value(values, result, ValueKind::Byte).map(|()| false)
+        TernaryOperation::ByteInput { .. }
+        | TernaryOperation::ByteOutput { .. } => {
+            validate_byte_effect_operation(operation, values)
         },
-        TernaryOperation::ByteOutput { value, .. } => {
-            require_value(values, value, ValueKind::Byte).map(|()| false)
-        },
-        TernaryOperation::MaterializeI32 { result, scalar, .. } => {
-            validate_large_scalar(values, result, scalar, ValueKind::I32)
-        },
-        TernaryOperation::MaterializeU32 { result, scalar, .. } => {
-            validate_large_scalar(values, result, scalar, ValueKind::U32)
-        },
-        TernaryOperation::MaterializeU8 { result, scalar, .. } => {
-            validate_byte_scalar(values, result, scalar)
+        TernaryOperation::MaterializeI32 { .. }
+        | TernaryOperation::MaterializeU32 { .. }
+        | TernaryOperation::MaterializeU8 { .. } => {
+            validate_materialize_operation(operation, values)
         },
         TernaryOperation::Return { value, .. }
         | TernaryOperation::ReturnU32 { value, .. }
-        | TernaryOperation::ReturnU8 { value, .. } => {
+        | TernaryOperation::ReturnU8 { value, .. }
+        | TernaryOperation::ReturnBool { value, .. } => {
             validate_return_value(values, value, operation)
         },
         TernaryOperation::TruncateI32ToU8 { result, value, .. } => {
@@ -1509,7 +1731,11 @@ fn validate_operation(
         | TernaryOperation::BitcastU32ToU32 { .. } => {
             validate_widen_or_bitcast(values, operation)
         },
-        TernaryOperation::DivideI32 { .. }
+        TernaryOperation::EqualI32 { .. }
+        | TernaryOperation::EqualU32 { .. }
+        | TernaryOperation::NotEqualI32 { .. }
+        | TernaryOperation::NotEqualU32 { .. }
+        | TernaryOperation::DivideI32 { .. }
         | TernaryOperation::DivideU32 { .. }
         | TernaryOperation::RemainderI32 { .. }
         | TernaryOperation::RemainderU32 { .. }
@@ -1561,6 +1787,7 @@ fn validate_operations(
         TernaryOperation::Return { .. }
             | TernaryOperation::ReturnU32 { .. }
             | TernaryOperation::ReturnU8 { .. }
+            | TernaryOperation::ReturnBool { .. }
     ) || !validate_operation(*last, &mut values)?
     {
         return Err(TernaryProgramValidationError::Terminator);

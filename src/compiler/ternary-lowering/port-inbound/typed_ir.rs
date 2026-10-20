@@ -56,6 +56,8 @@ pub struct InputSourceSpan {
 /// Input scalar type categories required by the first lowering slice.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputScalarType {
+    /// Exact C boolean value (zero or one).
+    Bool,
     /// Exact signed 32-bit C integer semantics.
     I32,
     /// Any other already-admitted typed-IR type.
@@ -255,6 +257,33 @@ pub enum InputInstruction {
         span: InputSourceSpan,
         /// Upstream SSA byte value identity.
         value: u32,
+    },
+    /// Compare exact 32-bit SSA operands for equality without host evaluation.
+    CompareEqual {
+        /// Left input SSA value.
+        left: u32,
+        /// Boolean result SSA identity.
+        result: u32,
+        /// Right input SSA value.
+        right: u32,
+        /// Original source provenance.
+        span: InputSourceSpan,
+        /// Boolean result type from admitted typed IR.
+        type_kind: InputScalarType,
+    },
+    /// Compare exact 32-bit SSA operands for inequality without host
+    /// evaluation.
+    CompareNotEqual {
+        /// Left input SSA value.
+        left: u32,
+        /// Boolean result SSA identity.
+        result: u32,
+        /// Right input SSA value.
+        right: u32,
+        /// Original source provenance.
+        span: InputSourceSpan,
+        /// Boolean result type from admitted typed IR.
+        type_kind: InputScalarType,
     },
     /// Exact integer constant bits plus typed result identity.
     ConstantInteger {

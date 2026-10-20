@@ -187,7 +187,7 @@ other 32-bit binary operations. Signed and unsigned variants require operands
 and result types with matching signedness; the pre-layout compiler does not
 evaluate guest division, division by zero, or signed overflow. Canonical
 checkpoint admission rejects swapped signedness, missing SSA operands,
-duplicate definitions, and unknown tag `35`. Fresh typed lowering
+duplicate definitions, and unknown tag `40`. Fresh typed lowering
 and inspector-backed checkpoint recovery converge across all ten crash
 boundaries for each of the four operations.
 
@@ -204,12 +204,26 @@ preserve the original 32-bit pattern without host evaluation and create a
 separate SSA definition of the same signedness. Typed-IR admission and
 canonical restoration preserve distinct source/result identities for all
 boundary patterns and reject cross-signedness tag substitution, undefined
-sources, and future tag `35`. Real inspector-backed restoration converges
+sources, and future tag `40`. Real inspector-backed restoration converges
 with fresh lowering; all ten crash-publication boundaries preserve both
 same-kind generations without rewriting any prior opcode.
 
-The next unknown operation tag is `35`. Older decoders reject newly emitted
-tags, and resume remains bound to the exact compiler toolchain fingerprint.
+Tags `35` through `38` add `EqualI32`, `EqualU32`, `NotEqualI32`,
+and `NotEqualU32`, each with two previously defined, same-kind 32-bit SSA
+operands, a distinct boolean SSA result, and the existing binary-operation
+identity/span layout. Tag `39` adds `ReturnBool` with the historical return
+record layout. The stage keeps comparisons symbolic instead of evaluating
+signed or unsigned guest values on the host, and does not widen the Boolean
+result into a byte or integer implicitly. Independent canonical admission
+requires exact operand signedness and rejects retagged signedness, undefined or
+duplicate SSA, malformed boolean returns, and the next unassigned tag `40`;
+typed-IR and ternary round trips cover both comparisons, signed and unsigned
+32-bit boundary patterns, and legal aliasing of both operand uses to one SSA
+value, preserving source spans and complete target identity.
+
+Older decoders reject newly emitted tags, and resume remains bound to the exact
+compiler toolchain fingerprint. This slice does not yet realize branching or
+C integer promotions of the Boolean result.
 
 Real progress-inspector restoration now converges with fresh compilation for
 all three unsigned bitwise operations. Rewritten signed bitwise tags are

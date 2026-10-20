@@ -966,6 +966,28 @@ pub enum TernaryOperation {
         /// Source provenance.
         span: TernarySourceSpan,
     },
+    /// Preserve signed 32-bit equality, producing a boolean SSA value.
+    EqualI32 {
+        /// Left previously defined 32-bit source SSA.
+        left: u32,
+        /// Distinct boolean result SSA identity.
+        result: u32,
+        /// Right previously defined 32-bit source SSA.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned 32-bit equality, producing a boolean SSA value.
+    EqualU32 {
+        /// Left previously defined 32-bit source SSA.
+        left: u32,
+        /// Distinct boolean result SSA identity.
+        result: u32,
+        /// Right previously defined 32-bit source SSA.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later
@@ -1014,6 +1036,28 @@ pub enum TernaryOperation {
         /// Right upstream SSA value identity.
         right: u32,
         /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve signed 32-bit inequality, producing a boolean SSA value.
+    NotEqualI32 {
+        /// Left previously defined 32-bit source SSA.
+        left: u32,
+        /// Distinct boolean result SSA identity.
+        result: u32,
+        /// Right previously defined 32-bit source SSA.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned 32-bit inequality, producing a boolean SSA value.
+    NotEqualU32 {
+        /// Left previously defined 32-bit source SSA.
+        left: u32,
+        /// Distinct boolean result SSA identity.
+        result: u32,
+        /// Right previously defined 32-bit source SSA.
+        right: u32,
+        /// Original source provenance.
         span: TernarySourceSpan,
     },
     /// Apply exact 32-bit bitwise OR to two previously materialized values.
@@ -1068,6 +1112,13 @@ pub enum TernaryOperation {
         value: u32,
         /// Original terminator provenance.
         span: TernarySourceSpan,
+    },
+    /// Return one previously defined C boolean SSA result.
+    ReturnBool {
+        /// Original terminator provenance.
+        span: TernarySourceSpan,
+        /// Defined boolean source SSA identity.
+        value: u32,
     },
     /// Return one previously materialized exact unsigned 32-bit value.
     ReturnU32 {

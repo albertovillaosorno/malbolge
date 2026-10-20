@@ -31,6 +31,14 @@ patterns become fixed-width 21-trit scalars while source, ABI, typed-IR version,
 source digest, and target-profile provenance are preserved. Byte effects remain
 successful `u8` semantics.
 
+The current symbolic operation family also preserves exact `i32`/`u32`
+bitwise arithmetic, division/remainder, shifts, same-kind and cross-kind
+integer bitcasts, unsigned byte widening/truncation, and typed equality or
+inequality comparisons. Equality and inequality of 32-bit operands produce
+Boolean SSA results and `ReturnBool` can return them without promoting or
+host-evaluating their values. Other comparison predicates, control flow, and
+executable target realization remain outside this slice.
+
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one
 wire uses fixed little-endian integers, length-prefixed UTF-8 identities,
