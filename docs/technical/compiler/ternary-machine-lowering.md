@@ -255,8 +255,8 @@ Independent target validation rejects signedness-tag substitutions, undefined
 source IDs, duplicate result definitions, and casts using a noninteger source.
 Typed-IR and canonical ternary round trips cover zero, the signed boundary,
 and maximum 32-bit bit patterns with Boolean returns; unknown tag `48` remains
-unassigned at that revision. Byte and pointer truth conversion remain
-separate downstream slices.
+unassigned in the initial 32-bit conversion slice. The subsequent byte case
+has its own tag and contract below; pointer truth conversion remains open.
 
 Tag `47` adds `U8ToBool` in the same canonical cast layout. Its source
 must be a previously defined successful `u8` scalar (including deterministic
@@ -268,6 +268,18 @@ unsigned 32-bit, duplicate result identities, undefined byte operands, and
 the next unassigned opcode `48`. Typed-IR and target round trips cover zero,
 one, `0x7f`, `0x80`, `0xff`, and the successful byte-input effect without host
 truth evaluation. EOF/raw input-word handling remains a separate realization.
+
+Production inspector-backed progress recovery now converges with fresh
+lowering for signed and unsigned equality, ordered comparisons, Boolean-to-i32,
+and all signed, unsigned, and byte-width integer-to-Boolean casts. A separate
+u32-to-u8-to-Boolean-to-i32 fixture retains each intermediate SSA definition,
+including values whose high 24 bits truncate to a zero byte.
+
+Inspector restoration rejects cross-signedness comparison opcodes and
+cross-width cast retagging before returning checkpoint state. All ten durable
+checkpoint publication/crash boundaries retain only committed generations
+when advancing from the original constant-return program to each selected
+Boolean comparison, byte source, or conversion family.
 
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or

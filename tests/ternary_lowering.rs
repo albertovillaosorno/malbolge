@@ -1383,6 +1383,80 @@ fn chained_bool_conversion_module(signed: bool, bits: u32) -> Module {
     })
 }
 
+fn truncated_byte_truth_types() -> Vec<TypeEntry> {
+    vec![
+        TypeEntry::new(TypeId::new(0), TypeDef::U32),
+        TypeEntry::new(TypeId::new(1), TypeDef::U8),
+        TypeEntry::new(TypeId::new(2), TypeDef::Bool),
+        TypeEntry::new(TypeId::new(3), TypeDef::I32),
+        TypeEntry::new(
+            TypeId::new(4),
+            TypeDef::function(Vec::new(), Some(TypeId::new(3)), false),
+        ),
+    ]
+}
+
+fn truncated_byte_truth_module(bits: u32) -> Module {
+    let instructions = vec![
+        low_byte_constant(bits, 0, 0, TypeId::new(0)),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::Truncate,
+                result: ValueId::new(1),
+                type_id: TypeId::new(1),
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerToBool,
+                result: ValueId::new(2),
+                type_id: TypeId::new(2),
+                value: ValueId::new(1),
+            },
+            fixture_span(2, 3),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::BoolToSigned,
+                result: ValueId::new(3),
+                type_id: TypeId::new(3),
+                value: ValueId::new(2),
+            },
+            fixture_span(3, 4),
+        ),
+    ];
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: fixture_span(0, 5),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(3)),
+                },
+                terminator_span: fixture_span(4, 5),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("truncated_byte_truth"),
+            parameters: Vec::new(),
+            signature: TypeId::new(4),
+            span: fixture_span(0, 5),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/truncated-byte-truth.c"),
+        source_sha256: [0xf9; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: truncated_byte_truth_types(),
+    })
+}
+
 fn integer_to_bool_module(signed: bool, bits: u32) -> Module {
     let word_type = TypeId::new(0);
     let bool_type = TypeId::new(1);
@@ -3381,6 +3455,272 @@ fn ternary_integer_bitcast_crashes_preserve_committed_direction()
         for boundary in TERNARY_CRASH_BOUNDARIES {
             run_ternary_crash_boundary(boundary, &previous, &next)?;
         }
+    }
+    Ok(())
+}
+
+fn assert_boolean_inspector_convergence(
+    label: &str,
+    target: &ternary_lowering::TernaryProgram,
+    projection: &TypedIrInput,
+) -> Result<(), String> {
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        projection,
+    ))
+    .map_err(|error| format!("fresh Boolean stage: {error:?}"))?;
+    if &fresh != target {
+        return Err(format!("fresh Boolean selector {label} drifted"));
+    }
+    let encoded = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode Boolean progress: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture(label, &encoded)?;
+    let resumed =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean Boolean progress: {error}"))?;
+    if resumed != Ok(target.clone()) {
+        return Err(format!("inspector Boolean selector {label} drifted"));
+    }
+    Ok(())
+}
+
+fn check_boolean_comparison_inspector_cases() -> Result<(), String> {
+    for (signed, operation, label) in [
+        (true, CompareOp::Equal, "bool-equal-signed"),
+        (false, CompareOp::NotEqual, "bool-not-equal-unsigned"),
+        (true, CompareOp::LessSigned, "bool-less-signed"),
+        (true, CompareOp::LessSignedEqual, "bool-le-signed"),
+        (false, CompareOp::LessUnsigned, "bool-less-unsigned"),
+        (false, CompareOp::LessUnsignedEqual, "bool-le-unsigned"),
+    ] {
+        let case = ComparisonFixture {
+            alias: false,
+            left: 0x8000_0000,
+            operation,
+            right: u32::MAX,
+            signed,
+        };
+        let (target, projection) = lowered_integer_comparison_fixture(case)?;
+        assert_boolean_inspector_convergence(label, &target, &projection)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_boolean_comparisons_and_casts_restore_through_inspector()
+-> Result<(), String> {
+    for (signed, label) in [
+        (true, "bool-to-i32-signed-input"),
+        (false, "bool-to-i32-unsigned-input"),
+    ] {
+        let (target, projection) =
+            lowered_integer_to_bool_fixture(signed, u32::MAX)?;
+        assert_boolean_inspector_convergence(label, &target, &projection)?;
+    }
+    for (source, label) in [
+        (None, "byte-to-bool-input"),
+        (Some(u8::MAX), "byte-to-bool-literal"),
+    ] {
+        let (target, projection) = lowered_byte_to_bool_fixture(source)?;
+        assert_boolean_inspector_convergence(label, &target, &projection)?;
+    }
+    let (target, projection) = lowered_bool_to_signed_fixture(u32::MAX, 0)?;
+    assert_boolean_inspector_convergence(
+        "bool-to-signed-conversion",
+        &target,
+        &projection,
+    )?;
+    check_boolean_comparison_inspector_cases()
+}
+
+fn assert_boolean_progress_tag_rejected(
+    label: &str,
+    program: &ternary_lowering::TernaryProgram,
+    tags: (u8, u32, u8),
+) -> Result<(), String> {
+    let (tag, result, replacement) = tags;
+    let mut bytes = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode forged Boolean state: {error:?}"))?;
+    let mut needle = vec![tag];
+    if (35..=43).contains(&tag) {
+        needle.extend_from_slice(&0u32.to_le_bytes());
+    }
+    needle.extend_from_slice(&result.to_le_bytes());
+    let offset = bytes
+        .windows(needle.len())
+        .position(|part| part == needle)
+        .ok_or_else(|| String::from("Boolean tag absent"))?;
+    *bytes
+        .get_mut(offset)
+        .ok_or_else(|| String::from("Boolean tag offset absent"))? =
+        replacement;
+    let (progress, directory) =
+        publish_ternary_progress_fixture(label, &bytes)?;
+    let rejected = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean forged Boolean state: {error}"))?;
+    let expected = if replacement == 48 {
+        TernaryProgramCodecError::UnknownTag
+    } else {
+        TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        )
+    };
+    if rejected
+        != Err(TernaryProgressCheckpointError::Stage(
+            TernaryStageError::Checkpoint(expected),
+        ))
+    {
+        return Err(format!("forged Boolean inspector tag {label} admitted"));
+    }
+    Ok(())
+}
+
+fn assert_boolean_crash_generation(
+    previous: &ternary_lowering::TernaryProgram,
+    next: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    if previous == next {
+        return Err(String::from("Boolean crash generations coincide"));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        run_ternary_crash_boundary(boundary, previous, next)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_boolean_cast_crash_resume_keeps_committed_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for source in [None, Some(u8::MAX)] {
+        let (next, _input) = lowered_byte_to_bool_fixture(source)?;
+        assert_boolean_crash_generation(&previous, &next)?;
+    }
+    for signed in [true, false] {
+        let (next, _input) = lowered_integer_to_bool_fixture(signed, u32::MAX)?;
+        assert_boolean_crash_generation(&previous, &next)?;
+    }
+    let (promoted, _promotion_projection) =
+        lowered_bool_to_signed_fixture(u32::MAX, 0)?;
+    assert_boolean_crash_generation(&previous, &promoted)?;
+    let (truncated, _truncation_projection) =
+        lowered_truncated_byte_truth_fixture(0x8000_0080)?;
+    assert_boolean_crash_generation(&previous, &truncated)?;
+    for (signed, operation) in [
+        (true, CompareOp::LessSigned),
+        (false, CompareOp::LessUnsigned),
+    ] {
+        let (compared, _comparison_projection) =
+            lowered_integer_comparison_fixture(ComparisonFixture {
+                alias: false,
+                left: 0x8000_0000,
+                operation,
+                right: u32::MAX,
+                signed,
+            })?;
+        assert_boolean_crash_generation(&previous, &compared)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_boolean_inspector_rejects_cross_width_and_unknown_tags()
+-> Result<(), String> {
+    for (signed, tag, swapped, label) in [
+        (true, 45u8, 46u8, "forged-signed-truth"),
+        (false, 46, 45, "forged-unsigned-truth"),
+    ] {
+        let (target, _projection) =
+            lowered_integer_to_bool_fixture(signed, u32::MAX)?;
+        assert_boolean_progress_tag_rejected(
+            label,
+            &target,
+            (tag, 1, swapped),
+        )?;
+    }
+    let (byte, _projection) = lowered_byte_to_bool_fixture(Some(0xff))?;
+    assert_boolean_progress_tag_rejected(
+        "forged-byte-truth",
+        &byte,
+        (47, 1, 46),
+    )?;
+    assert_boolean_progress_tag_rejected(
+        "unknown-byte-truth",
+        &byte,
+        (47, 1, 48),
+    )?;
+    let (converted, _converted_projection) =
+        lowered_bool_to_signed_fixture(0, u32::MAX)?;
+    assert_boolean_progress_tag_rejected(
+        "forged-bool-to-signed",
+        &converted,
+        (44, 3, 33),
+    )
+}
+
+#[test]
+fn ternary_truncated_byte_truth_chain_restores_through_inspector()
+-> Result<(), String> {
+    for (bits, label) in [
+        (0u32, "truncated-byte-zero"),
+        (1, "truncated-byte-one"),
+        (0x100, "truncated-byte-carry-only"),
+        (0x8000_0080, "truncated-byte-high-bit"),
+        (u32::MAX, "truncated-byte-maximum"),
+    ] {
+        let (target, input) = lowered_truncated_byte_truth_fixture(bits)?;
+        assert_truncated_byte_truth_operations(bits, &target)?;
+        assert_boolean_inspector_convergence(label, &target, &input)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_comparison_inspector_rejects_signedness_swap() -> Result<(), String>
+{
+    for (signed, operation, tag, swapped, label) in [
+        (true, CompareOp::Equal, 35u8, 36u8, "forged-signed-equal"),
+        (false, CompareOp::Equal, 36, 35, "forged-unsigned-equal"),
+        (true, CompareOp::NotEqual, 37, 38, "forged-signed-not-equal"),
+        (
+            false,
+            CompareOp::NotEqual,
+            38,
+            37,
+            "forged-unsigned-not-equal",
+        ),
+        (true, CompareOp::LessSigned, 40, 42, "forged-signed-less"),
+        (
+            false,
+            CompareOp::LessUnsigned,
+            42,
+            40,
+            "forged-unsigned-less",
+        ),
+    ] {
+        let (target, _input) =
+            lowered_integer_comparison_fixture(ComparisonFixture {
+                alias: false,
+                left: 0x8000_0000,
+                operation,
+                right: u32::MAX,
+                signed,
+            })?;
+        assert_boolean_progress_tag_rejected(
+            label,
+            &target,
+            (tag, 2, swapped),
+        )?;
     }
     Ok(())
 }
@@ -5827,6 +6167,82 @@ fn typed_integer_boolean_conversion_chain_preserves_distinct_ssa()
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+fn lowered_truncated_byte_truth_fixture(
+    bits: u32,
+) -> Result<LoweredByteFixture, String> {
+    let module = truncated_byte_truth_module(bits);
+    validate_module(&module)
+        .map_err(|error| format!("admit truncated byte truth: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode truncated byte truth: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore truncated byte truth: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("truncated byte truth typed-IR drifted"));
+    }
+    let projection = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower truncated byte truth: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, projection))
+}
+
+fn assert_truncated_byte_truth_operations(
+    bits: u32,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let operations = &target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("truncated byte truth target missing"))?
+        .operations;
+    let expected = [
+        TernaryOperation::MaterializeU32 {
+            result: 0,
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(bits),
+            span: output_span(fixture_span(0, 1)),
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 1,
+            span: output_span(fixture_span(1, 2)),
+            value: 0,
+        },
+        TernaryOperation::U8ToBool {
+            result: 2,
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        },
+        TernaryOperation::BoolToI32 {
+            result: 3,
+            span: output_span(fixture_span(3, 4)),
+            value: 2,
+        },
+        TernaryOperation::Return {
+            span: output_span(fixture_span(4, 5)),
+            value: 3,
+        },
+    ];
+    if operations.as_slice() != expected {
+        return Err(String::from("truncated byte truth operation drifted"));
+    }
+    let bytes = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode truncated byte truth: {error:?}"))?;
+    if canonical_ternary_program(&bytes) != Ok(target.clone()) {
+        return Err(String::from("truncated byte truth target drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_truncated_byte_truth_preserves_three_cast_identities()
+-> Result<(), String> {
+    for bits in [0u32, 1, 0xff, 0x100, 0x8000_0080, u32::MAX] {
+        let (target, _projection) = lowered_truncated_byte_truth_fixture(bits)?;
+        assert_truncated_byte_truth_operations(bits, &target)?;
     }
     Ok(())
 }

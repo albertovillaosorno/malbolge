@@ -227,6 +227,15 @@ instruction.
   Forged cast widths, undefined/duplicate SSA, retagging and first unknown
   tag `48` fail closed. Pointer truth conversion and target realization remain
   separate work.
+- Production progress inspector recovery now matches fresh compiler entry
+  for integer equality, ordered signed/unsigned comparisons, all three
+  integer-to-Boolean widths, and `BoolToSigned` conversion. Retagged signedness
+  or width and unknown checkpoint tags fail independent stage admission.
+  All ten crash-publication boundaries preserve the committed generation
+  across representative Boolean conversions and ordered comparisons.
+  A u32-to-u8 truncation/Boolean/signed-return chain also preserves exact
+  source bits, all intermediate SSA identities, and canonical typed/target
+  round trips, including high-bit-only values that truncate to zero.
 - Admitted same-kind 32-bit integer bitcasts now retain distinct typed SSA
   results at `MCTR` tags `33` (`BitcastI32ToI32`) and `34`
   (`BitcastU32ToU32`). All boundary-bit patterns survive typed-IR and canonical

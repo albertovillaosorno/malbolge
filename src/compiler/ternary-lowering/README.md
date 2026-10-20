@@ -47,6 +47,9 @@ symbolic Boolean result. Pointer truth conversions, floating-point
 comparisons, control flow, and executable target realization remain outside
 this slice.
 
+Fresh compiler entry and real progress-inspector restoration agree for
+admitted Boolean comparisons and truth-value casts.
+
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one
 wire uses fixed little-endian integers, length-prefixed UTF-8 identities,

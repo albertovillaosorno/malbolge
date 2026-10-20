@@ -348,7 +348,7 @@ pub enum InputInstruction {
         /// Upstream SSA source identity.
         value: u32,
     },
-    /// Convert one admitted 32-bit integer SSA value to a Boolean truth value.
+    /// Convert one admitted 32-bit integer or successful byte to Boolean.
     IntegerToBool {
         /// New Boolean SSA definition.
         result: u32,
@@ -356,7 +356,7 @@ pub enum InputInstruction {
         span: InputSourceSpan,
         /// Required Boolean destination type.
         type_kind: InputScalarType,
-        /// Previously defined signed or unsigned integer source SSA.
+        /// Defined signed/unsigned word or successful unsigned byte source.
         value: u32,
     },
     /// Truncate one previously defined exact `i32` value to `u8`.
