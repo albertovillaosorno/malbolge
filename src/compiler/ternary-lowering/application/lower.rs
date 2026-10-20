@@ -39,8 +39,8 @@
 use std::collections::BTreeSet;
 
 use super::input::{
-    InputFunction, InputInstruction, InputScalarType, InputSourceSpan,
-    InputTerminator, TypedIrInput,
+    InputFunction, InputInstruction, InputOrderedComparison, InputScalarType,
+    InputSourceSpan, InputTerminator, TypedIrInput,
 };
 use super::model::{
     TernaryFunction, TernaryI32Scalar, TernaryOperation, TernaryProgram,
@@ -230,6 +230,9 @@ fn lower_instruction(
         | InputInstruction::CompareNotEqual { .. } => {
             lower_comparison_instruction(instruction, state)
         },
+        InputInstruction::CompareOrdered { .. } => {
+            lower_ordered_comparison_instruction(instruction, state)
+        },
         InputInstruction::ByteInput { .. }
         | InputInstruction::ByteOutput { .. }
         | InputInstruction::IntegerBitcast { .. }
@@ -325,6 +328,81 @@ const fn construct_comparison_operation(
         },
         (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
     })
+}
+
+fn lower_ordered_comparison_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let InputInstruction::CompareOrdered {
+        left,
+        operation,
+        result,
+        right,
+        span,
+        type_kind,
+    } = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    if *type_kind != InputScalarType::Bool {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let uses = match operation {
+        InputOrderedComparison::Signed
+        | InputOrderedComparison::SignedEqual => &state.signed,
+        InputOrderedComparison::Unsigned
+        | InputOrderedComparison::UnsignedEqual => &state.unsigned,
+    };
+    if !uses.contains(left) || !uses.contains(right) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, *result)?;
+    let inserted = state.bools.insert(*result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    Ok(construct_ordered_comparison(
+        *operation,
+        (*left, *result, *right),
+        copy_span(*span),
+    ))
+}
+
+const fn construct_ordered_comparison(
+    operation: InputOrderedComparison,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> TernaryOperation {
+    let (left, result, right) = operands;
+    match operation {
+        InputOrderedComparison::Signed => TernaryOperation::LessSignedI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputOrderedComparison::SignedEqual => {
+            TernaryOperation::LessSignedEqualI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        InputOrderedComparison::Unsigned => TernaryOperation::LessUnsignedU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputOrderedComparison::UnsignedEqual => {
+            TernaryOperation::LessUnsignedEqualU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+    }
 }
 
 fn lower_arithmetic_instruction(
@@ -599,6 +677,7 @@ fn lower_other_instruction(
         InputInstruction::Unsupported
         | InputInstruction::CompareEqual { .. }
         | InputInstruction::CompareNotEqual { .. }
+        | InputInstruction::CompareOrdered { .. }
         | InputInstruction::BinaryAnd { .. }
         | InputInstruction::BinaryOr { .. }
         | InputInstruction::BinaryXor { .. }

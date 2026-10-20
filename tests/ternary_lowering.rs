@@ -61,8 +61,9 @@ use ternary_lowering::{
     HeapHelperOperation, HeapHelperRequest, HeapInitSemantics, HeapInitStep,
     HeapReleaseSemantics, HeapReleaseStep, I32_TERNARY_TRITS, InputBlock,
     InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
-    InputInstruction, InputScalarType, InputSourcePosition, InputSourceSpan,
-    InputTerminator, InputWordDecodeControlFlow, InputWordDecodeSemantics,
+    InputInstruction, InputOrderedComparison, InputScalarType,
+    InputSourcePosition, InputSourceSpan, InputTerminator,
+    InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
     RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
@@ -1839,6 +1840,23 @@ fn projected_cast_instruction(
     None
 }
 
+const fn projected_ordered_predicate(
+    operation: CompareOp,
+) -> Option<InputOrderedComparison> {
+    match operation {
+        CompareOp::LessSigned => Some(InputOrderedComparison::Signed),
+        CompareOp::LessSignedEqual => Some(InputOrderedComparison::SignedEqual),
+        CompareOp::LessUnsigned => Some(InputOrderedComparison::Unsigned),
+        CompareOp::LessUnsignedEqual => {
+            Some(InputOrderedComparison::UnsignedEqual)
+        },
+        CompareOp::Equal
+        | CompareOp::NotEqual
+        | CompareOp::FloatLess
+        | CompareOp::FloatLessEqual => None,
+    }
+}
+
 fn projected_comparison_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
@@ -1855,6 +1873,16 @@ fn projected_comparison_instruction(
     };
     let span = input_span(instruction.span());
     let type_kind = input_scalar_type(module, *type_id);
+    if let Some(ordered) = projected_ordered_predicate(*operation) {
+        return Some(InputInstruction::CompareOrdered {
+            left: left.value(),
+            operation: ordered,
+            result: result.value(),
+            right: right.value(),
+            span,
+            type_kind,
+        });
+    }
     match operation {
         CompareOp::Equal => Some(InputInstruction::CompareEqual {
             left: left.value(),
@@ -2447,7 +2475,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 40;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 44;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -4014,7 +4042,7 @@ fn assert_forged_arithmetic_wire_closed(
     );
     for (forged_tag, expected) in [
         (flipped_tag, wrong_ssa),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged
@@ -4199,7 +4227,7 @@ fn check_shift_forgery(
     );
     for (tag_value, failure) in [
         (swapped, wrong_ssa),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut changed = encoded.clone();
         *changed
@@ -4744,7 +4772,7 @@ fn integer_bitcast_decoder_rejects_retyped_and_unknown_opcodes()
         for (forged_tag, expected) in [
             (flipped, wrong_ssa),
             (16u8, wrong_ssa),
-            (40u8, TernaryProgramCodecError::UnknownTag),
+            (44u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -4940,7 +4968,7 @@ fn check_same_kind_wire_forgery(
     );
     for (replacement, failure) in [
         (opposite, wrong_ssa),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5093,7 +5121,7 @@ fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5249,7 +5277,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5501,6 +5529,61 @@ fn expected_comparison_operation(
     })
 }
 
+fn expected_ordered_comparison_operation(
+    operation: CompareOp,
+    result: u32,
+) -> Result<ComparisonOperationTag, String> {
+    let left = 0;
+    let right = u32::from(result != 1);
+    let span = output_span(fixture_span(result, result.saturating_add(1)));
+    Ok(match operation {
+        CompareOp::LessSigned => (
+            TernaryOperation::LessSignedI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            40,
+        ),
+        CompareOp::LessSignedEqual => (
+            TernaryOperation::LessSignedEqualI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            41,
+        ),
+        CompareOp::LessUnsigned => (
+            TernaryOperation::LessUnsignedU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            42,
+        ),
+        CompareOp::LessUnsignedEqual => (
+            TernaryOperation::LessUnsignedEqualU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            43,
+        ),
+        CompareOp::Equal
+        | CompareOp::NotEqual
+        | CompareOp::FloatLess
+        | CompareOp::FloatLessEqual => {
+            return Err(String::from(
+                "unexpected ordered comparison predicate",
+            ));
+        },
+    })
+}
+
 fn assert_comparison_checkpoint(
     program: &ternary_lowering::TernaryProgram,
     expected: TernaryOperation,
@@ -5540,6 +5623,53 @@ fn assert_comparison_checkpoint(
     Ok(())
 }
 
+fn assert_comparison_operand_patterns(
+    case: ComparisonFixture,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let function = target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("comparison target absent"))?;
+    let first = function.operations.first();
+    let matching_first = match first {
+        Some(TernaryOperation::MaterializeI32 { scalar, .. })
+            if case.signed =>
+        {
+            scalar.bits() == case.left
+        },
+        Some(TernaryOperation::MaterializeU32 { scalar, .. })
+            if !case.signed =>
+        {
+            scalar.bits() == case.left
+        },
+        Some(_) | None => false,
+    };
+    if !matching_first {
+        return Err(String::from("comparison source bits drifted"));
+    }
+    if !case.alias {
+        let second = function.operations.get(1);
+        let matching_second = match second {
+            Some(TernaryOperation::MaterializeI32 { scalar, .. })
+                if case.signed =>
+            {
+                scalar.bits() == case.right
+            },
+            Some(TernaryOperation::MaterializeU32 { scalar, .. })
+                if !case.signed =>
+            {
+                scalar.bits() == case.right
+            },
+            Some(_) | None => false,
+        };
+        if !matching_second {
+            return Err(String::from("comparison right bits drifted"));
+        }
+    }
+    Ok(())
+}
+
 fn verify_integer_comparison_case(
     case: ComparisonFixture,
 ) -> Result<(), String> {
@@ -5549,13 +5679,18 @@ fn verify_integer_comparison_case(
     {
         return Err(String::from("boolean return kind drifted"));
     }
+    assert_comparison_operand_patterns(case, &target)?;
     let result = if case.alias {
         1
     } else {
         2
     };
     let (expected, tag) =
-        expected_comparison_operation(case.signed, case.operation, result)?;
+        if matches!(case.operation, CompareOp::Equal | CompareOp::NotEqual) {
+            expected_comparison_operation(case.signed, case.operation, result)?
+        } else {
+            expected_ordered_comparison_operation(case.operation, result)?
+        };
     assert_comparison_checkpoint(&target, expected, tag, result)
 }
 
@@ -5578,6 +5713,36 @@ fn typed_integer_comparisons_preserve_boolean_ssa_and_wire()
             (0x5555_5555, 0xaaaa_aaaa, false),
             (0x5555_5555, 0xaaaa_aaaa, true),
             (u32::MAX, u32::MAX, false),
+            (u32::MAX, u32::MAX, true),
+        ] {
+            verify_integer_comparison_case(ComparisonFixture {
+                alias,
+                left,
+                operation,
+                right,
+                signed,
+            })?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ordered_integer_comparisons_keep_boundary_bits_and_boolean_ssa()
+-> Result<(), String> {
+    for (signed, operation) in [
+        (true, CompareOp::LessSigned),
+        (true, CompareOp::LessSignedEqual),
+        (false, CompareOp::LessUnsigned),
+        (false, CompareOp::LessUnsignedEqual),
+    ] {
+        for (left, right, alias) in [
+            (0u32, 0u32, true),
+            (0, 1, false),
+            (u32::MAX, 0, false),
+            (0x8000_0000, 1, false),
+            (0x7fff_ffff, 0x8000_0000, false),
+            (0x8000_0000, u32::MAX, false),
             (u32::MAX, u32::MAX, true),
         ] {
             verify_integer_comparison_case(ComparisonFixture {
@@ -5624,7 +5789,7 @@ fn assert_comparison_forgery(
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (40u8, TernaryProgramCodecError::UnknownTag),
+        (44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5710,6 +5875,154 @@ fn assert_invalid_comparison_projection(
     Ok(())
 }
 
+fn assert_ordered_projection_forgery(
+    input: &TypedIrInput,
+    signed: bool,
+) -> Result<(), String> {
+    for variation in 0u8..5u8 {
+        let mut forged = input.clone();
+        let instruction = forged
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(2))
+            .ok_or_else(|| String::from("ordered projection missing"))?;
+        let InputInstruction::CompareOrdered {
+            left,
+            operation,
+            result,
+            right,
+            type_kind,
+            ..
+        } = instruction
+        else {
+            return Err(String::from("ordered projection variant drifted"));
+        };
+        match variation {
+            0 => *type_kind = InputScalarType::U32,
+            1 => *right = 99,
+            2 => *result = 0,
+            3 => {
+                *operation = if signed {
+                    InputOrderedComparison::Unsigned
+                } else {
+                    InputOrderedComparison::Signed
+                }
+            },
+            4 => *left = 2,
+            _ => {
+                return Err(String::from("unknown ordered projection forgery"));
+            },
+        }
+        let expected = if variation == 2 {
+            TernaryLoweringError::InvalidProjection
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if lower_typed_ir(&forged) != Err(expected) {
+            return Err(format!(
+                "ordered projection forgery {variation} admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn assert_ordered_wire_forgery(
+    case: ComparisonFixture,
+    substitute: u8,
+) -> Result<(), String> {
+    let (target, input) = lowered_integer_comparison_fixture(case)?;
+    let (_expected, tag) =
+        expected_ordered_comparison_operation(case.operation, 2)?;
+    let bytes = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode ordered comparison: {error:?}"))?;
+    let offset = bytes
+        .windows(5)
+        .position(|wire| wire == [tag, 0, 0, 0, 0])
+        .ok_or_else(|| String::from("ordered tag missing"))?;
+    let failure = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    for (offset_delta, replacement) in
+        [(0usize, u32::from(substitute)), (5, 0), (9, 99)]
+    {
+        let mut forged = bytes.clone();
+        let at = offset.saturating_add(offset_delta);
+        let width = if offset_delta == 0 {
+            1
+        } else {
+            4
+        };
+        let span = forged
+            .get_mut(at..at.saturating_add(width))
+            .ok_or_else(|| String::from("forged ordered field missing"))?;
+        let replacement_bytes = replacement.to_le_bytes();
+        let field = replacement_bytes
+            .get(..width)
+            .ok_or_else(|| String::from("ordered replacement field absent"))?;
+        span.copy_from_slice(field);
+        if canonical_ternary_program(&forged) != Err(failure) {
+            return Err(String::from("forged ordered operand or tag admitted"));
+        }
+    }
+    let mut unknown = bytes;
+    *unknown
+        .get_mut(offset)
+        .ok_or_else(|| String::from("ordered tag byte missing"))? = 44;
+    if canonical_ternary_program(&unknown)
+        != Err(TernaryProgramCodecError::UnknownTag)
+    {
+        return Err(String::from("next unassigned ordered tag admitted"));
+    }
+    assert_ordered_projection_forgery(&input, case.signed)
+}
+
+#[test]
+fn ordered_comparisons_reject_cross_signedness_and_invalid_ssa()
+-> Result<(), String> {
+    for (signed, operation, substitute) in [
+        (true, CompareOp::LessSigned, 42u8),
+        (true, CompareOp::LessSignedEqual, 43),
+        (false, CompareOp::LessUnsigned, 40),
+        (false, CompareOp::LessUnsignedEqual, 41),
+    ] {
+        let case = ComparisonFixture {
+            alias: false,
+            left: 0x8000_0000,
+            operation,
+            right: u32::MAX,
+            signed,
+        };
+        assert_ordered_wire_forgery(case, substitute)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ordered_comparisons_reject_wrong_signed_typed_ir() -> Result<(), String> {
+    for (signed, operation) in [
+        (true, CompareOp::LessUnsigned),
+        (true, CompareOp::LessUnsignedEqual),
+        (false, CompareOp::LessSigned),
+        (false, CompareOp::LessSignedEqual),
+    ] {
+        let module = integer_comparison_module(ComparisonFixture {
+            alias: false,
+            left: 1,
+            operation,
+            right: 2,
+            signed,
+        });
+        if validate_module(&module).is_ok() {
+            return Err(String::from(
+                "invalid comparison admitted by typed IR",
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn integer_comparison_rejects_signedness_and_ssa_forgery() -> Result<(), String>
 {
@@ -5780,7 +6093,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (40u8, TernaryProgramCodecError::UnknownTag),
+            (44u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -5841,10 +6154,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            40u8,
+            44u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 40u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 44u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -6022,7 +6335,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 40u8] {
+    for forged_tag in [4u8, 44u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -6264,7 +6577,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 40;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 44;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

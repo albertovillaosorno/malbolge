@@ -460,6 +460,43 @@ fn decode_comparison_operation(
     })
 }
 
+fn decode_ordered_comparison_operation(
+    decoder: &mut Decoder<'_>,
+    tag: u8,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let left = decoder.u32()?;
+    let result = decoder.u32()?;
+    let right = decoder.u32()?;
+    let span = decode_span(decoder)?;
+    Ok(match tag {
+        40 => TernaryOperation::LessSignedI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        41 => TernaryOperation::LessSignedEqualI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        42 => TernaryOperation::LessUnsignedU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        43 => TernaryOperation::LessUnsignedEqualU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        _ => return Err(TernaryProgramCodecError::UnknownTag),
+    })
+}
+
 fn decode_arithmetic_operation(
     decoder: &mut Decoder<'_>,
     tag: u8,
@@ -657,6 +694,7 @@ fn decode_operation(
         25..=28 => decode_shift_operation(decoder, tag)?,
         29..=32 => decode_divrem_operation(decoder, tag)?,
         35..=38 => decode_comparison_operation(decoder, tag)?,
+        40..=43 => decode_ordered_comparison_operation(decoder, tag)?,
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -780,6 +818,55 @@ fn encode_comparison_model(encoder: &mut Encoder, operation: TernaryOperation) {
         return;
     }
     debug_assert!(false, "non-comparison reached comparison encoder");
+}
+
+fn encode_ordered_comparison_model(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) {
+    if let TernaryOperation::LessSignedI32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::LessSignedEqualI32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::LessUnsignedU32 {
+        left,
+        result,
+        right,
+        span,
+    }
+    | TernaryOperation::LessUnsignedEqualU32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        let tag = if matches!(operation, TernaryOperation::LessSignedI32 { .. })
+        {
+            40
+        } else if matches!(
+            operation,
+            TernaryOperation::LessSignedEqualI32 { .. }
+        ) {
+            41
+        } else if matches!(operation, TernaryOperation::LessUnsignedU32 { .. })
+        {
+            42
+        } else {
+            43
+        };
+        encode_bitwise_operation(encoder, tag, (left, result, right, span));
+        return;
+    }
+    debug_assert!(false, "non-ordered comparison reached ordered encoder");
 }
 
 fn encode_byte_input(
@@ -1070,52 +1157,16 @@ const fn bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
-    let (result, span, value) = match operation {
-        TernaryOperation::TruncateI32ToU8 { result, span, value }
-        | TernaryOperation::TruncateU32ToU8 { result, span, value }
-        | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
-        | TernaryOperation::BitcastI32ToU32 { result, span, value }
-        | TernaryOperation::BitcastU32ToI32 { result, span, value }
-        | TernaryOperation::BitcastI32ToI32 { result, span, value }
-        | TernaryOperation::BitcastU32ToU32 { result, span, value } => {
-            (result, span, value)
-        },
-        TernaryOperation::AddI32 { .. }
-        | TernaryOperation::AddU32 { .. }
-        | TernaryOperation::SubtractI32 { .. }
-        | TernaryOperation::SubtractU32 { .. }
-        | TernaryOperation::DivideI32 { .. }
-        | TernaryOperation::DivideU32 { .. }
-        | TernaryOperation::RemainderI32 { .. }
-        | TernaryOperation::RemainderU32 { .. }
-        | TernaryOperation::MultiplyI32 { .. }
-        | TernaryOperation::MultiplyU32 { .. }
-        | TernaryOperation::ShiftLeftI32 { .. }
-        | TernaryOperation::ShiftLeftU32 { .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { .. }
-        | TernaryOperation::ShiftRightLogicalU32 { .. }
-        | TernaryOperation::AndI32 { .. }
-        | TernaryOperation::AndU32 { .. }
-        | TernaryOperation::ByteInput { .. }
-        | TernaryOperation::ByteOutput { .. }
-        | TernaryOperation::MaterializeI32 { .. }
-        | TernaryOperation::MaterializeU32 { .. }
-        | TernaryOperation::MaterializeU8 { .. }
-        | TernaryOperation::OrI32 { .. }
-        | TernaryOperation::OrU32 { .. }
-        | TernaryOperation::Return { .. }
-        | TernaryOperation::ReturnU32 { .. }
-        | TernaryOperation::ReturnU8 { .. }
-        | TernaryOperation::ReturnBool { .. }
-        | TernaryOperation::EqualI32 { .. }
-        | TernaryOperation::EqualU32 { .. }
-        | TernaryOperation::NotEqualI32 { .. }
-        | TernaryOperation::NotEqualU32 { .. }
-        | TernaryOperation::XorI32 { .. }
-        | TernaryOperation::XorU32 { .. } => {
-            debug_assert!(false, "non-cast instruction reached cast encoder");
-            return;
-        },
+    let (TernaryOperation::TruncateI32ToU8 { result, span, value }
+    | TernaryOperation::TruncateU32ToU8 { result, span, value }
+    | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
+    | TernaryOperation::BitcastI32ToU32 { result, span, value }
+    | TernaryOperation::BitcastU32ToI32 { result, span, value }
+    | TernaryOperation::BitcastI32ToI32 { result, span, value }
+    | TernaryOperation::BitcastU32ToU32 { result, span, value }) = operation
+    else {
+        debug_assert!(false, "non-cast instruction reached cast encoder");
+        return;
     };
     let tag = cast_tag(operation);
     encoder.u8(tag);
@@ -1216,6 +1267,13 @@ fn try_encode_word_operation(
         encode_bitwise_model(encoder, operation);
         return true;
     }
+    try_encode_comparison_operation(encoder, operation)
+}
+
+fn try_encode_comparison_operation(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) -> bool {
     if matches!(
         operation,
         TernaryOperation::EqualI32 { .. }
@@ -1226,6 +1284,16 @@ fn try_encode_word_operation(
         encode_comparison_model(encoder, operation);
         return true;
     }
+    if matches!(
+        operation,
+        TernaryOperation::LessSignedI32 { .. }
+            | TernaryOperation::LessSignedEqualI32 { .. }
+            | TernaryOperation::LessUnsignedU32 { .. }
+            | TernaryOperation::LessUnsignedEqualU32 { .. }
+    ) {
+        encode_ordered_comparison_model(encoder, operation);
+        return true;
+    }
     false
 }
 
@@ -1233,64 +1301,47 @@ fn encode_non_word_operation(
     encoder: &mut Encoder,
     operation: TernaryOperation,
 ) {
-    match operation {
+    if matches!(
+        operation,
         TernaryOperation::ByteInput { .. }
-        | TernaryOperation::ByteOutput { .. } => {
-            encode_byte_effect(encoder, operation);
-        },
-        TernaryOperation::MaterializeI32 { result, scalar, span }
-        | TernaryOperation::MaterializeU32 { result, scalar, span } => {
-            encode_large_scalar_model(
-                encoder,
-                operation,
-                (result, scalar, span),
-            );
-        },
-        TernaryOperation::MaterializeU8 { result, scalar, span } => {
-            encode_byte_scalar(encoder, result, scalar, span);
-        },
-        TernaryOperation::Return { span, value }
-        | TernaryOperation::ReturnBool { span, value }
-        | TernaryOperation::ReturnU32 { span, value }
-        | TernaryOperation::ReturnU8 { span, value } => {
-            encode_return_model(encoder, operation, span, value);
-        },
-        TernaryOperation::TruncateI32ToU8 { .. }
-        | TernaryOperation::TruncateU32ToU8 { .. }
-        | TernaryOperation::ZeroExtendU8ToU32 { .. }
-        | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. }
-        | TernaryOperation::BitcastI32ToI32 { .. }
-        | TernaryOperation::BitcastU32ToU32 { .. } => {
-            encode_cast_model(encoder, operation);
-        },
-        TernaryOperation::AddI32 { .. }
-        | TernaryOperation::AddU32 { .. }
-        | TernaryOperation::SubtractI32 { .. }
-        | TernaryOperation::SubtractU32 { .. }
-        | TernaryOperation::MultiplyI32 { .. }
-        | TernaryOperation::MultiplyU32 { .. }
-        | TernaryOperation::DivideI32 { .. }
-        | TernaryOperation::DivideU32 { .. }
-        | TernaryOperation::RemainderI32 { .. }
-        | TernaryOperation::RemainderU32 { .. }
-        | TernaryOperation::ShiftLeftI32 { .. }
-        | TernaryOperation::ShiftLeftU32 { .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { .. }
-        | TernaryOperation::ShiftRightLogicalU32 { .. }
-        | TernaryOperation::AndI32 { .. }
-        | TernaryOperation::AndU32 { .. }
-        | TernaryOperation::OrI32 { .. }
-        | TernaryOperation::OrU32 { .. }
-        | TernaryOperation::XorI32 { .. }
-        | TernaryOperation::XorU32 { .. }
-        | TernaryOperation::EqualI32 { .. }
-        | TernaryOperation::EqualU32 { .. }
-        | TernaryOperation::NotEqualI32 { .. }
-        | TernaryOperation::NotEqualU32 { .. } => {
-            debug_assert!(false, "word operation reached scalar encoder");
-        },
+            | TernaryOperation::ByteOutput { .. }
+    ) {
+        encode_byte_effect(encoder, operation);
+        return;
     }
+    if let TernaryOperation::MaterializeI32 { result, scalar, span }
+    | TernaryOperation::MaterializeU32 { result, scalar, span } = operation
+    {
+        encode_large_scalar_model(encoder, operation, (result, scalar, span));
+        return;
+    }
+    if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation
+    {
+        encode_byte_scalar(encoder, result, scalar, span);
+        return;
+    }
+    if let TernaryOperation::Return { span, value }
+    | TernaryOperation::ReturnBool { span, value }
+    | TernaryOperation::ReturnU32 { span, value }
+    | TernaryOperation::ReturnU8 { span, value } = operation
+    {
+        encode_return_model(encoder, operation, span, value);
+        return;
+    }
+    if matches!(
+        operation,
+        TernaryOperation::TruncateI32ToU8 { .. }
+            | TernaryOperation::TruncateU32ToU8 { .. }
+            | TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::BitcastI32ToU32 { .. }
+            | TernaryOperation::BitcastU32ToI32 { .. }
+            | TernaryOperation::BitcastI32ToI32 { .. }
+            | TernaryOperation::BitcastU32ToU32 { .. }
+    ) {
+        encode_cast_model(encoder, operation);
+        return;
+    }
+    debug_assert!(false, "word operation reached scalar encoder");
 }
 
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
@@ -1348,6 +1399,10 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::EqualI32 { span, .. }
         | TernaryOperation::EqualU32 { span, .. }
         | TernaryOperation::NotEqualI32 { span, .. }
+        | TernaryOperation::LessSignedEqualI32 { span, .. }
+        | TernaryOperation::LessSignedI32 { span, .. }
+        | TernaryOperation::LessUnsignedEqualU32 { span, .. }
+        | TernaryOperation::LessUnsignedU32 { span, .. }
         | TernaryOperation::NotEqualU32 { span, .. }
         | TernaryOperation::ReturnBool { span, .. }
         | TernaryOperation::ByteInput { span, .. }
@@ -1549,6 +1604,10 @@ fn validate_widen_or_bitcast(
         | TernaryOperation::EqualI32 { .. }
         | TernaryOperation::EqualU32 { .. }
         | TernaryOperation::NotEqualI32 { .. }
+        | TernaryOperation::LessSignedEqualI32 { .. }
+        | TernaryOperation::LessSignedI32 { .. }
+        | TernaryOperation::LessUnsignedEqualU32 { .. }
+        | TernaryOperation::LessUnsignedU32 { .. }
         | TernaryOperation::NotEqualU32 { .. }
         | TernaryOperation::TruncateI32ToU8 { .. }
         | TernaryOperation::TruncateU32ToU8 { .. }
@@ -1595,6 +1654,10 @@ fn validate_comparison_operation(
     values: &mut BTreeMap<u32, ValueKind>,
 ) -> Option<Result<bool, TernaryProgramValidationError>> {
     if let TernaryOperation::EqualI32 { left, result, right, .. }
+    | TernaryOperation::LessSignedI32 { left, result, right, .. }
+    | TernaryOperation::LessSignedEqualI32 {
+        left, result, right, ..
+    }
     | TernaryOperation::NotEqualI32 { left, result, right, .. } = operation
     {
         return Some(validate_comparison_values(
@@ -1604,6 +1667,10 @@ fn validate_comparison_operation(
         ));
     }
     if let TernaryOperation::EqualU32 { left, result, right, .. }
+    | TernaryOperation::LessUnsignedU32 { left, result, right, .. }
+    | TernaryOperation::LessUnsignedEqualU32 {
+        left, result, right, ..
+    }
     | TernaryOperation::NotEqualU32 { left, result, right, .. } = operation
     {
         return Some(validate_comparison_values(
@@ -1702,62 +1769,45 @@ fn validate_operation(
     if let Some(outcome) = validate_binary_operation(operation, values) {
         return outcome;
     }
-    match operation {
+    if matches!(
+        operation,
         TernaryOperation::ByteInput { .. }
-        | TernaryOperation::ByteOutput { .. } => {
-            validate_byte_effect_operation(operation, values)
-        },
-        TernaryOperation::MaterializeI32 { .. }
-        | TernaryOperation::MaterializeU32 { .. }
-        | TernaryOperation::MaterializeU8 { .. } => {
-            validate_materialize_operation(operation, values)
-        },
-        TernaryOperation::Return { value, .. }
-        | TernaryOperation::ReturnU32 { value, .. }
-        | TernaryOperation::ReturnU8 { value, .. }
-        | TernaryOperation::ReturnBool { value, .. } => {
-            validate_return_value(values, value, operation)
-        },
-        TernaryOperation::TruncateI32ToU8 { result, value, .. } => {
-            validate_truncated_value(values, result, value, ValueKind::I32)
-        },
-        TernaryOperation::TruncateU32ToU8 { result, value, .. } => {
-            validate_truncated_value(values, result, value, ValueKind::U32)
-        },
-        TernaryOperation::ZeroExtendU8ToU32 { .. }
-        | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. }
-        | TernaryOperation::BitcastI32ToI32 { .. }
-        | TernaryOperation::BitcastU32ToU32 { .. } => {
-            validate_widen_or_bitcast(values, operation)
-        },
-        TernaryOperation::EqualI32 { .. }
-        | TernaryOperation::EqualU32 { .. }
-        | TernaryOperation::NotEqualI32 { .. }
-        | TernaryOperation::NotEqualU32 { .. }
-        | TernaryOperation::DivideI32 { .. }
-        | TernaryOperation::DivideU32 { .. }
-        | TernaryOperation::RemainderI32 { .. }
-        | TernaryOperation::RemainderU32 { .. }
-        | TernaryOperation::AddI32 { .. }
-        | TernaryOperation::SubtractI32 { .. }
-        | TernaryOperation::MultiplyI32 { .. }
-        | TernaryOperation::ShiftLeftI32 { .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { .. }
-        | TernaryOperation::AndI32 { .. }
-        | TernaryOperation::OrI32 { .. }
-        | TernaryOperation::XorI32 { .. }
-        | TernaryOperation::AddU32 { .. }
-        | TernaryOperation::SubtractU32 { .. }
-        | TernaryOperation::MultiplyU32 { .. }
-        | TernaryOperation::ShiftLeftU32 { .. }
-        | TernaryOperation::ShiftRightLogicalU32 { .. }
-        | TernaryOperation::AndU32 { .. }
-        | TernaryOperation::OrU32 { .. }
-        | TernaryOperation::XorU32 { .. } => {
-            Err(TernaryProgramValidationError::SsaValue)
-        },
+            | TernaryOperation::ByteOutput { .. }
+    ) {
+        return validate_byte_effect_operation(operation, values);
     }
+    if matches!(
+        operation,
+        TernaryOperation::MaterializeI32 { .. }
+            | TernaryOperation::MaterializeU32 { .. }
+            | TernaryOperation::MaterializeU8 { .. }
+    ) {
+        return validate_materialize_operation(operation, values);
+    }
+    if let TernaryOperation::Return { value, .. }
+    | TernaryOperation::ReturnU32 { value, .. }
+    | TernaryOperation::ReturnU8 { value, .. }
+    | TernaryOperation::ReturnBool { value, .. } = operation
+    {
+        return validate_return_value(values, value, operation);
+    }
+    if let TernaryOperation::TruncateI32ToU8 { result, value, .. } = operation {
+        return validate_truncated_value(values, result, value, ValueKind::I32);
+    }
+    if let TernaryOperation::TruncateU32ToU8 { result, value, .. } = operation {
+        return validate_truncated_value(values, result, value, ValueKind::U32);
+    }
+    if matches!(
+        operation,
+        TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::BitcastI32ToU32 { .. }
+            | TernaryOperation::BitcastU32ToI32 { .. }
+            | TernaryOperation::BitcastI32ToI32 { .. }
+            | TernaryOperation::BitcastU32ToU32 { .. }
+    ) {
+        return validate_widen_or_bitcast(values, operation);
+    }
+    Err(TernaryProgramValidationError::SsaValue)
 }
 
 fn validate_operations(

@@ -68,6 +68,19 @@ pub enum InputScalarType {
     U8,
 }
 
+/// Admitted ordered comparisons of exact promoted 32-bit operands.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputOrderedComparison {
+    /// Signed less-than.
+    Signed,
+    /// Signed less-than-or-equal.
+    SignedEqual,
+    /// Unsigned less-than.
+    Unsigned,
+    /// Unsigned less-than-or-equal.
+    UnsignedEqual,
+}
+
 /// One projected non-terminating typed-IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputInstruction {
@@ -283,6 +296,21 @@ pub enum InputInstruction {
         /// Original source provenance.
         span: InputSourceSpan,
         /// Boolean result type from admitted typed IR.
+        type_kind: InputScalarType,
+    },
+    /// Preserve ordered 32-bit comparison with a distinct Boolean result.
+    CompareOrdered {
+        /// Left operand SSA identity.
+        left: u32,
+        /// Admitted signedness and ordering predicate.
+        operation: InputOrderedComparison,
+        /// Distinct Boolean SSA result.
+        result: u32,
+        /// Right operand SSA identity.
+        right: u32,
+        /// Original source provenance.
+        span: InputSourceSpan,
+        /// The explicitly admitted Boolean result kind.
         type_kind: InputScalarType,
     },
     /// Exact integer constant bits plus typed result identity.

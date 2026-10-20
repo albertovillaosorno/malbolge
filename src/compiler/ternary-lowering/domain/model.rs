@@ -988,6 +988,53 @@ pub enum TernaryOperation {
         /// Original source provenance.
         span: TernarySourceSpan,
     },
+    /// Preserve signed less-than-or-equal with a Boolean SSA result; no host
+    /// evaluation.
+    LessSignedEqualI32 {
+        /// Left 32-bit operand SSA identity.
+        left: u32,
+        /// Distinct Boolean result SSA identity.
+        result: u32,
+        /// Right 32-bit operand SSA identity.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve signed less-than with a Boolean SSA result; no host evaluation.
+    LessSignedI32 {
+        /// Left 32-bit operand SSA identity.
+        left: u32,
+        /// Distinct Boolean result SSA identity.
+        result: u32,
+        /// Right 32-bit operand SSA identity.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned less-than-or-equal with a Boolean SSA result; no host
+    /// evaluation.
+    LessUnsignedEqualU32 {
+        /// Left 32-bit operand SSA identity.
+        left: u32,
+        /// Distinct Boolean result SSA identity.
+        result: u32,
+        /// Right 32-bit operand SSA identity.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned less-than with a Boolean SSA result; no host
+    /// evaluation.
+    LessUnsignedU32 {
+        /// Left 32-bit operand SSA identity.
+        left: u32,
+        /// Distinct Boolean result SSA identity.
+        result: u32,
+        /// Right 32-bit operand SSA identity.
+        right: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later
