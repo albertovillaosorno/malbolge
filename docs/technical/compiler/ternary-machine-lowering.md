@@ -29,7 +29,7 @@ validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
 `i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, multiplication,
-and typed signed/unsigned left and right shifts,
+signed/unsigned division and remainder, and typed left and right shifts,
 unsigned byte-to-word extension,
 signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
 typed-IR
@@ -180,11 +180,22 @@ original three SSA IDs and 24-byte source span. Source operands and shift
 counts must be previously defined at the exact signed or unsigned 32-bit
 category; the symbolic stage does not evaluate shift counts or assume
 undefined signed-shift behavior. Independent canonical admission rejects
-swapped signedness/direction, unknown SSA uses, and future tag `29`.
+swapped signedness/direction and unknown SSA uses; tag `29` was unassigned
+at initial admission and now identifies signed division.
 Fresh compiler selection converges with inspector-backed progress restoration,
 including all ten crash boundaries for every supported shift variant.
 
-The next unknown operation tag is `29`. Older decoders reject newly emitted
+Tags `29` through `32` add `DivideI32`, `DivideU32`, `RemainderI32`, and
+`RemainderU32` with the same three SSA identities and 24-byte source span as
+other 32-bit binary operations. Signed and unsigned variants require operands
+and result types with matching signedness; the pre-layout compiler does not
+evaluate guest division, division by zero, or signed overflow. Canonical
+checkpoint admission rejects swapped signedness, missing SSA operands,
+duplicate definitions, and the next unassigned tag `33`. Fresh typed lowering
+and inspector-backed checkpoint recovery converge across all ten crash
+boundaries for each of the four operations.
+
+The next unknown operation tag is `33`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for

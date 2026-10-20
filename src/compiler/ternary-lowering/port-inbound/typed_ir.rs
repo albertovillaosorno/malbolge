@@ -95,6 +95,32 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Preserve admitted 32-bit signed division before target realization.
+    BinaryDivideSigned {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted 32-bit scalar category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit unsigned division before target realization.
+    BinaryDivideUnsigned {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted 32-bit scalar category.
+        type_kind: InputScalarType,
+    },
     /// Preserve admitted promoted 32-bit multiplication before realization.
     BinaryMultiply {
         /// Left upstream SSA operand identity.
@@ -119,6 +145,32 @@ pub enum InputInstruction {
         /// Exact normalized source provenance.
         span: InputSourceSpan,
         /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit signed remainder before target realization.
+    BinaryRemainderSigned {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted 32-bit scalar category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit unsigned remainder before target realization.
+    BinaryRemainderUnsigned {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted 32-bit scalar category.
         type_kind: InputScalarType,
     },
     /// Preserve admitted 32-bit left shift semantics for later realization.

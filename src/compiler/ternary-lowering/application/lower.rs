@@ -67,7 +67,11 @@ enum Bitwise32Kind {
 #[derive(Clone, Copy)]
 enum Arithmetic32Kind {
     Add,
+    DivideSigned,
+    DivideUnsigned,
     Multiply,
+    RemainderSigned,
+    RemainderUnsigned,
     ShiftLeft,
     ShiftRightArithmetic,
     ShiftRightLogical,
@@ -184,6 +188,12 @@ fn lower_instruction(
         | InputInstruction::BinarySubtract { .. } => {
             lower_arithmetic_instruction(instruction, state)
         },
+        InputInstruction::BinaryDivideSigned { .. }
+        | InputInstruction::BinaryDivideUnsigned { .. }
+        | InputInstruction::BinaryRemainderSigned { .. }
+        | InputInstruction::BinaryRemainderUnsigned { .. } => {
+            lower_divrem_instruction(instruction, state)
+        },
         InputInstruction::BinaryShiftLeft { .. }
         | InputInstruction::BinaryShiftRightArithmetic { .. }
         | InputInstruction::BinaryShiftRightLogical { .. } => {
@@ -241,6 +251,81 @@ fn lower_arithmetic_instruction(
     } else {
         Arithmetic32Kind::Subtract
     };
+    lower_arithmetic_word32(
+        (*left, *result, *right, *span, *type_kind),
+        kind,
+        state,
+    )
+}
+
+const fn divrem_kind(
+    instruction: &InputInstruction,
+) -> Result<Arithmetic32Kind, TernaryLoweringError> {
+    if matches!(instruction, InputInstruction::BinaryDivideSigned { .. }) {
+        return Ok(Arithmetic32Kind::DivideSigned);
+    }
+    if matches!(instruction, InputInstruction::BinaryDivideUnsigned { .. }) {
+        return Ok(Arithmetic32Kind::DivideUnsigned);
+    }
+    if matches!(instruction, InputInstruction::BinaryRemainderSigned { .. }) {
+        return Ok(Arithmetic32Kind::RemainderSigned);
+    }
+    if matches!(
+        instruction,
+        InputInstruction::BinaryRemainderUnsigned { .. }
+    ) {
+        return Ok(Arithmetic32Kind::RemainderUnsigned);
+    }
+    Err(TernaryLoweringError::UnsupportedInstruction)
+}
+
+fn lower_divrem_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (InputInstruction::BinaryDivideSigned {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryDivideUnsigned {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryRemainderSigned {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryRemainderUnsigned {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }) = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    let kind = divrem_kind(instruction)?;
+    let expected_kind = if matches!(
+        kind,
+        Arithmetic32Kind::DivideSigned | Arithmetic32Kind::RemainderSigned
+    ) {
+        InputScalarType::I32
+    } else {
+        InputScalarType::U32
+    };
+    if *type_kind != expected_kind {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
     lower_arithmetic_word32(
         (*left, *result, *right, *span, *type_kind),
         kind,
@@ -336,6 +421,32 @@ fn lower_bitwise_instruction(
     )
 }
 
+fn lower_constant_projection(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let InputInstruction::ConstantInteger {
+        bit_width,
+        little_endian,
+        result,
+        span,
+        type_kind,
+    } = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    lower_constant_integer(
+        (
+            *bit_width,
+            little_endian.as_slice(),
+            *result,
+            *span,
+            *type_kind,
+        ),
+        state,
+    )
+}
+
 fn lower_other_instruction(
     instruction: &InputInstruction,
     state: &mut LoweringState,
@@ -347,22 +458,9 @@ fn lower_other_instruction(
         InputInstruction::ByteOutput { span, value } => {
             lower_byte_output(*span, *value, state)
         },
-        InputInstruction::ConstantInteger {
-            bit_width,
-            little_endian,
-            result,
-            span,
-            type_kind,
-        } => lower_constant_integer(
-            (
-                *bit_width,
-                little_endian.as_slice(),
-                *result,
-                *span,
-                *type_kind,
-            ),
-            state,
-        ),
+        InputInstruction::ConstantInteger { .. } => {
+            lower_constant_projection(instruction, state)
+        },
         InputInstruction::TruncateInteger {
             result,
             span,
@@ -394,6 +492,10 @@ fn lower_other_instruction(
         | InputInstruction::BinaryAdd { .. }
         | InputInstruction::BinarySubtract { .. }
         | InputInstruction::BinaryMultiply { .. }
+        | InputInstruction::BinaryDivideSigned { .. }
+        | InputInstruction::BinaryDivideUnsigned { .. }
+        | InputInstruction::BinaryRemainderSigned { .. }
+        | InputInstruction::BinaryRemainderUnsigned { .. }
         | InputInstruction::BinaryShiftLeft { .. }
         | InputInstruction::BinaryShiftRightArithmetic { .. }
         | InputInstruction::BinaryShiftRightLogical { .. } => {
@@ -441,6 +543,15 @@ const fn construct_arithmetic_operation(
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     if matches!(
         kind,
+        Arithmetic32Kind::DivideSigned
+            | Arithmetic32Kind::DivideUnsigned
+            | Arithmetic32Kind::RemainderSigned
+            | Arithmetic32Kind::RemainderUnsigned
+    ) {
+        return construct_divrem_operation(kind, type_kind, operands, span);
+    }
+    if matches!(
+        kind,
         Arithmetic32Kind::ShiftLeft
             | Arithmetic32Kind::ShiftRightArithmetic
             | Arithmetic32Kind::ShiftRightLogical
@@ -449,21 +560,8 @@ const fn construct_arithmetic_operation(
     }
     let (left, result, right) = operands;
     Ok(match (kind, type_kind) {
-        (Arithmetic32Kind::Add, InputScalarType::I32) => {
-            TernaryOperation::AddI32 {
-                left,
-                result,
-                right,
-                span,
-            }
-        },
-        (Arithmetic32Kind::Add, InputScalarType::U32) => {
-            TernaryOperation::AddU32 {
-                left,
-                result,
-                right,
-                span,
-            }
+        (Arithmetic32Kind::Add, _) => {
+            return construct_add_operation(type_kind, operands, span);
         },
         (Arithmetic32Kind::Multiply, InputScalarType::I32) => {
             TernaryOperation::MultiplyI32 {
@@ -485,7 +583,11 @@ const fn construct_arithmetic_operation(
             return construct_subtract_operation(type_kind, operands, span);
         },
         (
-            Arithmetic32Kind::ShiftLeft
+            Arithmetic32Kind::DivideSigned
+            | Arithmetic32Kind::DivideUnsigned
+            | Arithmetic32Kind::RemainderSigned
+            | Arithmetic32Kind::RemainderUnsigned
+            | Arithmetic32Kind::ShiftLeft
             | Arithmetic32Kind::ShiftRightArithmetic
             | Arithmetic32Kind::ShiftRightLogical,
             _,
@@ -493,6 +595,75 @@ const fn construct_arithmetic_operation(
         | (_, InputScalarType::Other | InputScalarType::U8) => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
+    })
+}
+
+const fn construct_add_operation(
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match type_kind {
+        InputScalarType::I32 => TernaryOperation::AddI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputScalarType::U32 => TernaryOperation::AddU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputScalarType::Other | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    })
+}
+
+const fn construct_divrem_operation(
+    kind: Arithmetic32Kind,
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match (kind, type_kind) {
+        (Arithmetic32Kind::DivideSigned, InputScalarType::I32) => {
+            TernaryOperation::DivideI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::DivideUnsigned, InputScalarType::U32) => {
+            TernaryOperation::DivideU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::RemainderSigned, InputScalarType::I32) => {
+            TernaryOperation::RemainderI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::RemainderUnsigned, InputScalarType::U32) => {
+            TernaryOperation::RemainderU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
     })
 }
 

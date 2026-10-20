@@ -471,6 +471,43 @@ fn decode_arithmetic_operation(
     })
 }
 
+fn decode_divrem_operation(
+    decoder: &mut Decoder<'_>,
+    tag: u8,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let left = decoder.u32()?;
+    let result = decoder.u32()?;
+    let right = decoder.u32()?;
+    let span = decode_span(decoder)?;
+    Ok(match tag {
+        29 => TernaryOperation::DivideI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        30 => TernaryOperation::DivideU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        31 => TernaryOperation::RemainderI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        32 => TernaryOperation::RemainderU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        _ => return Err(TernaryProgramCodecError::UnknownTag),
+    })
+}
+
 fn decode_shift_operation(
     decoder: &mut Decoder<'_>,
     tag: u8,
@@ -574,6 +611,7 @@ fn decode_operation(
         5 | 15 | 16 | 17 | 18 => decode_cast_operation(decoder, tag)?,
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
         25..=28 => decode_shift_operation(decoder, tag)?,
+        29..=32 => decode_divrem_operation(decoder, tag)?,
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     };
     Ok(operation)
@@ -762,6 +800,50 @@ fn encode_arithmetic_model_tail(
     debug_assert!(false, "wrong binary operation family reached encoder");
 }
 
+fn encode_divrem_model(encoder: &mut Encoder, operation: TernaryOperation) {
+    if let TernaryOperation::DivideI32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        encode_bitwise_operation(encoder, 29, (left, result, right, span));
+        return;
+    }
+    if let TernaryOperation::DivideU32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        encode_bitwise_operation(encoder, 30, (left, result, right, span));
+        return;
+    }
+    if let TernaryOperation::RemainderI32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        encode_bitwise_operation(encoder, 31, (left, result, right, span));
+        return;
+    }
+    if let TernaryOperation::RemainderU32 {
+        left,
+        result,
+        right,
+        span,
+    } = operation
+    {
+        encode_bitwise_operation(encoder, 32, (left, result, right, span));
+        return;
+    }
+    debug_assert!(false, "non-divrem instruction reached divrem encoder");
+}
+
 fn encode_shift_model(encoder: &mut Encoder, operation: TernaryOperation) {
     if let TernaryOperation::ShiftLeftI32 {
         left,
@@ -904,6 +986,10 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::AddU32 { .. }
         | TernaryOperation::SubtractI32 { .. }
         | TernaryOperation::SubtractU32 { .. }
+        | TernaryOperation::DivideI32 { .. }
+        | TernaryOperation::DivideU32 { .. }
+        | TernaryOperation::RemainderI32 { .. }
+        | TernaryOperation::RemainderU32 { .. }
         | TernaryOperation::MultiplyI32 { .. }
         | TernaryOperation::MultiplyU32 { .. }
         | TernaryOperation::ShiftLeftI32 { .. }
@@ -951,6 +1037,20 @@ fn encode_return_model(
     encode_return_operation(encoder, tag, span, value);
 }
 
+fn encode_large_scalar_model(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+    payload: (u32, TernaryI32Scalar, TernarySourceSpan),
+) {
+    let (result, scalar, span) = payload;
+    let tag = if matches!(operation, TernaryOperation::MaterializeI32 { .. }) {
+        3
+    } else {
+        10
+    };
+    encode_ternary_scalar(encoder, tag, (result, scalar, span));
+}
+
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
     match operation {
         TernaryOperation::AddI32 { .. }
@@ -960,6 +1060,12 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::MultiplyI32 { .. }
         | TernaryOperation::MultiplyU32 { .. } => {
             encode_arithmetic_model(encoder, operation);
+        },
+        TernaryOperation::DivideI32 { .. }
+        | TernaryOperation::DivideU32 { .. }
+        | TernaryOperation::RemainderI32 { .. }
+        | TernaryOperation::RemainderU32 { .. } => {
+            encode_divrem_model(encoder, operation);
         },
         TernaryOperation::ShiftLeftI32 { .. }
         | TernaryOperation::ShiftLeftU32 { .. }
@@ -983,14 +1089,11 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         },
         TernaryOperation::MaterializeI32 { result, scalar, span }
         | TernaryOperation::MaterializeU32 { result, scalar, span } => {
-            let tag =
-                if matches!(operation, TernaryOperation::MaterializeI32 { .. })
-                {
-                    3
-                } else {
-                    10
-                };
-            encode_ternary_scalar(encoder, tag, (result, scalar, span));
+            encode_large_scalar_model(
+                encoder,
+                operation,
+                (result, scalar, span),
+            );
         },
         TernaryOperation::MaterializeU8 { result, scalar, span } => {
             encode_byte_scalar(encoder, result, scalar, span);
@@ -1040,6 +1143,10 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::AddU32 { span, .. }
         | TernaryOperation::SubtractI32 { span, .. }
         | TernaryOperation::SubtractU32 { span, .. }
+        | TernaryOperation::DivideI32 { span, .. }
+        | TernaryOperation::DivideU32 { span, .. }
+        | TernaryOperation::RemainderI32 { span, .. }
+        | TernaryOperation::RemainderU32 { span, .. }
         | TernaryOperation::MultiplyI32 { span, .. }
         | TernaryOperation::MultiplyU32 { span, .. }
         | TernaryOperation::ShiftLeftI32 { span, .. }
@@ -1217,6 +1324,10 @@ fn validate_widen_or_bitcast(
         | TernaryOperation::AddU32 { .. }
         | TernaryOperation::SubtractI32 { .. }
         | TernaryOperation::SubtractU32 { .. }
+        | TernaryOperation::DivideI32 { .. }
+        | TernaryOperation::DivideU32 { .. }
+        | TernaryOperation::RemainderI32 { .. }
+        | TernaryOperation::RemainderU32 { .. }
         | TernaryOperation::MultiplyI32 { .. }
         | TernaryOperation::MultiplyU32 { .. }
         | TernaryOperation::ShiftLeftI32 { .. }
@@ -1268,6 +1379,8 @@ fn validate_binary_operation(
     match operation {
         TernaryOperation::AddI32 { left, result, right, .. }
         | TernaryOperation::SubtractI32 { left, result, right, .. }
+        | TernaryOperation::DivideI32 { left, result, right, .. }
+        | TernaryOperation::RemainderI32 { left, result, right, .. }
         | TernaryOperation::MultiplyI32 { left, result, right, .. }
         | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
         | TernaryOperation::ShiftRightArithmeticI32 {
@@ -1287,6 +1400,8 @@ fn validate_binary_operation(
         },
         TernaryOperation::AddU32 { left, result, right, .. }
         | TernaryOperation::SubtractU32 { left, result, right, .. }
+        | TernaryOperation::DivideU32 { left, result, right, .. }
+        | TernaryOperation::RemainderU32 { left, result, right, .. }
         | TernaryOperation::MultiplyU32 { left, result, right, .. }
         | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
         | TernaryOperation::ShiftRightLogicalU32 {
@@ -1358,7 +1473,11 @@ fn validate_operation(
         | TernaryOperation::BitcastU32ToI32 { .. } => {
             validate_widen_or_bitcast(values, operation)
         },
-        TernaryOperation::AddI32 { .. }
+        TernaryOperation::DivideI32 { .. }
+        | TernaryOperation::DivideU32 { .. }
+        | TernaryOperation::RemainderI32 { .. }
+        | TernaryOperation::RemainderU32 { .. }
+        | TernaryOperation::AddI32 { .. }
         | TernaryOperation::SubtractI32 { .. }
         | TernaryOperation::MultiplyI32 { .. }
         | TernaryOperation::ShiftLeftI32 { .. }

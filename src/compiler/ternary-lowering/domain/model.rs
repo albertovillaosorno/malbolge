@@ -924,6 +924,30 @@ pub enum TernaryOperation {
         /// Upstream SSA byte value identity retained until later layout.
         value: u32,
     },
+    /// Preserve typed signed 32-bit division without evaluating the guest
+    /// operation.
+    DivideI32 {
+        /// Left upstream SSA identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA identity.
+        right: u32,
+        /// Source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve typed unsigned 32-bit division without evaluating the guest
+    /// operation.
+    DivideU32 {
+        /// Left upstream SSA identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA identity.
+        right: u32,
+        /// Source provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later
@@ -994,6 +1018,30 @@ pub enum TernaryOperation {
         /// Right upstream SSA value identity.
         right: u32,
         /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve typed signed 32-bit remainder without evaluating the guest
+    /// operation.
+    RemainderI32 {
+        /// Left upstream SSA identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA identity.
+        right: u32,
+        /// Source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve typed unsigned 32-bit remainder without evaluating the guest
+    /// operation.
+    RemainderU32 {
+        /// Left upstream SSA identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA identity.
+        right: u32,
+        /// Source provenance.
         span: TernarySourceSpan,
     },
     /// Return one previously materialized scalar value.
