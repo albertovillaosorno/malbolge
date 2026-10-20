@@ -1294,6 +1294,15 @@ pub enum TernaryOperation {
         /// Previously defined unsigned `u32` SSA identity.
         value: u32,
     },
+    /// Preserve byte-width `u8` truth testing as a Boolean SSA result.
+    U8ToBool {
+        /// New Boolean SSA definition.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined successful `u8` source SSA identity.
+        value: u32,
+    },
     /// Apply exact 32-bit bitwise XOR to two previously materialized values.
     XorI32 {
         /// Left upstream SSA value identity.

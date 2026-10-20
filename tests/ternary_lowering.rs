@@ -1429,6 +1429,71 @@ fn integer_to_bool_module(signed: bool, bits: u32) -> Module {
     })
 }
 
+fn byte_to_bool_types() -> Vec<TypeEntry> {
+    vec![
+        TypeEntry::new(TypeId::new(0), TypeDef::U8),
+        TypeEntry::new(TypeId::new(1), TypeDef::Bool),
+        TypeEntry::new(
+            TypeId::new(2),
+            TypeDef::function(Vec::new(), Some(TypeId::new(1)), false),
+        ),
+    ]
+}
+
+fn byte_to_bool_module(source: Option<u8>) -> Module {
+    let source_instruction = source.map_or_else(
+        || Instruction::ByteInput {
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        |byte| Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+    );
+    let instructions = vec![
+        LocatedInstruction::new(source_instruction, fixture_span(0, 1)),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerToBool,
+                result: ValueId::new(1),
+                type_id: TypeId::new(1),
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: fixture_span(0, 3),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(1)),
+                },
+                terminator_span: fixture_span(2, 3),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("byte_to_bool"),
+            parameters: Vec::new(),
+            signature: TypeId::new(2),
+            span: fixture_span(0, 3),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/byte-to-bool.c"),
+        source_sha256: [0xe8; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: byte_to_bool_types(),
+    })
+}
+
 fn bool_to_signed_types() -> Vec<TypeEntry> {
     let integer_type = TypeId::new(0);
     vec![
@@ -2693,7 +2758,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 47;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 48;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -4260,7 +4325,7 @@ fn assert_forged_arithmetic_wire_closed(
     );
     for (forged_tag, expected) in [
         (flipped_tag, wrong_ssa),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged
@@ -4445,7 +4510,7 @@ fn check_shift_forgery(
     );
     for (tag_value, failure) in [
         (swapped, wrong_ssa),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut changed = encoded.clone();
         *changed
@@ -4990,7 +5055,7 @@ fn integer_bitcast_decoder_rejects_retyped_and_unknown_opcodes()
         for (forged_tag, expected) in [
             (flipped, wrong_ssa),
             (16u8, wrong_ssa),
-            (47u8, TernaryProgramCodecError::UnknownTag),
+            (48u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -5186,7 +5251,7 @@ fn check_same_kind_wire_forgery(
     );
     for (replacement, failure) in [
         (opposite, wrong_ssa),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5339,7 +5404,7 @@ fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5495,7 +5560,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -5766,6 +5831,175 @@ fn typed_integer_boolean_conversion_chain_preserves_distinct_ssa()
     Ok(())
 }
 
+fn lowered_byte_to_bool_fixture(
+    source: Option<u8>,
+) -> Result<LoweredByteFixture, String> {
+    let module = byte_to_bool_module(source);
+    validate_module(&module)
+        .map_err(|error| format!("admit byte truth: {error:?}"))?;
+    let canonical = canonical_bytes(&module)
+        .map_err(|error| format!("encode byte truth: {error:?}"))?;
+    let restored = canonical_module(&canonical)
+        .map_err(|error| format!("decode byte truth: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("byte truth typed-IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower byte truth: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn assert_byte_to_bool_checkpoint(
+    target: &ternary_lowering::TernaryProgram,
+    source: Option<u8>,
+) -> Result<Vec<u8>, String> {
+    let operations = &target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("byte truth target absent"))?
+        .operations;
+    let first = source.map_or(
+        TernaryOperation::ByteInput {
+            result: 0,
+            span: output_span(fixture_span(0, 1)),
+        },
+        |byte| TernaryOperation::MaterializeU8 {
+            result: 0,
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(byte),
+            span: output_span(fixture_span(0, 1)),
+        },
+    );
+    let expected = [
+        first,
+        TernaryOperation::U8ToBool {
+            result: 1,
+            span: output_span(fixture_span(1, 2)),
+            value: 0,
+        },
+        TernaryOperation::ReturnBool {
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        },
+    ];
+    if operations.as_slice() != expected {
+        return Err(String::from("byte truth operations drifted"));
+    }
+    let bytes = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode byte truth target: {error:?}"))?;
+    if !bytes.windows(5).any(|part| part == [47, 1, 0, 0, 0])
+        || canonical_ternary_program(&bytes) != Ok(target.clone())
+    {
+        return Err(String::from("byte truth canonical tag drifted"));
+    }
+    Ok(bytes)
+}
+
+fn reject_byte_truth_wire_forgery(
+    source: Option<u8>,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let bytes = assert_byte_to_bool_checkpoint(target, source)?;
+    let offset = bytes
+        .windows(5)
+        .position(|part| part == [47, 1, 0, 0, 0])
+        .ok_or_else(|| String::from("byte truth opcode absent"))?;
+    for (delta, replacement) in [(0usize, 45u8), (0, 46), (1, 0), (29, 99)] {
+        let mut forged = bytes.clone();
+        *forged
+            .get_mut(offset.saturating_add(delta))
+            .ok_or_else(|| String::from("byte truth field missing"))? =
+            replacement;
+        if canonical_ternary_program(&forged)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ))
+        {
+            return Err(format!("forged byte truth field {delta} admitted"));
+        }
+    }
+    let mut future = bytes;
+    *future
+        .get_mut(offset)
+        .ok_or_else(|| String::from("byte truth tag missing"))? = 48;
+    if canonical_ternary_program(&future)
+        != Err(TernaryProgramCodecError::UnknownTag)
+    {
+        return Err(String::from("next unknown byte truth tag admitted"));
+    }
+    Ok(())
+}
+
+fn reject_byte_truth_projection_forgery(
+    input: &TypedIrInput,
+) -> Result<(), String> {
+    for variation in 0u8..3u8 {
+        let mut forged = input.clone();
+        let cast = forged
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(1))
+            .ok_or_else(|| String::from("byte truth cast missing"))?;
+        let InputInstruction::IntegerToBool {
+            result, type_kind, value, ..
+        } = cast
+        else {
+            return Err(String::from("byte truth projection changed"));
+        };
+        match variation {
+            0 => *type_kind = InputScalarType::U8,
+            1 => *value = 99,
+            2 => *result = 0,
+            _ => return Err(String::from("unknown byte truth forgery")),
+        }
+        let expected = if variation == 2 {
+            TernaryLoweringError::InvalidProjection
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if lower_typed_ir(&forged) != Err(expected) {
+            return Err(format!(
+                "forged byte truth projection {variation} admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn byte_truth_rejects_cross_width_tags_and_forged_ssa() -> Result<(), String> {
+    for source in [Some(0u8), Some(u8::MAX), None] {
+        let (target, input) = lowered_byte_to_bool_fixture(source)?;
+        reject_byte_truth_wire_forgery(source, &target)?;
+        reject_byte_truth_projection_forgery(&input)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_byte_to_bool_keeps_constant_and_input_byte_truth_symbolic()
+-> Result<(), String> {
+    for source in [
+        Some(0u8),
+        Some(1),
+        Some(0x7f),
+        Some(0x80),
+        Some(u8::MAX),
+        None,
+    ] {
+        let (target, input) = lowered_byte_to_bool_fixture(source)?;
+        if input.functions.first().map(|func| func.return_kind)
+            != Some(InputScalarType::Bool)
+        {
+            return Err(String::from("byte truth return kind drifted"));
+        }
+        let _wire = assert_byte_to_bool_checkpoint(&target, source)?;
+    }
+    Ok(())
+}
+
 fn lowered_integer_to_bool_fixture(
     signed: bool,
     bits: u32,
@@ -5882,7 +6116,7 @@ fn reject_integer_to_bool_wire_forgery(
     let mut future = wire;
     *future
         .get_mut(offset)
-        .ok_or_else(|| String::from("integer-to-bool opcode missing"))? = 47;
+        .ok_or_else(|| String::from("integer-to-bool opcode missing"))? = 48;
     if canonical_ternary_program(&future)
         != Err(TernaryProgramCodecError::UnknownTag)
     {
@@ -6063,7 +6297,7 @@ fn bool_to_signed_rejects_forged_source_type_and_wire_tags()
     let mut unknown = bytes;
     *unknown
         .get_mut(offset)
-        .ok_or_else(|| String::from("bool-to-signed opcode absent"))? = 47;
+        .ok_or_else(|| String::from("bool-to-signed opcode absent"))? = 48;
     if canonical_ternary_program(&unknown)
         != Err(TernaryProgramCodecError::UnknownTag)
     {
@@ -6432,7 +6666,7 @@ fn assert_comparison_forgery(
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (47u8, TernaryProgramCodecError::UnknownTag),
+        (48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -6612,7 +6846,7 @@ fn assert_ordered_wire_forgery(
     let mut unknown = bytes;
     *unknown
         .get_mut(offset)
-        .ok_or_else(|| String::from("ordered tag byte missing"))? = 47;
+        .ok_or_else(|| String::from("ordered tag byte missing"))? = 48;
     if canonical_ternary_program(&unknown)
         != Err(TernaryProgramCodecError::UnknownTag)
     {
@@ -6736,7 +6970,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (47u8, TernaryProgramCodecError::UnknownTag),
+            (48u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -6797,10 +7031,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            47u8,
+            48u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 47u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 48u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -6978,7 +7212,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 47u8] {
+    for forged_tag in [4u8, 48u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -7220,7 +7454,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 47;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 48;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

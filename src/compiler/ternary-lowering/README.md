@@ -41,9 +41,11 @@ predicates preserve the same symbolic Boolean SSA semantics.
 
 Admitted `BoolToSigned` conversions create separate signed `i32` SSA
 results without host evaluation. Signed and unsigned 32-bit `IntegerToBool`
-casts create Boolean SSA results without host truth evaluation. Narrow-byte
-and pointer truth conversions, floating-point comparisons, control flow,
-and executable target realization remain outside this slice.
+casts create Boolean SSA results without host truth evaluation. Successful
+`u8` constants and guest byte input also preserve `IntegerToBool` as a
+symbolic Boolean result. Pointer truth conversions, floating-point
+comparisons, control flow, and executable target realization remain outside
+this slice.
 
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one

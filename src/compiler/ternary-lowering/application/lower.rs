@@ -1205,7 +1205,8 @@ fn lower_integer_to_bool(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     let signed = state.signed.contains(&value);
-    if !signed && !state.unsigned.contains(&value) {
+    let unsigned = state.unsigned.contains(&value);
+    if !signed && !unsigned && !state.bytes.contains(&value) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
@@ -1218,8 +1219,14 @@ fn lower_integer_to_bool(
             span: source_span,
             value,
         }
-    } else {
+    } else if unsigned {
         TernaryOperation::U32ToBool {
+            result,
+            span: source_span,
+            value,
+        }
+    } else {
+        TernaryOperation::U8ToBool {
             result,
             span: source_span,
             value,
