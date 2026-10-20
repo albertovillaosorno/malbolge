@@ -28,7 +28,8 @@ model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
-`i32`/`u32` bitwise AND/OR/XOR, unsigned byte-to-word extension,
+`i32`/`u32` bitwise AND/OR/XOR and addition/subtraction,
+unsigned byte-to-word extension,
 signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
 typed-IR
 `ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
@@ -154,7 +155,15 @@ signed-to-unsigned-to-signed and reverse chains over representative boundary
 bits. Independent canonical recovery preserves both cast SSA definitions
 and the final return category, and incorrect first-source reuse fails closed.
 
-The next unknown operation tag is `19`. Older decoders reject newly emitted
+Tags `19` through `22` add `AddI32`, `AddU32`, `SubtractI32`, and
+`SubtractU32`. They use the existing left/result/right SSA ID and 24-byte
+source-span layout for 32-bit binary operations without changing older tags.
+The pre-layout stage preserves signedness and does not execute arithmetic or
+claim wrapping signed overflow semantics; target realization remains separate.
+Independent decoder validation rejects wrong-signedness operands, unknown
+SSA uses, duplicate results, and the next unassigned tag `23`.
+
+The next unknown operation tag is `23`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for

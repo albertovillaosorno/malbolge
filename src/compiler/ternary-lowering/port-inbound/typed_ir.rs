@@ -69,6 +69,19 @@ pub enum InputScalarType {
 /// One projected non-terminating typed-IR instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputInstruction {
+    /// Preserve admitted 32-bit add semantics before target realization.
+    BinaryAdd {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted signed or unsigned 32-bit type category.
+        type_kind: InputScalarType,
+    },
     /// Apply bitwise AND to two previously defined exact `i32` values.
     BinaryAnd {
         /// Left upstream SSA operand identity.
@@ -93,6 +106,19 @@ pub enum InputInstruction {
         /// Exact normalized source provenance.
         span: InputSourceSpan,
         /// Admitted scalar type category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit subtract semantics before target realization.
+    BinarySubtract {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted signed or unsigned 32-bit type category.
         type_kind: InputScalarType,
     },
     /// Apply bitwise XOR to two previously defined exact `i32` values.

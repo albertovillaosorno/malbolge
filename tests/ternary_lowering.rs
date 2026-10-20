@@ -392,6 +392,7 @@ static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
 type TernaryProgressFixture = (PathBuf, PathBuf);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
+type ArithmeticExpected = Result<(TernaryOperation, u8), String>;
 
 struct TernaryCrashPaths {
     directory: PathBuf,
@@ -1399,6 +1400,46 @@ fn input_function(module: &Module, function: &Function) -> InputFunction {
     }
 }
 
+fn projected_arithmetic_instruction(
+    module: &Module,
+    instruction: &LocatedInstruction,
+) -> Option<InputInstruction> {
+    let Instruction::Binary {
+        left,
+        operation,
+        result,
+        right,
+        type_id,
+    } = instruction.instruction()
+    else {
+        return None;
+    };
+    let left_id = left.value();
+    let result_id = result.value();
+    let right_id = right.value();
+    let span = input_span(instruction.span());
+    let type_kind = input_scalar_type(module, *type_id);
+    if *operation == BinaryOp::Add {
+        return Some(InputInstruction::BinaryAdd {
+            left: left_id,
+            result: result_id,
+            right: right_id,
+            span,
+            type_kind,
+        });
+    }
+    if *operation == BinaryOp::Subtract {
+        return Some(InputInstruction::BinarySubtract {
+            left: left_id,
+            result: result_id,
+            right: right_id,
+            span,
+            type_kind,
+        });
+    }
+    None
+}
+
 fn projected_bitwise_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
@@ -1508,6 +1549,11 @@ fn input_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
 ) -> InputInstruction {
+    if let Some(arithmetic) =
+        projected_arithmetic_instruction(module, instruction)
+    {
+        return arithmetic;
+    }
     if let Some(bitwise) = projected_bitwise_instruction(module, instruction) {
         return bitwise;
     }
@@ -2059,7 +2105,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 19;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 23;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2224,6 +2270,150 @@ fn ternary_unsigned_crash_resume_recovers_committed_generation()
     }
     for boundary in TERNARY_CRASH_BOUNDARIES {
         run_ternary_crash_boundary(boundary, &previous, &next)?;
+    }
+    Ok(())
+}
+
+const fn arithmetic_case_label(
+    signed: bool,
+    operation: BinaryOp,
+) -> &'static str {
+    match (signed, operation) {
+        (true, BinaryOp::Add) => "signed-addition-progress",
+        (false, BinaryOp::Add) => "unsigned-addition-progress",
+        (true, BinaryOp::Subtract) => "signed-subtraction-progress",
+        (false, BinaryOp::Subtract) => "unsigned-subtraction-progress",
+        (_, _) => "unsupported-arithmetic-progress",
+    }
+}
+
+fn inspect_arithmetic_progress_case(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (expected, projection) = lowered_arithmetic_fixture(signed, operation)?;
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &projection,
+    ))
+    .map_err(|error| format!("select fresh arithmetic: {error:?}"))?;
+    if fresh != expected {
+        return Err(String::from("fresh arithmetic projection drifted"));
+    }
+    let bytes = canonical_ternary_bytes(&expected)
+        .map_err(|error| format!("encode arithmetic progress: {error:?}"))?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        arithmetic_case_label(signed, operation),
+        &bytes,
+    )?;
+    let resumed =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean arithmetic progress: {error}"))?;
+    if resumed != Ok(expected) {
+        return Err(String::from("arithmetic inspector recovery drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_arithmetic_selector_converges_with_inspector_progress()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            inspect_arithmetic_progress_case(signed, operation)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_arithmetic_progress_rejects_forged_types() -> Result<(), String> {
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            check_arithmetic_progress_forgery(signed, operation)?;
+        }
+    }
+    Ok(())
+}
+
+const fn arithmetic_forgery_label(
+    signed: bool,
+    operation: BinaryOp,
+) -> &'static str {
+    match (signed, operation) {
+        (true, BinaryOp::Add) => "forged-signed-addition",
+        (false, BinaryOp::Add) => "forged-unsigned-addition",
+        (true, BinaryOp::Subtract) => "forged-signed-subtraction",
+        (false, BinaryOp::Subtract) => "forged-unsigned-subtraction",
+        (_, _) => "forged-unrecognized-arithmetic",
+    }
+}
+
+fn check_arithmetic_progress_forgery(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (target, _projection) = lowered_arithmetic_fixture(signed, operation)?;
+    let mut bytes = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode forged arithmetic: {error:?}"))?;
+    let (_expected, tag) = arithmetic_target_operation(signed, operation)?;
+    let swapped = if signed {
+        tag.saturating_add(1)
+    } else {
+        tag.saturating_sub(1)
+    };
+    let prefix = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+    let offset = bytes
+        .windows(prefix.len())
+        .position(|wire| wire == prefix)
+        .ok_or_else(|| String::from("arithmetic progress tag missing"))?;
+    *bytes
+        .get_mut(offset)
+        .ok_or_else(|| String::from("arithmetic progress opcode missing"))? =
+        swapped;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        arithmetic_forgery_label(signed, operation),
+        &bytes,
+    )?;
+    let rejected = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean forged arithmetic: {error}"))?;
+    let expected = Err(TernaryProgressCheckpointError::Stage(
+        TernaryStageError::Checkpoint(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        )),
+    ));
+    if rejected != expected {
+        return Err(String::from("forged arithmetic signedness accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_arithmetic_crash_resume_preserves_generation() -> Result<(), String>
+{
+    let previous = lowered_return_fixture()?;
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            let (next, _projection) =
+                lowered_arithmetic_fixture(signed, operation)?;
+            if previous == next {
+                return Err(String::from(
+                    "arithmetic generation is not distinct",
+                ));
+            }
+            for boundary in TERNARY_CRASH_BOUNDARIES {
+                run_ternary_crash_boundary(boundary, &previous, &next)?;
+            }
+        }
     }
     Ok(())
 }
@@ -2886,6 +3076,247 @@ fn unsigned_i32_pattern_preserves_unsigned_ssa_and_return_type()
     Ok(())
 }
 
+fn lowered_arithmetic_fixture(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<LoweredByteFixture, String> {
+    let module = if signed {
+        low_byte_module_with_binary(operation)
+    } else {
+        unsigned_bitwise_module(u32::MAX, 0x8000_0000, operation)
+    };
+    validate_module(&module)
+        .map_err(|error| format!("admit typed arithmetic: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode typed arithmetic: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore typed arithmetic: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("typed arithmetic canonical bytes drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower typed arithmetic: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn arithmetic_target_operation(
+    signed: bool,
+    operation: BinaryOp,
+) -> ArithmeticExpected {
+    let operands = (0, 2, 1);
+    let span = output_span(fixture_span(2, 3));
+    let (left, result, right) = operands;
+    Ok(match (signed, operation) {
+        (true, BinaryOp::Add) => (
+            TernaryOperation::AddI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            19,
+        ),
+        (false, BinaryOp::Add) => (
+            TernaryOperation::AddU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            20,
+        ),
+        (true, BinaryOp::Subtract) => (
+            TernaryOperation::SubtractI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            21,
+        ),
+        (false, BinaryOp::Subtract) => (
+            TernaryOperation::SubtractU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            22,
+        ),
+        (_, _) => {
+            return Err(String::from("unsupported arithmetic test operation"));
+        },
+    })
+}
+
+#[test]
+fn typed_arithmetic_preserves_signedness_ssa_and_checkpoint_tags()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            let (target, input) =
+                lowered_arithmetic_fixture(signed, operation)?;
+            let expected_kind = if signed {
+                InputScalarType::I32
+            } else {
+                InputScalarType::U32
+            };
+            if input.functions.first().map(|function| function.return_kind)
+                != Some(expected_kind)
+            {
+                return Err(String::from("arithmetic return kind drifted"));
+            }
+            let (expected, tag) =
+                arithmetic_target_operation(signed, operation)?;
+            let function = target
+                .functions
+                .first()
+                .ok_or_else(|| String::from("arithmetic target missing"))?;
+            if function.operations.get(2) != Some(&expected) {
+                return Err(String::from(
+                    "typed arithmetic SSA/operand drifted",
+                ));
+            }
+            let encoded =
+                canonical_ternary_bytes(&target).map_err(|error| {
+                    format!("encode ternary arithmetic: {error:?}")
+                })?;
+            let prefix = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+            if !encoded.windows(prefix.len()).any(|wire| wire == prefix)
+                || canonical_ternary_program(&encoded) != Ok(target)
+            {
+                return Err(String::from("arithmetic canonical tag drifted"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_arithmetic_projection_forgery(
+    signed: bool,
+    operation: BinaryOp,
+    variation: u8,
+) -> Result<(), String> {
+    let (_target, mut forged) = lowered_arithmetic_fixture(signed, operation)?;
+    let wrong_type = if signed {
+        InputScalarType::U32
+    } else {
+        InputScalarType::I32
+    };
+    let instruction = forged
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(2))
+        .ok_or_else(|| String::from("arithmetic instruction missing"))?;
+    let (InputInstruction::BinaryAdd {
+        right, result, type_kind, ..
+    }
+    | InputInstruction::BinarySubtract {
+        right, result, type_kind, ..
+    }) = instruction
+    else {
+        return Err(String::from("arithmetic projection changed"));
+    };
+    match variation {
+        0 => *type_kind = wrong_type,
+        1 => *right = 99,
+        2 => *result = 0,
+        3 => *type_kind = InputScalarType::U8,
+        _ => return Err(String::from("unknown arithmetic forgery")),
+    }
+    let expected = if variation == 2 {
+        TernaryLoweringError::InvalidProjection
+    } else {
+        TernaryLoweringError::UnsupportedInstruction
+    };
+    if lower_typed_ir(&forged) != Err(expected) {
+        return Err(format!("arithmetic forgery {variation} admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_arithmetic_projection_rejects_operand_and_result_forgery()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            for variation in 0u8..4u8 {
+                check_arithmetic_projection_forgery(
+                    signed, operation, variation,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn assert_forged_arithmetic_wire_closed(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (target, _projection) = lowered_arithmetic_fixture(signed, operation)?;
+    let encoded = canonical_ternary_bytes(&target).map_err(|error| {
+        format!("encode arithmetic tamper fixture: {error:?}")
+    })?;
+    let (_expected_operation, tag) =
+        arithmetic_target_operation(signed, operation)?;
+    let flipped_tag = if signed {
+        tag.saturating_add(1)
+    } else {
+        tag.saturating_sub(1)
+    };
+    let prefix = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+    let offset = encoded
+        .windows(prefix.len())
+        .position(|wire| wire == prefix)
+        .ok_or_else(|| String::from("arithmetic tag missing"))?;
+    let wrong_ssa = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    for (forged_tag, expected) in [
+        (flipped_tag, wrong_ssa),
+        (23u8, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let mut forged = encoded.clone();
+        *forged
+            .get_mut(offset)
+            .ok_or_else(|| String::from("arithmetic tag offset missing"))? =
+            forged_tag;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!("forged arithmetic tag {forged_tag} admitted"));
+        }
+    }
+    let mut undefined = encoded;
+    let right_offset = offset
+        .checked_add(9)
+        .ok_or_else(|| String::from("right arithmetic ID offset overflow"))?;
+    let right_end = right_offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("right arithmetic ID extent overflow"))?;
+    undefined
+        .get_mut(right_offset..right_end)
+        .ok_or_else(|| String::from("right arithmetic ID missing"))?
+        .copy_from_slice(&99u32.to_le_bytes());
+    if canonical_ternary_program(&undefined) != Err(wrong_ssa) {
+        return Err(String::from("undefined arithmetic operand admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn arithmetic_wire_rejects_signedness_swaps_and_future_tags()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for operation in [BinaryOp::Add, BinaryOp::Subtract] {
+            assert_forged_arithmetic_wire_closed(signed, operation)?;
+        }
+    }
+    Ok(())
+}
+
 fn lowered_unsigned_bitwise_fixture(
     left: u32,
     right: u32,
@@ -3375,7 +3806,7 @@ fn integer_bitcast_decoder_rejects_retyped_and_unknown_opcodes()
         for (forged_tag, expected) in [
             (flipped, wrong_ssa),
             (16u8, wrong_ssa),
-            (19u8, TernaryProgramCodecError::UnknownTag),
+            (23u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -3532,7 +3963,7 @@ fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (19u8, TernaryProgramCodecError::UnknownTag),
+        (23u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -3688,7 +4119,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (19u8, TernaryProgramCodecError::UnknownTag),
+        (23u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -3793,7 +4224,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (19u8, TernaryProgramCodecError::UnknownTag),
+            (23u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -3854,10 +4285,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            19u8,
+            23u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 19u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 23u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -4035,7 +4466,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 19u8] {
+    for forged_tag in [4u8, 23u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -4277,7 +4708,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 19;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 23;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

@@ -64,6 +64,12 @@ enum Bitwise32Kind {
     Xor,
 }
 
+#[derive(Clone, Copy)]
+enum Arithmetic32Kind {
+    Add,
+    Subtract,
+}
+
 #[derive(Default)]
 struct LoweringState {
     bytes: BTreeSet<u32>,
@@ -169,43 +175,14 @@ fn lower_instruction(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     match instruction {
-        InputInstruction::BinaryAnd {
-            left,
-            result,
-            right,
-            span,
-            type_kind,
-        }
-        | InputInstruction::BinaryOr {
-            left,
-            result,
-            right,
-            span,
-            type_kind,
-        }
-        | InputInstruction::BinaryXor {
-            left,
-            result,
-            right,
-            span,
-            type_kind,
-        } => {
-            let kind =
-                if matches!(instruction, InputInstruction::BinaryAnd { .. }) {
-                    Bitwise32Kind::And
-                } else if matches!(
-                    instruction,
-                    InputInstruction::BinaryOr { .. }
-                ) {
-                    Bitwise32Kind::Or
-                } else {
-                    Bitwise32Kind::Xor
-                };
-            lower_binary_word32(
-                (*left, *result, *right, *span, *type_kind),
-                kind,
-                state,
-            )
+        InputInstruction::BinaryAdd { .. }
+        | InputInstruction::BinarySubtract { .. } => {
+            lower_arithmetic_instruction(instruction, state)
+        },
+        InputInstruction::BinaryAnd { .. }
+        | InputInstruction::BinaryOr { .. }
+        | InputInstruction::BinaryXor { .. } => {
+            lower_bitwise_instruction(instruction, state)
         },
         InputInstruction::ByteInput { .. }
         | InputInstruction::ByteOutput { .. }
@@ -217,6 +194,81 @@ fn lower_instruction(
             lower_other_instruction(instruction, state)
         },
     }
+}
+
+fn lower_arithmetic_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (InputInstruction::BinaryAdd {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinarySubtract {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }) = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    let kind = if matches!(instruction, InputInstruction::BinaryAdd { .. }) {
+        Arithmetic32Kind::Add
+    } else {
+        Arithmetic32Kind::Subtract
+    };
+    lower_arithmetic_word32(
+        (*left, *result, *right, *span, *type_kind),
+        kind,
+        state,
+    )
+}
+
+fn lower_bitwise_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (InputInstruction::BinaryAnd {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryOr {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryXor {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }) = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    let kind = if matches!(instruction, InputInstruction::BinaryAnd { .. }) {
+        Bitwise32Kind::And
+    } else if matches!(instruction, InputInstruction::BinaryOr { .. }) {
+        Bitwise32Kind::Or
+    } else {
+        Bitwise32Kind::Xor
+    };
+    lower_binary_word32(
+        (*left, *result, *right, *span, *type_kind),
+        kind,
+        state,
+    )
 }
 
 fn lower_other_instruction(
@@ -273,10 +325,89 @@ fn lower_other_instruction(
         InputInstruction::Unsupported
         | InputInstruction::BinaryAnd { .. }
         | InputInstruction::BinaryOr { .. }
-        | InputInstruction::BinaryXor { .. } => {
+        | InputInstruction::BinaryXor { .. }
+        | InputInstruction::BinaryAdd { .. }
+        | InputInstruction::BinarySubtract { .. } => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
+}
+
+fn lower_arithmetic_word32(
+    input: Binary32Input,
+    kind: Arithmetic32Kind,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right, span, type_kind) = input;
+    let uses = match type_kind {
+        InputScalarType::I32 => &state.signed,
+        InputScalarType::U32 => &state.unsigned,
+        InputScalarType::Other | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    };
+    if !uses.contains(&left) || !uses.contains(&right) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = match type_kind {
+        InputScalarType::I32 => state.signed.insert(result),
+        InputScalarType::U32 => state.unsigned.insert(result),
+        InputScalarType::Other | InputScalarType::U8 => false,
+    };
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    construct_arithmetic_operation(
+        kind,
+        type_kind,
+        (left, result, right),
+        copy_span(span),
+    )
+}
+
+const fn construct_arithmetic_operation(
+    kind: Arithmetic32Kind,
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match (kind, type_kind) {
+        (Arithmetic32Kind::Add, InputScalarType::I32) => {
+            TernaryOperation::AddI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::Add, InputScalarType::U32) => {
+            TernaryOperation::AddU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::Subtract, InputScalarType::I32) => {
+            TernaryOperation::SubtractI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::Subtract, InputScalarType::U32) => {
+            TernaryOperation::SubtractU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (_, InputScalarType::Other | InputScalarType::U8) => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    })
 }
 
 fn lower_binary_word32(

@@ -844,6 +844,28 @@ pub enum RuntimeIntrinsicOperation {
 /// One deterministic pre-layout ternary operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryOperation {
+    /// Carry typed i32 add to target realization without host evaluation.
+    AddI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Carry typed u32 add to target realization without host evaluation.
+    AddU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Apply exact 32-bit bitwise AND to two previously materialized values.
     AndI32 {
         /// Left upstream SSA value identity.
@@ -972,6 +994,28 @@ pub enum TernaryOperation {
         span: TernarySourceSpan,
         /// Upstream SSA byte value identity.
         value: u32,
+    },
+    /// Carry typed i32 subtract to target realization without host evaluation.
+    SubtractI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Carry typed u32 subtract to target realization without host evaluation.
+    SubtractU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
     },
     /// Truncate one exact `i32` value to its low eight bits as `u8`.
     TruncateI32ToU8 {
