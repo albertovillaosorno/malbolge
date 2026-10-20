@@ -255,6 +255,17 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Promote a defined Boolean SSA value to signed 32-bit zero/one.
+    BoolToSigned {
+        /// New signed 32-bit SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Signed destination scalar type category.
+        type_kind: InputScalarType,
+        /// Previously defined Boolean SSA source.
+        value: u32,
+    },
     /// Read one deterministic successful guest byte effect.
     ByteInput {
         /// Upstream SSA result identity.

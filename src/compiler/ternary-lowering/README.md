@@ -37,9 +37,11 @@ integer bitcasts, unsigned byte widening/truncation, and typed equality or
 inequality comparisons. Equality and inequality of 32-bit operands produce
 Boolean SSA results and `ReturnBool` can return them without promoting or
 host-evaluating their values. Signed and unsigned 32-bit `<` and `<=`
-predicates preserve the same symbolic Boolean SSA semantics. Floating-point
-and pointer comparisons, control flow, and executable target realization
-remain outside this slice.
+predicates preserve the same symbolic Boolean SSA semantics. Admitted
+`BoolToSigned` conversions create separate signed `i32` SSA results without
+host evaluation. Other Boolean conversions, floating-point/pointer
+comparisons, control flow, and executable target realization remain outside
+this slice.
 
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one

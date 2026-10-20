@@ -233,7 +233,8 @@ fn lower_instruction(
         InputInstruction::CompareOrdered { .. } => {
             lower_ordered_comparison_instruction(instruction, state)
         },
-        InputInstruction::ByteInput { .. }
+        InputInstruction::BoolToSigned { .. }
+        | InputInstruction::ByteInput { .. }
         | InputInstruction::ByteOutput { .. }
         | InputInstruction::IntegerBitcast { .. }
         | InputInstruction::ConstantInteger { .. }
@@ -641,6 +642,12 @@ fn lower_other_instruction(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     match instruction {
+        InputInstruction::BoolToSigned {
+            result,
+            span,
+            type_kind,
+            value,
+        } => lower_bool_to_i32((*result, *span, *type_kind, *value), state),
         InputInstruction::ByteInput { result, span, type_kind } => {
             lower_byte_input((*result, *span, *type_kind), state)
         },
@@ -1156,6 +1163,24 @@ fn lower_truncate_i32_to_u8(
             value,
         })
     }
+}
+
+fn lower_bool_to_i32(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    if type_kind != InputScalarType::I32 || !state.bools.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.signed.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    Ok(TernaryOperation::BoolToI32 {
+        result,
+        span: copy_span(span),
+        value,
+    })
 }
 
 fn lower_zero_extend_u8_to_u32(

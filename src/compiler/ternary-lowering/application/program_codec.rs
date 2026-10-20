@@ -635,6 +635,7 @@ fn decode_cast_operation(
         18 => TernaryOperation::BitcastU32ToI32 { result, span, value },
         33 => TernaryOperation::BitcastI32ToI32 { result, span, value },
         34 => TernaryOperation::BitcastU32ToU32 { result, span, value },
+        44 => TernaryOperation::BoolToI32 { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -689,7 +690,9 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 | 33..=34 => decode_cast_operation(decoder, tag)?,
+        5 | 15 | 16 | 17 | 18 | 33..=34 | 44 => {
+            decode_cast_operation(decoder, tag)?
+        },
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
         25..=28 => decode_shift_operation(decoder, tag)?,
         29..=32 => decode_divrem_operation(decoder, tag)?,
@@ -1139,6 +1142,8 @@ const fn cast_tag(operation: TernaryOperation) -> u8 {
         15
     } else if matches!(operation, TernaryOperation::ZeroExtendU8ToU32 { .. }) {
         16
+    } else if matches!(operation, TernaryOperation::BoolToI32 { .. }) {
+        44
     } else {
         bitcast_tag(operation)
     }
@@ -1157,7 +1162,8 @@ const fn bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
-    let (TernaryOperation::TruncateI32ToU8 { result, span, value }
+    let (TernaryOperation::BoolToI32 { result, span, value }
+    | TernaryOperation::TruncateI32ToU8 { result, span, value }
     | TernaryOperation::TruncateU32ToU8 { result, span, value }
     | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
     | TernaryOperation::BitcastI32ToU32 { result, span, value }
@@ -1330,7 +1336,8 @@ fn encode_non_word_operation(
     }
     if matches!(
         operation,
-        TernaryOperation::TruncateI32ToU8 { .. }
+        TernaryOperation::BoolToI32 { .. }
+            | TernaryOperation::TruncateI32ToU8 { .. }
             | TernaryOperation::TruncateU32ToU8 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
@@ -1405,6 +1412,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::LessUnsignedU32 { span, .. }
         | TernaryOperation::NotEqualU32 { span, .. }
         | TernaryOperation::ReturnBool { span, .. }
+        | TernaryOperation::BoolToI32 { span, .. }
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
@@ -1558,63 +1566,36 @@ fn validate_widen_or_bitcast(
     values: &mut BTreeMap<u32, ValueKind>,
     operation: TernaryOperation,
 ) -> Result<bool, TernaryProgramValidationError> {
-    let (result, value, types) = match operation {
-        TernaryOperation::ZeroExtendU8ToU32 { result, value, .. } => {
-            (result, value, (ValueKind::Byte, ValueKind::U32))
-        },
-        TernaryOperation::BitcastI32ToU32 { result, value, .. } => {
-            (result, value, (ValueKind::I32, ValueKind::U32))
-        },
-        TernaryOperation::BitcastU32ToI32 { result, value, .. } => {
-            (result, value, (ValueKind::U32, ValueKind::I32))
-        },
-        TernaryOperation::BitcastI32ToI32 { result, value, .. } => {
-            (result, value, (ValueKind::I32, ValueKind::I32))
-        },
-        TernaryOperation::BitcastU32ToU32 { result, value, .. } => {
-            (result, value, (ValueKind::U32, ValueKind::U32))
-        },
-        TernaryOperation::AddI32 { .. }
-        | TernaryOperation::AddU32 { .. }
-        | TernaryOperation::SubtractI32 { .. }
-        | TernaryOperation::SubtractU32 { .. }
-        | TernaryOperation::DivideI32 { .. }
-        | TernaryOperation::DivideU32 { .. }
-        | TernaryOperation::RemainderI32 { .. }
-        | TernaryOperation::RemainderU32 { .. }
-        | TernaryOperation::MultiplyI32 { .. }
-        | TernaryOperation::MultiplyU32 { .. }
-        | TernaryOperation::ShiftLeftI32 { .. }
-        | TernaryOperation::ShiftLeftU32 { .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { .. }
-        | TernaryOperation::ShiftRightLogicalU32 { .. }
-        | TernaryOperation::AndI32 { .. }
-        | TernaryOperation::AndU32 { .. }
-        | TernaryOperation::ByteInput { .. }
-        | TernaryOperation::ByteOutput { .. }
-        | TernaryOperation::MaterializeI32 { .. }
-        | TernaryOperation::MaterializeU32 { .. }
-        | TernaryOperation::MaterializeU8 { .. }
-        | TernaryOperation::OrI32 { .. }
-        | TernaryOperation::OrU32 { .. }
-        | TernaryOperation::Return { .. }
-        | TernaryOperation::ReturnU32 { .. }
-        | TernaryOperation::ReturnU8 { .. }
-        | TernaryOperation::ReturnBool { .. }
-        | TernaryOperation::EqualI32 { .. }
-        | TernaryOperation::EqualU32 { .. }
-        | TernaryOperation::NotEqualI32 { .. }
-        | TernaryOperation::LessSignedEqualI32 { .. }
-        | TernaryOperation::LessSignedI32 { .. }
-        | TernaryOperation::LessUnsignedEqualU32 { .. }
-        | TernaryOperation::LessUnsignedU32 { .. }
-        | TernaryOperation::NotEqualU32 { .. }
-        | TernaryOperation::TruncateI32ToU8 { .. }
-        | TernaryOperation::TruncateU32ToU8 { .. }
-        | TernaryOperation::XorI32 { .. }
-        | TernaryOperation::XorU32 { .. } => {
-            return Err(TernaryProgramValidationError::SsaValue);
-        },
+    let (result, value, types) = if let TernaryOperation::BoolToI32 {
+        result,
+        value,
+        ..
+    } = operation
+    {
+        (result, value, (ValueKind::Bool, ValueKind::I32))
+    } else if let TernaryOperation::ZeroExtendU8ToU32 {
+        result, value, ..
+    } = operation
+    {
+        (result, value, (ValueKind::Byte, ValueKind::U32))
+    } else if let TernaryOperation::BitcastI32ToU32 { result, value, .. } =
+        operation
+    {
+        (result, value, (ValueKind::I32, ValueKind::U32))
+    } else if let TernaryOperation::BitcastU32ToI32 { result, value, .. } =
+        operation
+    {
+        (result, value, (ValueKind::U32, ValueKind::I32))
+    } else if let TernaryOperation::BitcastI32ToI32 { result, value, .. } =
+        operation
+    {
+        (result, value, (ValueKind::I32, ValueKind::I32))
+    } else if let TernaryOperation::BitcastU32ToU32 { result, value, .. } =
+        operation
+    {
+        (result, value, (ValueKind::U32, ValueKind::U32))
+    } else {
+        return Err(TernaryProgramValidationError::SsaValue);
     };
     validate_reinterpret_value(values, result, value, types)
 }
@@ -1799,7 +1780,8 @@ fn validate_operation(
     }
     if matches!(
         operation,
-        TernaryOperation::ZeroExtendU8ToU32 { .. }
+        TernaryOperation::BoolToI32 { .. }
+            | TernaryOperation::ZeroExtendU8ToU32 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
             | TernaryOperation::BitcastU32ToI32 { .. }
             | TernaryOperation::BitcastI32ToI32 { .. }
