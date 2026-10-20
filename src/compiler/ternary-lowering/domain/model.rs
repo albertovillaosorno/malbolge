@@ -1017,6 +1017,52 @@ pub enum TernaryOperation {
         /// Upstream SSA byte value identity.
         value: u32,
     },
+    /// Preserve signed left shift SSA semantics for later target realization.
+    ShiftLeftI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned left shift SSA semantics for later target realization.
+    ShiftLeftU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve signed arithmetic right shift SSA semantics for later target
+    /// realization.
+    ShiftRightArithmeticI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Preserve unsigned logical right shift SSA semantics for later target
+    /// realization.
+    ShiftRightLogicalU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Carry typed i32 subtract to target realization without host evaluation.
     SubtractI32 {
         /// Left upstream SSA value identity.

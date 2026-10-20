@@ -68,6 +68,9 @@ enum Bitwise32Kind {
 enum Arithmetic32Kind {
     Add,
     Multiply,
+    ShiftLeft,
+    ShiftRightArithmetic,
+    ShiftRightLogical,
     Subtract,
 }
 
@@ -181,6 +184,11 @@ fn lower_instruction(
         | InputInstruction::BinarySubtract { .. } => {
             lower_arithmetic_instruction(instruction, state)
         },
+        InputInstruction::BinaryShiftLeft { .. }
+        | InputInstruction::BinaryShiftRightArithmetic { .. }
+        | InputInstruction::BinaryShiftRightLogical { .. } => {
+            lower_shift_instruction(instruction, state)
+        },
         InputInstruction::BinaryAnd { .. }
         | InputInstruction::BinaryOr { .. }
         | InputInstruction::BinaryXor { .. } => {
@@ -233,6 +241,52 @@ fn lower_arithmetic_instruction(
     } else {
         Arithmetic32Kind::Subtract
     };
+    lower_arithmetic_word32(
+        (*left, *result, *right, *span, *type_kind),
+        kind,
+        state,
+    )
+}
+
+fn lower_shift_instruction(
+    instruction: &InputInstruction,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (InputInstruction::BinaryShiftLeft {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryShiftRightArithmetic {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }
+    | InputInstruction::BinaryShiftRightLogical {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
+    }) = instruction
+    else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    let kind =
+        if matches!(instruction, InputInstruction::BinaryShiftLeft { .. }) {
+            Arithmetic32Kind::ShiftLeft
+        } else if matches!(
+            instruction,
+            InputInstruction::BinaryShiftRightArithmetic { .. }
+        ) {
+            Arithmetic32Kind::ShiftRightArithmetic
+        } else {
+            Arithmetic32Kind::ShiftRightLogical
+        };
     lower_arithmetic_word32(
         (*left, *result, *right, *span, *type_kind),
         kind,
@@ -339,7 +393,10 @@ fn lower_other_instruction(
         | InputInstruction::BinaryXor { .. }
         | InputInstruction::BinaryAdd { .. }
         | InputInstruction::BinarySubtract { .. }
-        | InputInstruction::BinaryMultiply { .. } => {
+        | InputInstruction::BinaryMultiply { .. }
+        | InputInstruction::BinaryShiftLeft { .. }
+        | InputInstruction::BinaryShiftRightArithmetic { .. }
+        | InputInstruction::BinaryShiftRightLogical { .. } => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
@@ -382,6 +439,14 @@ const fn construct_arithmetic_operation(
     operands: (u32, u32, u32),
     span: TernarySourceSpan,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
+    if matches!(
+        kind,
+        Arithmetic32Kind::ShiftLeft
+            | Arithmetic32Kind::ShiftRightArithmetic
+            | Arithmetic32Kind::ShiftRightLogical
+    ) {
+        return construct_shift_operation(kind, type_kind, operands, span);
+    }
     let (left, result, right) = operands;
     Ok(match (kind, type_kind) {
         (Arithmetic32Kind::Add, InputScalarType::I32) => {
@@ -416,25 +481,91 @@ const fn construct_arithmetic_operation(
                 span,
             }
         },
-        (Arithmetic32Kind::Subtract, InputScalarType::I32) => {
-            TernaryOperation::SubtractI32 {
-                left,
-                result,
-                right,
-                span,
-            }
+        (Arithmetic32Kind::Subtract, _) => {
+            return construct_subtract_operation(type_kind, operands, span);
         },
-        (Arithmetic32Kind::Subtract, InputScalarType::U32) => {
-            TernaryOperation::SubtractU32 {
-                left,
-                result,
-                right,
-                span,
-            }
-        },
-        (_, InputScalarType::Other | InputScalarType::U8) => {
+        (
+            Arithmetic32Kind::ShiftLeft
+            | Arithmetic32Kind::ShiftRightArithmetic
+            | Arithmetic32Kind::ShiftRightLogical,
+            _,
+        )
+        | (_, InputScalarType::Other | InputScalarType::U8) => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
+    })
+}
+
+const fn construct_subtract_operation(
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match type_kind {
+        InputScalarType::I32 => TernaryOperation::SubtractI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputScalarType::U32 => TernaryOperation::SubtractU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        InputScalarType::Other | InputScalarType::U8 => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+    })
+}
+
+const fn construct_shift_operation(
+    kind: Arithmetic32Kind,
+    type_kind: InputScalarType,
+    operands: (u32, u32, u32),
+    span: TernarySourceSpan,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (left, result, right) = operands;
+    Ok(match (kind, type_kind) {
+        (Arithmetic32Kind::ShiftLeft, InputScalarType::I32) => {
+            TernaryOperation::ShiftLeftI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::ShiftLeft, InputScalarType::U32) => {
+            TernaryOperation::ShiftLeftU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::ShiftRightArithmetic, InputScalarType::I32) => {
+            TernaryOperation::ShiftRightArithmeticI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::ShiftRightLogical, InputScalarType::U32) => {
+            TernaryOperation::ShiftRightLogicalU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::ShiftRightArithmetic, InputScalarType::U32)
+        | (Arithmetic32Kind::ShiftRightLogical, InputScalarType::I32) => {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
     })
 }
 

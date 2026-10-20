@@ -28,7 +28,8 @@ model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
-`i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, and multiplication,
+`i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, multiplication,
+and typed signed/unsigned left and right shifts,
 unsigned byte-to-word extension,
 signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
 typed-IR
@@ -173,7 +174,17 @@ and the first unassigned tag `25`. Fresh lowering matches inspector-backed
 checkpoint recovery; all ten crash-publication boundaries preserve each of
 the two multiplication generation identities.
 
-The next unknown operation tag is `25`. Older decoders reject newly emitted
+Tags `25` through `28` add typed `ShiftLeftI32`, `ShiftLeftU32`,
+`ShiftRightArithmeticI32`, and `ShiftRightLogicalU32` operations with the
+original three SSA IDs and 24-byte source span. Source operands and shift
+counts must be previously defined at the exact signed or unsigned 32-bit
+category; the symbolic stage does not evaluate shift counts or assume
+undefined signed-shift behavior. Independent canonical admission rejects
+swapped signedness/direction, unknown SSA uses, and future tag `29`.
+Fresh compiler selection converges with inspector-backed progress restoration,
+including all ten crash boundaries for every supported shift variant.
+
+The next unknown operation tag is `29`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for

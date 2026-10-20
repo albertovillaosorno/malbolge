@@ -1265,9 +1265,16 @@ fn low_byte_instructions(
     i32_type: TypeId,
     operation: BinaryOp,
 ) -> Vec<LocatedInstruction> {
+    let (left_bits, count_bits) = if operation == BinaryOp::ShiftLeft {
+        (1, 31)
+    } else if operation == BinaryOp::ShiftRightArithmetic {
+        (0x8000_0000, 31)
+    } else {
+        (u32::MAX, 0xff)
+    };
     vec![
-        low_byte_constant(0xffff_ffff, 0, 0, i32_type),
-        low_byte_constant(0xff, 1, 1, i32_type),
+        low_byte_constant(left_bits, 0, 0, i32_type),
+        low_byte_constant(count_bits, 1, 1, i32_type),
         LocatedInstruction::new(
             Instruction::Binary {
                 left: ValueId::new(0),
@@ -1398,6 +1405,55 @@ fn input_function(module: &Module, function: &Function) -> InputFunction {
         return_kind,
         span: input_span(function.span()),
     }
+}
+
+fn projected_shift_instruction(
+    module: &Module,
+    instruction: &LocatedInstruction,
+) -> Option<InputInstruction> {
+    let Instruction::Binary {
+        left,
+        operation,
+        result,
+        right,
+        type_id,
+    } = instruction.instruction()
+    else {
+        return None;
+    };
+    let left_id = left.value();
+    let result_id = result.value();
+    let right_id = right.value();
+    let span = input_span(instruction.span());
+    let type_kind = input_scalar_type(module, *type_id);
+    if *operation == BinaryOp::ShiftLeft {
+        return Some(InputInstruction::BinaryShiftLeft {
+            left: left_id,
+            result: result_id,
+            right: right_id,
+            span,
+            type_kind,
+        });
+    }
+    if *operation == BinaryOp::ShiftRightArithmetic {
+        return Some(InputInstruction::BinaryShiftRightArithmetic {
+            left: left_id,
+            result: result_id,
+            right: right_id,
+            span,
+            type_kind,
+        });
+    }
+    if *operation == BinaryOp::ShiftRightLogical {
+        return Some(InputInstruction::BinaryShiftRightLogical {
+            left: left_id,
+            result: result_id,
+            right: right_id,
+            span,
+            type_kind,
+        });
+    }
+    None
 }
 
 fn projected_arithmetic_instruction(
@@ -1558,6 +1614,9 @@ fn input_instruction(
     module: &Module,
     instruction: &LocatedInstruction,
 ) -> InputInstruction {
+    if let Some(shift) = projected_shift_instruction(module, instruction) {
+        return shift;
+    }
     if let Some(arithmetic) =
         projected_arithmetic_instruction(module, instruction)
     {
@@ -2114,7 +2173,7 @@ fn ternary_bitwise_tags_reject_forged_ssa_and_unknown_successor()
         let mut unknown_tag = bytes;
         *unknown_tag
             .get_mut(offset)
-            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 25;
+            .ok_or_else(|| String::from("bitwise tag byte missing"))? = 29;
         if canonical_ternary_program(&unknown_tag)
             != Err(TernaryProgramCodecError::UnknownTag)
         {
@@ -2326,6 +2385,72 @@ fn inspect_arithmetic_progress_case(
         .map_err(|error| format!("clean arithmetic progress: {error}"))?;
     if resumed != Ok(expected) {
         return Err(String::from("arithmetic inspector recovery drifted"));
+    }
+    Ok(())
+}
+
+const fn shift_case_label(signed: bool, operation: BinaryOp) -> &'static str {
+    match (signed, operation) {
+        (true, BinaryOp::ShiftLeft) => "signed-left-shift",
+        (false, BinaryOp::ShiftLeft) => "unsigned-left-shift",
+        (true, BinaryOp::ShiftRightArithmetic) => "signed-arithmetic-shift",
+        (false, BinaryOp::ShiftRightLogical) => "unsigned-logical-shift",
+        _ => "unsupported-shift-case",
+    }
+}
+
+fn check_shift_progress(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (expected, projection) = lowered_shift_fixture(signed, operation)?;
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &projection,
+    ))
+    .map_err(|error| format!("select fresh shift: {error:?}"))?;
+    if fresh != expected {
+        return Err(String::from("fresh shift selection drifted"));
+    }
+    let encoded = canonical_ternary_bytes(&fresh)
+        .map_err(|error| format!("encode shift progress: {error:?}"))?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        shift_case_label(signed, operation),
+        &encoded,
+    )?;
+    let resumed =
+        enter_ternary_compiler_stage(TernaryCompilerStageInput::Progress {
+            inspector: &progress_inspector(),
+            interpreter: &repository_python(),
+            progress: &progress,
+        });
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean shift progress: {error}"))?;
+    if resumed != Ok(expected) {
+        return Err(String::from("shift inspector recovery drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_shift_selector_converges_with_inspector_progress()
+-> Result<(), String> {
+    for (signed, operation) in shift_cases() {
+        check_shift_progress(signed, operation)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_shift_crash_resume_preserves_generation() -> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for (signed, operation) in shift_cases() {
+        let (next, _projection) = lowered_shift_fixture(signed, operation)?;
+        if previous == next {
+            return Err(String::from("shift generation is not distinct"));
+        }
+        for boundary in TERNARY_CRASH_BOUNDARIES {
+            run_ternary_crash_boundary(boundary, &previous, &next)?;
+        }
     }
     Ok(())
 }
@@ -3314,7 +3439,7 @@ fn assert_forged_arithmetic_wire_closed(
     );
     for (forged_tag, expected) in [
         (flipped_tag, wrong_ssa),
-        (25u8, TernaryProgramCodecError::UnknownTag),
+        (29u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged
@@ -3350,6 +3475,189 @@ fn arithmetic_wire_rejects_signedness_swaps_and_future_tags()
         {
             assert_forged_arithmetic_wire_closed(signed, operation)?;
         }
+    }
+    Ok(())
+}
+
+fn lowered_shift_fixture(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<LoweredByteFixture, String> {
+    let module = if signed {
+        low_byte_module_with_binary(operation)
+    } else {
+        unsigned_bitwise_module(1, 31, operation)
+    };
+    validate_module(&module)
+        .map_err(|error| format!("admit typed shift IR: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode typed shift IR: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore typed shift IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("typed shift IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower typed shift: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+const fn shift_cases() -> [(bool, BinaryOp); 4] {
+    [
+        (true, BinaryOp::ShiftLeft),
+        (false, BinaryOp::ShiftLeft),
+        (true, BinaryOp::ShiftRightArithmetic),
+        (false, BinaryOp::ShiftRightLogical),
+    ]
+}
+
+fn shift_target_operation(
+    signed: bool,
+    operation: BinaryOp,
+) -> ArithmeticExpected {
+    let (left, result, right) = (0, 2, 1);
+    let span = output_span(fixture_span(2, 3));
+    Ok(match (signed, operation) {
+        (true, BinaryOp::ShiftLeft) => (
+            TernaryOperation::ShiftLeftI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            25,
+        ),
+        (false, BinaryOp::ShiftLeft) => (
+            TernaryOperation::ShiftLeftU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            26,
+        ),
+        (true, BinaryOp::ShiftRightArithmetic) => (
+            TernaryOperation::ShiftRightArithmeticI32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            27,
+        ),
+        (false, BinaryOp::ShiftRightLogical) => (
+            TernaryOperation::ShiftRightLogicalU32 {
+                left,
+                result,
+                right,
+                span,
+            },
+            28,
+        ),
+        _ => return Err(String::from("invalid signed shift combination")),
+    })
+}
+
+fn check_shift_fixture(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (target, input) = lowered_shift_fixture(signed, operation)?;
+    let expected_kind = if signed {
+        InputScalarType::I32
+    } else {
+        InputScalarType::U32
+    };
+    if input.functions.first().map(|function| function.return_kind)
+        != Some(expected_kind)
+    {
+        return Err(String::from("shift return signedness changed"));
+    }
+    let (expected, tag) = shift_target_operation(signed, operation)?;
+    if target
+        .functions
+        .first()
+        .and_then(|function| function.operations.get(2))
+        != Some(&expected)
+    {
+        return Err(String::from("shift operand/SSA provenance changed"));
+    }
+    let encoded = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode shift target: {error:?}"))?;
+    let prefix = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+    if !encoded.windows(prefix.len()).any(|window| window == prefix)
+        || canonical_ternary_program(&encoded) != Ok(target)
+    {
+        return Err(String::from("shift canonical checkpoint drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_shift_preserves_ssa_signedness_and_canonical_tags()
+-> Result<(), String> {
+    for (signed, operation) in shift_cases() {
+        check_shift_fixture(signed, operation)?;
+    }
+    Ok(())
+}
+
+fn check_shift_forgery(
+    signed: bool,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    let (target, _input) = lowered_shift_fixture(signed, operation)?;
+    let mut encoded = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode shift forgery: {error:?}"))?;
+    let (_expected, tag) = shift_target_operation(signed, operation)?;
+    let swapped = if signed {
+        tag.saturating_add(1)
+    } else {
+        tag.saturating_sub(1)
+    };
+    let prefix = [tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+    let offset = encoded
+        .windows(prefix.len())
+        .position(|window| window == prefix)
+        .ok_or_else(|| String::from("shift tag missing"))?;
+    let wrong_ssa = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    for (tag_value, failure) in [
+        (swapped, wrong_ssa),
+        (29u8, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let mut changed = encoded.clone();
+        *changed
+            .get_mut(offset)
+            .ok_or_else(|| String::from("shift tag byte missing"))? = tag_value;
+        if canonical_ternary_program(&changed) != Err(failure) {
+            return Err(format!("forged shift tag {tag_value} admitted"));
+        }
+    }
+    let right_start = offset
+        .checked_add(9)
+        .ok_or_else(|| String::from("shift right operand offset overflow"))?;
+    let right_end = right_start
+        .checked_add(4)
+        .ok_or_else(|| String::from("shift right operand extent overflow"))?;
+    encoded
+        .get_mut(right_start..right_end)
+        .ok_or_else(|| String::from("shift right operand missing"))?
+        .copy_from_slice(&99u32.to_le_bytes());
+    if canonical_ternary_program(&encoded) != Err(wrong_ssa) {
+        return Err(String::from("undefined shift count SSA admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn shift_decoder_rejects_wrong_direction_and_undefined_operands()
+-> Result<(), String> {
+    for (signed, operation) in shift_cases() {
+        check_shift_forgery(signed, operation)?;
     }
     Ok(())
 }
@@ -3843,7 +4151,7 @@ fn integer_bitcast_decoder_rejects_retyped_and_unknown_opcodes()
         for (forged_tag, expected) in [
             (flipped, wrong_ssa),
             (16u8, wrong_ssa),
-            (25u8, TernaryProgramCodecError::UnknownTag),
+            (29u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -4000,7 +4308,7 @@ fn unsigned_zero_extension_checkpoint_rejects_retyped_source()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (25u8, TernaryProgramCodecError::UnknownTag),
+        (29u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -4156,7 +4464,7 @@ fn unsigned_truncation_checkpoint_rejects_signed_tag_and_undefined_use()
                 TernaryProgramValidationError::SsaValue,
             ),
         ),
-        (25u8, TernaryProgramCodecError::UnknownTag),
+        (29u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = bytes.clone();
         *forged
@@ -4261,7 +4569,7 @@ fn unsigned_bitwise_decoder_rejects_signed_opcodes_and_unknown_tag()
                     TernaryProgramValidationError::SsaValue,
                 ),
             ),
-            (25u8, TernaryProgramCodecError::UnknownTag),
+            (29u8, TernaryProgramCodecError::UnknownTag),
         ] {
             let mut forged = bytes.clone();
             *forged
@@ -4322,10 +4630,10 @@ fn unsigned_decoder_rejects_signedness_forgery_and_closed_tag()
         ),
         (
             materialize_offset,
-            25u8,
+            29u8,
             TernaryProgramCodecError::UnknownTag,
         ),
-        (return_offset, 25u8, TernaryProgramCodecError::UnknownTag),
+        (return_offset, 29u8, TernaryProgramCodecError::UnknownTag),
     ] {
         let mut forged = encoded.clone();
         *forged.get_mut(position).ok_or_else(|| {
@@ -4503,7 +4811,7 @@ fn byte_return_checkpoint_rejects_forged_source_and_closed_tag()
         .len()
         .checked_sub(29)
         .ok_or_else(|| String::from("byte-return wire too short"))?;
-    for forged_tag in [4u8, 25u8] {
+    for forged_tag in [4u8, 29u8] {
         let mut forged = bytes.clone();
         *forged
             .get_mut(tag_offset)
@@ -4745,7 +5053,7 @@ fn byte_constant_decoder_rejects_invalid_ternary_scalar() -> Result<(), String>
     let mut forged = encoded;
     *forged
         .get_mut(offset)
-        .ok_or_else(|| String::from("byte opcode missing"))? = 25;
+        .ok_or_else(|| String::from("byte opcode missing"))? = 29;
     if canonical_ternary_program(&forged)
         != Err(TernaryProgramCodecError::UnknownTag)
     {

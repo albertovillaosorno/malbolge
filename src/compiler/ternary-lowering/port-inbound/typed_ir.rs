@@ -121,6 +121,47 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Preserve admitted 32-bit left shift semantics for later realization.
+    BinaryShiftLeft {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted signed or unsigned 32-bit type category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit arithmetic right shift semantics for later
+    /// realization.
+    BinaryShiftRightArithmetic {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted signed or unsigned 32-bit type category.
+        type_kind: InputScalarType,
+    },
+    /// Preserve admitted 32-bit logical right shift semantics for later
+    /// realization.
+    BinaryShiftRightLogical {
+        /// Left upstream SSA operand identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA operand identity.
+        right: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Admitted signed or unsigned 32-bit type category.
+        type_kind: InputScalarType,
+    },
     /// Preserve admitted 32-bit subtract semantics before target realization.
     BinarySubtract {
         /// Left upstream SSA operand identity.
