@@ -120,18 +120,6 @@ zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
 checks complete canonical ternary checkpoint restoration without duplicating
 the shared operand's definition.
 
-Both operands may legally reference the same previously defined unsigned SSA
-value. An admitted typed-IR fixture verifies all three bitwise operations over
-zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
-checks complete canonical ternary checkpoint restoration without duplicating
-the shared operand's definition.
-
-Both operands may legally reference the same previously defined unsigned SSA
-value. An admitted typed-IR fixture verifies all three bitwise operations over
-zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
-checks complete canonical ternary checkpoint restoration without duplicating
-the shared operand's definition.
-
 Tag `15` adds `TruncateU32ToU8` with the same SSA-result, 24-byte source
 span, and SSA-use layout as signed truncation tag `5`. The lowerer requires a
 defined `u32` operand, produces an exact unsigned byte, and retains the low
