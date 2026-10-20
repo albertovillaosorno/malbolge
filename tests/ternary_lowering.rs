@@ -5204,9 +5204,10 @@ fn assert_signed_alias_shape(
     bits: u32,
     operation: BinaryOp,
 ) -> Result<(), String> {
+    let source_span = output_span(fixture_span(0, 1));
     if !matches!(function.operations.first(),
         Some(TernaryOperation::MaterializeI32 { result: 0, scalar, span })
-            if scalar.bits() == bits && *span == output_span(fixture_span(0, 1)))
+            if scalar.bits() == bits && *span == source_span)
     {
         return Err(String::from("aliased signed input bits drifted"));
     }
