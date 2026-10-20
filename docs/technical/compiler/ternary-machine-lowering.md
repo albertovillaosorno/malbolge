@@ -149,6 +149,11 @@ checkpoint admission rejects swapped direction tags and undefined uses.
 The exact scalar bits, SSA IDs, and source provenance round-trip without
 changing any older operation tag.
 
+A synthetic second cast appended to an admitted typed-IR projection verifies
+signed-to-unsigned-to-signed and reverse chains over representative boundary
+bits. Independent canonical recovery preserves both cast SSA definitions
+and the final return category, and incorrect first-source reuse fails closed.
+
 The next unknown operation tag is `19`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 

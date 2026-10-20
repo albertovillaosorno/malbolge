@@ -3182,6 +3182,115 @@ fn bitcast_signedness_preserves_all_32_bits_and_canonical_wire()
     Ok(())
 }
 
+fn double_integer_bitcast_projection(
+    initial_signed: bool,
+    bits: u32,
+) -> Result<TypedIrInput, String> {
+    let (_single, mut projected) =
+        lowered_integer_bitcast_fixture(initial_signed, bits)?;
+    let function = projected
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("bitcast-chain function missing"))?;
+    function.return_kind = if initial_signed {
+        InputScalarType::I32
+    } else {
+        InputScalarType::U32
+    };
+    let block = function
+        .blocks
+        .first_mut()
+        .ok_or_else(|| String::from("bitcast-chain block missing"))?;
+    block.instructions.push(InputInstruction::IntegerBitcast {
+        result: 2,
+        span: input_span(fixture_span(1, 2)),
+        type_kind: function.return_kind,
+        value: 1,
+    });
+    block.terminator = InputTerminator::Return {
+        span: input_span(fixture_span(2, 3)),
+        value: Some(2),
+    };
+    Ok(projected)
+}
+
+#[test]
+fn two_integer_bitcasts_restore_original_signedness_and_bits()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for bits in [0u32, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+            let projected = double_integer_bitcast_projection(signed, bits)?;
+            let target = lower_typed_ir(&projected)
+                .map_err(|error| format!("lower double bitcast: {error:?}"))?;
+            let function = target.functions.first().ok_or_else(|| {
+                String::from("double bitcast function missing")
+            })?;
+            let second = if signed {
+                TernaryOperation::BitcastU32ToI32 {
+                    result: 2,
+                    span: output_span(fixture_span(1, 2)),
+                    value: 1,
+                }
+            } else {
+                TernaryOperation::BitcastI32ToU32 {
+                    result: 2,
+                    span: output_span(fixture_span(1, 2)),
+                    value: 1,
+                }
+            };
+            let final_return = if signed {
+                TernaryOperation::Return {
+                    span: output_span(fixture_span(2, 3)),
+                    value: 2,
+                }
+            } else {
+                TernaryOperation::ReturnU32 {
+                    span: output_span(fixture_span(2, 3)),
+                    value: 2,
+                }
+            };
+            if function.operations.get(2) != Some(&second)
+                || function.operations.last() != Some(&final_return)
+            {
+                return Err(String::from("double bitcast signedness was lost"));
+            }
+            let bytes = canonical_ternary_bytes(&target)
+                .map_err(|error| format!("encode double bitcast: {error:?}"))?;
+            if canonical_ternary_program(&bytes) != Ok(target) {
+                return Err(String::from("double bitcast recovery drifted"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn chained_integer_bitcast_rejects_reusing_original_source()
+-> Result<(), String> {
+    for initial_signed in [true, false] {
+        let mut projected =
+            double_integer_bitcast_projection(initial_signed, u32::MAX)?;
+        let last = projected
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(2))
+            .ok_or_else(|| String::from("second bitcast missing"))?;
+        let InputInstruction::IntegerBitcast { value, .. } = last else {
+            return Err(String::from("second bitcast projection missing"));
+        };
+        *value = 0;
+        if lower_typed_ir(&projected)
+            != Err(TernaryLoweringError::UnsupportedInstruction)
+        {
+            return Err(String::from(
+                "bitcast-chain wrong source was admitted",
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn integer_bitcast_projection_rejects_wrong_signedness_and_ssa()
 -> Result<(), String> {

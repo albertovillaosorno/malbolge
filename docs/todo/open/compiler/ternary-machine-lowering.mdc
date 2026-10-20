@@ -188,6 +188,10 @@ instruction.
   Fresh compiler selection and real inspector-backed recovery converge; all
   ten crash publication boundaries preserve each committed generation in
   both directions.
+- A synthetic double-bitcast projection built from separately admitted typed
+  state verifies both signedness round trips across four boundary patterns.
+  The second cast must consume the intermediate typed result rather than the
+  original SSA source, and canonical checkpoint recovery preserves the chain.
 - Admitted `u8` to `u32` zero extension now lowers to a separate target
   `ZeroExtendU8ToU32` operation at closed `MCTR` tag `16`. It requires a
   defined byte-valued source and yields an unsigned 32-bit SSA result.
