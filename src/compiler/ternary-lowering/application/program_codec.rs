@@ -636,6 +636,8 @@ fn decode_cast_operation(
         33 => TernaryOperation::BitcastI32ToI32 { result, span, value },
         34 => TernaryOperation::BitcastU32ToU32 { result, span, value },
         44 => TernaryOperation::BoolToI32 { result, span, value },
+        45 => TernaryOperation::I32ToBool { result, span, value },
+        46 => TernaryOperation::U32ToBool { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -690,7 +692,7 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 | 33..=34 | 44 => {
+        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=46 => {
             decode_cast_operation(decoder, tag)?
         },
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
@@ -1142,8 +1144,18 @@ const fn cast_tag(operation: TernaryOperation) -> u8 {
         15
     } else if matches!(operation, TernaryOperation::ZeroExtendU8ToU32 { .. }) {
         16
-    } else if matches!(operation, TernaryOperation::BoolToI32 { .. }) {
+    } else {
+        bool_and_bitcast_tag(operation)
+    }
+}
+
+const fn bool_and_bitcast_tag(operation: TernaryOperation) -> u8 {
+    if matches!(operation, TernaryOperation::BoolToI32 { .. }) {
         44
+    } else if matches!(operation, TernaryOperation::I32ToBool { .. }) {
+        45
+    } else if matches!(operation, TernaryOperation::U32ToBool { .. }) {
+        46
     } else {
         bitcast_tag(operation)
     }
@@ -1162,7 +1174,9 @@ const fn bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
-    let (TernaryOperation::BoolToI32 { result, span, value }
+    let (TernaryOperation::I32ToBool { result, span, value }
+    | TernaryOperation::U32ToBool { result, span, value }
+    | TernaryOperation::BoolToI32 { result, span, value }
     | TernaryOperation::TruncateI32ToU8 { result, span, value }
     | TernaryOperation::TruncateU32ToU8 { result, span, value }
     | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
@@ -1336,7 +1350,9 @@ fn encode_non_word_operation(
     }
     if matches!(
         operation,
-        TernaryOperation::BoolToI32 { .. }
+        TernaryOperation::I32ToBool { .. }
+            | TernaryOperation::U32ToBool { .. }
+            | TernaryOperation::BoolToI32 { .. }
             | TernaryOperation::TruncateI32ToU8 { .. }
             | TernaryOperation::TruncateU32ToU8 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
@@ -1413,6 +1429,8 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::NotEqualU32 { span, .. }
         | TernaryOperation::ReturnBool { span, .. }
         | TernaryOperation::BoolToI32 { span, .. }
+        | TernaryOperation::I32ToBool { span, .. }
+        | TernaryOperation::U32ToBool { span, .. }
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
@@ -1566,11 +1584,17 @@ fn validate_widen_or_bitcast(
     values: &mut BTreeMap<u32, ValueKind>,
     operation: TernaryOperation,
 ) -> Result<bool, TernaryProgramValidationError> {
-    let (result, value, types) = if let TernaryOperation::BoolToI32 {
+    let (result, value, types) = if let TernaryOperation::I32ToBool {
         result,
         value,
         ..
     } = operation
+    {
+        (result, value, (ValueKind::I32, ValueKind::Bool))
+    } else if let TernaryOperation::U32ToBool { result, value, .. } = operation
+    {
+        (result, value, (ValueKind::U32, ValueKind::Bool))
+    } else if let TernaryOperation::BoolToI32 { result, value, .. } = operation
     {
         (result, value, (ValueKind::Bool, ValueKind::I32))
     } else if let TernaryOperation::ZeroExtendU8ToU32 {
@@ -1780,7 +1804,9 @@ fn validate_operation(
     }
     if matches!(
         operation,
-        TernaryOperation::BoolToI32 { .. }
+        TernaryOperation::I32ToBool { .. }
+            | TernaryOperation::U32ToBool { .. }
+            | TernaryOperation::BoolToI32 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
             | TernaryOperation::BitcastU32ToI32 { .. }

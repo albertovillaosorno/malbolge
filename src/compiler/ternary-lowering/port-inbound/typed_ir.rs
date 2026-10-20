@@ -348,6 +348,17 @@ pub enum InputInstruction {
         /// Upstream SSA source identity.
         value: u32,
     },
+    /// Convert one admitted 32-bit integer SSA value to a Boolean truth value.
+    IntegerToBool {
+        /// New Boolean SSA definition.
+        result: u32,
+        /// Exact typed-IR source span.
+        span: InputSourceSpan,
+        /// Required Boolean destination type.
+        type_kind: InputScalarType,
+        /// Previously defined signed or unsigned integer source SSA.
+        value: u32,
+    },
     /// Truncate one previously defined exact `i32` value to `u8`.
     TruncateInteger {
         /// Upstream SSA result identity.

@@ -998,6 +998,15 @@ pub enum TernaryOperation {
         span: TernarySourceSpan,
     },
     /// Preserve signed less-than-or-equal with a Boolean SSA result; no host
+    /// Preserve signed `i32` truth testing as a distinct Boolean SSA result.
+    I32ToBool {
+        /// New Boolean SSA definition.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed `i32` SSA identity.
+        value: u32,
+    },
     /// evaluation.
     LessSignedEqualI32 {
         /// Left 32-bit operand SSA identity.
@@ -1274,6 +1283,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
         /// Defined unsigned 32-bit source SSA identity.
+        value: u32,
+    },
+    /// Preserve unsigned `u32` truth testing as a Boolean SSA result.
+    U32ToBool {
+        /// New Boolean SSA definition.
+        result: u32,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined unsigned `u32` SSA identity.
         value: u32,
     },
     /// Apply exact 32-bit bitwise XOR to two previously materialized values.

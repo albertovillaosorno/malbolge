@@ -187,7 +187,7 @@ other 32-bit binary operations. Signed and unsigned variants require operands
 and result types with matching signedness; the pre-layout compiler does not
 evaluate guest division, division by zero, or signed overflow. Canonical
 checkpoint admission rejects swapped signedness, missing SSA operands,
-duplicate definitions, and unknown tag `45`. Fresh typed lowering
+duplicate definitions, and unknown tag `47`. Fresh typed lowering
 and inspector-backed checkpoint recovery converge across all ten crash
 boundaries for each of the four operations.
 
@@ -204,7 +204,7 @@ preserve the original 32-bit pattern without host evaluation and create a
 separate SSA definition of the same signedness. Typed-IR admission and
 canonical restoration preserve distinct source/result identities for all
 boundary patterns and reject cross-signedness tag substitution, undefined
-sources, and future tag `45`. Real inspector-backed restoration converges
+sources, and future tag `47`. Real inspector-backed restoration converges
 with fresh lowering; all ten crash-publication boundaries preserve both
 same-kind generations without rewriting any prior opcode.
 
@@ -216,7 +216,7 @@ record layout. The stage keeps comparisons symbolic instead of evaluating
 signed or unsigned guest values on the host, and does not widen the Boolean
 result into a byte or integer implicitly. Independent canonical admission
 requires exact operand signedness and rejects retagged signedness, undefined or
-duplicate SSA, malformed boolean returns, and the next unassigned tag `45`;
+duplicate SSA, malformed boolean returns, and the next unassigned tag `47`;
 typed-IR and ternary round trips cover both comparisons, signed and unsigned
 32-bit boundary patterns, and legal aliasing of both operand uses to one SSA
 value, preserving source spans and complete target identity.
@@ -241,9 +241,22 @@ the host or silently reinterpreting Boolean as an integer.
 
 Independent target validation rejects an integer-typed source, duplicate
 result ID, and swapped bitcast tags; canonical restoration rejects the next
-unassigned tag `45`. A typed-IR round-trip fixture combines integer
+unassigned tag `47`. A typed-IR round-trip fixture combines integer
 comparison, Boolean conversion, and signed return across boundary patterns.
 Other destination widths and Boolean operations remain outside this slice.
+
+Tags `45` and `46` add `I32ToBool` and `U32ToBool` with the existing
+cast result-ID, source-span, and operand-ID layout. Admitted typed-IR
+`IntegerToBool` consumes a defined exact signed or unsigned 32-bit source and
+produces a distinct Boolean SSA result, preserving C nonzero truth semantics
+symbolically without comparing a value in host arithmetic.
+
+Independent target validation rejects signedness-tag substitutions, undefined
+source IDs, duplicate result definitions, and casts using a noninteger source.
+Typed-IR and canonical ternary round trips cover zero, the signed boundary,
+and maximum 32-bit bit patterns with Boolean returns; unknown tag `47` remains
+unassigned. Narrow byte and pointer truth conversions still require separate
+lowering.
 
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
