@@ -1296,6 +1296,93 @@ fn signed_alias_bitwise_module(bits: u32, operation: BinaryOp) -> Module {
     })
 }
 
+fn chained_bool_conversion_types(
+    signed: bool,
+) -> (Vec<TypeEntry>, TypeId, TypeId) {
+    let mut types = vec![
+        TypeEntry::new(
+            TypeId::new(0),
+            if signed {
+                TypeDef::I32
+            } else {
+                TypeDef::U32
+            },
+        ),
+        TypeEntry::new(TypeId::new(1), TypeDef::Bool),
+    ];
+    let return_type = if signed {
+        TypeId::new(0)
+    } else {
+        TypeId::new(2)
+    };
+    if !signed {
+        types.push(TypeEntry::new(return_type, TypeDef::I32));
+    }
+    let signature = TypeId::new(if signed {
+        2
+    } else {
+        3
+    });
+    types.push(TypeEntry::new(
+        signature,
+        TypeDef::function(Vec::new(), Some(return_type), false),
+    ));
+    (types, return_type, signature)
+}
+
+fn chained_bool_conversion_module(signed: bool, bits: u32) -> Module {
+    let (types, return_type, signature) = chained_bool_conversion_types(signed);
+    let instructions = vec![
+        low_byte_constant(bits, 0, 0, TypeId::new(0)),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerToBool,
+                result: ValueId::new(1),
+                type_id: TypeId::new(1),
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::BoolToSigned,
+                result: ValueId::new(2),
+                type_id: return_type,
+                value: ValueId::new(1),
+            },
+            fixture_span(2, 3),
+        ),
+    ];
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: fixture_span(0, 4),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(2)),
+                },
+                terminator_span: fixture_span(3, 4),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("chained_bool_conversion"),
+            parameters: Vec::new(),
+            signature,
+            span: fixture_span(0, 4),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/chained-bool-conversion.c"),
+        source_sha256: [0xd7; 32],
+        target_profile: String::from("malbolge-2026"),
+        types,
+    })
+}
+
 fn integer_to_bool_module(signed: bool, bits: u32) -> Module {
     let word_type = TypeId::new(0);
     let bool_type = TypeId::new(1);
@@ -5583,6 +5670,96 @@ fn signed_bitwise_accepts_aliased_typed_operands() -> Result<(), String> {
                 || canonical_ternary_program(&encoded) != Ok(target)
             {
                 return Err(String::from("aliased signed checkpoint drifted"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn assert_chain_materialization(
+    operations: &[TernaryOperation],
+    signed: bool,
+    bits: u32,
+) -> Result<(), String> {
+    let scalar = ternary_lowering::TernaryI32Scalar::from_bits(bits);
+    let span = output_span(fixture_span(0, 1));
+    let first = if signed {
+        TernaryOperation::MaterializeI32 { result: 0, span, scalar }
+    } else {
+        TernaryOperation::MaterializeU32 { result: 0, span, scalar }
+    };
+    if operations.first() != Some(&first) {
+        return Err(String::from("Boolean chain input bits drifted"));
+    }
+    Ok(())
+}
+
+const fn first_bool_chain_conversion(signed: bool) -> TernaryOperation {
+    let span = output_span(fixture_span(1, 2));
+    if signed {
+        TernaryOperation::I32ToBool {
+            result: 1,
+            span,
+            value: 0,
+        }
+    } else {
+        TernaryOperation::U32ToBool {
+            result: 1,
+            span,
+            value: 0,
+        }
+    }
+}
+
+#[test]
+fn typed_integer_boolean_conversion_chain_preserves_distinct_ssa()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for bits in [0u32, 1, 0x8000_0000, u32::MAX] {
+            let module = chained_bool_conversion_module(signed, bits);
+            validate_module(&module)
+                .map_err(|error| format!("admit Boolean chain: {error:?}"))?;
+            let encoded = canonical_bytes(&module)
+                .map_err(|error| format!("encode Boolean chain: {error:?}"))?;
+            let restored = canonical_module(&encoded)
+                .map_err(|error| format!("decode Boolean chain: {error:?}"))?;
+            if restored != module {
+                return Err(String::from("typed Boolean chain drifted"));
+            }
+            let projected = project_typed_ir(&restored)?;
+            let target = lower_typed_ir(&projected)
+                .map_err(|error| format!("lower Boolean chain: {error:?}"))?;
+            assert_program_provenance(&restored, &target)?;
+            let operations = &target
+                .functions
+                .first()
+                .ok_or_else(|| String::from("Boolean chain target absent"))?
+                .operations;
+            assert_chain_materialization(operations, signed, bits)?;
+            let first_conversion = first_bool_chain_conversion(signed);
+            let second_conversion = TernaryOperation::BoolToI32 {
+                result: 2,
+                span: output_span(fixture_span(2, 3)),
+                value: 1,
+            };
+            if operations.get(1) != Some(&first_conversion)
+                || operations.get(2) != Some(&second_conversion)
+                || operations.last()
+                    != Some(&TernaryOperation::Return {
+                        span: output_span(fixture_span(3, 4)),
+                        value: 2,
+                    })
+            {
+                return Err(String::from(
+                    "Boolean conversion SSA chain drifted",
+                ));
+            }
+            let canonical = canonical_ternary_bytes(&target)
+                .map_err(|error| format!("encode target chain: {error:?}"))?;
+            if canonical_ternary_program(&canonical) != Ok(target) {
+                return Err(String::from(
+                    "Boolean chain target restoration drifted",
+                ));
             }
         }
     }

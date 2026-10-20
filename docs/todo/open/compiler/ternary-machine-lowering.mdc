@@ -213,6 +213,11 @@ instruction.
   patterns without host truth-value computation. Forged destination kinds,
   missing/duplicate SSA, swapped signedness tags and unknown tag `47` fail
   closed. Byte and pointer conversions remain unfinished.
+- A separately admitted typed-IR composition now chains signed/unsigned
+  `IntegerToBool` into `BoolToSigned`, returning a new signed `i32` SSA value
+  without folding either conversion on the host. Zero, one, signed-boundary,
+  and maximum bit patterns retain exact source materialization and both cast
+  identities through canonical typed-IR and target restoration.
 - Admitted same-kind 32-bit integer bitcasts now retain distinct typed SSA
   results at `MCTR` tags `33` (`BitcastI32ToI32`) and `34`
   (`BitcastU32ToU32`). All boundary-bit patterns survive typed-IR and canonical
