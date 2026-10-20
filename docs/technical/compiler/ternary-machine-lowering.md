@@ -31,7 +31,8 @@ entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
 `i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, multiplication,
 signed/unsigned division and remainder, and typed left and right shifts,
 unsigned byte-to-word extension,
-signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
+signedness-changing and same-kind 32-bit integer bitcasts,
+32-bit-to-`u8` truncation, and
 typed-IR
 `ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
 Other admitted typed-IR shapes fail explicitly.
@@ -154,7 +155,9 @@ changing any older operation tag.
 A synthetic second cast appended to an admitted typed-IR projection verifies
 signed-to-unsigned-to-signed and reverse chains over representative boundary
 bits. Independent canonical recovery preserves both cast SSA definitions
-and the final return category, and incorrect first-source reuse fails closed.
+and the final return category. When the destination signedness matches,
+a separate result may also reinterpret the original source without a new
+bit pattern or loss of source provenance.
 
 Tags `19` through `22` add `AddI32`, `AddU32`, `SubtractI32`, and
 `SubtractU32`. They use the existing left/result/right SSA ID and 24-byte
@@ -191,7 +194,7 @@ other 32-bit binary operations. Signed and unsigned variants require operands
 and result types with matching signedness; the pre-layout compiler does not
 evaluate guest division, division by zero, or signed overflow. Canonical
 checkpoint admission rejects swapped signedness, missing SSA operands,
-duplicate definitions, and the next unassigned tag `33`. Fresh typed lowering
+duplicate definitions, and unknown tag `35`. Fresh typed lowering
 and inspector-backed checkpoint recovery converge across all ten crash
 boundaries for each of the four operations.
 
@@ -202,7 +205,17 @@ SSA and provenance identities, canonical target encoding, and complete
 checkpoint restoration without executing an invalid or overflowing host
 arithmetic operation.
 
-The next unknown operation tag is `33`. Older decoders reject newly emitted
+Tags `33` and `34` add `BitcastI32ToI32` and `BitcastU32ToU32` with the
+existing result-ID, source-span, and operand-ID cast layout. Both operations
+preserve the original 32-bit pattern without host evaluation and create a
+separate SSA definition of the same signedness. Typed-IR admission and
+canonical restoration preserve distinct source/result identities for all
+boundary patterns and reject cross-signedness tag substitution, undefined
+sources, and future tag `35`. Real inspector-backed restoration converges
+with fresh lowering; all ten crash-publication boundaries preserve both
+same-kind generations without rewriting any prior opcode.
+
+The next unknown operation tag is `35`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for

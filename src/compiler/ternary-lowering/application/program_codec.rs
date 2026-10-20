@@ -558,6 +558,8 @@ fn decode_cast_operation(
         16 => TernaryOperation::ZeroExtendU8ToU32 { result, span, value },
         17 => TernaryOperation::BitcastI32ToU32 { result, span, value },
         18 => TernaryOperation::BitcastU32ToI32 { result, span, value },
+        33 => TernaryOperation::BitcastI32ToI32 { result, span, value },
+        34 => TernaryOperation::BitcastU32ToU32 { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -608,7 +610,7 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 => decode_cast_operation(decoder, tag)?,
+        5 | 15 | 16 | 17 | 18 | 33..=34 => decode_cast_operation(decoder, tag)?,
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
         25..=28 => decode_shift_operation(decoder, tag)?,
         29..=32 => decode_divrem_operation(decoder, tag)?,
@@ -966,10 +968,20 @@ const fn cast_tag(operation: TernaryOperation) -> u8 {
         15
     } else if matches!(operation, TernaryOperation::ZeroExtendU8ToU32 { .. }) {
         16
-    } else if matches!(operation, TernaryOperation::BitcastI32ToU32 { .. }) {
-        17
     } else {
+        bitcast_tag(operation)
+    }
+}
+
+const fn bitcast_tag(operation: TernaryOperation) -> u8 {
+    if matches!(operation, TernaryOperation::BitcastI32ToU32 { .. }) {
+        17
+    } else if matches!(operation, TernaryOperation::BitcastU32ToI32 { .. }) {
         18
+    } else if matches!(operation, TernaryOperation::BitcastI32ToI32 { .. }) {
+        33
+    } else {
+        34
     }
 }
 
@@ -979,7 +991,9 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::TruncateU32ToU8 { result, span, value }
         | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
         | TernaryOperation::BitcastI32ToU32 { result, span, value }
-        | TernaryOperation::BitcastU32ToI32 { result, span, value } => {
+        | TernaryOperation::BitcastU32ToI32 { result, span, value }
+        | TernaryOperation::BitcastI32ToI32 { result, span, value }
+        | TernaryOperation::BitcastU32ToU32 { result, span, value } => {
             (result, span, value)
         },
         TernaryOperation::AddI32 { .. }
@@ -1051,6 +1065,18 @@ fn encode_large_scalar_model(
     encode_ternary_scalar(encoder, tag, (result, scalar, span));
 }
 
+fn encode_byte_effect(encoder: &mut Encoder, operation: TernaryOperation) {
+    if let TernaryOperation::ByteInput { result, span } = operation {
+        encode_byte_input(encoder, result, span);
+        return;
+    }
+    if let TernaryOperation::ByteOutput { span, value } = operation {
+        encode_byte_output(encoder, span, value);
+        return;
+    }
+    debug_assert!(false, "non-byte effect reached byte encoder");
+}
+
 fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
     match operation {
         TernaryOperation::AddI32 { .. }
@@ -1081,11 +1107,9 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::XorU32 { .. } => {
             encode_bitwise_model(encoder, operation);
         },
-        TernaryOperation::ByteInput { result, span } => {
-            encode_byte_input(encoder, result, span);
-        },
-        TernaryOperation::ByteOutput { span, value } => {
-            encode_byte_output(encoder, span, value);
+        TernaryOperation::ByteInput { .. }
+        | TernaryOperation::ByteOutput { .. } => {
+            encode_byte_effect(encoder, operation);
         },
         TernaryOperation::MaterializeI32 { result, scalar, span }
         | TernaryOperation::MaterializeU32 { result, scalar, span } => {
@@ -1107,7 +1131,9 @@ fn encode_operation(encoder: &mut Encoder, operation: TernaryOperation) {
         | TernaryOperation::TruncateU32ToU8 { .. }
         | TernaryOperation::ZeroExtendU8ToU32 { .. }
         | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. } => {
+        | TernaryOperation::BitcastU32ToI32 { .. }
+        | TernaryOperation::BitcastI32ToI32 { .. }
+        | TernaryOperation::BitcastU32ToU32 { .. } => {
             encode_cast_model(encoder, operation);
         },
     }
@@ -1171,7 +1197,9 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::TruncateU32ToU8 { span, .. }
         | TernaryOperation::ZeroExtendU8ToU32 { span, .. }
         | TernaryOperation::BitcastI32ToU32 { span, .. }
-        | TernaryOperation::BitcastU32ToI32 { span, .. } => span,
+        | TernaryOperation::BitcastU32ToI32 { span, .. }
+        | TernaryOperation::BitcastI32ToI32 { span, .. }
+        | TernaryOperation::BitcastU32ToU32 { span, .. } => span,
     }
 }
 
@@ -1320,6 +1348,12 @@ fn validate_widen_or_bitcast(
         TernaryOperation::BitcastU32ToI32 { result, value, .. } => {
             (result, value, (ValueKind::U32, ValueKind::I32))
         },
+        TernaryOperation::BitcastI32ToI32 { result, value, .. } => {
+            (result, value, (ValueKind::I32, ValueKind::I32))
+        },
+        TernaryOperation::BitcastU32ToU32 { result, value, .. } => {
+            (result, value, (ValueKind::U32, ValueKind::U32))
+        },
         TernaryOperation::AddI32 { .. }
         | TernaryOperation::AddU32 { .. }
         | TernaryOperation::SubtractI32 { .. }
@@ -1428,7 +1462,9 @@ fn validate_binary_operation(
         | TernaryOperation::TruncateU32ToU8 { .. }
         | TernaryOperation::ZeroExtendU8ToU32 { .. }
         | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. } => None,
+        | TernaryOperation::BitcastU32ToI32 { .. }
+        | TernaryOperation::BitcastI32ToI32 { .. }
+        | TernaryOperation::BitcastU32ToU32 { .. } => None,
     }
 }
 
@@ -1441,12 +1477,10 @@ fn validate_operation(
     }
     match operation {
         TernaryOperation::ByteInput { result, .. } => {
-            insert_value(values, result, ValueKind::Byte)?;
-            Ok(false)
+            insert_value(values, result, ValueKind::Byte).map(|()| false)
         },
         TernaryOperation::ByteOutput { value, .. } => {
-            require_value(values, value, ValueKind::Byte)?;
-            Ok(false)
+            require_value(values, value, ValueKind::Byte).map(|()| false)
         },
         TernaryOperation::MaterializeI32 { result, scalar, .. } => {
             validate_large_scalar(values, result, scalar, ValueKind::I32)
@@ -1470,7 +1504,9 @@ fn validate_operation(
         },
         TernaryOperation::ZeroExtendU8ToU32 { .. }
         | TernaryOperation::BitcastI32ToU32 { .. }
-        | TernaryOperation::BitcastU32ToI32 { .. } => {
+        | TernaryOperation::BitcastU32ToI32 { .. }
+        | TernaryOperation::BitcastI32ToI32 { .. }
+        | TernaryOperation::BitcastU32ToU32 { .. } => {
             validate_widen_or_bitcast(values, operation)
         },
         TernaryOperation::DivideI32 { .. }

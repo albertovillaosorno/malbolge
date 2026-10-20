@@ -965,37 +965,55 @@ fn lower_integer_bitcast(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
-    let signed_to_unsigned = match type_kind {
-        InputScalarType::U32 if state.signed.contains(&value) => true,
-        InputScalarType::I32 if state.unsigned.contains(&value) => false,
+    let source_kind = if state.signed.contains(&value) {
         InputScalarType::I32
-        | InputScalarType::U32
-        | InputScalarType::Other
-        | InputScalarType::U8 => {
-            return Err(TernaryLoweringError::UnsupportedInstruction);
-        },
-    };
-    ensure_new_value(state, result)?;
-    let inserted = if signed_to_unsigned {
-        state.unsigned.insert(result)
+    } else if state.unsigned.contains(&value) {
+        InputScalarType::U32
     } else {
-        state.signed.insert(result)
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    if !matches!(type_kind, InputScalarType::I32 | InputScalarType::U32) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = match type_kind {
+        InputScalarType::I32 => state.signed.insert(result),
+        InputScalarType::U32 => state.unsigned.insert(result),
+        InputScalarType::Other | InputScalarType::U8 => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
     let target_span = copy_span(span);
-    if signed_to_unsigned {
-        Ok(TernaryOperation::BitcastI32ToU32 {
-            result,
-            span: target_span,
-            value,
-        })
-    } else {
-        Ok(TernaryOperation::BitcastU32ToI32 {
-            result,
-            span: target_span,
-            value,
-        })
-    }
+    Ok(match (source_kind, type_kind) {
+        (InputScalarType::I32, InputScalarType::I32) => {
+            TernaryOperation::BitcastI32ToI32 {
+                result,
+                span: target_span,
+                value,
+            }
+        },
+        (InputScalarType::I32, InputScalarType::U32) => {
+            TernaryOperation::BitcastI32ToU32 {
+                result,
+                span: target_span,
+                value,
+            }
+        },
+        (InputScalarType::U32, InputScalarType::I32) => {
+            TernaryOperation::BitcastU32ToI32 {
+                result,
+                span: target_span,
+                value,
+            }
+        },
+        (InputScalarType::U32, InputScalarType::U32) => {
+            TernaryOperation::BitcastU32ToU32 {
+                result,
+                span: target_span,
+                value,
+            }
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
 }
 
 fn ensure_new_value(
