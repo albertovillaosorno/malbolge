@@ -195,6 +195,13 @@ duplicate definitions, and the next unassigned tag `33`. Fresh typed lowering
 and inspector-backed checkpoint recovery converge across all ten crash
 boundaries for each of the four operations.
 
+A separate admitted typed-IR boundary suite preserves symbolic division and
+remainder when the divisor is zero, and when the operand pair is
+`0x80000000`/`0xFFFFFFFF`. It verifies the original divisor bit pattern,
+SSA and provenance identities, canonical target encoding, and complete
+checkpoint restoration without executing an invalid or overflowing host
+arithmetic operation.
+
 The next unknown operation tag is `33`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 

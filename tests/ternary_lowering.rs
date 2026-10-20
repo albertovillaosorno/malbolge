@@ -1218,12 +1218,31 @@ fn low_byte_module() -> Module {
 }
 
 fn low_byte_module_with_binary(operation: BinaryOp) -> Module {
+    let operand_bits = if operation == BinaryOp::ShiftLeft {
+        (1, 31)
+    } else if operation == BinaryOp::ShiftRightArithmetic {
+        (0x8000_0000, 31)
+    } else {
+        (u32::MAX, 0xff)
+    };
+    low_byte_module_with_bits(operation, operand_bits)
+}
+
+fn low_byte_module_with_bits(
+    operation: BinaryOp,
+    operand_bits: (u32, u32),
+) -> Module {
     let u8_type = TypeId::new(0);
     let i32_type = TypeId::new(1);
     let function_type = TypeId::new(2);
     let block = BasicBlock::new(BasicBlockSpec {
         id: BlockId::new(0),
-        instructions: low_byte_instructions(u8_type, i32_type, operation),
+        instructions: low_byte_instructions(
+            u8_type,
+            i32_type,
+            operation,
+            operand_bits,
+        ),
         phis: Vec::new(),
         span: fixture_span(0, 6),
         terminator: Terminator::Return {
@@ -1264,14 +1283,9 @@ fn low_byte_instructions(
     u8_type: TypeId,
     i32_type: TypeId,
     operation: BinaryOp,
+    operand_bits: (u32, u32),
 ) -> Vec<LocatedInstruction> {
-    let (left_bits, count_bits) = if operation == BinaryOp::ShiftLeft {
-        (1, 31)
-    } else if operation == BinaryOp::ShiftRightArithmetic {
-        (0x8000_0000, 31)
-    } else {
-        (u32::MAX, 0xff)
-    };
+    let (left_bits, count_bits) = operand_bits;
     vec![
         low_byte_constant(left_bits, 0, 0, i32_type),
         low_byte_constant(count_bits, 1, 1, i32_type),
@@ -3449,6 +3463,86 @@ fn arithmetic_target_operation(
         ),
         (_, _) => return Err(String::from("invalid arithmetic operator")),
     })
+}
+
+fn check_symbolic_divrem_boundaries(
+    signed: bool,
+    operation: BinaryOp,
+    right_bits: u32,
+) -> Result<(), String> {
+    let left_bits = 0x8000_0000u32;
+    let module = if signed {
+        low_byte_module_with_bits(operation, (left_bits, right_bits))
+    } else {
+        unsigned_bitwise_module(left_bits, right_bits, operation)
+    };
+    validate_module(&module)
+        .map_err(|error| format!("admit symbolic divrem IR: {error:?}"))?;
+    let typed_bytes = canonical_bytes(&module).map_err(|error| {
+        format!("encode symbolic divrem typed IR: {error:?}")
+    })?;
+    let restored = canonical_module(&typed_bytes)
+        .map_err(|error| format!("restore divrem typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("division boundary typed-IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input).map_err(|error| {
+        format!("lower symbolic divrem boundary: {error:?}")
+    })?;
+    assert_program_provenance(&restored, &target)?;
+    let function = target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("divrem boundary function missing"))?;
+    let (expected_operation, tag) =
+        arithmetic_target_operation(signed, operation)?;
+    if function.operations.get(2) != Some(&expected_operation) {
+        return Err(String::from("divrem boundary operation was evaluated"));
+    }
+    let expected_source =
+        ternary_lowering::TernaryI32Scalar::from_bits(right_bits);
+    let original_right = if signed {
+        TernaryOperation::MaterializeI32 {
+            result: 1,
+            scalar: expected_source,
+            span: output_span(fixture_span(1, 2)),
+        }
+    } else {
+        TernaryOperation::MaterializeU32 {
+            result: 1,
+            scalar: expected_source,
+            span: output_span(fixture_span(1, 2)),
+        }
+    };
+    if function.operations.get(1) != Some(&original_right) {
+        return Err(String::from("zero or minus-one divisor was rewritten"));
+    }
+    let encoded = canonical_ternary_bytes(&target).map_err(|error| {
+        format!("encode divrem boundary checkpoint: {error:?}")
+    })?;
+    if !encoded.windows(5).any(|window| window == [tag, 0, 0, 0, 0])
+        || canonical_ternary_program(&encoded) != Ok(target)
+    {
+        return Err(String::from("divrem boundary checkpoint rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn division_and_remainder_keep_zero_and_signed_overflow_symbolic()
+-> Result<(), String> {
+    for (signed, operation) in [
+        (true, BinaryOp::DivideSigned),
+        (false, BinaryOp::DivideUnsigned),
+        (true, BinaryOp::RemainderSigned),
+        (false, BinaryOp::RemainderUnsigned),
+    ] {
+        for right_bits in [0u32, u32::MAX] {
+            check_symbolic_divrem_boundaries(signed, operation, right_bits)?;
+        }
+    }
+    Ok(())
 }
 
 #[test]

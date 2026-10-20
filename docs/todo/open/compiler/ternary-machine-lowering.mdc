@@ -186,6 +186,10 @@ instruction.
   Canonical typed and target round trips reject forged signedness, missing SSA,
   duplicate results, and first unknown tag `33`. Real inspector recovery and
   all ten crash-publication boundaries converge for each operation.
+- Separate typed-IR division/remainder boundary fixtures keep zero divisors
+  and the signed minimum/negative-one pair unevaluated. Canonical target
+  restoration retains exact divisor bits, provenance, and SSA categories
+  without invoking host undefined behavior or rewriting the operation.
 - Admitted typed shifts now lower to four distinct pre-layout operations:
   signed/unsigned left shift and signed arithmetic/unsigned logical right
   shift (`MCTR` tags `25` through `28`). Validated typed-IR input and canonical
