@@ -67,6 +67,7 @@ enum Bitwise32Kind {
 #[derive(Clone, Copy)]
 enum Arithmetic32Kind {
     Add,
+    Multiply,
     Subtract,
 }
 
@@ -176,6 +177,7 @@ fn lower_instruction(
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     match instruction {
         InputInstruction::BinaryAdd { .. }
+        | InputInstruction::BinaryMultiply { .. }
         | InputInstruction::BinarySubtract { .. } => {
             lower_arithmetic_instruction(instruction, state)
         },
@@ -213,12 +215,21 @@ fn lower_arithmetic_instruction(
         right,
         span,
         type_kind,
+    }
+    | InputInstruction::BinaryMultiply {
+        left,
+        result,
+        right,
+        span,
+        type_kind,
     }) = instruction
     else {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     };
     let kind = if matches!(instruction, InputInstruction::BinaryAdd { .. }) {
         Arithmetic32Kind::Add
+    } else if matches!(instruction, InputInstruction::BinaryMultiply { .. }) {
+        Arithmetic32Kind::Multiply
     } else {
         Arithmetic32Kind::Subtract
     };
@@ -327,7 +338,8 @@ fn lower_other_instruction(
         | InputInstruction::BinaryOr { .. }
         | InputInstruction::BinaryXor { .. }
         | InputInstruction::BinaryAdd { .. }
-        | InputInstruction::BinarySubtract { .. } => {
+        | InputInstruction::BinarySubtract { .. }
+        | InputInstruction::BinaryMultiply { .. } => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
@@ -382,6 +394,22 @@ const fn construct_arithmetic_operation(
         },
         (Arithmetic32Kind::Add, InputScalarType::U32) => {
             TernaryOperation::AddU32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::Multiply, InputScalarType::I32) => {
+            TernaryOperation::MultiplyI32 {
+                left,
+                result,
+                right,
+                span,
+            }
+        },
+        (Arithmetic32Kind::Multiply, InputScalarType::U32) => {
+            TernaryOperation::MultiplyU32 {
                 left,
                 result,
                 right,

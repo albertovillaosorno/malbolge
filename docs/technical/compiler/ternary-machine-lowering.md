@@ -28,7 +28,7 @@ model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
 application lowerer currently admits no-argument functions containing one
 entry block, no phi nodes, exact `u8`/`i32`/`u32` constant materialization,
-`i32`/`u32` bitwise AND/OR/XOR and addition/subtraction,
+`i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, and multiplication,
 unsigned byte-to-word extension,
 signedness-changing 32-bit integer bitcasts, 32-bit-to-`u8` truncation, and
 typed-IR
@@ -163,7 +163,17 @@ claim wrapping signed overflow semantics; target realization remains separate.
 Independent decoder validation rejects wrong-signedness operands, unknown
 SSA uses, duplicate results, and the next unassigned tag `23`.
 
-The next unknown operation tag is `23`. Older decoders reject newly emitted
+Tags `23` and `24` add `MultiplyI32` and `MultiplyU32` with the exact
+left/result/right SSA identity and 24-byte span used by existing 32-bit
+binary operations. Both operands must be previously defined with the exact
+signed or unsigned result type; the symbolic stage does not evaluate integer
+arithmetic, impose a signed-overflow interpretation, or change old encodings.
+Independent canonical admission rejects a retagged signedness, undefined uses,
+and the first unassigned tag `25`. Fresh lowering matches inspector-backed
+checkpoint recovery; all ten crash-publication boundaries preserve each of
+the two multiplication generation identities.
+
+The next unknown operation tag is `25`. Older decoders reject newly emitted
 tags, and resume remains bound to the exact compiler toolchain fingerprint.
 
 Real progress-inspector restoration now converges with fresh compilation for

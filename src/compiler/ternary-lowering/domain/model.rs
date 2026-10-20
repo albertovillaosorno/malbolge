@@ -952,6 +952,28 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Carry typed i32 multiply to realization without host evaluation.
+    MultiplyI32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
+    /// Carry typed u32 multiply to realization without host evaluation.
+    MultiplyU32 {
+        /// Left upstream SSA value identity.
+        left: u32,
+        /// Upstream SSA result identity.
+        result: u32,
+        /// Right upstream SSA value identity.
+        right: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Apply exact 32-bit bitwise OR to two previously materialized values.
     OrI32 {
         /// Left upstream SSA value identity.
