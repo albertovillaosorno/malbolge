@@ -120,6 +120,11 @@ zero, unit, sign-bit, alternating-bit, and maximum unsigned patterns, and
 checks complete canonical ternary checkpoint restoration without duplicating
 the shared operand's definition.
 
+A complementary signed `i32` alias fixture verifies AND/OR/XOR when both
+operands use one defined SSA identity, retaining the original 32-bit pattern,
+source spans, typed return, and independent canonical target restoration across
+the same five boundary patterns. Neither signedness is evaluated on the host.
+
 Tag `15` adds `TruncateU32ToU8` with the same SSA-result, 24-byte source
 span, and SSA-use layout as signed truncation tag `5`. The lowerer requires a
 defined `u32` operand, produces an exact unsigned byte, and retains the low

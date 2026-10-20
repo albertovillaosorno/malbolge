@@ -1224,6 +1224,66 @@ fn unsigned_alias_bitwise_module(bits: u32, operation: BinaryOp) -> Module {
     )
 }
 
+fn signed_alias_bitwise_module(bits: u32, operation: BinaryOp) -> Module {
+    let integer_type = TypeId::new(0);
+    let signature = TypeId::new(1);
+    let instructions = vec![
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(0),
+                type_id: integer_type,
+            },
+            fixture_span(0, 1),
+        ),
+        LocatedInstruction::new(
+            Instruction::Binary {
+                left: ValueId::new(0),
+                operation,
+                result: ValueId::new(1),
+                right: ValueId::new(0),
+                type_id: integer_type,
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions,
+        phis: Vec::new(),
+        span: fixture_span(0, 3),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(1)),
+        },
+        terminator_span: fixture_span(2, 3),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![block],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("signed_alias"),
+            parameters: Vec::new(),
+            signature,
+            span: fixture_span(0, 3),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/signed-alias.c"),
+        source_sha256: [0x8e; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(integer_type, TypeDef::I32),
+            TypeEntry::new(
+                signature,
+                TypeDef::function(Vec::new(), Some(integer_type), false),
+            ),
+        ],
+    })
+}
+
 fn low_byte_module() -> Module {
     low_byte_module_with_binary(BinaryOp::And)
 }
@@ -5133,6 +5193,108 @@ fn unsigned_bitwise_accepts_aliased_typed_operands() -> Result<(), String> {
                 return Err(String::from(
                     "aliased unsigned checkpoint drifted",
                 ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn assert_signed_alias_shape(
+    function: &ternary_lowering::TernaryFunction,
+    bits: u32,
+    operation: BinaryOp,
+) -> Result<(), String> {
+    if !matches!(function.operations.first(),
+        Some(TernaryOperation::MaterializeI32 { result: 0, scalar, span })
+            if scalar.bits() == bits && *span == output_span(fixture_span(0, 1)))
+    {
+        return Err(String::from("aliased signed input bits drifted"));
+    }
+    let span = output_span(fixture_span(1, 2));
+    let expected = if operation == BinaryOp::And {
+        TernaryOperation::AndI32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    } else if operation == BinaryOp::Or {
+        TernaryOperation::OrI32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    } else if operation == BinaryOp::Xor {
+        TernaryOperation::XorI32 {
+            left: 0,
+            result: 1,
+            right: 0,
+            span,
+        }
+    } else {
+        return Err(String::from("unexpected signed bitwise operation"));
+    };
+    if function.operations.len() != 3
+        || function.operations.get(1) != Some(&expected)
+        || function.operations.last()
+            != Some(&TernaryOperation::Return {
+                span: output_span(fixture_span(2, 3)),
+                value: 1,
+            })
+    {
+        return Err(String::from("aliased signed SSA or return drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_bitwise_accepts_aliased_typed_operands() -> Result<(), String> {
+    for (operation, tag) in [
+        (BinaryOp::And, 0u8),
+        (BinaryOp::Or, 6u8),
+        (BinaryOp::Xor, 7u8),
+    ] {
+        for bits in [0u32, 1, 0x8000_0000, 0x5555_5555, u32::MAX] {
+            let module = signed_alias_bitwise_module(bits, operation);
+            validate_module(&module).map_err(|error| {
+                format!("admit aliased signed IR: {error:?}")
+            })?;
+            let typed = canonical_bytes(&module).map_err(|error| {
+                format!("encode aliased signed IR: {error:?}")
+            })?;
+            let restored = canonical_module(&typed).map_err(|error| {
+                format!("restore aliased signed IR: {error:?}")
+            })?;
+            if restored != module {
+                return Err(String::from("aliased signed typed IR drifted"));
+            }
+            let projected = project_typed_ir(&restored)?;
+            let target = lower_typed_ir(&projected).map_err(|error| {
+                format!("lower aliased signed IR: {error:?}")
+            })?;
+            assert_program_provenance(&restored, &target)?;
+            if projected
+                .functions
+                .first()
+                .map(|function| function.return_kind)
+                != Some(InputScalarType::I32)
+            {
+                return Err(String::from("aliased signed return kind drifted"));
+            }
+            let function = target.functions.first().ok_or_else(|| {
+                String::from("aliased signed target function missing")
+            })?;
+            assert_signed_alias_shape(function, bits, operation)?;
+            let encoded =
+                canonical_ternary_bytes(&target).map_err(|error| {
+                    format!("encode aliased signed ternary: {error:?}")
+                })?;
+            let pattern = [tag, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
+            if !encoded.windows(pattern.len()).any(|part| part == pattern)
+                || canonical_ternary_program(&encoded) != Ok(target)
+            {
+                return Err(String::from("aliased signed checkpoint drifted"));
             }
         }
     }

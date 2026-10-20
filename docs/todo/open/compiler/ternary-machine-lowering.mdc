@@ -259,6 +259,11 @@ instruction.
   accept both operands referencing the same valid SSA definition, across
   five boundary bit patterns, without inventing a duplicate definition.
 
+  A corresponding signed `i32` fixture now independently validates aliased
+  AND/OR/XOR operands across the same five bit patterns, preserving exact
+  materialized bits, SSA and source spans, signed return, and canonical target
+  round trips without duplicate definitions or host computation.
+
   Fresh compiler selection and inspector-backed restoration now converge for
   all three unsigned bitwise operations. Production checkpoint extraction
   rejects signed-tag substitutions, and all ten immutable crash boundaries
