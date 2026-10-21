@@ -51,6 +51,11 @@ Validated one-bit Boolean constants now materialize separate Boolean SSA
 values and return directly or convert explicitly to signed `i32`. The wire
 stores their canonical zero/one digit and source provenance at tag `48`.
 
+Signed `i8` constants preserve all original two's-complement bits with
+distinct signed-byte SSA identities at tag `50`. A validated `i8`-to-`i32`
+sign-extension cast creates a new signed 32-bit SSA at tag `51` without host
+interpretation. Other signed narrow widths remain unsupported.
+
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest
 byte I/O. Its canonical tag `49` uses only the exact 24-byte source span.

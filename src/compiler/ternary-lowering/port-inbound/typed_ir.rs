@@ -60,6 +60,8 @@ pub enum InputScalarType {
     Bool,
     /// Exact signed 32-bit C integer semantics.
     I32,
+    /// Exact signed 8-bit C integer bit pattern.
+    I8,
     /// Any other already-admitted typed-IR type.
     Other,
     /// Exact unsigned 32-bit C integer semantics.
@@ -359,6 +361,17 @@ pub enum InputInstruction {
         /// Required Boolean destination type.
         type_kind: InputScalarType,
         /// Defined signed/unsigned word or successful unsigned byte source.
+        value: u32,
+    },
+    /// Sign-extend a separately defined exact signed byte to `i32`.
+    SignExtendI8ToI32 {
+        /// Newly defined signed 32-bit SSA identity.
+        result: u32,
+        /// Original typed-IR cast provenance.
+        span: InputSourceSpan,
+        /// Required signed 32-bit result kind.
+        type_kind: InputScalarType,
+        /// Defined signed 8-bit source SSA identity.
         value: u32,
     },
     /// Truncate one previously defined exact `i32` value to `u8`.

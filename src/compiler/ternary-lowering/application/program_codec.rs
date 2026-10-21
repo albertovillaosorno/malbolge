@@ -104,6 +104,7 @@ enum ValueKind {
     Bool,
     Byte,
     I32,
+    I8,
     U32,
 }
 
@@ -639,6 +640,7 @@ fn decode_cast_operation(
         45 => TernaryOperation::I32ToBool { result, span, value },
         46 => TernaryOperation::U32ToBool { result, span, value },
         47 => TernaryOperation::U8ToBool { result, span, value },
+        51 => TernaryOperation::SignExtendI8ToI32 { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -660,6 +662,26 @@ fn decode_void_return(
     decoder: &mut Decoder<'_>,
 ) -> Result<TernaryOperation, TernaryProgramCodecError> {
     Ok(TernaryOperation::ReturnVoid {
+        span: decode_span(decoder)?,
+    })
+}
+
+fn decode_signed_byte(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::MaterializeI8 {
+        result: decoder.u32()?,
+        scalar: decoder.byte_scalar()?,
+        span: decode_span(decoder)?,
+    })
+}
+
+fn decode_unsigned_byte(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::MaterializeU8 {
+        result: decoder.u32()?,
+        scalar: decoder.byte_scalar()?,
         span: decode_span(decoder)?,
     })
 }
@@ -691,11 +713,8 @@ fn decode_operation(
         7 => decode_bitwise_operation(decoder, 7)?,
         48 => decode_boolean_constant(decoder)?,
         49 => decode_void_return(decoder)?,
-        8 => TernaryOperation::MaterializeU8 {
-            result: decoder.u32()?,
-            scalar: decoder.byte_scalar()?,
-            span: decode_span(decoder)?,
-        },
+        50 => decode_signed_byte(decoder)?,
+        8 => decode_unsigned_byte(decoder)?,
         9 => TernaryOperation::ReturnU8 {
             span: decode_span(decoder)?,
             value: decoder.u32()?,
@@ -716,7 +735,7 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 => {
+        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 | 51 => {
             decode_cast_operation(decoder, tag)?
         },
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
@@ -1168,6 +1187,8 @@ const fn cast_tag(operation: TernaryOperation) -> u8 {
         15
     } else if matches!(operation, TernaryOperation::ZeroExtendU8ToU32 { .. }) {
         16
+    } else if matches!(operation, TernaryOperation::SignExtendI8ToI32 { .. }) {
+        51
     } else {
         bool_and_bitcast_tag(operation)
     }
@@ -1203,6 +1224,7 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
     let (TernaryOperation::I32ToBool { result, span, value }
     | TernaryOperation::U32ToBool { result, span, value }
     | TernaryOperation::U8ToBool { result, span, value }
+    | TernaryOperation::SignExtendI8ToI32 { result, span, value }
     | TernaryOperation::BoolToI32 { result, span, value }
     | TernaryOperation::TruncateI32ToU8 { result, span, value }
     | TernaryOperation::TruncateU32ToU8 { result, span, value }
@@ -1344,6 +1366,29 @@ fn try_encode_comparison_operation(
     false
 }
 
+fn encode_narrow_materialization(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) -> bool {
+    if let TernaryOperation::MaterializeI8 { result, scalar, span } = operation
+    {
+        encoder.u8(50);
+        encoder.u32(result);
+        encoder.byte_scalar(scalar);
+        encode_span(encoder, span);
+        return true;
+    }
+    if let TernaryOperation::MaterializeBool { result, value, span } = operation
+    {
+        encoder.u8(48);
+        encoder.u32(result);
+        encoder.u8(u8::from(value));
+        encode_span(encoder, span);
+        return true;
+    }
+    false
+}
+
 fn encode_non_word_operation(
     encoder: &mut Encoder,
     operation: TernaryOperation,
@@ -1367,12 +1412,7 @@ fn encode_non_word_operation(
         encode_span(encoder, span);
         return;
     }
-    if let TernaryOperation::MaterializeBool { result, value, span } = operation
-    {
-        encoder.u8(48);
-        encoder.u32(result);
-        encoder.u8(u8::from(value));
-        encode_span(encoder, span);
+    if encode_narrow_materialization(encoder, operation) {
         return;
     }
     if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation
@@ -1397,6 +1437,7 @@ fn encode_non_word_operation(
             | TernaryOperation::TruncateI32ToU8 { .. }
             | TernaryOperation::TruncateU32ToU8 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::SignExtendI8ToI32 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
             | TernaryOperation::BitcastU32ToI32 { .. }
             | TernaryOperation::BitcastI32ToI32 { .. }
@@ -1477,6 +1518,8 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeBool { span, .. }
         | TernaryOperation::ReturnVoid { span }
+        | TernaryOperation::MaterializeI8 { span, .. }
+        | TernaryOperation::SignExtendI8ToI32 { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
         | TernaryOperation::MaterializeU32 { span, .. }
         | TernaryOperation::MaterializeU8 { span, .. }
@@ -1612,6 +1655,20 @@ fn validate_byte_scalar(
     Ok(false)
 }
 
+fn validate_signed_byte_scalar(
+    values: &mut BTreeMap<u32, ValueKind>,
+    result: u32,
+    scalar: TernaryU8Scalar,
+) -> Result<bool, TernaryProgramValidationError> {
+    if scalar.trits().iter().any(|trit| *trit > 2)
+        || TernaryU8Scalar::from_bits(scalar.bits()) != scalar
+    {
+        return Err(TernaryProgramValidationError::SsaValue);
+    }
+    insert_value(values, result, ValueKind::I8)?;
+    Ok(false)
+}
+
 fn validate_reinterpret_value(
     values: &mut BTreeMap<u32, ValueKind>,
     result: u32,
@@ -1643,6 +1700,11 @@ fn validate_widen_or_bitcast(
     } else if let TernaryOperation::BoolToI32 { result, value, .. } = operation
     {
         (result, value, (ValueKind::Bool, ValueKind::I32))
+    } else if let TernaryOperation::SignExtendI8ToI32 {
+        result, value, ..
+    } = operation
+    {
+        (result, value, (ValueKind::I8, ValueKind::I32))
     } else if let TernaryOperation::ZeroExtendU8ToU32 {
         result, value, ..
     } = operation
@@ -1813,6 +1875,9 @@ fn validate_materialize_operation(
     if let TernaryOperation::MaterializeU8 { result, scalar, .. } = operation {
         return validate_byte_scalar(values, result, scalar);
     }
+    if let TernaryOperation::MaterializeI8 { result, scalar, .. } = operation {
+        return validate_signed_byte_scalar(values, result, scalar);
+    }
     Err(TernaryProgramValidationError::SsaValue)
 }
 
@@ -1833,6 +1898,7 @@ fn validate_operation(
     if matches!(
         operation,
         TernaryOperation::MaterializeBool { .. }
+            | TernaryOperation::MaterializeI8 { .. }
             | TernaryOperation::MaterializeI32 { .. }
             | TernaryOperation::MaterializeU32 { .. }
             | TernaryOperation::MaterializeU8 { .. }
@@ -1862,6 +1928,7 @@ fn validate_operation(
             | TernaryOperation::U8ToBool { .. }
             | TernaryOperation::BoolToI32 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::SignExtendI8ToI32 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
             | TernaryOperation::BitcastU32ToI32 { .. }
             | TernaryOperation::BitcastI32ToI32 { .. }

@@ -1072,6 +1072,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Materialize an exact signed 8-bit two's-complement pattern.
+    MaterializeI8 {
+        /// Newly defined signed byte SSA identity.
+        result: u32,
+        /// Six-trit encoding of the unchanged 8-bit pattern.
+        scalar: TernaryU8Scalar,
+        /// Original source provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact unsigned 32-bit bit pattern as 21 trits.
     MaterializeU32 {
         /// Upstream SSA result identity.
@@ -1258,6 +1267,15 @@ pub enum TernaryOperation {
         right: u32,
         /// Original instruction provenance.
         span: TernarySourceSpan,
+    },
+    /// Sign-extend one defined signed byte to a distinct `i32` SSA value.
+    SignExtendI8ToI32 {
+        /// New signed word result SSA identity.
+        result: u32,
+        /// Original typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed byte SSA identity.
+        value: u32,
     },
     /// Carry typed i32 subtract to target realization without host evaluation.
     SubtractI32 {
