@@ -40,8 +40,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str;
 
 use super::model::{
-    I32_TERNARY_TRITS, TernaryFunction, TernaryI32Scalar, TernaryOperation,
-    TernaryProgram, TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
+    I32_TERNARY_TRITS, TernaryFunction, TernaryI32Scalar,
+    TernaryOperation as Op, TernaryOperation, TernaryProgram,
+    TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
     U8_TERNARY_TRITS,
 };
 
@@ -629,7 +630,9 @@ fn decode_cast_operation(
     let span = decode_span(decoder)?;
     let value = decoder.u32()?;
     Ok(match tag {
+        58 => TernaryOperation::TruncateI32ToI8 { result, span, value },
         5 => TernaryOperation::TruncateI32ToU8 { result, span, value },
+        59 => TernaryOperation::TruncateU32ToI8 { result, span, value },
         15 => TernaryOperation::TruncateU32ToU8 { result, span, value },
         16 => TernaryOperation::ZeroExtendU8ToU32 { result, span, value },
         17 => TernaryOperation::BitcastI32ToU32 { result, span, value },
@@ -750,7 +753,7 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 | 51..=56 => {
+        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 | 51..=56 | 58..=59 => {
             decode_cast_operation(decoder, tag)?
         },
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
@@ -1196,6 +1199,16 @@ fn encode_bitwise_model_tail(
 }
 
 const fn cast_tag(operation: TernaryOperation) -> u8 {
+    if matches!(operation, TernaryOperation::TruncateI32ToI8 { .. }) {
+        58
+    } else if matches!(operation, TernaryOperation::TruncateU32ToI8 { .. }) {
+        59
+    } else {
+        legacy_cast_tag(operation)
+    }
+}
+
+const fn legacy_cast_tag(operation: TernaryOperation) -> u8 {
     if matches!(operation, TernaryOperation::TruncateI32ToU8 { .. }) {
         5
     } else if matches!(operation, TernaryOperation::TruncateU32ToU8 { .. }) {
@@ -1264,7 +1277,9 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
     | TernaryOperation::U8ToBool { result, span, value }
     | TernaryOperation::SignExtendI8ToI32 { result, span, value }
     | TernaryOperation::BoolToI32 { result, span, value }
+    | TernaryOperation::TruncateI32ToI8 { result, span, value }
     | TernaryOperation::TruncateI32ToU8 { result, span, value }
+    | TernaryOperation::TruncateU32ToI8 { result, span, value }
     | TernaryOperation::TruncateU32ToU8 { result, span, value }
     | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
     | TernaryOperation::BitcastI8ToI8 { result, span, value }
@@ -1433,6 +1448,31 @@ fn encode_narrow_materialization(
     false
 }
 
+const fn is_cast_operation(operation: TernaryOperation) -> bool {
+    matches!(
+        operation,
+        TernaryOperation::I32ToBool { .. }
+            | TernaryOperation::U32ToBool { .. }
+            | TernaryOperation::U8ToBool { .. }
+            | TernaryOperation::I8ToBool { .. }
+            | TernaryOperation::BoolToI32 { .. }
+            | TernaryOperation::TruncateI32ToI8 { .. }
+            | TernaryOperation::TruncateI32ToU8 { .. }
+            | TernaryOperation::TruncateU32ToI8 { .. }
+            | TernaryOperation::TruncateU32ToU8 { .. }
+            | TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::SignExtendI8ToI32 { .. }
+            | TernaryOperation::BitcastI8ToI8 { .. }
+            | TernaryOperation::BitcastU8ToU8 { .. }
+            | TernaryOperation::BitcastI8ToU8 { .. }
+            | TernaryOperation::BitcastU8ToI8 { .. }
+            | TernaryOperation::BitcastI32ToU32 { .. }
+            | TernaryOperation::BitcastU32ToI32 { .. }
+            | TernaryOperation::BitcastI32ToI32 { .. }
+            | TernaryOperation::BitcastU32ToU32 { .. }
+    )
+}
+
 fn encode_non_word_operation(
     encoder: &mut Encoder,
     operation: TernaryOperation,
@@ -1473,26 +1513,7 @@ fn encode_non_word_operation(
         encode_return_model(encoder, operation, span, value);
         return;
     }
-    if matches!(
-        operation,
-        TernaryOperation::I32ToBool { .. }
-            | TernaryOperation::U32ToBool { .. }
-            | TernaryOperation::U8ToBool { .. }
-            | TernaryOperation::I8ToBool { .. }
-            | TernaryOperation::BoolToI32 { .. }
-            | TernaryOperation::TruncateI32ToU8 { .. }
-            | TernaryOperation::TruncateU32ToU8 { .. }
-            | TernaryOperation::ZeroExtendU8ToU32 { .. }
-            | TernaryOperation::SignExtendI8ToI32 { .. }
-            | TernaryOperation::BitcastI8ToI8 { .. }
-            | TernaryOperation::BitcastU8ToU8 { .. }
-            | TernaryOperation::BitcastI8ToU8 { .. }
-            | TernaryOperation::BitcastU8ToI8 { .. }
-            | TernaryOperation::BitcastI32ToU32 { .. }
-            | TernaryOperation::BitcastU32ToI32 { .. }
-            | TernaryOperation::BitcastI32ToI32 { .. }
-            | TernaryOperation::BitcastU32ToU32 { .. }
-    ) {
+    if is_cast_operation(operation) {
         encode_cast_model(encoder, operation);
         return;
     }
@@ -1529,66 +1550,93 @@ fn insert_value(
     Ok(())
 }
 
-const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
-    match operation {
-        TernaryOperation::AddI32 { span, .. }
-        | TernaryOperation::AddU32 { span, .. }
-        | TernaryOperation::SubtractI32 { span, .. }
-        | TernaryOperation::SubtractU32 { span, .. }
-        | TernaryOperation::DivideI32 { span, .. }
-        | TernaryOperation::DivideU32 { span, .. }
-        | TernaryOperation::RemainderI32 { span, .. }
-        | TernaryOperation::RemainderU32 { span, .. }
-        | TernaryOperation::MultiplyI32 { span, .. }
-        | TernaryOperation::MultiplyU32 { span, .. }
-        | TernaryOperation::ShiftLeftI32 { span, .. }
-        | TernaryOperation::ShiftLeftU32 { span, .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { span, .. }
-        | TernaryOperation::ShiftRightLogicalU32 { span, .. }
-        | TernaryOperation::AndI32 { span, .. }
-        | TernaryOperation::AndU32 { span, .. }
-        | TernaryOperation::OrU32 { span, .. }
-        | TernaryOperation::XorU32 { span, .. }
-        | TernaryOperation::OrI32 { span, .. }
-        | TernaryOperation::XorI32 { span, .. }
-        | TernaryOperation::EqualI32 { span, .. }
-        | TernaryOperation::EqualU32 { span, .. }
-        | TernaryOperation::NotEqualI32 { span, .. }
-        | TernaryOperation::LessSignedEqualI32 { span, .. }
-        | TernaryOperation::LessSignedI32 { span, .. }
-        | TernaryOperation::LessUnsignedEqualU32 { span, .. }
-        | TernaryOperation::LessUnsignedU32 { span, .. }
-        | TernaryOperation::NotEqualU32 { span, .. }
-        | TernaryOperation::ReturnBool { span, .. }
-        | TernaryOperation::BoolToI32 { span, .. }
-        | TernaryOperation::I32ToBool { span, .. }
-        | TernaryOperation::I8ToBool { span, .. }
-        | TernaryOperation::U32ToBool { span, .. }
-        | TernaryOperation::U8ToBool { span, .. }
-        | TernaryOperation::ByteInput { span, .. }
-        | TernaryOperation::ByteOutput { span, .. }
-        | TernaryOperation::MaterializeBool { span, .. }
-        | TernaryOperation::ReturnVoid { span }
-        | TernaryOperation::MaterializeI8 { span, .. }
-        | TernaryOperation::SignExtendI8ToI32 { span, .. }
-        | TernaryOperation::MaterializeI32 { span, .. }
-        | TernaryOperation::MaterializeU32 { span, .. }
-        | TernaryOperation::MaterializeU8 { span, .. }
-        | TernaryOperation::Return { span, .. }
-        | TernaryOperation::ReturnU32 { span, .. }
-        | TernaryOperation::ReturnU8 { span, .. }
-        | TernaryOperation::ReturnI8 { span, .. }
-        | TernaryOperation::TruncateI32ToU8 { span, .. }
-        | TernaryOperation::TruncateU32ToU8 { span, .. }
-        | TernaryOperation::ZeroExtendU8ToU32 { span, .. }
-        | TernaryOperation::BitcastI8ToI8 { span, .. }
-        | TernaryOperation::BitcastU8ToU8 { span, .. }
-        | TernaryOperation::BitcastI8ToU8 { span, .. }
-        | TernaryOperation::BitcastU8ToI8 { span, .. }
-        | TernaryOperation::BitcastI32ToU32 { span, .. }
-        | TernaryOperation::BitcastU32ToI32 { span, .. }
-        | TernaryOperation::BitcastI32ToI32 { span, .. }
-        | TernaryOperation::BitcastU32ToU32 { span, .. } => span,
+const fn operation_span(
+    operation: TernaryOperation,
+) -> Option<TernarySourceSpan> {
+    if let Some(span) = operation_span_primary(operation) {
+        Some(span)
+    } else {
+        operation_span_secondary(operation)
+    }
+}
+
+const fn operation_span_primary(
+    operation: TernaryOperation,
+) -> Option<TernarySourceSpan> {
+    if let Op::AddI32 { span, .. }
+    | Op::AddU32 { span, .. }
+    | Op::SubtractI32 { span, .. }
+    | Op::SubtractU32 { span, .. }
+    | Op::DivideI32 { span, .. }
+    | Op::DivideU32 { span, .. }
+    | Op::RemainderI32 { span, .. }
+    | Op::RemainderU32 { span, .. }
+    | Op::MultiplyI32 { span, .. }
+    | Op::MultiplyU32 { span, .. }
+    | Op::ShiftLeftI32 { span, .. }
+    | Op::ShiftLeftU32 { span, .. }
+    | Op::ShiftRightArithmeticI32 { span, .. }
+    | Op::ShiftRightLogicalU32 { span, .. }
+    | Op::AndI32 { span, .. }
+    | Op::AndU32 { span, .. }
+    | Op::OrU32 { span, .. }
+    | Op::XorU32 { span, .. }
+    | Op::OrI32 { span, .. }
+    | Op::XorI32 { span, .. }
+    | Op::EqualI32 { span, .. }
+    | Op::EqualU32 { span, .. }
+    | Op::NotEqualI32 { span, .. }
+    | Op::LessSignedEqualI32 { span, .. }
+    | Op::LessSignedI32 { span, .. }
+    | Op::LessUnsignedEqualU32 { span, .. }
+    | Op::LessUnsignedU32 { span, .. }
+    | Op::NotEqualU32 { span, .. } = operation
+    {
+        Some(span)
+    } else {
+        None
+    }
+}
+
+const fn operation_span_secondary(
+    operation: TernaryOperation,
+) -> Option<TernarySourceSpan> {
+    if let Op::ReturnBool { span, .. }
+    | Op::BoolToI32 { span, .. }
+    | Op::I32ToBool { span, .. }
+    | Op::I8ToBool { span, .. }
+    | Op::U32ToBool { span, .. }
+    | Op::U8ToBool { span, .. }
+    | Op::ByteInput { span, .. }
+    | Op::ByteOutput { span, .. }
+    | Op::MaterializeBool { span, .. }
+    | Op::ReturnVoid { span }
+    | Op::MaterializeI8 { span, .. }
+    | Op::SignExtendI8ToI32 { span, .. }
+    | Op::MaterializeI32 { span, .. }
+    | Op::MaterializeU32 { span, .. }
+    | Op::MaterializeU8 { span, .. }
+    | Op::Return { span, .. }
+    | Op::ReturnU32 { span, .. }
+    | Op::ReturnU8 { span, .. }
+    | Op::ReturnI8 { span, .. }
+    | Op::TruncateI32ToI8 { span, .. }
+    | Op::TruncateI32ToU8 { span, .. }
+    | Op::TruncateU32ToI8 { span, .. }
+    | Op::TruncateU32ToU8 { span, .. }
+    | Op::ZeroExtendU8ToU32 { span, .. }
+    | Op::BitcastI8ToI8 { span, .. }
+    | Op::BitcastU8ToU8 { span, .. }
+    | Op::BitcastI8ToU8 { span, .. }
+    | Op::BitcastU8ToI8 { span, .. }
+    | Op::BitcastI32ToU32 { span, .. }
+    | Op::BitcastU32ToI32 { span, .. }
+    | Op::BitcastI32ToI32 { span, .. }
+    | Op::BitcastU32ToU32 { span, .. } = operation
+    {
+        Some(span)
+    } else {
+        None
     }
 }
 
@@ -1986,6 +2034,45 @@ fn validate_signed_byte_cast(
     None
 }
 
+fn validate_truncation_operation(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let TernaryOperation::TruncateI32ToI8 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I32, ValueKind::I8),
+        ));
+    }
+    if let TernaryOperation::TruncateU32ToI8 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::U32, ValueKind::I8),
+        ));
+    }
+    if let TernaryOperation::TruncateI32ToU8 { result, value, .. } = operation {
+        return Some(validate_truncated_value(
+            values,
+            result,
+            value,
+            ValueKind::I32,
+        ));
+    }
+    if let TernaryOperation::TruncateU32ToU8 { result, value, .. } = operation {
+        return Some(validate_truncated_value(
+            values,
+            result,
+            value,
+            ValueKind::U32,
+        ));
+    }
+    None
+}
+
 fn validate_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
@@ -2021,11 +2108,8 @@ fn validate_operation(
     {
         return validate_return_value(values, value, operation);
     }
-    if let TernaryOperation::TruncateI32ToU8 { result, value, .. } = operation {
-        return validate_truncated_value(values, result, value, ValueKind::I32);
-    }
-    if let TernaryOperation::TruncateU32ToU8 { result, value, .. } = operation {
-        return validate_truncated_value(values, result, value, ValueKind::U32);
+    if let Some(outcome) = validate_truncation_operation(operation, values) {
+        return outcome;
     }
     if let Some(outcome) = validate_signed_byte_cast(operation, values) {
         return outcome;
@@ -2056,18 +2140,20 @@ fn validate_operations(
         return Err(TernaryProgramValidationError::Terminator);
     };
     for operation in prefix {
-        if !valid_span(operation_span(*operation))
-            || !span_contains(function.span, operation_span(*operation))
-        {
+        let Some(span) = operation_span(*operation) else {
+            return Err(TernaryProgramValidationError::SourceProvenance);
+        };
+        if !valid_span(span) || !span_contains(function.span, span) {
             return Err(TernaryProgramValidationError::SourceProvenance);
         }
         if validate_operation(*operation, &mut values)? {
             return Err(TernaryProgramValidationError::Terminator);
         }
     }
-    if !valid_span(operation_span(*last))
-        || !span_contains(function.span, operation_span(*last))
-    {
+    let Some(span) = operation_span(*last) else {
+        return Err(TernaryProgramValidationError::SourceProvenance);
+    };
+    if !valid_span(span) || !span_contains(function.span, span) {
         return Err(TernaryProgramValidationError::SourceProvenance);
     }
     if !matches!(

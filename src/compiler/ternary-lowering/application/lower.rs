@@ -724,7 +724,7 @@ fn lower_other_instruction(
             span,
             type_kind,
             value,
-        } => lower_truncate_i32_to_u8(
+        } => lower_truncate_word_to_byte(
             (*result, *span, *type_kind, *value),
             state,
         ),
@@ -1242,12 +1242,12 @@ fn lower_constant_integer(
     }
 }
 
-fn lower_truncate_i32_to_u8(
+fn lower_truncate_word_to_byte(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
-    if type_kind != InputScalarType::U8 {
+    if !matches!(type_kind, InputScalarType::U8 | InputScalarType::I8) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     let source_signed = state.signed.contains(&value);
@@ -1255,22 +1255,36 @@ fn lower_truncate_i32_to_u8(
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.bytes.insert(result);
+    let inserted = if type_kind == InputScalarType::I8 {
+        state.signed_bytes.insert(result)
+    } else {
+        state.bytes.insert(result)
+    };
     debug_assert!(inserted, "new SSA value was already preflighted");
     let target_span = copy_span(span);
-    if source_signed {
-        Ok(TernaryOperation::TruncateI32ToU8 {
+    Ok(match (source_signed, type_kind) {
+        (true, InputScalarType::I8) => TernaryOperation::TruncateI32ToI8 {
             result,
             span: target_span,
             value,
-        })
-    } else {
-        Ok(TernaryOperation::TruncateU32ToU8 {
+        },
+        (true, InputScalarType::U8) => TernaryOperation::TruncateI32ToU8 {
             result,
             span: target_span,
             value,
-        })
-    }
+        },
+        (false, InputScalarType::I8) => TernaryOperation::TruncateU32ToI8 {
+            result,
+            span: target_span,
+            value,
+        },
+        (false, InputScalarType::U8) => TernaryOperation::TruncateU32ToU8 {
+            result,
+            span: target_span,
+            value,
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
 }
 
 fn lower_integer_to_bool(

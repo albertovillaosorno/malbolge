@@ -60,8 +60,11 @@ Boolean SSA at tag `52`.
 Equal-width `i8 <-> u8` integer bitcasts carry
 separate SSA results at tags `53` and `54` without changing byte patterns.
 Same-kind byte bitcasts retain a new SSA result at tags `55` and `56`.
+
 Direct signed-byte `ReturnI8` at tag `57` requires a defined `i8` SSA operand
 and never invents a widened return value.
+Signed-byte word truncation creates a separately typed `i8` result at tags
+`58` and `59`, preserving low-eight-bit semantics symbolically.
 Other signed narrow widths remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

@@ -1351,6 +1351,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Truncate one exact signed word to signed byte bits without host math.
+    TruncateI32ToI8 {
+        /// Distinct signed-byte SSA result.
+        result: u32,
+        /// Original typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed 32-bit SSA identity.
+        value: u32,
+    },
     /// Truncate one exact `i32` value to its low eight bits as `u8`.
     TruncateI32ToU8 {
         /// Upstream SSA result identity.
@@ -1358,6 +1367,15 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
         /// Upstream SSA source value identity.
+        value: u32,
+    },
+    /// Truncate one unsigned word to signed byte bits without host math.
+    TruncateU32ToI8 {
+        /// Distinct signed-byte SSA result.
+        result: u32,
+        /// Original typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined unsigned 32-bit SSA identity.
         value: u32,
     },
     /// Truncate an unsigned `u32` scalar to the exact low eight bits.
