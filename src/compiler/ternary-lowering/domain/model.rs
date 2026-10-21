@@ -1007,6 +1007,15 @@ pub enum TernaryOperation {
         /// Previously defined signed `i32` SSA identity.
         value: u32,
     },
+    /// Preserve signed 8-bit C nonzero truth testing symbolically.
+    I8ToBool {
+        /// Distinct Boolean SSA result.
+        result: u32,
+        /// Original typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed byte SSA operand.
+        value: u32,
+    },
     /// evaluation.
     LessSignedEqualI32 {
         /// Left 32-bit operand SSA identity.
