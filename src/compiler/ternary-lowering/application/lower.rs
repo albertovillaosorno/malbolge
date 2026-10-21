@@ -1508,11 +1508,32 @@ fn lower_bool_to_signed(
     })
 }
 
+fn lower_sign_extend_i16_to_i32(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, kind, value) = input;
+    if kind != InputScalarType::I32 || !state.signed_halves.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.signed.insert(result);
+    debug_assert!(inserted, "new SSA was already preflighted");
+    Ok(TernaryOperation::SignExtendI16ToI32 {
+        result,
+        span: copy_span(span),
+        value,
+    })
+}
+
 fn lower_sign_extend_i8_to_i32(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if state.signed_halves.contains(&value) {
+        return lower_sign_extend_i16_to_i32(input, state);
+    }
     if type_kind != InputScalarType::I32 || !state.signed_bytes.contains(&value)
     {
         return Err(TernaryLoweringError::UnsupportedInstruction);
@@ -1527,11 +1548,32 @@ fn lower_sign_extend_i8_to_i32(
     })
 }
 
+fn lower_zero_extend_u16_to_u32(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, kind, value) = input;
+    if kind != InputScalarType::U32 || !state.unsigned_halves.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.unsigned.insert(result);
+    debug_assert!(inserted, "new SSA was already preflighted");
+    Ok(TernaryOperation::ZeroExtendU16ToU32 {
+        result,
+        span: copy_span(span),
+        value,
+    })
+}
+
 fn lower_zero_extend_u8_to_u32(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if state.unsigned_halves.contains(&value) {
+        return lower_zero_extend_u16_to_u32(input, state);
+    }
     if type_kind != InputScalarType::U32 || !state.bytes.contains(&value) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }

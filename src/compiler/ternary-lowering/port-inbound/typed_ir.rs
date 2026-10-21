@@ -367,7 +367,7 @@ pub enum InputInstruction {
         /// Defined signed/unsigned word or successful unsigned byte source.
         value: u32,
     },
-    /// Sign-extend a separately defined exact signed byte to `i32`.
+    /// Sign-extend a defined signed 8-bit or 16-bit scalar to `i32`.
     SignExtendI8ToI32 {
         /// Newly defined signed 32-bit SSA identity.
         result: u32,
@@ -375,7 +375,7 @@ pub enum InputInstruction {
         span: InputSourceSpan,
         /// Required signed 32-bit result kind.
         type_kind: InputScalarType,
-        /// Defined signed 8-bit source SSA identity.
+        /// Defined signed 8-bit or 16-bit source SSA identity.
         value: u32,
     },
     /// Truncate a defined 32-bit integer to exact `u8` or signed `i8` bits.
@@ -391,7 +391,7 @@ pub enum InputInstruction {
     },
     /// An admitted typed-IR instruction not implemented by this lowering slice.
     Unsupported,
-    /// Zero-extend a successful byte to an unsigned 32-bit SSA value.
+    /// Zero-extend a defined unsigned 8-bit or 16-bit scalar to `u32`.
     ZeroExtendInteger {
         /// Upstream SSA result identity.
         result: u32,
@@ -399,7 +399,7 @@ pub enum InputInstruction {
         span: InputSourceSpan,
         /// Admitted destination scalar category.
         type_kind: InputScalarType,
-        /// Previously defined byte-valued source SSA identity.
+        /// Previously defined unsigned byte or halfword SSA identity.
         value: u32,
     },
 }

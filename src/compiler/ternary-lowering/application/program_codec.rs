@@ -681,6 +681,8 @@ fn decode_cast_operation(
         65 => TernaryOperation::I16ToBool { result, span, value },
         66 => TernaryOperation::U16ToBool { result, span, value },
         67 => TernaryOperation::BoolToI16 { result, span, value },
+        68 => TernaryOperation::SignExtendI16ToI32 { result, span, value },
+        69 => TernaryOperation::ZeroExtendU16ToU32 { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -771,7 +773,7 @@ fn decode_half_operation(
         62 => Some(decode_half_materialization(decoder, false)),
         63 => Some(decode_half_return(decoder, true)),
         64 => Some(decode_half_return(decoder, false)),
-        65..=67 => Some(decode_cast_operation(decoder, tag)),
+        65..=69 => Some(decode_cast_operation(decoder, tag)),
         _ => None,
     }
 }
@@ -1286,15 +1288,31 @@ fn encode_bitwise_model_tail(
     debug_assert!(false, "wrong binary operation family reached encoder");
 }
 
-const fn cast_tag(operation: TernaryOperation) -> u8 {
+const fn halfword_cast_tag(operation: TernaryOperation) -> Option<u8> {
     if matches!(operation, TernaryOperation::I16ToBool { .. }) {
-        return 65;
+        Some(65)
+    } else if matches!(operation, TernaryOperation::U16ToBool { .. }) {
+        Some(66)
+    } else if matches!(operation, TernaryOperation::BoolToI16 { .. }) {
+        Some(67)
+    } else {
+        halfword_widen_tag(operation)
     }
-    if matches!(operation, TernaryOperation::U16ToBool { .. }) {
-        return 66;
+}
+
+const fn halfword_widen_tag(operation: TernaryOperation) -> Option<u8> {
+    if matches!(operation, TernaryOperation::SignExtendI16ToI32 { .. }) {
+        Some(68)
+    } else if matches!(operation, TernaryOperation::ZeroExtendU16ToU32 { .. }) {
+        Some(69)
+    } else {
+        None
     }
-    if matches!(operation, TernaryOperation::BoolToI16 { .. }) {
-        return 67;
+}
+
+const fn cast_tag(operation: TernaryOperation) -> u8 {
+    if let Some(tag) = halfword_cast_tag(operation) {
+        return tag;
     }
     if matches!(operation, TernaryOperation::TruncateI32ToI8 { .. }) {
         58
@@ -1370,7 +1388,9 @@ const fn narrow_bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
-    let (TernaryOperation::BoolToI16 { result, span, value }
+    let (TernaryOperation::SignExtendI16ToI32 { result, span, value }
+    | TernaryOperation::ZeroExtendU16ToU32 { result, span, value }
+    | TernaryOperation::BoolToI16 { result, span, value }
     | TernaryOperation::I16ToBool { result, span, value }
     | TernaryOperation::U16ToBool { result, span, value }
     | TernaryOperation::I32ToBool { result, span, value }
@@ -1598,7 +1618,9 @@ fn encode_narrow_materialization(
 const fn is_cast_operation(operation: TernaryOperation) -> bool {
     matches!(
         operation,
-        TernaryOperation::BoolToI16 { .. }
+        TernaryOperation::SignExtendI16ToI32 { .. }
+            | TernaryOperation::ZeroExtendU16ToU32 { .. }
+            | TernaryOperation::BoolToI16 { .. }
             | TernaryOperation::I16ToBool { .. }
             | TernaryOperation::U16ToBool { .. }
             | TernaryOperation::I32ToBool { .. }
@@ -1775,6 +1797,8 @@ const fn operation_span_secondary(
     | Op::MaterializeI16 { span, .. }
     | Op::MaterializeU16 { span, .. }
     | Op::MaterializeI8 { span, .. }
+    | Op::SignExtendI16ToI32 { span, .. }
+    | Op::ZeroExtendU16ToU32 { span, .. }
     | Op::SignExtendI8ToI32 { span, .. }
     | Op::MaterializeI32 { span, .. }
     | Op::MaterializeU32 { span, .. }
@@ -2191,6 +2215,26 @@ fn validate_halfword_truth_cast(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
 ) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let TernaryOperation::SignExtendI16ToI32 { result, value, .. } =
+        operation
+    {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I16, ValueKind::I32),
+        ));
+    }
+    if let TernaryOperation::ZeroExtendU16ToU32 { result, value, .. } =
+        operation
+    {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::U16, ValueKind::U32),
+        ));
+    }
     if let TernaryOperation::BoolToI16 { result, value, .. } = operation {
         return Some(validate_reinterpret_value(
             values,

@@ -79,7 +79,10 @@ These casts preserve separate Boolean SSA and direct Boolean returns.
 Boolean-to-signed-halfword `BoolToI16` is also symbolic at tag `67`,
 with direct `i16` return or Boolean round-trip as separate SSA.
 
-Other 16-bit arithmetic, bitcasts, promotions, and casts remain unsupported.
+Signed `i16 → i32` sign extension and unsigned `u16 → u32` zero extension
+remain symbolic as tags `68` and `69`, each defining separate word SSA.
+
+Other 16-bit arithmetic, bitcasts, truncations and casts remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest
