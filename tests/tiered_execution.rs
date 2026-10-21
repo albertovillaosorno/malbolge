@@ -46339,7 +46339,7 @@ fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
 fn hostile_header_fixture(directory: &Path) -> Result<(), String> {
     fs::create_dir_all(directory)
         .map_err(|error| format!("create Clang header fixture: {error}"))?;
-    for name in ["stddef.h", "stdint.h"] {
+    for name in ["stddef.h", "stdint.h", "forced-include.h"] {
         fs::write(directory.join(name), b"#error AMBIENT_HEADER_INJECTION\n")
             .map_err(|error| format!("write hostile {name}: {error}"))?;
     }
@@ -46380,6 +46380,13 @@ fn assert_bootstrap_header_environment_cannot_override_clang(
         .env("MALBOLGE_BOOTSTRAP_HEADER_TEST_CHILD", "1")
         .env("CPATH", directory)
         .env("C_INCLUDE_PATH", directory)
+        .env(
+            "CCC_OVERRIDE_OPTIONS",
+            format!(
+                "+-include{}",
+                directory.join("forced-include.h").display()
+            ),
+        )
         .output()
         .map_err(|error| format!("launch isolated Clang test: {error}"))?;
     if !output.status.success() {

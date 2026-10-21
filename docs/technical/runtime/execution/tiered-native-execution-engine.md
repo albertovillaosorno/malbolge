@@ -126,8 +126,9 @@ narrow `-Wno-unused-function` exception for unused shared static helpers.
 The external child also removes inherited C/C++/Objective-C header-path and
 `CCC_OVERRIDE_OPTIONS` overrides before launch. An isolated process test
 injects shadow `<stddef.h>` and `<stdint.h>` headers through `CPATH` and
-`C_INCLUDE_PATH`; both x86-64 and AArch64 compiled objects still pass all
-independent COFF structural-admission and forged-object checks.
+`C_INCLUDE_PATH`, plus a forced malicious include through
+`CCC_OVERRIDE_OPTIONS`. Both x86-64 and AArch64 compiled objects still pass
+all independent COFF structural-admission and forged-object checks.
 
 Source and object containers remain explicitly `Untrusted*`: matching IR/target
 identity proves provenance of the claim, not semantic correctness of

@@ -63,7 +63,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   inherited include-path and driver override variables before spawning Clang,
   and excludes only unused shared helper warnings from strict `-Werror`.
   A separate-process regression injects hostile `stddef.h`/`stdint.h`
-  shadow headers and still validates complete x86-64/AArch64 COFF candidates.
+  shadows and a forced Clang header via `CCC_OVERRIDE_OPTIONS`, while still
+  validating complete x86-64/AArch64 COFF candidates.
 - A Clang C23 bootstrap backend now emits real untrusted x86-64/AArch64 Windows
   COFF object candidates from the same portable IR. This proves the shared
   host-code boundary and target split. Safe-Rust COFF admission now verifies
