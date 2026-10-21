@@ -40,7 +40,8 @@ pub mod typed_ir;
 
 use std::env::temp_dir;
 use std::fs::{
-    copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
+    copy, create_dir_all, read, read_to_string, remove_dir_all, remove_file,
+    write,
 };
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
@@ -391,6 +392,8 @@ sys.stdout.buffer.write(b"bad")
 
 static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
+type InspectorObservation =
+    Result<ternary_lowering::TernaryProgram, TernaryProgressCheckpointError>;
 type TernaryProgressFixture = (PathBuf, PathBuf);
 type HalfwordRecordOffsets = (usize, usize);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
@@ -10713,6 +10716,356 @@ fn ternary_checkpoint_source_digest_is_provenance_not_authentication()
             return Err(String::from("digest provenance distinction drifted"));
         }
     }
+    Ok(())
+}
+
+fn inspected_ternary_checkpoint(
+    label: &str,
+    bytes: &[u8],
+) -> Result<InspectorObservation, String> {
+    let (progress, directory) = publish_ternary_progress_fixture(label, bytes)?;
+    let observed = resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        &progress,
+    );
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean {label} inspector fixture: {error}"))?;
+    Ok(observed)
+}
+
+#[test]
+fn ternary_progress_inspector_restores_all_canonical_program_families()
+-> Result<(), String> {
+    for (label, program) in all_ternary_checkpoint_prefix_cases()? {
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode {label}: {error:?}"))?;
+        if canonical_ternary_program(&bytes) != Ok(program.clone()) {
+            return Err(format!("{label} direct canonical state drifted"));
+        }
+        let restored = inspected_ternary_checkpoint(label, &bytes)?;
+        if restored != Ok(program) {
+            return Err(format!(
+                "{label} progress inspector drifted: {restored:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn assert_inspector_rejects_stage_error(
+    label: &str,
+    bytes: &[u8],
+    error: TernaryProgramCodecError,
+) -> Result<(), String> {
+    if canonical_ternary_program(bytes) != Err(error) {
+        return Err(format!("{label}: direct decoder classification drifted"));
+    }
+    let restored = inspected_ternary_checkpoint(label, bytes)?;
+    let expected = Err(TernaryProgressCheckpointError::Stage(
+        TernaryStageError::Checkpoint(error),
+    ));
+    if restored != expected {
+        return Err(format!("{label}: progress inspector {restored:?}"));
+    }
+    Ok(())
+}
+
+fn inspector_wire_mutation(
+    bytes: &[u8],
+    offset: usize,
+    replacement: u8,
+) -> Result<Vec<u8>, String> {
+    mutate_fixture_wire_byte(bytes, offset, replacement)
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_forged_metadata_and_function_identity()
+-> Result<(), String> {
+    let (program, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode inspector identities: {error:?}"))?;
+    let offsets = fixture_wire_identity_offsets(&bytes)?;
+    let invalid_program = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::ProgramIdentity,
+    );
+    let invalid_function = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::FunctionIdentity,
+    );
+    for (label, offset, replacement, expected) in [
+        (
+            "inspector-wrong-magic",
+            0usize,
+            0xffu8,
+            TernaryProgramCodecError::InvalidMagic,
+        ),
+        (
+            "inspector-wrong-version",
+            4,
+            0xff,
+            TernaryProgramCodecError::UnsupportedVersion,
+        ),
+        (
+            "inspector-invalid-abi-utf8",
+            offsets.abi_data,
+            0xff,
+            TernaryProgramCodecError::InvalidUtf8,
+        ),
+        (
+            "inspector-invalid-profile-identity",
+            offsets.profile_data,
+            b'X',
+            invalid_program,
+        ),
+        (
+            "inspector-invalid-source-path",
+            offsets.source_data,
+            b'/',
+            invalid_program,
+        ),
+        (
+            "inspector-dense-function-id",
+            offsets.function_count.saturating_add(4),
+            1,
+            invalid_function,
+        ),
+    ] {
+        let forged = inspector_wire_mutation(&bytes, offset, replacement)?;
+        assert_inspector_rejects_stage_error(label, &forged, expected)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_forged_opcode_and_scalar()
+-> Result<(), String> {
+    let (program, _) = lowered_halfword_fixture(0x8000, true)?;
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode inspector opcode: {error:?}"))?;
+    let offset = first_fixture_operation_tag_offset(&bytes)?;
+    for (label, index, replacement, expected) in [
+        (
+            "inspector-unknown-tag",
+            offset,
+            84u8,
+            TernaryProgramCodecError::UnknownTag,
+        ),
+        (
+            "inspector-nonternary-scalar",
+            offset.saturating_add(5),
+            3,
+            TernaryProgramCodecError::InvalidScalar,
+        ),
+    ] {
+        let forged = inspector_wire_mutation(&bytes, index, replacement)?;
+        assert_inspector_rejects_stage_error(label, &forged, expected)?;
+    }
+    Ok(())
+}
+
+fn tampered_progress_sidecar_value(
+    original: &str,
+    key_prefix: &str,
+) -> Result<Vec<u8>, String> {
+    let offset = original
+        .find(key_prefix)
+        .and_then(|start| start.checked_add(key_prefix.len()))
+        .ok_or_else(|| format!("sidecar field {key_prefix} absent"))?;
+    let mut bytes = original.as_bytes().to_vec();
+    let current = *bytes
+        .get(offset)
+        .ok_or_else(|| String::from("sidecar field value absent"))?;
+    if !current.is_ascii_hexdigit() {
+        return Err(format!("sidecar field {key_prefix} is not a hex digest"));
+    }
+    *bytes
+        .get_mut(offset)
+        .ok_or_else(|| String::from("sidecar mutation offset absent"))? =
+        if current == b'0' {
+            b'1'
+        } else {
+            b'0'
+        };
+    Ok(bytes)
+}
+
+fn assert_progress_sidecar_rejects_identity_tampering(
+    label: &str,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let encoded = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode {label} sidecar: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture(label, &encoded)?;
+    let result = check_sidecar_identity_mutations(&progress, program);
+    remove_dir_all(&directory)
+        .map_err(|error| format!("clean {label} sidecar fixture: {error}"))?;
+    result
+}
+
+fn check_sidecar_identity_mutations(
+    progress: &Path,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let original = read_to_string(progress)
+        .map_err(|error| format!("read signed progress pointer: {error}"))?;
+    if resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        progress,
+    ) != Ok(program.clone())
+    {
+        return Err(String::from("intact sidecar failed before mutations"));
+    }
+    for prefix in [
+        "\"checkpoint_sha256\":\"sha256:",
+        "\"source_sha256\":\"sha256:",
+        "\"toolchain_fingerprint\":\"sha256:",
+        "\"compatibility_fingerprint\":\"malbolge-progress-compat-v1:sha256:",
+    ] {
+        let mutated = tampered_progress_sidecar_value(&original, prefix)?;
+        write(progress, &mutated)
+            .map_err(|error| format!("mutate published progress: {error}"))?;
+        let rejected = resume_ternary_from_progress(
+            &repository_python(),
+            &progress_inspector(),
+            progress,
+        );
+        write(progress, original.as_bytes())
+            .map_err(|error| format!("restore published progress: {error}"))?;
+        if rejected != Err(TernaryProgressCheckpointError::InspectorRejected) {
+            return Err(format!("tampered {prefix} returned {rejected:?}"));
+        }
+    }
+    if resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        progress,
+    ) != Ok(program.clone())
+    {
+        return Err(String::from("restored sidecar failed after mutations"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_published_sidecar_identity_tampering()
+-> Result<(), String> {
+    let (dual, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), false)?;
+    assert_progress_sidecar_rejects_identity_tampering(
+        "pointer-dual-lane",
+        &dual,
+    )?;
+    let (halfword, _) = lowered_halfword_fixture(0x8000, true)?;
+    assert_progress_sidecar_rejects_identity_tampering(
+        "pointer-halfword",
+        &halfword,
+    )?;
+    Ok(())
+}
+
+fn check_published_checkpoint_payload_mutations(
+    label: &str,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let encoded = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode {label} payload: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture(label, &encoded)?;
+    let result =
+        inspect_checkpoint_payload_mutations(&progress, &directory, program);
+    remove_dir_all(&directory).map_err(|error| {
+        format!("clean {label} checkpoint fixture: {error}")
+    })?;
+    result
+}
+
+fn inspect_checkpoint_payload_mutations(
+    progress: &Path,
+    directory: &Path,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let checkpoint =
+        directory.join("program.malbolge.checkpoint.00000000000000000001");
+    let original = read(&checkpoint)
+        .map_err(|error| format!("read committed checkpoint: {error}"))?;
+    if resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        progress,
+    ) != Ok(program.clone())
+    {
+        return Err(String::from("unmodified committed checkpoint rejected"));
+    }
+    let checkpoint_text = from_utf8(&original)
+        .map_err(|error| format!("portable checkpoint UTF-8: {error}"))?;
+    for prefix in [
+        "\"payload_sha256\":\"sha256:",
+        "\"payload_base64\":\"",
+        "\"state_codec\":\"",
+    ] {
+        let forged = tampered_checkpoint_field(checkpoint_text, prefix)?;
+        write(&checkpoint, &forged)
+            .map_err(|error| format!("tamper committed checkpoint: {error}"))?;
+        let observed = resume_ternary_from_progress(
+            &repository_python(),
+            &progress_inspector(),
+            progress,
+        );
+        write(&checkpoint, &original).map_err(|error| {
+            format!("restore committed checkpoint: {error}")
+        })?;
+        if observed != Err(TernaryProgressCheckpointError::InspectorRejected) {
+            return Err(format!("tampered {prefix}: {observed:?}"));
+        }
+    }
+    if resume_ternary_from_progress(
+        &repository_python(),
+        &progress_inspector(),
+        progress,
+    ) != Ok(program.clone())
+    {
+        return Err(String::from("restored committed checkpoint rejected"));
+    }
+    Ok(())
+}
+
+fn tampered_checkpoint_field(
+    original: &str,
+    prefix: &str,
+) -> Result<Vec<u8>, String> {
+    let start = original
+        .find(prefix)
+        .and_then(|offset| offset.checked_add(prefix.len()))
+        .ok_or_else(|| format!("checkpoint field {prefix} missing"))?;
+    let mut bytes = original.as_bytes().to_vec();
+    let current = *bytes
+        .get(start)
+        .ok_or_else(|| String::from("checkpoint field value missing"))?;
+    if !current.is_ascii_alphanumeric() {
+        return Err(format!("checkpoint field {prefix} is not alphanumeric"));
+    }
+    *bytes
+        .get_mut(start)
+        .ok_or_else(|| String::from("checkpoint field byte missing"))? =
+        if current == b'A' {
+            b'B'
+        } else {
+            b'A'
+        };
+    Ok(bytes)
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_committed_checkpoint_payload_tampering()
+-> Result<(), String> {
+    let (dual, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    check_published_checkpoint_payload_mutations("payload-dual-lane", &dual)?;
+    let (halfword, _) = lowered_halfword_fixture(0x8000, false)?;
+    check_published_checkpoint_payload_mutations(
+        "payload-halfword",
+        &halfword,
+    )?;
     Ok(())
 }
 

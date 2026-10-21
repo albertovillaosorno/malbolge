@@ -131,6 +131,11 @@ structural tag offset.
 Header tests reject invalid magic/version/UTF-8, identities and oversized
 counts; the source SHA-256 field is preserved provenance, not authentication.
 
+Real inspector tests publish and restore all 23 canonical program families.
+Freshly published malformed inner state retains precise ternary errors,
+while post-publication sidecar or portable-envelope tampering is rejected
+at the outer integrity boundary before stage admission.
+
 Composition now exposes one explicit product compiler selector between fresh
 typed-IR projection lowering and durable progress-sidecar restore. The progress
 route delegates portable-envelope validation to the trusted inspector and then

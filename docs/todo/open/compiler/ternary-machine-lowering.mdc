@@ -267,6 +267,13 @@ instruction.
   source-order effects, typed SSA identities and provenance, without host
   evaluation. Decoder and inspector reject retagged lanes and unknown `84`,
   and all ten durable crash boundaries retain committed generations.
+- The real portable progress inspector now restores all 23 canonical
+  target program families from published immutable checkpoint generations.
+  It retains exact inner decoder diagnostics for freshly published malformed
+  metadata, function identity, scalar trits and unknown tags.
+  Post-publication tampering with sidecar identity/digest fields or the
+  committed envelope's payload, digest or codec is rejected by the inspector
+  before stage decoding; clean restoration succeeds after file recovery.
 - Independent `MCTR` header tests reject mutated magic/version fields,
   invalid UTF-8 and ABI/profile/source identities, and oversized declared
   string/function/operation counts before count-sized eager allocation.

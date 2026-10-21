@@ -83,6 +83,24 @@ rejected as `UnknownTag` in scalar, void-return, byte-effect and comparison
 fixtures. These tests locate actual operation offsets through wire structure,
 not arbitrary byte-pattern occurrences within metadata or source spans.
 
+Real progress-inspector admission now covers the same 23 canonical
+pre-layout program families as the independent wire corpus, including two
+functions with separate guest byte effects and typed 16-bit operations.
+Every program is published through the real portable sidecar writer and
+restored from its actual immutable checkpoint generation.
+
+The inspector also rejects tampered inner checkpoint records with malformed
+metadata, forged function identities, unknown opcodes or invalid scalar
+trits even when they have been freshly published in a valid outer envelope.
+These errors retain their precise canonical ternary-decoder categories.
+
+Separate post-publication tests alter the sidecar checkpoint digest, source
+digest, compatibility fingerprint and toolchain fingerprint; all fail at
+the inspector before ternary-stage admission. Corrupting the committed
+portable envelope's payload digest, encoded payload or codec also fails
+outer-envelope verification, and restoring the original files restores
+successful resume.
+
 Independent wire-identity tests exercise each magic/version byte,
 length-prefixed ABI/profile/source identity, invalid UTF-8 and overlarge
 string, function and operation counts, rejecting malformed input without
