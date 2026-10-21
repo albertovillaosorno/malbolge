@@ -1053,6 +1053,15 @@ pub enum TernaryOperation {
         /// Original source provenance.
         span: TernarySourceSpan,
     },
+    /// Materialize a canonical `false`/`true` Boolean SSA constant.
+    MaterializeBool {
+        /// Newly defined upstream Boolean SSA identity.
+        result: u32,
+        /// Source's exact canonical false/true value, not a host computation.
+        value: bool,
+        /// Original typed-IR instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later

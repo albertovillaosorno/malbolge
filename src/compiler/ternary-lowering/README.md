@@ -47,8 +47,12 @@ symbolic Boolean result. Pointer truth conversions, floating-point
 comparisons, control flow, and executable target realization remain outside
 this slice.
 
+Validated one-bit Boolean constants now materialize separate Boolean SSA
+values and return directly or convert explicitly to signed `i32`. The wire
+stores their canonical zero/one digit and source provenance at tag `48`.
+
 Fresh compiler entry and real progress-inspector restoration agree for
-admitted Boolean comparisons and truth-value casts.
+admitted Boolean comparisons, constant materialization and truth-value casts.
 
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one

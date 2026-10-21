@@ -643,6 +643,19 @@ fn decode_cast_operation(
     })
 }
 
+fn decode_boolean_constant(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let result = decoder.u32()?;
+    let value = match decoder.u8()? {
+        0 => false,
+        1 => true,
+        _ => return Err(TernaryProgramCodecError::InvalidScalar),
+    };
+    let span = decode_span(decoder)?;
+    Ok(TernaryOperation::MaterializeBool { result, value, span })
+}
+
 fn decode_operation(
     decoder: &mut Decoder<'_>,
 ) -> Result<TernaryOperation, TernaryProgramCodecError> {
@@ -668,6 +681,7 @@ fn decode_operation(
         },
         6 => decode_bitwise_operation(decoder, 6)?,
         7 => decode_bitwise_operation(decoder, 7)?,
+        48 => decode_boolean_constant(decoder)?,
         8 => TernaryOperation::MaterializeU8 {
             result: decoder.u32()?,
             scalar: decoder.byte_scalar()?,
@@ -1339,6 +1353,14 @@ fn encode_non_word_operation(
         encode_large_scalar_model(encoder, operation, (result, scalar, span));
         return;
     }
+    if let TernaryOperation::MaterializeBool { result, value, span } = operation
+    {
+        encoder.u8(48);
+        encoder.u32(result);
+        encoder.u8(u8::from(value));
+        encode_span(encoder, span);
+        return;
+    }
     if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation
     {
         encode_byte_scalar(encoder, result, scalar, span);
@@ -1439,6 +1461,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::U8ToBool { span, .. }
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
+        | TernaryOperation::MaterializeBool { span, .. }
         | TernaryOperation::MaterializeI32 { span, .. }
         | TernaryOperation::MaterializeU32 { span, .. }
         | TernaryOperation::MaterializeU8 { span, .. }
@@ -1763,6 +1786,9 @@ fn validate_materialize_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
 ) -> Result<bool, TernaryProgramValidationError> {
+    if let TernaryOperation::MaterializeBool { result, .. } = operation {
+        return insert_value(values, result, ValueKind::Bool).map(|()| false);
+    }
     if let TernaryOperation::MaterializeI32 { result, scalar, .. } = operation {
         return validate_large_scalar(values, result, scalar, ValueKind::I32);
     }
@@ -1791,7 +1817,8 @@ fn validate_operation(
     }
     if matches!(
         operation,
-        TernaryOperation::MaterializeI32 { .. }
+        TernaryOperation::MaterializeBool { .. }
+            | TernaryOperation::MaterializeI32 { .. }
             | TernaryOperation::MaterializeU32 { .. }
             | TernaryOperation::MaterializeU8 { .. }
     ) {

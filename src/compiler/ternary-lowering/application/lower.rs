@@ -1117,6 +1117,19 @@ fn lower_constant_integer(
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (bit_width, little_endian, result, span, type_kind) = input;
+    if bit_width == 1 && type_kind == InputScalarType::Bool {
+        let &[bit @ 0..=1] = little_endian else {
+            return Err(TernaryLoweringError::UnsupportedInstruction);
+        };
+        ensure_new_value(state, result)?;
+        let inserted = state.bools.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
+        return Ok(TernaryOperation::MaterializeBool {
+            result,
+            value: bit == 1,
+            span: copy_span(span),
+        });
+    }
     if bit_width == 8 && type_kind == InputScalarType::U8 {
         let &[byte] = little_endian else {
             return Err(TernaryLoweringError::UnsupportedInstruction);
