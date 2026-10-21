@@ -2703,6 +2703,306 @@ fn assert_dual_lane_provenance(
     Ok(())
 }
 
+fn dense_lane_io_member(id: u32) -> Function {
+    let signed = id.is_multiple_of(2);
+    let source = if id.is_multiple_of(3) {
+        None
+    } else {
+        Some(
+            u8::try_from(id.checked_rem(256).unwrap_or_default())
+                .unwrap_or_default(),
+        )
+    };
+    let start = id.saturating_mul(8);
+    let end = start.saturating_add(7);
+    Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(0),
+            instructions: shifted_lane_io_instructions(source, signed, start),
+            phis: Vec::new(),
+            span: fixture_span(start, end),
+            terminator: Terminator::Return { value: None },
+            terminator_span: fixture_span(end.saturating_sub(1), end),
+        })],
+        entry: BlockId::new(0),
+        id: FunctionId::new(id),
+        name: format!("dense_lane_member_{id}"),
+        parameters: Vec::new(),
+        signature: TypeId::new(4),
+        span: fixture_span(start, end),
+    })
+}
+
+fn dense_lane_io_module(count: u32) -> Module {
+    let functions = (0..count).map(dense_lane_io_member).collect();
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions,
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/dense-byte-io.c"),
+        source_sha256: [0xc1; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(TypeId::new(1), TypeDef::U16),
+            TypeEntry::new(TypeId::new(2), TypeDef::I16),
+            TypeEntry::new(TypeId::new(3), TypeDef::I8),
+            TypeEntry::new(
+                TypeId::new(4),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    })
+}
+
+fn lowered_dense_lane_io_fixture(
+    count: u32,
+) -> Result<LoweredByteFixture, String> {
+    let module = dense_lane_io_module(count);
+    validate_module(&module)
+        .map_err(|error| format!("admit dense typed IR: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode dense typed IR: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore dense typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("dense typed IR canonical drift"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower dense typed IR: {error:?}"))?;
+    assert_dual_lane_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn assert_dense_lane_io_function_order(
+    program: &ternary_lowering::TernaryProgram,
+    count: u32,
+) -> Result<(), String> {
+    if program.functions.len() != usize::try_from(count).unwrap_or_default() {
+        return Err(String::from("dense function count drifted"));
+    }
+    for (index, function) in program.functions.iter().enumerate() {
+        let id = u32::try_from(index)
+            .map_err(|_error| String::from("dense function ID overflow"))?;
+        let signed = id.is_multiple_of(2);
+        let source = if id.is_multiple_of(3) {
+            None
+        } else {
+            Some(
+                u8::try_from(id.checked_rem(256).unwrap_or_default())
+                    .unwrap_or_default(),
+            )
+        };
+        let expected = expected_lane_io_operations_at(
+            source,
+            signed,
+            id.saturating_mul(8),
+        );
+        if function.id != id
+            || function.name != format!("dense_lane_member_{id}")
+            || function.operations != expected
+            || function.span
+                != output_span(fixture_span(
+                    id.saturating_mul(8),
+                    id.saturating_mul(8).saturating_add(7),
+                ))
+        {
+            return Err(format!("dense function {id} lost SSA, span or name"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_dense_functions_canonicalize_without_cross_function_ssa_leakage()
+-> Result<(), String> {
+    for count in [1u32, 2, 16, 128, 512] {
+        let (target, projection) = lowered_dense_lane_io_fixture(count)?;
+        assert_dense_lane_io_function_order(&target, count)?;
+        if projection.functions.len()
+            != usize::try_from(count).unwrap_or_default()
+        {
+            return Err(String::from(
+                "dense projection function count drifted",
+            ));
+        }
+        let bytes = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode dense target: {error:?}"))?;
+        if canonical_ternary_program(&bytes) != Ok(target) {
+            return Err(String::from("dense target checkpoint drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_dense_function_forgery_rejected(
+    original: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let mut wrong_id = original.clone();
+    let last = wrong_id
+        .functions
+        .last_mut()
+        .ok_or_else(|| String::from("dense last function absent"))?;
+    last.id = 0;
+    if ternary_lowering::validate_ternary_program(&wrong_id)
+        != Err(TernaryProgramValidationError::FunctionIdentity)
+    {
+        return Err(String::from("high-index function ID collision admitted"));
+    }
+    let mut wrong_name = original.clone();
+    let previous_name = wrong_name
+        .functions
+        .first()
+        .ok_or_else(|| String::from("dense first function absent"))?
+        .name
+        .clone();
+    let last_named = wrong_name
+        .functions
+        .last_mut()
+        .ok_or_else(|| String::from("dense last function absent"))?;
+    last_named.name = previous_name;
+    if ternary_lowering::validate_ternary_program(&wrong_name)
+        != Err(TernaryProgramValidationError::FunctionIdentity)
+    {
+        return Err(String::from(
+            "high-index function name collision admitted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_dense_functions_reject_high_index_identity_forgery()
+-> Result<(), String> {
+    let (target, _) = lowered_dense_lane_io_fixture(128)?;
+    assert_dense_function_forgery_rejected(&target)
+}
+
+#[test]
+fn ternary_dense_functions_fail_closed_on_late_projection_forgery()
+-> Result<(), String> {
+    let (_, mut projection) = lowered_dense_lane_io_fixture(128)?;
+    let last = projection.functions.last_mut().ok_or_else(|| {
+        String::from("dense last function projection missing")
+    })?;
+    let output = last
+        .blocks
+        .first_mut()
+        .and_then(|block| block.instructions.get_mut(5))
+        .ok_or_else(|| String::from("dense late output missing"))?;
+    let InputInstruction::ByteOutput { value, .. } = output else {
+        return Err(String::from("dense final effect changed"));
+    };
+    *value = 2;
+    if lower_typed_ir(&projection)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("late forged output admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_dense_functions_reject_late_source_provenance_forgery()
+-> Result<(), String> {
+    let (original, _) = lowered_dense_lane_io_fixture(128)?;
+    let mut forged = original;
+    let last = forged
+        .functions
+        .last_mut()
+        .ok_or_else(|| String::from("dense late function absent"))?;
+    let first = last
+        .operations
+        .first_mut()
+        .ok_or_else(|| String::from("dense late operation absent"))?;
+    let (TernaryOperation::ByteInput { span, .. }
+    | TernaryOperation::MaterializeU8 { span, .. }) = first
+    else {
+        return Err(String::from("dense first operation type drifted"));
+    };
+    span.begin.byte = u32::MAX;
+    if ternary_lowering::validate_ternary_program(&forged)
+        != Err(TernaryProgramValidationError::SourceProvenance)
+    {
+        return Err(String::from("late source span escaped validation"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_projection_rejects_malformed_dense_function_identities()
+-> Result<(), String> {
+    let (_, original) = lowered_dense_lane_io_fixture(128)?;
+    let previous_name = original
+        .functions
+        .first()
+        .ok_or_else(|| String::from("first projected function absent"))?
+        .name
+        .clone();
+    for mutate in 0u8..4 {
+        let mut invalid = original.clone();
+        let final_member = invalid
+            .functions
+            .last_mut()
+            .ok_or_else(|| String::from("last projected function absent"))?;
+        match mutate {
+            0 => final_member.id = 0,
+            1 => final_member.name = previous_name.clone(),
+            2 => final_member.name = String::new(),
+            3 => final_member.name = String::from("invalid\0function"),
+            _ => {
+                return Err(String::from("unknown function identity mutation"));
+            },
+        }
+        if lower_typed_ir(&invalid)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!(
+                "malformed projected function {mutate} admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_projection_rejects_malformed_source_paths() -> Result<(), String> {
+    let (_, original) = lowered_dense_lane_io_fixture(2)?;
+    for source in [
+        "/absolute.c",
+        "../escape.c",
+        "fixtures/./source.c",
+        "fixtures//source.c",
+        "fixtures/../source.c",
+        "C:drive.c",
+        "dir\\windows.c",
+        "filename\0c",
+        "",
+    ] {
+        let mut invalid = original.clone();
+        invalid.source_id = String::from(source);
+        if lower_typed_ir(&invalid)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!("invalid source path {source:?} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_dense_functions_restore_through_inspector() -> Result<(), String> {
+    let (target, projection) = lowered_dense_lane_io_fixture(128)?;
+    assert_boolean_inspector_convergence(
+        "dense-128-independent-lanes",
+        &target,
+        &projection,
+    )
+}
+
 fn lowered_dual_lane_io_fixture(
     sources: DualLaneSources,
     reversed: bool,

@@ -254,6 +254,16 @@ instruction.
   lowerer rejects forged narrow-operand projections, and independent decoder
   and production-inspector recovery reject retagged casts and invalid SSA;
   all ten crash-publication boundaries preserve committed generations.
+- The lowering entrypoint now independently rejects malformed source IDs,
+  sparse or duplicate function IDs, duplicate names and NUL/empty names
+  before publishing any target state. The target validator retains its
+  independent name authority but borrows name slices, avoiding a per-member
+  name clone across dense module admission.
+- Bounded dense-function evidence now round-trips `1`, `2`, `16`, `128`
+  and `512` validated typed/target members, each carrying independent byte
+  effects, halfword casts, local SSA identities, unique names and spans.
+  Inspector resume agrees with fresh lowering for 128 members; forged
+  high-index IDs/names, late SSA-output type and source-span drift fail closed.
 - Two-function modules now retain independent signed/unsigned halfword
   byte-I/O chains in either function order with local SSA identities,
   distinct source spans, and value-free returns. Mixed guest input and

@@ -106,6 +106,12 @@ symbolic SSA and a value-free `ReturnVoid` in either signedness lane.
 
 Independent signed/unsigned byte-I/O chains may also coexist in one
 module, preserving function order, per-function SSA and source spans.
+Bounded integration cases admit and restore up to 512 independently named
+members; 128-member checkpoints also restore through the real inspector.
+
+Projection admission independently rejects invalid source paths and
+noncanonical function identities before lowering. Canonical validation
+retains its separate uniqueness check without allocating cloned names.
 
 Other 16-bit arithmetic and remaining casts are unsupported.
 

@@ -701,6 +701,29 @@ from a halfword SSA instead of its final `u8` definition. Production-inspector
 restoration converges, while every durable crash boundary retains the
 previous committed generation.
 
+The lowering entrypoint now independently preflights source IDs as relative,
+normalized paths with no empty, dot, parent, drive-colon, NUL or backslash
+segments. It also requires dense function IDs, nonempty NUL-free names and
+unique function identities before any target operations are published.
+
+Forged 128-member projections prove that a late ID collision, duplicated or
+malformed name, or a noncanonical source path fails as `InvalidProjection`.
+The independent target validator retains the same name/ordering authority but
+now borrows member name slices rather than allocating one cloned string per
+function during its uniqueness check.
+
+A dense-function integration suite now admits and canonically restores
+`1`, `2`, `16`, `128` and `512` independent typed-IR functions, each with
+its own six-step guest byte-I/O and halfword conversion chain. Each
+function has a unique name, dense ID, locally restarted SSA numbering,
+exact span, and mixed literal or guest input effects.
+
+Both typed and target codecs preserve every member and its original order;
+the real progress inspector agrees with fresh lowering for 128 functions.
+High-index function ID/name collisions, invalid late source spans and a
+forged late non-byte output fail closed without publishing partial state.
+These are bounded scalability checks, not claims of unrestricted module size.
+
 Two-function modules can independently execute signed and unsigned
 halfword byte-I/O chains in either function order, with disjoint spans and
 local SSA numbering starting at zero in each function. Canonical typed IR

@@ -2003,16 +2003,16 @@ const fn valid_span(span: TernarySourceSpan) -> bool {
         || (begin.line == end.line && begin.column <= end.column)
 }
 
-fn validate_function(
-    function: &TernaryFunction,
+fn validate_function<'program>(
+    function: &'program TernaryFunction,
     index: usize,
-    names: &mut BTreeSet<String>,
+    names: &mut BTreeSet<&'program str>,
 ) -> Result<(), TernaryProgramValidationError> {
     let expected = u32::try_from(index)
         .map_err(|_error| TernaryProgramValidationError::FunctionIdentity)?;
     if function.id != expected
         || !valid_name(&function.name)
-        || !names.insert(function.name.clone())
+        || !names.insert(function.name.as_str())
         || !valid_span(function.span)
     {
         return Err(TernaryProgramValidationError::FunctionIdentity);

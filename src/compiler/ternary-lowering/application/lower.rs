@@ -1912,17 +1912,46 @@ fn ensure_new_value(
     Ok(())
 }
 
+fn valid_projection_source_id(source_id: &str) -> bool {
+    !source_id.is_empty()
+        && !source_id.starts_with('/')
+        && !source_id.contains('\\')
+        && !source_id.contains(':')
+        && !source_id.contains('\0')
+        && !source_id
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+}
+
+fn validate_projection_function_identities(
+    input: &TypedIrInput,
+) -> Result<(), TernaryLoweringError> {
+    let mut names = BTreeSet::new();
+    for (index, function) in input.functions.iter().enumerate() {
+        let expected = u32::try_from(index)
+            .map_err(|_error| TernaryLoweringError::InvalidProjection)?;
+        if function.id != expected
+            || function.name.is_empty()
+            || function.name.contains('\0')
+            || !names.insert(function.name.as_str())
+        {
+            return Err(TernaryLoweringError::InvalidProjection);
+        }
+    }
+    Ok(())
+}
+
 fn validate_projection(
     input: &TypedIrInput,
 ) -> Result<(), TernaryLoweringError> {
     if input.abi_id != ABI_ID
         || input.input_format_version != TYPED_IR_VERSION
-        || input.source_id.is_empty()
+        || !valid_projection_source_id(&input.source_id)
         || input.target_profile != TARGET_PROFILE
     {
         return Err(TernaryLoweringError::InvalidProjection);
     }
-    Ok(())
+    validate_projection_function_identities(input)
 }
 
 /// Lowers one validated typed-IR semantic projection into the initial model.
