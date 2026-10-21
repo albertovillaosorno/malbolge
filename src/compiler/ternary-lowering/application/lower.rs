@@ -1368,11 +1368,46 @@ fn lower_zero_extend_u8_to_u32(
     })
 }
 
+fn lower_byte_bitcast(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    let signed_source = state.signed_bytes.contains(&value);
+    let unsigned_source = state.bytes.contains(&value);
+    if !((signed_source && type_kind == InputScalarType::U8)
+        || (unsigned_source && type_kind == InputScalarType::I8))
+    {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    if signed_source {
+        let inserted = state.bytes.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
+        Ok(TernaryOperation::BitcastI8ToU8 {
+            result,
+            span: copy_span(span),
+            value,
+        })
+    } else {
+        let inserted = state.signed_bytes.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
+        Ok(TernaryOperation::BitcastU8ToI8 {
+            result,
+            span: copy_span(span),
+            value,
+        })
+    }
+}
+
 fn lower_integer_bitcast(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if state.signed_bytes.contains(&value) || state.bytes.contains(&value) {
+        return lower_byte_bitcast(input, state);
+    }
     let source_kind = if state.signed.contains(&value) {
         InputScalarType::I32
     } else if state.unsigned.contains(&value) {

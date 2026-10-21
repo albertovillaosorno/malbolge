@@ -55,7 +55,11 @@ Signed `i8` constants preserve all original two's-complement bits with
 distinct signed-byte SSA identities at tag `50`. A validated `i8`-to-`i32`
 sign-extension cast creates a new signed 32-bit SSA at tag `51` without host
 interpretation. Signed-byte C nonzero truth testing also creates a distinct
-Boolean SSA at tag `52`. Other signed narrow widths remain unsupported.
+Boolean SSA at tag `52`.
+
+Equal-width `i8 <-> u8` integer bitcasts carry
+separate SSA results at tags `53` and `54` without changing byte patterns.
+Other signed narrow widths remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest

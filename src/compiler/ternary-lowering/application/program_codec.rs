@@ -636,6 +636,8 @@ fn decode_cast_operation(
         18 => TernaryOperation::BitcastU32ToI32 { result, span, value },
         33 => TernaryOperation::BitcastI32ToI32 { result, span, value },
         34 => TernaryOperation::BitcastU32ToU32 { result, span, value },
+        53 => TernaryOperation::BitcastI8ToU8 { result, span, value },
+        54 => TernaryOperation::BitcastU8ToI8 { result, span, value },
         44 => TernaryOperation::BoolToI32 { result, span, value },
         45 => TernaryOperation::I32ToBool { result, span, value },
         46 => TernaryOperation::U32ToBool { result, span, value },
@@ -736,7 +738,7 @@ fn decode_operation(
         12 => decode_bitwise_operation(decoder, 12)?,
         13 => decode_bitwise_operation(decoder, 13)?,
         14 => decode_bitwise_operation(decoder, 14)?,
-        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 | 51..=52 => {
+        5 | 15 | 16 | 17 | 18 | 33..=34 | 44..=47 | 51..=54 => {
             decode_cast_operation(decoder, tag)?
         },
         19..=24 => decode_arithmetic_operation(decoder, tag)?,
@@ -1218,6 +1220,12 @@ const fn bool_and_bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 const fn bitcast_tag(operation: TernaryOperation) -> u8 {
+    if matches!(operation, TernaryOperation::BitcastI8ToU8 { .. }) {
+        return 53;
+    }
+    if matches!(operation, TernaryOperation::BitcastU8ToI8 { .. }) {
+        return 54;
+    }
     if matches!(operation, TernaryOperation::BitcastI32ToU32 { .. }) {
         17
     } else if matches!(operation, TernaryOperation::BitcastU32ToI32 { .. }) {
@@ -1239,6 +1247,8 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
     | TernaryOperation::TruncateI32ToU8 { result, span, value }
     | TernaryOperation::TruncateU32ToU8 { result, span, value }
     | TernaryOperation::ZeroExtendU8ToU32 { result, span, value }
+    | TernaryOperation::BitcastI8ToU8 { result, span, value }
+    | TernaryOperation::BitcastU8ToI8 { result, span, value }
     | TernaryOperation::BitcastI32ToU32 { result, span, value }
     | TernaryOperation::BitcastU32ToI32 { result, span, value }
     | TernaryOperation::BitcastI32ToI32 { result, span, value }
@@ -1449,6 +1459,8 @@ fn encode_non_word_operation(
             | TernaryOperation::TruncateU32ToU8 { .. }
             | TernaryOperation::ZeroExtendU8ToU32 { .. }
             | TernaryOperation::SignExtendI8ToI32 { .. }
+            | TernaryOperation::BitcastI8ToU8 { .. }
+            | TernaryOperation::BitcastU8ToI8 { .. }
             | TernaryOperation::BitcastI32ToU32 { .. }
             | TernaryOperation::BitcastU32ToI32 { .. }
             | TernaryOperation::BitcastI32ToI32 { .. }
@@ -1541,6 +1553,8 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::TruncateI32ToU8 { span, .. }
         | TernaryOperation::TruncateU32ToU8 { span, .. }
         | TernaryOperation::ZeroExtendU8ToU32 { span, .. }
+        | TernaryOperation::BitcastI8ToU8 { span, .. }
+        | TernaryOperation::BitcastU8ToI8 { span, .. }
         | TernaryOperation::BitcastI32ToU32 { span, .. }
         | TernaryOperation::BitcastU32ToI32 { span, .. }
         | TernaryOperation::BitcastI32ToI32 { span, .. }
@@ -1893,6 +1907,37 @@ fn validate_materialize_operation(
     Err(TernaryProgramValidationError::SsaValue)
 }
 
+fn validate_signed_byte_cast(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let TernaryOperation::BitcastI8ToU8 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I8, ValueKind::Byte),
+        ));
+    }
+    if let TernaryOperation::BitcastU8ToI8 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::Byte, ValueKind::I8),
+        ));
+    }
+    if let TernaryOperation::I8ToBool { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I8, ValueKind::Bool),
+        ));
+    }
+    None
+}
+
 fn validate_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
@@ -1933,13 +1978,8 @@ fn validate_operation(
     if let TernaryOperation::TruncateU32ToU8 { result, value, .. } = operation {
         return validate_truncated_value(values, result, value, ValueKind::U32);
     }
-    if let TernaryOperation::I8ToBool { result, value, .. } = operation {
-        return validate_reinterpret_value(
-            values,
-            result,
-            value,
-            (ValueKind::I8, ValueKind::Bool),
-        );
+    if let Some(outcome) = validate_signed_byte_cast(operation, values) {
+        return outcome;
     }
     if matches!(
         operation,
