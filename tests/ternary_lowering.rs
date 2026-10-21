@@ -394,6 +394,8 @@ static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 type TernaryProgressFixture = (PathBuf, PathBuf);
 type HalfwordRecordOffsets = (usize, usize);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
+type NamedTernaryProgram = (&'static str, ternary_lowering::TernaryProgram);
+
 type DualLaneSources = (Option<u8>, Option<u8>);
 type ComparisonOperationTag = (TernaryOperation, u8);
 type PromotedWireMutation = (usize, u8, TernaryProgramCodecError);
@@ -10186,6 +10188,312 @@ fn ternary_stage_fresh_and_checkpoint_inputs_converge() -> Result<(), String> {
             "fresh and resumed ternary stage outputs diverged",
         ));
     }
+    Ok(())
+}
+
+fn named_ternary_fixture(
+    label: &'static str,
+    fixture: Result<LoweredByteFixture, String>,
+) -> Result<NamedTernaryProgram, String> {
+    fixture.map(|(program, _projection)| (label, program))
+}
+
+fn ternary_checkpoint_prefix_corpus_primary()
+-> Result<Vec<NamedTernaryProgram>, String> {
+    Ok(vec![
+        ("signed-word-return", lowered_return_fixture()?),
+        named_ternary_fixture(
+            "unsigned-word-return",
+            lowered_unsigned_return_fixture(u32::MAX),
+        )?,
+        named_ternary_fixture(
+            "signed-halfword-return",
+            lowered_halfword_fixture(0x8000, true),
+        )?,
+        named_ternary_fixture(
+            "unsigned-halfword-return",
+            lowered_halfword_fixture(0xffff, false),
+        )?,
+        named_ternary_fixture(
+            "boolean-return",
+            lowered_boolean_constant_fixture(1, false),
+        )?,
+        named_ternary_fixture(
+            "byte-return-input",
+            lowered_byte_return_fixture(None),
+        )?,
+        named_ternary_fixture(
+            "signed-byte-truncate",
+            lowered_signed_byte_truncate_fixture(0x8000_0080, true),
+        )?,
+        named_ternary_fixture(
+            "halfword-truth",
+            lowered_halfword_truth_fixture(0x8000, true),
+        )?,
+        named_ternary_fixture(
+            "halfword-signed-cast",
+            lowered_halfword_bitcast_fixture(0x8000, true, false),
+        )?,
+        named_ternary_fixture(
+            "halfword-unsigned-cast",
+            lowered_halfword_bitcast_fixture(0x8000, false, true),
+        )?,
+        named_ternary_fixture(
+            "halfword-widen",
+            lowered_halfword_widen_fixture(0x8000, true),
+        )?,
+        named_ternary_fixture(
+            "byte-to-halfword-widen",
+            lowered_byte_to_halfword_widen_fixture(0x80, false),
+        )?,
+    ])
+}
+
+fn ternary_checkpoint_prefix_corpus_secondary()
+-> Result<Vec<NamedTernaryProgram>, String> {
+    Ok(vec![
+        named_ternary_fixture(
+            "halfword-to-byte-truncate",
+            lowered_halfword_to_byte_fixture(0x8000, true, false),
+        )?,
+        named_ternary_fixture(
+            "word-to-halfword-truncate",
+            lowered_halfword_truncate_fixture(0x8000_0000, false, true),
+        )?,
+        named_ternary_fixture(
+            "promoted-byte-comparison",
+            lowered_promoted_byte_comparison_fixture((0x80, 0x7f), true, false),
+        )?,
+        named_ternary_fixture(
+            "guest-byte-lane",
+            lowered_lane_io_fixture(None, true),
+        )?,
+        named_ternary_fixture(
+            "two-guest-byte-lanes",
+            lowered_dual_lane_io_fixture((None, Some(0x80)), true),
+        )?,
+        named_ternary_fixture(
+            "word-arithmetic",
+            lowered_arithmetic_fixture(true, BinaryOp::Add),
+        )?,
+        named_ternary_fixture(
+            "word-bitwise",
+            lowered_unsigned_bitwise_fixture(
+                u32::MAX,
+                0x8000_0000,
+                BinaryOp::Xor,
+            ),
+        )?,
+        named_ternary_fixture(
+            "signed-byte-extension",
+            lowered_signed_byte_extension_fixture(0x80),
+        )?,
+        named_ternary_fixture(
+            "unsigned-byte-extension",
+            lowered_unsigned_zero_extend_fixture(None),
+        )?,
+        named_ternary_fixture(
+            "boolean-to-halfword",
+            lowered_bool_to_halfword_fixture(1, false),
+        )?,
+        named_ternary_fixture(
+            "void-byte-io",
+            lowered_void_function_fixture(true),
+        )?,
+    ])
+}
+
+fn all_ternary_checkpoint_prefix_cases()
+-> Result<Vec<NamedTernaryProgram>, String> {
+    let mut primary = ternary_checkpoint_prefix_corpus_primary()?;
+    primary.extend(ternary_checkpoint_prefix_corpus_secondary()?);
+    Ok(primary)
+}
+
+fn check_all_checkpoint_truncated_prefixes(
+    label: &str,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let canonical = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode {label}: {error:?}"))?;
+    for end in 0..canonical.len() {
+        let prefix = canonical
+            .get(..end)
+            .ok_or_else(|| String::from("checkpoint prefix index absent"))?;
+        let restored = canonical_ternary_program(prefix);
+        if restored != Err(TernaryProgramCodecError::Truncated) {
+            return Err(format!(
+                "{label} prefix {end}/{}: {restored:?}",
+                canonical.len()
+            ));
+        }
+    }
+    if canonical_ternary_program(&canonical) != Ok(program.clone()) {
+        return Err(format!("{label} complete checkpoint drifted"));
+    }
+    for byte in [0u8, 1, 0x7f, 0xff] {
+        let mut extended = canonical.clone();
+        extended.push(byte);
+        if canonical_ternary_program(&extended)
+            != Err(TernaryProgramCodecError::TrailingBytes)
+        {
+            return Err(format!("{label} appended byte {byte} was admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn all_ternary_checkpoint_records_reject_every_truncated_prefix()
+-> Result<(), String> {
+    for (label, program) in all_ternary_checkpoint_prefix_cases()? {
+        check_all_checkpoint_truncated_prefixes(label, &program)?;
+    }
+    Ok(())
+}
+
+fn verify_mutated_canonical_checkpoint(
+    label: &str,
+    mutated: &[u8],
+    offset: usize,
+    bit: u8,
+) -> Result<(), String> {
+    let Ok(restored) = canonical_ternary_program(mutated) else {
+        return Ok(());
+    };
+    let recovered = canonical_ternary_bytes(&restored)
+        .map_err(|error| format!("{label} reencode: {error:?}"))?;
+    if recovered != mutated {
+        return Err(format!("{label} byte {offset} bit {bit} drifted"));
+    }
+    Ok(())
+}
+
+fn check_checkpoint_single_bit_mutations(
+    label: &str,
+    program: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let canonical = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode {label} bit mutation: {error:?}"))?;
+    let mut mutated = canonical.clone();
+    for offset in 0..mutated.len() {
+        for bit in 0u8..8 {
+            let source = *canonical
+                .get(offset)
+                .ok_or_else(|| String::from("canonical byte missing"))?;
+            *mutated
+                .get_mut(offset)
+                .ok_or_else(|| String::from("mutation byte missing"))? =
+                source ^ (1u8 << bit);
+            verify_mutated_canonical_checkpoint(label, &mutated, offset, bit)?;
+            *mutated
+                .get_mut(offset)
+                .ok_or_else(|| String::from("mutation reset byte missing"))? =
+                source;
+        }
+    }
+    if mutated != canonical {
+        return Err(format!("{label} mutation corpus was not restored"));
+    }
+    Ok(())
+}
+
+#[test]
+fn all_ternary_checkpoint_records_fail_closed_under_single_bit_flips()
+-> Result<(), String> {
+    for (label, program) in all_ternary_checkpoint_prefix_cases()? {
+        check_checkpoint_single_bit_mutations(label, &program)?;
+    }
+    Ok(())
+}
+
+fn read_fixture_wire_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("wire word offset overflow"))?;
+    let data: [u8; 4] = bytes
+        .get(offset..end)
+        .ok_or_else(|| String::from("wire word truncated"))?
+        .try_into()
+        .map_err(|_error| String::from("wire word malformed"))?;
+    Ok(u32::from_le_bytes(data))
+}
+
+fn skip_fixture_wire_string(
+    bytes: &[u8],
+    offset: usize,
+) -> Result<usize, String> {
+    let length = usize::try_from(read_fixture_wire_u32(bytes, offset)?)
+        .map_err(|_error| String::from("wire string length overflow"))?;
+    offset
+        .checked_add(4)
+        .and_then(|cursor| cursor.checked_add(length))
+        .filter(|end| *end <= bytes.len())
+        .ok_or_else(|| String::from("wire string truncated"))
+}
+
+fn first_fixture_operation_tag_offset(bytes: &[u8]) -> Result<usize, String> {
+    let mut cursor = 8usize;
+    for _ in 0usize..3usize {
+        cursor = skip_fixture_wire_string(bytes, cursor)?;
+    }
+    cursor = cursor
+        .checked_add(32)
+        .ok_or_else(|| String::from("wire digest offset overflow"))?;
+    if read_fixture_wire_u32(bytes, cursor)? == 0 {
+        return Err(String::from("fixture has no functions"));
+    }
+    cursor = cursor.saturating_add(8);
+    cursor = skip_fixture_wire_string(bytes, cursor)?;
+    cursor = cursor
+        .checked_add(24)
+        .ok_or_else(|| String::from("wire span offset overflow"))?;
+    if read_fixture_wire_u32(bytes, cursor)? == 0 {
+        return Err(String::from("fixture has no operations"));
+    }
+    let offset = cursor.saturating_add(4);
+    if bytes.get(offset).is_none() {
+        return Err(String::from("fixture operation tag missing"));
+    }
+    Ok(offset)
+}
+
+fn assert_entire_unassigned_tag_space_rejected(
+    program: &ternary_lowering::TernaryProgram,
+    expected_tag: u8,
+) -> Result<(), String> {
+    let mut bytes = canonical_ternary_bytes(program)
+        .map_err(|error| format!("encode opcode fixture: {error:?}"))?;
+    let offset = first_fixture_operation_tag_offset(&bytes)?;
+    if bytes.get(offset) != Some(&expected_tag) {
+        return Err(format!("expected first opcode {expected_tag} not found"));
+    }
+    for tag in 84u8..=u8::MAX {
+        *bytes
+            .get_mut(offset)
+            .ok_or_else(|| String::from("opcode offset absent"))? = tag;
+        let restored = canonical_ternary_program(&bytes);
+        if restored != Err(TernaryProgramCodecError::UnknownTag) {
+            return Err(format!(
+                "unassigned opcode {tag} at {offset}: {restored:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_checkpoint_rejects_every_unassigned_opcode_in_each_record_family()
+-> Result<(), String> {
+    let (halfword, _) = lowered_halfword_fixture(0x8000, true)?;
+    assert_entire_unassigned_tag_space_rejected(&halfword, 61)?;
+    let (void, _) = lowered_void_function_fixture(false)?;
+    assert_entire_unassigned_tag_space_rejected(&void, 49)?;
+    let (effects, _) = lowered_lane_io_fixture(None, true)?;
+    assert_entire_unassigned_tag_space_rejected(&effects, 1)?;
+    let (comparison, _) =
+        lowered_promoted_byte_comparison_fixture((0x80, 0x7f), true, false)?;
+    assert_entire_unassigned_tag_space_rejected(&comparison, 50)?;
     Ok(())
 }
 

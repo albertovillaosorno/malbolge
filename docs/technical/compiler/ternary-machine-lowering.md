@@ -68,6 +68,21 @@ six-trit digit combinations, accepting only values `0..255`. Every value
 `256..728` fails scalar admission, and a forged byte-definition SSA ID or
 an output use of the wrong scalar type fails independent stage validation.
 
+Canonical `MCTR` restoration also has a bounded, deterministic adversarial
+corpus of 23 validated pre-layout program shapes. It rejects every strict
+prefix of each complete checkpoint as `Truncated`, and every appended byte
+as `TrailingBytes` while admitting the exact complete generation.
+
+Every individual byte position is exercised under all eight single-bit flips.
+A mutated checkpoint either fails admission or must be independently
+validated and re-encode to the exact mutated bytes; byte changes are not
+presumed semantically equivalent to the unmodified program.
+
+The complete remaining version-one opcode range `84..255` is independently
+rejected as `UnknownTag` in scalar, void-return, byte-effect and comparison
+fixtures. These tests locate actual operation offsets through wire structure,
+not arbitrary byte-pattern occurrences within metadata or source spans.
+
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
 Each function requires at least 36 bytes and each operation at least 25 bytes,

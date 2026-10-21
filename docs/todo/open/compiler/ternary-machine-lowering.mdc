@@ -267,6 +267,13 @@ instruction.
   source-order effects, typed SSA identities and provenance, without host
   evaluation. Decoder and inspector reject retagged lanes and unknown `84`,
   and all ten durable crash boundaries retain committed generations.
+- A deterministic 23-program `MCTR` adversarial corpus now rejects every
+  strict prefix and appended byte, while trying each of eight bit flips at
+  every checkpoint byte. Any mutated state that remains admissible must
+  decode, independently validate and re-encode byte-exactly; the corpus does
+  not assume such mutations preserve original guest semantics.
+  Exhaustive `84..255` unknown-tag tests locate actual operation offsets
+  through length-prefixed wire structure rather than matching metadata bytes.
 - The independent `MCTR` decoder now has exhaustive signed/unsigned
   halfword scalar evidence for all `177147` eleven-trit vectors: exactly
   `65536` patterns are admitted with bit-exact SSA, span and return;

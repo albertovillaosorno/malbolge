@@ -124,6 +124,9 @@ explicit
 operation tags, exact source spans, and 21 one-byte trits per `i32` scalar.
 Restoration rejects malformed, truncated, unknown-tag, noncanonical, or
 semantic-invalid state before returning a program.
+A 23-program adversarial corpus checks every checkpoint prefix, trailing
+bytes, all single-bit mutations, and each unassigned opcode `84..255` at a
+structural tag offset.
 
 Composition now exposes one explicit product compiler selector between fresh
 typed-IR projection lowering and durable progress-sidecar restore. The progress
