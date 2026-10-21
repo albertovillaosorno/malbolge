@@ -254,6 +254,12 @@ instruction.
   lowerer rejects forged narrow-operand projections, and independent decoder
   and production-inspector recovery reject retagged casts and invalid SSA;
   all ten crash-publication boundaries preserve committed generations.
+- Two-function modules now retain independent signed/unsigned halfword
+  byte-I/O chains in either function order with local SSA identities,
+  distinct source spans, and value-free returns. Mixed guest input and
+  byte constants remain isolated across canonical typed/target checkpoints;
+  forged cross-function SSA uses fail independently, and inspector recovery
+  plus ten crash-publication boundaries preserve both function generations.
 - Validated successful guest byte I/O and all 256 exact byte literals
   now compose with `u8 → u16` zero extension, explicit signed/unsigned
   halfword bitcast, narrowing truncation and a final `u8` bitcast before

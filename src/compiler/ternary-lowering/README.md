@@ -104,6 +104,9 @@ Successful guest `ByteInput` can pass through 16-bit zero extension,
 bitcasts, narrowing and a final `u8` result before `ByteOutput`, retaining
 symbolic SSA and a value-free `ReturnVoid` in either signedness lane.
 
+Independent signed/unsigned byte-I/O chains may also coexist in one
+module, preserving function order, per-function SSA and source spans.
+
 Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

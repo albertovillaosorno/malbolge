@@ -641,6 +641,16 @@ from a halfword SSA instead of its final `u8` definition. Production-inspector
 restoration converges, while every durable crash boundary retains the
 previous committed generation.
 
+Two-function modules can independently execute signed and unsigned
+halfword byte-I/O chains in either function order, with disjoint spans and
+local SSA numbering starting at zero in each function. Canonical typed IR
+and target checkpoints retain the order, source digest and value-free returns.
+
+Each member remains isolated when its peer uses a constant byte or guest
+input. Checkpoint validation rejects a forged output operand outside that
+function's SSA definitions; fresh and inspector-backed compilation converge
+for both orders, and all ten crash-publication boundaries stay atomic.
+
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
 C integer promotions of the Boolean result.

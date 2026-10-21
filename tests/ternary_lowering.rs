@@ -394,6 +394,7 @@ static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 type TernaryProgressFixture = (PathBuf, PathBuf);
 type HalfwordRecordOffsets = (usize, usize);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
+type DualLaneSources = (Option<u8>, Option<u8>);
 type ComparisonOperationTag = (TernaryOperation, u8);
 type PromotedWireMutation = (usize, u8, TernaryProgramCodecError);
 
@@ -2271,43 +2272,64 @@ fn lowered_lane_io_fixture(
     Ok((target, input))
 }
 
-const fn lane_io_cast_sequence(signed: bool) -> [TernaryOperation; 3] {
+const fn lane_io_cast_sequence(
+    signed: bool,
+    start: u32,
+) -> [TernaryOperation; 3] {
     let third = if signed {
         TernaryOperation::BitcastU16ToI16 {
             result: 2,
-            span: output_span(fixture_span(2, 3)),
+            span: output_span(fixture_span(
+                start.saturating_add(2),
+                start.saturating_add(3),
+            )),
             value: 1,
         }
     } else {
         TernaryOperation::BitcastU16ToU16 {
             result: 2,
-            span: output_span(fixture_span(2, 3)),
+            span: output_span(fixture_span(
+                start.saturating_add(2),
+                start.saturating_add(3),
+            )),
             value: 1,
         }
     };
     let fourth = if signed {
         TernaryOperation::TruncateI16ToI8 {
             result: 3,
-            span: output_span(fixture_span(3, 4)),
+            span: output_span(fixture_span(
+                start.saturating_add(3),
+                start.saturating_add(4),
+            )),
             value: 2,
         }
     } else {
         TernaryOperation::TruncateU16ToU8 {
             result: 3,
-            span: output_span(fixture_span(3, 4)),
+            span: output_span(fixture_span(
+                start.saturating_add(3),
+                start.saturating_add(4),
+            )),
             value: 2,
         }
     };
     let fifth = if signed {
         TernaryOperation::BitcastI8ToU8 {
             result: 4,
-            span: output_span(fixture_span(4, 5)),
+            span: output_span(fixture_span(
+                start.saturating_add(4),
+                start.saturating_add(5),
+            )),
             value: 3,
         }
     } else {
         TernaryOperation::BitcastU8ToU8 {
             result: 4,
-            span: output_span(fixture_span(4, 5)),
+            span: output_span(fixture_span(
+                start.saturating_add(4),
+                start.saturating_add(5),
+            )),
             value: 3,
         }
     };
@@ -2318,23 +2340,40 @@ fn expected_lane_io_operations(
     source: Option<u8>,
     signed: bool,
 ) -> Vec<TernaryOperation> {
+    expected_lane_io_operations_at(source, signed, 0)
+}
+
+fn expected_lane_io_operations_at(
+    source: Option<u8>,
+    signed: bool,
+    start: u32,
+) -> Vec<TernaryOperation> {
     let first = source.map_or_else(
         || TernaryOperation::ByteInput {
             result: 0,
-            span: output_span(fixture_span(0, 1)),
+            span: output_span(fixture_span(
+                start.saturating_add(0),
+                start.saturating_add(1),
+            )),
         },
         |bits| TernaryOperation::MaterializeU8 {
             result: 0,
             scalar: ternary_lowering::TernaryU8Scalar::from_bits(bits),
-            span: output_span(fixture_span(0, 1)),
+            span: output_span(fixture_span(
+                start.saturating_add(0),
+                start.saturating_add(1),
+            )),
         },
     );
     let second = TernaryOperation::ZeroExtendU8ToU16 {
         result: 1,
-        span: output_span(fixture_span(1, 2)),
+        span: output_span(fixture_span(
+            start.saturating_add(1),
+            start.saturating_add(2),
+        )),
         value: 0,
     };
-    let [third, fourth, fifth] = lane_io_cast_sequence(signed);
+    let [third, fourth, fifth] = lane_io_cast_sequence(signed, start);
     vec![
         first,
         second,
@@ -2342,11 +2381,17 @@ fn expected_lane_io_operations(
         fourth,
         fifth,
         TernaryOperation::ByteOutput {
-            span: output_span(fixture_span(5, 6)),
+            span: output_span(fixture_span(
+                start.saturating_add(5),
+                start.saturating_add(6),
+            )),
             value: 4,
         },
         TernaryOperation::ReturnVoid {
-            span: output_span(fixture_span(6, 7)),
+            span: output_span(fixture_span(
+                start.saturating_add(6),
+                start.saturating_add(7),
+            )),
         },
     ]
 }
@@ -2534,6 +2579,243 @@ fn halfword_lane_byte_io_inspector_rejects_cross_lane_tags()
             &target,
             (from_tag, 2, replacement),
         )?;
+    }
+    Ok(())
+}
+
+fn shifted_lane_io_instructions(
+    source: Option<u8>,
+    signed: bool,
+    start: u32,
+) -> Vec<LocatedInstruction> {
+    lane_io_roundtrip_instructions(source, signed)
+        .into_iter()
+        .enumerate()
+        .map(|(index, located)| {
+            let offset =
+                start.saturating_add(u32::try_from(index).unwrap_or_default());
+            LocatedInstruction::new(
+                located.instruction().clone(),
+                fixture_span(offset, offset.saturating_add(1)),
+            )
+        })
+        .collect()
+}
+
+fn lane_io_member(id: u32, signed: bool, source: Option<u8>) -> Function {
+    let start = id.saturating_mul(8);
+    let end = start.saturating_add(7);
+    let name = if signed {
+        "signed_lane_member"
+    } else {
+        "unsigned_lane_member"
+    };
+    Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(0),
+            instructions: shifted_lane_io_instructions(source, signed, start),
+            phis: Vec::new(),
+            span: fixture_span(start, end),
+            terminator: Terminator::Return { value: None },
+            terminator_span: fixture_span(end.saturating_sub(1), end),
+        })],
+        entry: BlockId::new(0),
+        id: FunctionId::new(id),
+        name: String::from(name),
+        parameters: Vec::new(),
+        signature: TypeId::new(4),
+        span: fixture_span(start, end),
+    })
+}
+
+fn dual_lane_io_module(sources: DualLaneSources, reversed: bool) -> Module {
+    let functions = if reversed {
+        vec![
+            lane_io_member(0, false, sources.1),
+            lane_io_member(1, true, sources.0),
+        ]
+    } else {
+        vec![
+            lane_io_member(0, true, sources.0),
+            lane_io_member(1, false, sources.1),
+        ]
+    };
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions,
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/dual-lane-byte-io.c"),
+        source_sha256: [0xb9; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(TypeId::new(1), TypeDef::U16),
+            TypeEntry::new(TypeId::new(2), TypeDef::I16),
+            TypeEntry::new(TypeId::new(3), TypeDef::I8),
+            TypeEntry::new(
+                TypeId::new(4),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    })
+}
+
+fn assert_dual_lane_provenance(
+    module: &Module,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    if target.abi_id != module.abi_id()
+        || target.input_format_version != module.format_version()
+        || target.source_id != module.source_id()
+        || target.source_sha256 != *module.source_sha256()
+        || target.target_profile != module.target_profile()
+        || target.functions.len() != module.functions().len()
+    {
+        return Err(String::from("dual lane module provenance drifted"));
+    }
+    for (function, typed) in target.functions.iter().zip(module.functions()) {
+        if function.id != typed.id().value()
+            || function.span != output_span(typed.span())
+        {
+            return Err(String::from("dual lane function provenance drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn lowered_dual_lane_io_fixture(
+    sources: DualLaneSources,
+    reversed: bool,
+) -> Result<LoweredByteFixture, String> {
+    let module = dual_lane_io_module(sources, reversed);
+    validate_module(&module)
+        .map_err(|error| format!("admit dual lane typed IR: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode dual lane typed IR: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore dual lane typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("dual lane typed IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower dual lane program: {error:?}"))?;
+    assert_dual_lane_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn assert_dual_lane_io_checkpoint(
+    sources: DualLaneSources,
+    reversed: bool,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<Vec<u8>, String> {
+    let ids = [0u32, 1];
+    if target.functions.len() != ids.len() {
+        return Err(String::from("dual lane function count drifted"));
+    }
+    for (function, id) in target.functions.iter().zip(ids) {
+        let signed = (id == 0) != reversed;
+        let source = if signed {
+            sources.0
+        } else {
+            sources.1
+        };
+        let expected = expected_lane_io_operations_at(
+            source,
+            signed,
+            id.saturating_mul(8),
+        );
+        if function.id != id || function.operations != expected {
+            return Err(format!("dual lane function {id} leaked SSA or spans"));
+        }
+    }
+    let bytes = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode dual lane checkpoint: {error:?}"))?;
+    if canonical_ternary_program(&bytes) != Ok(target.clone()) {
+        return Err(String::from("dual lane checkpoint drifted"));
+    }
+    Ok(bytes)
+}
+
+#[test]
+fn dual_lane_byte_io_preserves_independent_ssa_and_provenance()
+-> Result<(), String> {
+    for sources in [
+        (None, None),
+        (Some(0), Some(255)),
+        (None, Some(0x80)),
+        (Some(0xff), None),
+    ] {
+        for reversed in [true, false] {
+            let (target, input) =
+                lowered_dual_lane_io_fixture(sources, reversed)?;
+            if input
+                .functions
+                .iter()
+                .any(|function| function.return_kind != InputScalarType::Void)
+            {
+                return Err(String::from("dual lane void return was retyped"));
+            }
+            let _wire =
+                assert_dual_lane_io_checkpoint(sources, reversed, &target)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn dual_lane_byte_io_inspector_converges_for_both_orders() -> Result<(), String>
+{
+    for reversed in [true, false] {
+        let (target, input) =
+            lowered_dual_lane_io_fixture((None, Some(0x80)), reversed)?;
+        let label = if reversed {
+            "dual-lane-unsigned-first"
+        } else {
+            "dual-lane-signed-first"
+        };
+        assert_boolean_inspector_convergence(label, &target, &input)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn dual_lane_byte_io_crash_publication_is_generation_atomic()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for reversed in [true, false] {
+        let (target, _) =
+            lowered_dual_lane_io_fixture((None, Some(0x80)), reversed)?;
+        assert_boolean_crash_generation(&previous, &target)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn dual_lane_byte_io_checkpoint_rejects_cross_function_ssa()
+-> Result<(), String> {
+    for reversed in [true, false] {
+        let (mut target, _) =
+            lowered_dual_lane_io_fixture((None, Some(0x80)), reversed)?;
+        let member = target
+            .functions
+            .first_mut()
+            .ok_or_else(|| String::from("dual lane function absent"))?;
+        let output = member
+            .operations
+            .get_mut(5)
+            .ok_or_else(|| String::from("dual lane output absent"))?;
+        let TernaryOperation::ByteOutput { value, .. } = output else {
+            return Err(String::from("dual lane output operation drifted"));
+        };
+        *value = 5;
+        if ternary_lowering::validate_ternary_program(&target)
+            != Err(TernaryProgramValidationError::SsaValue)
+        {
+            return Err(String::from("undefined inter-function SSA admitted"));
+        }
     }
     Ok(())
 }
