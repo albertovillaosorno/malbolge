@@ -267,6 +267,14 @@ instruction.
   source-order effects, typed SSA identities and provenance, without host
   evaluation. Decoder and inspector reject retagged lanes and unknown `84`,
   and all ten durable crash boundaries retain committed generations.
+- The inspector separately rejects structural two-function SSA,
+  name, span, ID and operation-count forgeries, preserving exact inner error
+  categories. It rejects four representative truncation/extension cases for
+  each of 23 canonical program families and all 172 unassigned opcodes
+  `84..255` after actual durable publication.
+  All 32 embedded source-digest mutations remain admitted when independently
+  republished in fresh outer envelopes, retaining the distinction between
+  inner provenance and external checkpoint integrity verification.
 - The real portable progress inspector now restores all 23 canonical
   target program families from published immutable checkpoint generations.
   It retains exact inner decoder diagnostics for freshly published malformed

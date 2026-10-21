@@ -101,6 +101,22 @@ portable envelope's payload digest, encoded payload or codec also fails
 outer-envelope verification, and restoring the original files restores
 successful resume.
 
+Published two-function checkpoints now undergo additional independent
+inspector admission of malformed UTF-8 function names, non-dense IDs,
+invalid function/operation spans, undefined SSA, excessive operation counts
+and the first unknown tag; each retains the exact decoder error category.
+
+For every canonical program family, the progress bridge also rejects empty,
+middle-cut and last-byte-truncated records, plus an appended payload byte.
+All `172` closed successor operation tags from `84` through `255` are
+independently rejected after actual portable checkpoint publication.
+
+Republishing each of the 32 separately modified embedded source-digest bytes
+through a freshly integrity-bound outer envelope remains valid canonical
+state with unchanged operations. That deliberately differs from modifying
+a committed checkpoint in place, which the progress inspector rejects;
+source authenticity remains external to this inner provenance field.
+
 Independent wire-identity tests exercise each magic/version byte,
 length-prefixed ABI/profile/source identity, invalid UTF-8 and overlarge
 string, function and operation counts, rejecting malformed input without

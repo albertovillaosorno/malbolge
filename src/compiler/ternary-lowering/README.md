@@ -136,6 +136,11 @@ Freshly published malformed inner state retains precise ternary errors,
 while post-publication sidecar or portable-envelope tampering is rejected
 at the outer integrity boundary before stage admission.
 
+Inspector tests also reject two-function identity/SSA forgeries, truncated
+or extended records for all 23 families and all 172 closed successor tags.
+Freshly republished source-digest changes remain admitted provenance; edits
+to an already committed envelope fail outer integrity verification.
+
 Composition now exposes one explicit product compiler selector between fresh
 typed-IR projection lowering and durable progress-sidecar restore. The progress
 route delegates portable-envelope validation to the trusted inspector and then

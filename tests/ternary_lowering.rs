@@ -11069,6 +11069,193 @@ fn ternary_progress_inspector_rejects_committed_checkpoint_payload_tampering()
     Ok(())
 }
 
+fn mutated_fixture_wire_word(
+    bytes: &[u8],
+    offset: usize,
+    value: u32,
+) -> Result<Vec<u8>, String> {
+    let mut forged = bytes.to_vec();
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("wire word mutation offset overflow"))?;
+    forged
+        .get_mut(offset..end)
+        .ok_or_else(|| String::from("wire word mutation missing"))?
+        .copy_from_slice(&value.to_le_bytes());
+    Ok(forged)
+}
+
+fn assert_multifunction_field_mutations(
+    bytes: &[u8],
+    offsets: &TernaryWireIdentityOffsets,
+    first_opcode: usize,
+) -> Result<(), String> {
+    let bad_function = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::FunctionIdentity,
+    );
+    let bad_ssa = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    let bad_source = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SourceProvenance,
+    );
+    let function_span_start = offsets.operation_count.saturating_sub(24);
+    for (label, offset, replacement, expected) in [
+        (
+            "dualfn-invalid-name-utf8",
+            offsets.name_length.saturating_add(4),
+            0xffu8,
+            TernaryProgramCodecError::InvalidUtf8,
+        ),
+        (
+            "dualfn-out-of-order-id",
+            offsets.function_count.saturating_add(4),
+            1u8,
+            bad_function,
+        ),
+        (
+            "dualfn-invalid-function-span",
+            function_span_start.saturating_add(8),
+            0u8,
+            bad_function,
+        ),
+        (
+            "dualfn-undefined-input-ssa",
+            first_opcode.saturating_add(1),
+            17u8,
+            bad_ssa,
+        ),
+        (
+            "dualfn-invalid-operation-span",
+            first_opcode.saturating_add(13),
+            0u8,
+            bad_source,
+        ),
+        (
+            "dualfn-future-opcode",
+            first_opcode,
+            84u8,
+            TernaryProgramCodecError::UnknownTag,
+        ),
+    ] {
+        let forged = mutate_fixture_wire_byte(bytes, offset, replacement)?;
+        assert_inspector_rejects_stage_error(label, &forged, expected)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_multifunction_identity_and_ssa_forgery()
+-> Result<(), String> {
+    let (program, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), false)?;
+    let bytes = canonical_ternary_bytes(&program).map_err(|error| {
+        format!("encode two-function forged fixture: {error:?}")
+    })?;
+    let offsets = fixture_wire_identity_offsets(&bytes)?;
+    let first_opcode = first_fixture_operation_tag_offset(&bytes)?;
+    if bytes.get(first_opcode) != Some(&1u8) {
+        return Err(String::from("first dual-lane effect opcode changed"));
+    }
+    assert_multifunction_field_mutations(&bytes, &offsets, first_opcode)?;
+    let invalid_count =
+        mutated_fixture_wire_word(&bytes, offsets.operation_count, u32::MAX)?;
+    assert_inspector_rejects_stage_error(
+        "dualfn-overlarge-operation-count",
+        &invalid_count,
+        TernaryProgramCodecError::Truncated,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_truncated_and_extended_corpus()
+-> Result<(), String> {
+    for (label, program) in all_ternary_checkpoint_prefix_cases()? {
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode {label}: {error:?}"))?;
+        let middle = bytes.len().checked_div(2).unwrap_or_default();
+        let final_byte = bytes.len().saturating_sub(1);
+        for (case, end) in [
+            ("empty", 0usize),
+            ("middle", middle),
+            ("final-byte", final_byte),
+        ] {
+            let prefix = bytes.get(..end).ok_or_else(|| {
+                String::from("inspector prefix offset absent")
+            })?;
+            let description = format!("{label}-{case}-progress");
+            assert_inspector_rejects_stage_error(
+                &description,
+                prefix,
+                TernaryProgramCodecError::Truncated,
+            )?;
+        }
+        let mut extended = bytes;
+        extended.push(0xff);
+        let description = format!("{label}-trailing-progress");
+        assert_inspector_rejects_stage_error(
+            &description,
+            &extended,
+            TernaryProgramCodecError::TrailingBytes,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_rejects_entire_unassigned_tag_domain()
+-> Result<(), String> {
+    let (program, _) = lowered_halfword_fixture(0x8000, true)?;
+    let bytes = canonical_ternary_bytes(&program).map_err(|error| {
+        format!("encode opcode inspector corpus: {error:?}")
+    })?;
+    let offset = first_fixture_operation_tag_offset(&bytes)?;
+    if bytes.get(offset) != Some(&61u8) {
+        return Err(String::from("inspector halfword fixture tag changed"));
+    }
+    for opcode in 84u8..=u8::MAX {
+        let forged = mutate_fixture_wire_byte(&bytes, offset, opcode)?;
+        let label = format!("inspector-reserved-tag-{opcode}");
+        assert_inspector_rejects_stage_error(
+            &label,
+            &forged,
+            TernaryProgramCodecError::UnknownTag,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_inspector_admits_freshly_republished_source_provenance()
+-> Result<(), String> {
+    let (original, _) =
+        lowered_dual_lane_io_fixture((None, Some(0x80)), false)?;
+    let bytes = canonical_ternary_bytes(&original)
+        .map_err(|error| format!("encode provenance source: {error:?}"))?;
+    let offsets = fixture_wire_identity_offsets(&bytes)?;
+    for index in 0usize..32usize {
+        let offset = offsets.digest.saturating_add(index);
+        let bit = *bytes
+            .get(offset)
+            .ok_or_else(|| String::from("source digest byte absent"))?;
+        let changed = mutate_fixture_wire_byte(&bytes, offset, bit ^ 1)?;
+        let restored = canonical_ternary_program(&changed)
+            .map_err(|error| format!("changed source digest: {error:?}"))?;
+        if restored.source_sha256 == original.source_sha256
+            || restored.functions != original.functions
+            || restored.abi_id != original.abi_id
+        {
+            return Err(String::from("republished provenance not distinct"));
+        }
+        let label = format!("inspector-republished-digest-{index}");
+        let observed = inspected_ternary_checkpoint(&label, &changed)?;
+        if observed != Ok(restored) {
+            return Err(format!("{label}: republished state {observed:?}"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn ternary_stage_rejects_malformed_checkpoint() {
     assert_eq!(
