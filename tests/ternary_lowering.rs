@@ -2148,6 +2148,396 @@ fn halfword_constant_return_roundtrips_sign_boundary_patterns()
     Ok(())
 }
 
+fn lane_io_roundtrip_instructions(
+    source: Option<u8>,
+    signed: bool,
+) -> Vec<LocatedInstruction> {
+    let half_kind = if signed {
+        2
+    } else {
+        1
+    };
+    let byte_kind = if signed {
+        3
+    } else {
+        0
+    };
+    vec![
+        byte_source_instruction(source, TypeId::new(0)),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::ZeroExtend,
+                result: ValueId::new(1),
+                type_id: TypeId::new(1),
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerBitcast,
+                result: ValueId::new(2),
+                type_id: TypeId::new(half_kind),
+                value: ValueId::new(1),
+            },
+            fixture_span(2, 3),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::Truncate,
+                result: ValueId::new(3),
+                type_id: TypeId::new(byte_kind),
+                value: ValueId::new(2),
+            },
+            fixture_span(3, 4),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerBitcast,
+                result: ValueId::new(4),
+                type_id: TypeId::new(0),
+                value: ValueId::new(3),
+            },
+            fixture_span(4, 5),
+        ),
+        LocatedInstruction::new(
+            Instruction::ByteOutput { value: ValueId::new(4) },
+            fixture_span(5, 6),
+        ),
+    ]
+}
+
+fn lane_io_roundtrip_module(source: Option<u8>, signed: bool) -> Module {
+    let name = if signed {
+        "signed_lane_io"
+    } else {
+        "unsigned_lane_io"
+    };
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: lane_io_roundtrip_instructions(source, signed),
+                phis: Vec::new(),
+                span: fixture_span(0, 7),
+                terminator: Terminator::Return { value: None },
+                terminator_span: fixture_span(6, 7),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from(name),
+            parameters: Vec::new(),
+            signature: TypeId::new(4),
+            span: fixture_span(0, 7),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/byte-io-halfword.c"),
+        source_sha256: [0xb8; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(TypeId::new(1), TypeDef::U16),
+            TypeEntry::new(TypeId::new(2), TypeDef::I16),
+            TypeEntry::new(TypeId::new(3), TypeDef::I8),
+            TypeEntry::new(
+                TypeId::new(4),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    })
+}
+
+fn lowered_lane_io_fixture(
+    source: Option<u8>,
+    signed: bool,
+) -> Result<LoweredByteFixture, String> {
+    let module = lane_io_roundtrip_module(source, signed);
+    validate_module(&module)
+        .map_err(|error| format!("admit lane-I/O module: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode lane-I/O typed IR: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore lane-I/O typed IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("lane-I/O typed IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower lane-I/O target: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+const fn lane_io_cast_sequence(signed: bool) -> [TernaryOperation; 3] {
+    let third = if signed {
+        TernaryOperation::BitcastU16ToI16 {
+            result: 2,
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        }
+    } else {
+        TernaryOperation::BitcastU16ToU16 {
+            result: 2,
+            span: output_span(fixture_span(2, 3)),
+            value: 1,
+        }
+    };
+    let fourth = if signed {
+        TernaryOperation::TruncateI16ToI8 {
+            result: 3,
+            span: output_span(fixture_span(3, 4)),
+            value: 2,
+        }
+    } else {
+        TernaryOperation::TruncateU16ToU8 {
+            result: 3,
+            span: output_span(fixture_span(3, 4)),
+            value: 2,
+        }
+    };
+    let fifth = if signed {
+        TernaryOperation::BitcastI8ToU8 {
+            result: 4,
+            span: output_span(fixture_span(4, 5)),
+            value: 3,
+        }
+    } else {
+        TernaryOperation::BitcastU8ToU8 {
+            result: 4,
+            span: output_span(fixture_span(4, 5)),
+            value: 3,
+        }
+    };
+    [third, fourth, fifth]
+}
+
+fn expected_lane_io_operations(
+    source: Option<u8>,
+    signed: bool,
+) -> Vec<TernaryOperation> {
+    let first = source.map_or_else(
+        || TernaryOperation::ByteInput {
+            result: 0,
+            span: output_span(fixture_span(0, 1)),
+        },
+        |bits| TernaryOperation::MaterializeU8 {
+            result: 0,
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(bits),
+            span: output_span(fixture_span(0, 1)),
+        },
+    );
+    let second = TernaryOperation::ZeroExtendU8ToU16 {
+        result: 1,
+        span: output_span(fixture_span(1, 2)),
+        value: 0,
+    };
+    let [third, fourth, fifth] = lane_io_cast_sequence(signed);
+    vec![
+        first,
+        second,
+        third,
+        fourth,
+        fifth,
+        TernaryOperation::ByteOutput {
+            span: output_span(fixture_span(5, 6)),
+            value: 4,
+        },
+        TernaryOperation::ReturnVoid {
+            span: output_span(fixture_span(6, 7)),
+        },
+    ]
+}
+
+fn assert_lane_io_checkpoint(
+    source: Option<u8>,
+    signed: bool,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<Vec<u8>, String> {
+    let expected = expected_lane_io_operations(source, signed);
+    if target
+        .functions
+        .first()
+        .map(|function| function.operations.as_slice())
+        != Some(expected.as_slice())
+    {
+        return Err(String::from("lane-I/O SSA or effects order drifted"));
+    }
+    let wire = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode lane-I/O checkpoint: {error:?}"))?;
+    let byte_tag = if signed {
+        78u8
+    } else {
+        81
+    };
+    if !wire.windows(5).any(|part| part == [byte_tag, 3, 0, 0, 0])
+        || canonical_ternary_program(&wire) != Ok(target.clone())
+    {
+        return Err(String::from("lane-I/O canonical checkpoint drifted"));
+    }
+    Ok(wire)
+}
+
+fn verify_lane_io_case(source: Option<u8>, signed: bool) -> Result<(), String> {
+    let (target, input) = lowered_lane_io_fixture(source, signed)?;
+    if input.functions.first().map(|function| function.return_kind)
+        != Some(InputScalarType::Void)
+    {
+        return Err(String::from("lane-I/O void return was retyped"));
+    }
+    let _wire = assert_lane_io_checkpoint(source, signed, &target)?;
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_roundtrips_all_source_patterns() -> Result<(), String>
+{
+    for signed in [true, false] {
+        verify_lane_io_case(None, signed)?;
+        for bits in u8::MIN..=u8::MAX {
+            verify_lane_io_case(Some(bits), signed)?;
+        }
+    }
+    Ok(())
+}
+
+fn reject_lane_io_checkpoint(signed: bool) -> Result<(), String> {
+    let (target, _) = lowered_lane_io_fixture(None, signed)?;
+    let wire = assert_lane_io_checkpoint(None, signed, &target)?;
+    let bitcast = if signed {
+        72u8
+    } else {
+        73
+    };
+    let wrong_bitcast = if signed {
+        73u8
+    } else {
+        72
+    };
+    let truncate = if signed {
+        78u8
+    } else {
+        81
+    };
+    let wrong_truncate = if signed {
+        81u8
+    } else {
+        78
+    };
+    let invalid = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    for (tag, result, replacement, expected) in [
+        (bitcast, 2u8, wrong_bitcast, invalid),
+        (truncate, 3, wrong_truncate, invalid),
+        (truncate, 3, 84, TernaryProgramCodecError::UnknownTag),
+    ] {
+        let offset = wire
+            .windows(5)
+            .position(|part| part == [tag, result, 0, 0, 0])
+            .ok_or_else(|| String::from("lane-I/O forgery tag absent"))?;
+        let mut forged = wire.clone();
+        *forged
+            .get_mut(offset)
+            .ok_or_else(|| String::from("lane-I/O mutation target absent"))? =
+            replacement;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(String::from("lane-I/O forged signedness admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_decoder_rejects_cross_lane_forgery()
+-> Result<(), String> {
+    for signed in [true, false] {
+        reject_lane_io_checkpoint(signed)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_projection_rejects_retyped_output()
+-> Result<(), String> {
+    for signed in [true, false] {
+        let (_, mut input) = lowered_lane_io_fixture(None, signed)?;
+        let output = input
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.get_mut(5))
+            .ok_or_else(|| String::from("lane-I/O output projection absent"))?;
+        let InputInstruction::ByteOutput { value, .. } = output else {
+            return Err(String::from("lane-I/O projected output changed"));
+        };
+        *value = 2;
+        if lower_typed_ir(&input)
+            != Err(TernaryLoweringError::UnsupportedInstruction)
+        {
+            return Err(String::from("lane-I/O halfword output admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_inspector_agrees_with_fresh_stage()
+-> Result<(), String> {
+    for signed in [true, false] {
+        let (target, input) = lowered_lane_io_fixture(None, signed)?;
+        let label = if signed {
+            "halfword-lane-signed-byte-output"
+        } else {
+            "halfword-lane-unsigned-byte-output"
+        };
+        assert_boolean_inspector_convergence(label, &target, &input)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_crash_publication_preserves_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for signed in [true, false] {
+        let (target, _) = lowered_lane_io_fixture(None, signed)?;
+        assert_boolean_crash_generation(&previous, &target)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_lane_byte_io_inspector_rejects_cross_lane_tags()
+-> Result<(), String> {
+    for signed in [true, false] {
+        let (target, _) = lowered_lane_io_fixture(None, signed)?;
+        let from_tag = if signed {
+            72u8
+        } else {
+            73
+        };
+        let replacement = if signed {
+            73u8
+        } else {
+            72
+        };
+        let label = if signed {
+            "halfword-lane-forged-signed-bitcast"
+        } else {
+            "halfword-lane-forged-unsigned-bitcast"
+        };
+        assert_boolean_progress_tag_rejected(
+            label,
+            &target,
+            (from_tag, 2, replacement),
+        )?;
+    }
+    Ok(())
+}
+
 fn halfword_truth_instructions(bits: u16) -> Vec<LocatedInstruction> {
     vec![
         LocatedInstruction::new(

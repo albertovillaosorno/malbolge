@@ -254,6 +254,13 @@ instruction.
   lowerer rejects forged narrow-operand projections, and independent decoder
   and production-inspector recovery reject retagged casts and invalid SSA;
   all ten crash-publication boundaries preserve committed generations.
+- Validated successful guest byte I/O and all 256 exact byte literals
+  now compose with `u8 → u16` zero extension, explicit signed/unsigned
+  halfword bitcast, narrowing truncation and a final `u8` bitcast before
+  `ByteOutput` and value-free `ReturnVoid`. Both lanes preserve exact
+  source-order effects, typed SSA identities and provenance, without host
+  evaluation. Decoder and inspector reject retagged lanes and unknown `84`,
+  and all ten durable crash boundaries retain committed generations.
 - The independent `MCTR` decoder now has exhaustive signed/unsigned
   halfword scalar evidence for all `177147` eleven-trit vectors: exactly
   `65536` patterns are admitted with bit-exact SSA, span and return;

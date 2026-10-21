@@ -100,6 +100,10 @@ Signed-byte-to-halfword `SignExtendI8ToI16` and unsigned-byte-to-halfword
 Promoted-width `i8 → i16 → i32` and `u8 → u16 → u32` comparison chains
 require explicit casts before the existing word-width equality operations.
 
+Successful guest `ByteInput` can pass through 16-bit zero extension,
+bitcasts, narrowing and a final `u8` result before `ByteOutput`, retaining
+symbolic SSA and a value-free `ReturnVoid` in either signedness lane.
+
 Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

@@ -625,6 +625,22 @@ equality operations, and the ternary stage independently rejects projections
 that use those narrow operands. These tests document the required explicit
 promotion boundary without introducing invented narrow comparison opcodes.
 
+A validated byte-I/O return-void chain now round-trips successful guest
+`ByteInput` or an exact `u8` constant through unsigned 16-bit zero extension,
+an explicit signed/unsigned halfword bitcast, narrow truncation, and a final
+`u8` bitcast before `ByteOutput`.
+
+The target preserves all six effect/cast operations in source order, each
+independent SSA identity, every source span and the value-free `ReturnVoid`.
+All 256 byte patterns are independently admitted for both signedness routes,
+without performing guest byte I/O or signed reinterpretation on the host.
+
+The independent `MCTR` decoder rejects retagged bitcast/truncation lanes and
+the first unassigned tag `84`; the ternary projection rejects `ByteOutput`
+from a halfword SSA instead of its final `u8` definition. Production-inspector
+restoration converges, while every durable crash boundary retains the
+previous committed generation.
+
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
 C integer promotions of the Boolean result.
