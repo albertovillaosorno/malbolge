@@ -51,9 +51,9 @@ const TARGET_PROFILE: &str = "malbolge-2026";
 const TERNARY_WIRE_VERSION: u16 = 1;
 const TYPED_IR_VERSION: u16 = 1;
 // Conservative wire minima: id + empty name + span + operation count;
-// operation tag + one `u32` value + the required 24-byte source span.
+// operation tag + the required 24-byte source span (void return minimum).
 const FUNCTION_MIN_BYTES: usize = 36;
-const OPERATION_MIN_BYTES: usize = 29;
+const OPERATION_MIN_BYTES: usize = 25;
 
 /// Stable codec identity for canonical pre-layout ternary programs.
 pub const TERNARY_PROGRAM_CODEC_ID: &str = "malbolge-ternary-ir-v1";
@@ -95,7 +95,7 @@ pub enum TernaryProgramValidationError {
     /// Operation result/use identities violate the lowered SSA type/order
     /// model.
     SsaValue,
-    /// Function does not end in exactly one valid `i32` return.
+    /// Function does not end in exactly one admissible typed return.
     Terminator,
 }
 
@@ -656,6 +656,14 @@ fn decode_boolean_constant(
     Ok(TernaryOperation::MaterializeBool { result, value, span })
 }
 
+fn decode_void_return(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::ReturnVoid {
+        span: decode_span(decoder)?,
+    })
+}
+
 fn decode_operation(
     decoder: &mut Decoder<'_>,
 ) -> Result<TernaryOperation, TernaryProgramCodecError> {
@@ -682,6 +690,7 @@ fn decode_operation(
         6 => decode_bitwise_operation(decoder, 6)?,
         7 => decode_bitwise_operation(decoder, 7)?,
         48 => decode_boolean_constant(decoder)?,
+        49 => decode_void_return(decoder)?,
         8 => TernaryOperation::MaterializeU8 {
             result: decoder.u32()?,
             scalar: decoder.byte_scalar()?,
@@ -1353,6 +1362,11 @@ fn encode_non_word_operation(
         encode_large_scalar_model(encoder, operation, (result, scalar, span));
         return;
     }
+    if let TernaryOperation::ReturnVoid { span } = operation {
+        encoder.u8(49);
+        encode_span(encoder, span);
+        return;
+    }
     if let TernaryOperation::MaterializeBool { result, value, span } = operation
     {
         encoder.u8(48);
@@ -1462,6 +1476,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::ByteInput { span, .. }
         | TernaryOperation::ByteOutput { span, .. }
         | TernaryOperation::MaterializeBool { span, .. }
+        | TernaryOperation::ReturnVoid { span }
         | TernaryOperation::MaterializeI32 { span, .. }
         | TernaryOperation::MaterializeU32 { span, .. }
         | TernaryOperation::MaterializeU8 { span, .. }
@@ -1824,6 +1839,9 @@ fn validate_operation(
     ) {
         return validate_materialize_operation(operation, values);
     }
+    if matches!(operation, TernaryOperation::ReturnVoid { .. }) {
+        return Ok(true);
+    }
     if let TernaryOperation::Return { value, .. }
     | TernaryOperation::ReturnU32 { value, .. }
     | TernaryOperation::ReturnU8 { value, .. }
@@ -1882,6 +1900,7 @@ fn validate_operations(
             | TernaryOperation::ReturnU32 { .. }
             | TernaryOperation::ReturnU8 { .. }
             | TernaryOperation::ReturnBool { .. }
+            | TernaryOperation::ReturnVoid { .. }
     ) || !validate_operation(*last, &mut values)?
     {
         return Err(TernaryProgramValidationError::Terminator);

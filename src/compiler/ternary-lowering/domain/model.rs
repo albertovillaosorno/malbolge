@@ -1208,6 +1208,11 @@ pub enum TernaryOperation {
         /// Upstream SSA byte value identity.
         value: u32,
     },
+    /// Terminate an admitted void function without consuming an SSA operand.
+    ReturnVoid {
+        /// Original typed-IR return provenance.
+        span: TernarySourceSpan,
+    },
     /// Preserve signed left shift SSA semantics for later target realization.
     ShiftLeftI32 {
         /// Left upstream SSA value identity.

@@ -51,8 +51,13 @@ Validated one-bit Boolean constants now materialize separate Boolean SSA
 values and return directly or convert explicitly to signed `i32`. The wire
 stores their canonical zero/one digit and source provenance at tag `48`.
 
+Validated `void` functions now terminate through a value-free `ReturnVoid`
+operation with no fake SSA result, preserving any preceding successful guest
+byte I/O. Its canonical tag `49` uses only the exact 24-byte source span.
+
 Fresh compiler entry and real progress-inspector restoration agree for
-admitted Boolean comparisons, constant materialization and truth-value casts.
+admitted Boolean comparisons, constant materialization, truth-value casts,
+and void returns.
 
 Canonical `malbolge-ternary-ir-v1` bytes now serialize that pre-layout
 `TernaryProgram` only after independent stage validation. The `MCTR` version-one

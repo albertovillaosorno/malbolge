@@ -66,6 +66,8 @@ pub enum InputScalarType {
     U32,
     /// Exact unsigned 8-bit byte semantics.
     U8,
+    /// No returned scalar value (typed-IR void function).
+    Void,
 }
 
 /// Admitted ordered comparisons of exact promoted 32-bit operands.

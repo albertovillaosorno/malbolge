@@ -34,7 +34,8 @@ unsigned byte-to-word extension,
 signedness-changing and same-kind 32-bit integer bitcasts,
 32-bit-to-`u8` truncation, and
 typed-IR
-`ByteInput`/`ByteOutput` effects with an `i32`, `u32`, or `u8` return.
+`ByteInput`/`ByteOutput` effects with an `i32`, `u32`, `u8`, Boolean, or
+value-free `void` return.
 Other admitted typed-IR shapes fail explicitly.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
@@ -69,9 +70,11 @@ an output use of the wrong scalar type fails independent stage validation.
 
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
-Each function requires at least 36 bytes and each operation at least 29 bytes,
-including the fixed 24-byte provenance span; shorter claimed collections are
-rejected during count preflight before inspecting an invalid operation tag.
+Each function requires at least 36 bytes and each operation at least 25 bytes,
+including the operation tag and fixed 24-byte provenance span. This bound is
+exact for `ReturnVoid`; shorter declared collections are rejected before an
+invalid operation tag is read.
+
 An exaggerated count with just enough trailing padding no longer causes an
 eager count-sized allocation before the first malformed record is rejected.
 The decoder does not yet impose a separate global object-memory ceiling.
@@ -187,7 +190,7 @@ other 32-bit binary operations. Signed and unsigned variants require operands
 and result types with matching signedness; the pre-layout compiler does not
 evaluate guest division, division by zero, or signed overflow. Canonical
 checkpoint admission rejects swapped signedness, missing SSA operands,
-duplicate definitions, and unknown tag `49`. Fresh typed lowering
+duplicate definitions, and unknown tag `50`. Fresh typed lowering
 and inspector-backed checkpoint recovery converge across all ten crash
 boundaries for each of the four operations.
 
@@ -204,7 +207,7 @@ preserve the original 32-bit pattern without host evaluation and create a
 separate SSA definition of the same signedness. Typed-IR admission and
 canonical restoration preserve distinct source/result identities for all
 boundary patterns and reject cross-signedness tag substitution, undefined
-sources, and future tag `49`. Real inspector-backed restoration converges
+sources, and future tag `50`. Real inspector-backed restoration converges
 with fresh lowering; all ten crash-publication boundaries preserve both
 same-kind generations without rewriting any prior opcode.
 
@@ -216,7 +219,7 @@ record layout. The stage keeps comparisons symbolic instead of evaluating
 signed or unsigned guest values on the host, and does not widen the Boolean
 result into a byte or integer implicitly. Independent canonical admission
 requires exact operand signedness and rejects retagged signedness, undefined or
-duplicate SSA, malformed boolean returns, and the next unassigned tag `49`;
+duplicate SSA, malformed boolean returns, and the next unassigned tag `50`;
 typed-IR and ternary round trips cover both comparisons, signed and unsigned
 32-bit boundary patterns, and legal aliasing of both operand uses to one SSA
 value, preserving source spans and complete target identity.
@@ -230,7 +233,7 @@ The pre-layout stage never performs a signed or unsigned host comparison.
 Typed-IR admission rejects predicates that disagree with the operand
 signedness. Independent canonical checkpoint restoration rejects such
 substitutions, undefined operands, duplicate Boolean results, and unknown
-tag `49`. Regression fixtures cover both predicates across signed/unsigned
+tag `50`. Regression fixtures cover both predicates across signed/unsigned
 boundary patterns, exact source bits, and legal aliased SSA operands.
 
 Tag `44` adds `BoolToI32` using the canonical cast result-ID,
@@ -241,7 +244,7 @@ the host or silently reinterpreting Boolean as an integer.
 
 Independent target validation rejects an integer-typed source, duplicate
 result ID, and swapped bitcast tags; canonical restoration rejects the next
-unassigned tag `49`. A typed-IR round-trip fixture combines integer
+unassigned tag `50`. A typed-IR round-trip fixture combines integer
 comparison, Boolean conversion, and signed return across boundary patterns.
 Other destination widths and Boolean operations remain outside this slice.
 
@@ -254,7 +257,7 @@ symbolically without comparing a value in host arithmetic.
 Independent target validation rejects signedness-tag substitutions, undefined
 source IDs, duplicate result definitions, and casts using a noninteger source.
 Typed-IR and canonical ternary round trips cover zero, the signed boundary,
-and maximum 32-bit bit patterns with Boolean returns; unknown tag `49` remains
+and maximum 32-bit bit patterns with Boolean returns; unknown tag `50` remains
 unassigned in the initial 32-bit conversion slice. The subsequent byte case
 has its own tag and contract below; pointer truth conversion remains open.
 
@@ -265,7 +268,7 @@ Boolean SSA identity retaining the original source span and byte value bits.
 
 Canonical checkpoint validation rejects retagging that source as signed or
 unsigned 32-bit, duplicate result identities, undefined byte operands, and
-the next unassigned opcode `49`. Typed-IR and target round trips cover zero,
+the next unassigned opcode `50`. Typed-IR and target round trips cover zero,
 one, `0x7f`, `0x80`, `0xff`, and the successful byte-input effect without host
 truth evaluation. EOF/raw input-word handling remains a separate realization.
 
@@ -277,7 +280,7 @@ explicit `BoolToI32` conversion; the lowerer does not fold a guest cast.
 
 The independent decoder rejects out-of-domain Boolean digits as `InvalidScalar`,
 treats duplicate or missing Boolean SSA definitions as validation failures,
-and rejects unassigned tag `49`. Typed-IR and checkpoint round trips cover
+and rejects unassigned tag `50`. Typed-IR and checkpoint round trips cover
 both values with direct Boolean and promoted signed returns, preserving the
 original source span and result identities.
 
@@ -310,6 +313,24 @@ cross-width cast retagging before returning checkpoint state. All ten durable
 checkpoint publication/crash boundaries retain only committed generations
 when advancing from the original constant-return program to each selected
 Boolean comparison, byte source, or conversion family.
+
+Tag `49` adds a value-free `ReturnVoid` terminator for validated no-result
+function signatures. The canonical record consists of its tag plus the exact
+24-byte source span, with no SSA operand, dummy result, or host-side return
+value. The inbound projection distinguishes `Void` from unsupported `Other`
+and rejects either a missing value in a nonvoid function or a present value
+in a void function.
+
+The independent decoder accepts the new 25-byte minimum operation record but
+rejects shorter records before dereferencing their tags. Semantic validation
+requires `ReturnVoid` to be the final operation, preserving prior byte effects
+in source order; malformed value/return types and successor tag `50` fail
+closed. Empty void functions and byte-input/output void functions round-trip
+from admitted typed IR through canonical target bytes without host execution.
+
+Production inspector recovery agrees with fresh lowering for both void cases,
+and rejects unknown retagged terminators after checkpoint extraction. All ten
+crash-publication boundaries preserve the committed generation for each case.
 
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or

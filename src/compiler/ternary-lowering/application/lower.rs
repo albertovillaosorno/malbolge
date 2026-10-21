@@ -140,6 +140,17 @@ fn lower_function(
     else {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
+    if function.return_kind == InputScalarType::Void && value.is_none() {
+        operations.push(TernaryOperation::ReturnVoid {
+            span: copy_span(return_span),
+        });
+        return Ok(TernaryFunction {
+            id: function.id,
+            name: function.name.clone(),
+            operations,
+            span: copy_span(function.span),
+        });
+    }
     let Some(return_value) = value else {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
@@ -194,7 +205,8 @@ fn lower_return_operation(
         | InputScalarType::I32
         | InputScalarType::Other
         | InputScalarType::U32
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedTerminator);
         },
     })
@@ -745,7 +757,8 @@ fn lower_arithmetic_word32(
         InputScalarType::U32 => &state.unsigned,
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
     };
@@ -758,7 +771,8 @@ fn lower_arithmetic_word32(
         InputScalarType::U32 => state.unsigned.insert(result),
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => false,
+        | InputScalarType::U8
+        | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
     construct_arithmetic_operation(
@@ -816,24 +830,7 @@ const fn construct_arithmetic_operation(
         (Arithmetic32Kind::Subtract, _) => {
             return construct_subtract_operation(type_kind, operands, span);
         },
-        (
-            Arithmetic32Kind::DivideSigned
-            | Arithmetic32Kind::DivideUnsigned
-            | Arithmetic32Kind::RemainderSigned
-            | Arithmetic32Kind::RemainderUnsigned
-            | Arithmetic32Kind::ShiftLeft
-            | Arithmetic32Kind::ShiftRightArithmetic
-            | Arithmetic32Kind::ShiftRightLogical,
-            _,
-        )
-        | (
-            _,
-            InputScalarType::Bool
-            | InputScalarType::Other
-            | InputScalarType::U8,
-        ) => {
-            return Err(TernaryLoweringError::UnsupportedInstruction);
-        },
+        _ => return Err(TernaryLoweringError::UnsupportedInstruction),
     })
 }
 
@@ -858,7 +855,8 @@ const fn construct_add_operation(
         },
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
     })
@@ -929,7 +927,8 @@ const fn construct_subtract_operation(
         },
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
     })
@@ -994,7 +993,8 @@ fn lower_binary_word32(
         InputScalarType::U32 => &state.unsigned,
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
     };
@@ -1007,7 +1007,8 @@ fn lower_binary_word32(
         InputScalarType::U32 => state.unsigned.insert(result),
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => false,
+        | InputScalarType::U8
+        | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
     construct_bitwise_operation(
@@ -1074,7 +1075,8 @@ const fn construct_bitwise_operation(
             _,
             InputScalarType::Bool
             | InputScalarType::Other
-            | InputScalarType::U8,
+            | InputScalarType::U8
+            | InputScalarType::Void,
         ) => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
@@ -1112,23 +1114,32 @@ fn lower_byte_output(
     })
 }
 
+fn lower_boolean_constant(
+    little_endian: &[u8],
+    result: u32,
+    span: InputSourceSpan,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let &[bit @ 0..=1] = little_endian else {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    };
+    ensure_new_value(state, result)?;
+    let inserted = state.bools.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    Ok(TernaryOperation::MaterializeBool {
+        result,
+        value: bit == 1,
+        span: copy_span(span),
+    })
+}
+
 fn lower_constant_integer(
     input: ConstantI32Input<'_>,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (bit_width, little_endian, result, span, type_kind) = input;
     if bit_width == 1 && type_kind == InputScalarType::Bool {
-        let &[bit @ 0..=1] = little_endian else {
-            return Err(TernaryLoweringError::UnsupportedInstruction);
-        };
-        ensure_new_value(state, result)?;
-        let inserted = state.bools.insert(result);
-        debug_assert!(inserted, "new SSA value was already preflighted");
-        return Ok(TernaryOperation::MaterializeBool {
-            result,
-            value: bit == 1,
-            span: copy_span(span),
-        });
+        return lower_boolean_constant(little_endian, result, span, state);
     }
     if bit_width == 8 && type_kind == InputScalarType::U8 {
         let &[byte] = little_endian else {
@@ -1172,7 +1183,8 @@ fn lower_constant_integer(
         },
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => {
+        | InputScalarType::U8
+        | InputScalarType::Void => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }
@@ -1304,7 +1316,8 @@ fn lower_integer_bitcast(
         InputScalarType::U32 => state.unsigned.insert(result),
         InputScalarType::Bool
         | InputScalarType::Other
-        | InputScalarType::U8 => false,
+        | InputScalarType::U8
+        | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
     let target_span = copy_span(span);
