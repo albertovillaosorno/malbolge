@@ -286,6 +286,15 @@ both Boolean constant-return forms and explicit signed promotion. Invalid
 digits and unknown tags fail closed after opaque state extraction, and all
 ten checkpoint crash boundaries retain only committed generations.
 
+A separate composition regression preserves five distinct SSA identities
+across the source Boolean literal, signed conversion, unsigned-byte
+truncation, byte truth conversion, and final signed conversion. False and true
+retain their source spans through typed-IR and ternary canonical round trips.
+
+Independent canonical and inspector recovery reject mismatched truncation,
+cast-width substitutions, and undefined byte operands; all ten crash
+publication boundaries preserve the committed predecessor checkpoint.
+
 Production inspector-backed progress recovery now converges with fresh
 lowering for signed and unsigned equality, ordered comparisons, Boolean-to-i32,
 and all signed, unsigned, and byte-width integer-to-Boolean casts. A separate

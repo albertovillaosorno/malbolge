@@ -1577,6 +1577,99 @@ fn boolean_constant_module(bit: u8, promoted: bool) -> Module {
     })
 }
 
+fn boolean_roundtrip_types() -> Vec<TypeEntry> {
+    vec![
+        TypeEntry::new(TypeId::new(0), TypeDef::Bool),
+        TypeEntry::new(TypeId::new(1), TypeDef::I32),
+        TypeEntry::new(TypeId::new(2), TypeDef::U8),
+        TypeEntry::new(
+            TypeId::new(3),
+            TypeDef::function(Vec::new(), Some(TypeId::new(1)), false),
+        ),
+    ]
+}
+
+fn boolean_roundtrip_instructions(bit: u8) -> Vec<LocatedInstruction> {
+    vec![
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(1, vec![bit]),
+                result: ValueId::new(0),
+                type_id: TypeId::new(0),
+            },
+            fixture_span(0, 1),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::BoolToSigned,
+                result: ValueId::new(1),
+                type_id: TypeId::new(1),
+                value: ValueId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::Truncate,
+                result: ValueId::new(2),
+                type_id: TypeId::new(2),
+                value: ValueId::new(1),
+            },
+            fixture_span(2, 3),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerToBool,
+                result: ValueId::new(3),
+                type_id: TypeId::new(0),
+                value: ValueId::new(2),
+            },
+            fixture_span(3, 4),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::BoolToSigned,
+                result: ValueId::new(4),
+                type_id: TypeId::new(1),
+                value: ValueId::new(3),
+            },
+            fixture_span(4, 5),
+        ),
+    ]
+}
+
+fn boolean_roundtrip_module(bit: u8) -> Module {
+    let instructions = boolean_roundtrip_instructions(bit);
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: fixture_span(0, 6),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(4)),
+                },
+                terminator_span: fixture_span(5, 6),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("boolean_roundtrip"),
+            parameters: Vec::new(),
+            signature: TypeId::new(3),
+            span: fixture_span(0, 6),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/boolean-roundtrip.c"),
+        source_sha256: [0xbc; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: boolean_roundtrip_types(),
+    })
+}
+
 fn byte_to_bool_types() -> Vec<TypeEntry> {
     vec![
         TypeEntry::new(TypeId::new(0), TypeDef::U8),
@@ -6398,6 +6491,157 @@ fn typed_truncated_byte_truth_preserves_three_cast_identities()
     for bits in [0u32, 1, 0xff, 0x100, 0x8000_0080, u32::MAX] {
         let (target, _projection) = lowered_truncated_byte_truth_fixture(bits)?;
         assert_truncated_byte_truth_operations(bits, &target)?;
+    }
+    Ok(())
+}
+
+fn lowered_boolean_roundtrip_fixture(
+    bit: u8,
+) -> Result<LoweredByteFixture, String> {
+    let module = boolean_roundtrip_module(bit);
+    validate_module(&module)
+        .map_err(|error| format!("admit Boolean roundtrip: {error:?}"))?;
+    let typed = canonical_bytes(&module)
+        .map_err(|error| format!("encode Boolean roundtrip IR: {error:?}"))?;
+    let restored = canonical_module(&typed)
+        .map_err(|error| format!("restore Boolean roundtrip IR: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("Boolean roundtrip typed IR drifted"));
+    }
+    let projection = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower Boolean roundtrip: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, projection))
+}
+
+fn assert_boolean_roundtrip_state(
+    bit: u8,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<Vec<u8>, String> {
+    let operations = &target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("Boolean roundtrip target absent"))?
+        .operations;
+    let expected = [
+        TernaryOperation::MaterializeBool {
+            result: 0,
+            value: bit == 1,
+            span: output_span(fixture_span(0, 1)),
+        },
+        TernaryOperation::BoolToI32 {
+            result: 1,
+            value: 0,
+            span: output_span(fixture_span(1, 2)),
+        },
+        TernaryOperation::TruncateI32ToU8 {
+            result: 2,
+            value: 1,
+            span: output_span(fixture_span(2, 3)),
+        },
+        TernaryOperation::U8ToBool {
+            result: 3,
+            value: 2,
+            span: output_span(fixture_span(3, 4)),
+        },
+        TernaryOperation::BoolToI32 {
+            result: 4,
+            value: 3,
+            span: output_span(fixture_span(4, 5)),
+        },
+        TernaryOperation::Return {
+            value: 4,
+            span: output_span(fixture_span(5, 6)),
+        },
+    ];
+    if operations.as_slice() != expected {
+        return Err(String::from("Boolean roundtrip SSA/provenance drifted"));
+    }
+    let wire = canonical_ternary_bytes(target).map_err(|error| {
+        format!("encode Boolean roundtrip target: {error:?}")
+    })?;
+    if canonical_ternary_program(&wire) != Ok(target.clone()) {
+        return Err(String::from("Boolean roundtrip checkpoint drifted"));
+    }
+    Ok(wire)
+}
+
+fn reject_boolean_roundtrip_cast_forgery(
+    wire: &[u8],
+    cast: (u8, u32, u8),
+) -> Result<(), String> {
+    let (tag, result, forged_tag) = cast;
+    let mut pattern = vec![tag];
+    pattern.extend_from_slice(&result.to_le_bytes());
+    let offset = wire
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+        .ok_or_else(|| String::from("Boolean cast opcode missing"))?;
+    let mut forged = wire.to_vec();
+    *forged
+        .get_mut(offset)
+        .ok_or_else(|| String::from("Boolean cast tag absent"))? = forged_tag;
+    if canonical_ternary_program(&forged)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(format!(
+            "forged Boolean cast {tag} -> {forged_tag} admitted"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn boolean_constant_conversion_chain_rejects_cross_width_retags()
+-> Result<(), String> {
+    for bit in [0u8, 1] {
+        let (target, _projection) = lowered_boolean_roundtrip_fixture(bit)?;
+        let wire = assert_boolean_roundtrip_state(bit, &target)?;
+        for cast in [(5u8, 2u32, 15u8), (47, 3, 45), (44, 4, 33)] {
+            reject_boolean_roundtrip_cast_forgery(&wire, cast)?;
+        }
+        let prefix = [47, 3, 0, 0, 0];
+        let offset = wire
+            .windows(prefix.len())
+            .position(|window| window == prefix)
+            .ok_or_else(|| String::from("roundtrip truth conversion absent"))?;
+        let mut undefined = wire;
+        *undefined
+            .get_mut(offset.saturating_add(29))
+            .ok_or_else(|| String::from("roundtrip byte source absent"))? = 99;
+        if canonical_ternary_program(&undefined)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SsaValue,
+            ))
+        {
+            return Err(String::from("undefined Boolean chain byte admitted"));
+        }
+        assert_boolean_progress_tag_rejected(
+            "forged-roundtrip-byte-conversion",
+            &target,
+            (47, 3, 45),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn boolean_constant_conversion_chain_preserves_five_distinct_ssa()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for bit in [0u8, 1] {
+        let (target, projection) = lowered_boolean_roundtrip_fixture(bit)?;
+        let _wire = assert_boolean_roundtrip_state(bit, &target)?;
+        let label = if bit == 0 {
+            "false-byte-boolean-roundtrip"
+        } else {
+            "true-byte-boolean-roundtrip"
+        };
+        assert_boolean_inspector_convergence(label, &target, &projection)?;
+        assert_boolean_crash_generation(&previous, &target)?;
     }
     Ok(())
 }
