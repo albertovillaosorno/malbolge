@@ -1002,6 +1002,15 @@ pub enum TernaryOperation {
         /// Previously defined unsigned byte SSA operand.
         value: u32,
     },
+    /// Preserve Boolean-to-signed-halfword conversion as distinct SSA.
+    BoolToI16 {
+        /// Distinct signed 16-bit SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Previously defined Boolean SSA operand identity.
+        value: u32,
+    },
     /// Preserve a Boolean-to-signed-32-bit zero/one conversion as a new SSA.
     BoolToI32 {
         /// New signed 32-bit SSA result.

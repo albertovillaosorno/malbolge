@@ -1454,11 +1454,32 @@ fn lower_integer_to_bool(
     })
 }
 
+fn lower_bool_to_halfword(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, kind, value) = input;
+    if kind != InputScalarType::I16 || !state.bools.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.signed_halves.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    Ok(TernaryOperation::BoolToI16 {
+        result,
+        span: copy_span(span),
+        value,
+    })
+}
+
 fn lower_bool_to_signed(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if type_kind == InputScalarType::I16 {
+        return lower_bool_to_halfword(input, state);
+    }
     if !matches!(type_kind, InputScalarType::I32 | InputScalarType::I8)
         || !state.bools.contains(&value)
     {
