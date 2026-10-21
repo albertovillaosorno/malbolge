@@ -701,6 +701,16 @@ from a halfword SSA instead of its final `u8` definition. Production-inspector
 restoration converges, while every durable crash boundary retains the
 previous committed generation.
 
+The projection-to-target boundary also checks each retained function,
+instruction and return span for nonzero line/column, ordered byte/position
+endpoints and containment within the function. It rejects malformed late
+spans before emitting a partially admitted target program, including invalid
+positions and function-escape mutations in a 128-member module.
+
+The projected one-block representation does not retain an independent basic
+block span; the initial validated typed-IR admission remains responsible for
+its original block-level evidence, and no block span is fabricated here.
+
 The lowering entrypoint now independently preflights source IDs as relative,
 normalized paths with no empty, dot, parent, drive-colon, NUL or backslash
 segments. It also requires dense function IDs, nonempty NUL-free names and

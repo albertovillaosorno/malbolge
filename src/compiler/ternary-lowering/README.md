@@ -112,6 +112,8 @@ members; 128-member checkpoints also restore through the real inspector.
 Projection admission independently rejects invalid source paths and
 noncanonical function identities before lowering. Canonical validation
 retains its separate uniqueness check without allocating cloned names.
+Function, instruction and return spans are checked for ordered positions
+and containment before any target operations are published.
 
 Other 16-bit arithmetic and remaining casts are unsupported.
 

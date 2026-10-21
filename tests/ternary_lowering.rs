@@ -2994,6 +2994,61 @@ fn ternary_projection_rejects_malformed_source_paths() -> Result<(), String> {
 }
 
 #[test]
+fn ternary_projection_rejects_late_invalid_function_and_operation_spans()
+-> Result<(), String> {
+    let (_, original) = lowered_dense_lane_io_fixture(128)?;
+    for mutate in 0u8..6 {
+        let mut forged = original.clone();
+        let last = forged
+            .functions
+            .last_mut()
+            .ok_or_else(|| String::from("late projected function absent"))?;
+        match mutate {
+            0 => last.span.begin.byte = u32::MAX,
+            1 => last.span.end.line = 0,
+            2 | 4 => {
+                let instruction = last
+                    .blocks
+                    .first_mut()
+                    .and_then(|block| block.instructions.last_mut())
+                    .ok_or_else(|| String::from("late instruction absent"))?;
+                let InputInstruction::ByteOutput { span, .. } = instruction
+                else {
+                    return Err(String::from("late output kind changed"));
+                };
+                if mutate == 2 {
+                    span.begin.byte = 0;
+                } else {
+                    span.begin.line = 0;
+                }
+            },
+            3 | 5 => {
+                let term = &mut last
+                    .blocks
+                    .first_mut()
+                    .ok_or_else(|| String::from("late block absent"))?
+                    .terminator;
+                let InputTerminator::Return { span, .. } = term else {
+                    return Err(String::from("late terminator kind changed"));
+                };
+                if mutate == 3 {
+                    span.begin.byte = 0;
+                } else {
+                    span.end.column = 0;
+                }
+            },
+            _ => return Err(String::from("unknown span mutation")),
+        }
+        if lower_typed_ir(&forged)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!("late malformed span {mutate} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_dense_functions_restore_through_inspector() -> Result<(), String> {
     let (target, projection) = lowered_dense_lane_io_fixture(128)?;
     assert_boolean_inspector_convergence(

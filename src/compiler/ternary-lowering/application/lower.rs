@@ -122,6 +122,91 @@ const fn copy_span(span: InputSourceSpan) -> TernarySourceSpan {
     }
 }
 
+const fn valid_projection_span(span: InputSourceSpan) -> bool {
+    let begin = span.begin;
+    let end = span.end;
+    if begin.line == 0
+        || begin.column == 0
+        || end.line == 0
+        || end.column == 0
+        || begin.byte > end.byte
+    {
+        return false;
+    }
+    if begin.byte == end.byte {
+        return begin.line == end.line && begin.column == end.column;
+    }
+    begin.line < end.line
+        || (begin.line == end.line && begin.column <= end.column)
+}
+
+const fn projection_span_contains(
+    parent: InputSourceSpan,
+    child: InputSourceSpan,
+) -> bool {
+    parent.begin.byte <= child.begin.byte && child.end.byte <= parent.end.byte
+}
+
+const fn projected_instruction_span(
+    instruction: &InputInstruction,
+) -> Option<InputSourceSpan> {
+    match instruction {
+        InputInstruction::BinaryAdd { span, .. }
+        | InputInstruction::BinaryAnd { span, .. }
+        | InputInstruction::BinaryDivideSigned { span, .. }
+        | InputInstruction::BinaryDivideUnsigned { span, .. }
+        | InputInstruction::BinaryMultiply { span, .. }
+        | InputInstruction::BinaryOr { span, .. }
+        | InputInstruction::BinaryRemainderSigned { span, .. }
+        | InputInstruction::BinaryRemainderUnsigned { span, .. }
+        | InputInstruction::BinaryShiftLeft { span, .. }
+        | InputInstruction::BinaryShiftRightArithmetic { span, .. }
+        | InputInstruction::BinaryShiftRightLogical { span, .. }
+        | InputInstruction::BinarySubtract { span, .. }
+        | InputInstruction::BinaryXor { span, .. }
+        | InputInstruction::BoolToSigned { span, .. }
+        | InputInstruction::ByteInput { span, .. }
+        | InputInstruction::ByteOutput { span, .. }
+        | InputInstruction::CompareEqual { span, .. }
+        | InputInstruction::CompareNotEqual { span, .. }
+        | InputInstruction::CompareOrdered { span, .. }
+        | InputInstruction::ConstantInteger { span, .. }
+        | InputInstruction::IntegerBitcast { span, .. }
+        | InputInstruction::IntegerToBool { span, .. }
+        | InputInstruction::SignExtendI8ToI32 { span, .. }
+        | InputInstruction::TruncateInteger { span, .. }
+        | InputInstruction::ZeroExtendInteger { span, .. } => Some(*span),
+        InputInstruction::Unsupported => None,
+    }
+}
+
+fn validate_projection_spans(
+    function: &InputFunction,
+) -> Result<(), TernaryLoweringError> {
+    if !valid_projection_span(function.span) {
+        return Err(TernaryLoweringError::InvalidProjection);
+    }
+    let block = function
+        .blocks
+        .first()
+        .ok_or(TernaryLoweringError::UnsupportedFunction)?;
+    if let InputTerminator::Return { span, .. } = block.terminator
+        && (!valid_projection_span(span)
+            || !projection_span_contains(function.span, span))
+    {
+        return Err(TernaryLoweringError::InvalidProjection);
+    }
+    for instruction in &block.instructions {
+        if let Some(span) = projected_instruction_span(instruction)
+            && (!valid_projection_span(span)
+                || !projection_span_contains(function.span, span))
+        {
+            return Err(TernaryLoweringError::InvalidProjection);
+        }
+    }
+    Ok(())
+}
+
 fn lower_function(
     function: &InputFunction,
 ) -> Result<TernaryFunction, TernaryLoweringError> {
@@ -135,6 +220,7 @@ fn lower_function(
     if block.id != function.entry || block.phi_count != 0 {
         return Err(TernaryLoweringError::UnsupportedFunction);
     }
+    validate_projection_spans(function)?;
 
     let mut state = LoweringState::default();
     let mut operations = Vec::new();

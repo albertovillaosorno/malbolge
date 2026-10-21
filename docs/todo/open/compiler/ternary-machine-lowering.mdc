@@ -254,6 +254,11 @@ instruction.
   lowerer rejects forged narrow-operand projections, and independent decoder
   and production-inspector recovery reject retagged casts and invalid SSA;
   all ten crash-publication boundaries preserve committed generations.
+- The projection boundary also preflights the retained function,
+  instruction and terminator spans before target emission. Late invalid
+  positions and out-of-function spans are rejected even when the affected
+  operation occurs in member 127 of a 128-member module, without inventing
+  dropped basic-block source spans.
 - The lowering entrypoint now independently rejects malformed source IDs,
   sparse or duplicate function IDs, duplicate names and NUL/empty names
   before publishing any target state. The target validator retains its
