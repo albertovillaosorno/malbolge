@@ -95,6 +95,9 @@ define `i8`/`u8` results under tags `78` through `81`.
 Signed-byte-to-halfword `SignExtendI8ToI16` and unsigned-byte-to-halfword
 `ZeroExtendU8ToU16` retain separate symbolic SSA under tags `82` and `83`.
 
+Promoted-width `i8 → i16 → i32` and `u8 → u16 → u32` comparison chains
+require explicit casts before the existing word-width equality operations.
+
 Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

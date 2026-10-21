@@ -395,6 +395,7 @@ type TernaryProgressFixture = (PathBuf, PathBuf);
 type HalfwordRecordOffsets = (usize, usize);
 type LoweredByteFixture = (ternary_lowering::TernaryProgram, TypedIrInput);
 type ComparisonOperationTag = (TernaryOperation, u8);
+type PromotedWireMutation = (usize, u8, TernaryProgramCodecError);
 
 #[derive(Clone, Copy)]
 struct ComparisonFixture {
@@ -4832,6 +4833,555 @@ fn byte_to_halfword_widen_inspector_rejects_retagged_or_unknown_cast()
             "byte-halfword-widen-future",
             &target,
             (tag, 1, 84),
+        )?;
+    }
+    Ok(())
+}
+
+fn promoted_byte_instructions(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+    narrow: Option<bool>,
+) -> Vec<LocatedInstruction> {
+    let byte_cast = if signed {
+        CastOp::SignExtend
+    } else {
+        CastOp::ZeroExtend
+    };
+    let mut instructions = Vec::new();
+    for (base, bits) in [(0u32, pair.0), (3, pair.1)] {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(8, vec![bits]),
+                result: ValueId::new(base),
+                type_id: TypeId::new(0),
+            },
+            fixture_span(base, base.saturating_add(1)),
+        ));
+        for (step, type_id) in [(1u32, 1u32), (2, 2)] {
+            instructions.push(LocatedInstruction::new(
+                Instruction::Cast {
+                    operation: byte_cast,
+                    result: ValueId::new(base.saturating_add(step)),
+                    type_id: TypeId::new(type_id),
+                    value: ValueId::new(
+                        base.saturating_add(step.saturating_sub(1)),
+                    ),
+                },
+                fixture_span(
+                    base.saturating_add(step),
+                    base.saturating_add(step.saturating_add(1)),
+                ),
+            ));
+        }
+    }
+    let (left_id, right_id) = match narrow {
+        Some(true) => (1, 4),
+        Some(false) => (0, 3),
+        None => (2, 5),
+    };
+    instructions.push(LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(left_id),
+            operation: if equal {
+                CompareOp::Equal
+            } else {
+                CompareOp::NotEqual
+            },
+            result: ValueId::new(6),
+            right: ValueId::new(right_id),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(6, 7),
+    ));
+    instructions
+}
+
+fn promoted_byte_comparison_module(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+) -> Module {
+    promoted_byte_comparison_module_at_width(pair, signed, equal, None)
+}
+
+fn promoted_byte_comparison_module_at_width(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+    narrow: Option<bool>,
+) -> Module {
+    let types = if signed {
+        [TypeDef::I8, TypeDef::I16, TypeDef::I32]
+    } else {
+        [TypeDef::U8, TypeDef::U16, TypeDef::U32]
+    };
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: promoted_byte_instructions(
+                    pair, signed, equal, narrow,
+                ),
+                phis: Vec::new(),
+                span: fixture_span(0, 8),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(6)),
+                },
+                terminator_span: fixture_span(7, 8),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("promoted_byte_comparison"),
+            parameters: Vec::new(),
+            signature: TypeId::new(4),
+            span: fixture_span(0, 8),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/promoted-byte-comparison.c"),
+        source_sha256: [0x84; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), types[0].clone()),
+            TypeEntry::new(TypeId::new(1), types[1].clone()),
+            TypeEntry::new(TypeId::new(2), types[2].clone()),
+            TypeEntry::new(TypeId::new(3), TypeDef::Bool),
+            TypeEntry::new(
+                TypeId::new(4),
+                TypeDef::function(Vec::new(), Some(TypeId::new(3)), false),
+            ),
+        ],
+    })
+}
+
+fn lowered_promoted_byte_comparison_fixture(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+) -> Result<LoweredByteFixture, String> {
+    let module = promoted_byte_comparison_module(pair, signed, equal);
+    validate_module(&module)
+        .map_err(|error| format!("admit promoted comparison: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode promoted comparison: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore promoted comparison: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("promoted comparison typed IR drifted"));
+    }
+    let input = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&input)
+        .map_err(|error| format!("lower promoted comparison: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, input))
+}
+
+fn expected_promoted_byte_steps(
+    bits: u8,
+    signed: bool,
+    base: u32,
+) -> Vec<TernaryOperation> {
+    let scalar = ternary_lowering::TernaryU8Scalar::from_bits(bits);
+    let first_span = output_span(fixture_span(base, base.saturating_add(1)));
+    let second_span = output_span(fixture_span(
+        base.saturating_add(1),
+        base.saturating_add(2),
+    ));
+    let third_span = output_span(fixture_span(
+        base.saturating_add(2),
+        base.saturating_add(3),
+    ));
+    if signed {
+        vec![
+            TernaryOperation::MaterializeI8 {
+                result: base,
+                scalar,
+                span: first_span,
+            },
+            TernaryOperation::SignExtendI8ToI16 {
+                result: base.saturating_add(1),
+                span: second_span,
+                value: base,
+            },
+            TernaryOperation::SignExtendI16ToI32 {
+                result: base.saturating_add(2),
+                span: third_span,
+                value: base.saturating_add(1),
+            },
+        ]
+    } else {
+        vec![
+            TernaryOperation::MaterializeU8 {
+                result: base,
+                scalar,
+                span: first_span,
+            },
+            TernaryOperation::ZeroExtendU8ToU16 {
+                result: base.saturating_add(1),
+                span: second_span,
+                value: base,
+            },
+            TernaryOperation::ZeroExtendU16ToU32 {
+                result: base.saturating_add(2),
+                span: third_span,
+                value: base.saturating_add(1),
+            },
+        ]
+    }
+}
+
+fn expected_promoted_byte_comparison(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+) -> Vec<TernaryOperation> {
+    let mut operations = expected_promoted_byte_steps(pair.0, signed, 0);
+    operations.extend(expected_promoted_byte_steps(pair.1, signed, 3));
+    let span = output_span(fixture_span(6, 7));
+    operations.push(match (signed, equal) {
+        (true, true) => TernaryOperation::EqualI32 {
+            left: 2,
+            result: 6,
+            right: 5,
+            span,
+        },
+        (false, true) => TernaryOperation::EqualU32 {
+            left: 2,
+            result: 6,
+            right: 5,
+            span,
+        },
+        (true, false) => TernaryOperation::NotEqualI32 {
+            left: 2,
+            result: 6,
+            right: 5,
+            span,
+        },
+        (false, false) => TernaryOperation::NotEqualU32 {
+            left: 2,
+            result: 6,
+            right: 5,
+            span,
+        },
+    });
+    operations.push(TernaryOperation::ReturnBool {
+        span: output_span(fixture_span(7, 8)),
+        value: 6,
+    });
+    operations
+}
+
+fn assert_promoted_byte_checkpoint(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<Vec<u8>, String> {
+    let expected = expected_promoted_byte_comparison(pair, signed, equal);
+    if target
+        .functions
+        .first()
+        .map(|function| function.operations.as_slice())
+        != Some(expected.as_slice())
+    {
+        return Err(String::from("promoted comparison SSA chain drifted"));
+    }
+    let wire = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode promoted target: {error:?}"))?;
+    let narrow_tag = if signed {
+        82u8
+    } else {
+        83
+    };
+    let wide_tag = if signed {
+        68u8
+    } else {
+        69
+    };
+    if !wire.windows(5).any(|part| part == [narrow_tag, 1, 0, 0, 0])
+        || !wire.windows(5).any(|part| part == [wide_tag, 2, 0, 0, 0])
+        || canonical_ternary_program(&wire) != Ok(target.clone())
+    {
+        return Err(String::from("promoted comparison wire drifted"));
+    }
+    Ok(wire)
+}
+
+fn verify_promoted_byte_case(
+    pair: (u8, u8),
+    signed: bool,
+    equal: bool,
+) -> Result<(), String> {
+    let (target, input) =
+        lowered_promoted_byte_comparison_fixture(pair, signed, equal)?;
+    if input.functions.first().map(|function| function.return_kind)
+        != Some(InputScalarType::Bool)
+    {
+        return Err(String::from("promoted comparison return kind drifted"));
+    }
+    let _wire = assert_promoted_byte_checkpoint(pair, signed, equal, &target)?;
+    Ok(())
+}
+
+fn verify_promoted_byte_pairs(pair: (u8, u8)) -> Result<(), String> {
+    for signed in [true, false] {
+        for equal in [true, false] {
+            verify_promoted_byte_case(pair, signed, equal)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_byte_comparisons_keep_distinct_ssa() -> Result<(), String> {
+    for bits in u8::MIN..=u8::MAX {
+        verify_promoted_byte_pairs((bits, bits))?;
+        verify_promoted_byte_pairs((bits, bits ^ 1))?;
+    }
+    Ok(())
+}
+
+fn reject_unpromoted_comparison(
+    signed: bool,
+    equal: bool,
+    halfword: bool,
+) -> Result<(), String> {
+    let module = promoted_byte_comparison_module_at_width(
+        (0x80, 0x7f),
+        signed,
+        equal,
+        Some(halfword),
+    );
+    if validate_module(&module).is_ok() {
+        return Err(String::from("unpromoted narrow comparison admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_rejects_unpromoted_bytes_and_halfwords()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for equal in [true, false] {
+            for halfword in [true, false] {
+                reject_unpromoted_comparison(signed, equal, halfword)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_promoted_comparison_projection(
+    signed: bool,
+    equal: bool,
+    halfword: bool,
+) -> Result<(), String> {
+    let (_, mut projection) =
+        lowered_promoted_byte_comparison_fixture((0x80, 0x7f), signed, equal)?;
+    let cmp = projection
+        .functions
+        .first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.get_mut(6))
+        .ok_or_else(|| String::from("promoted comparison projection absent"))?;
+    let (InputInstruction::CompareEqual { left, right, .. }
+    | InputInstruction::CompareNotEqual { left, right, .. }) = cmp
+    else {
+        return Err(String::from("projected comparison changed"));
+    };
+    *left = u32::from(halfword);
+    *right = if halfword {
+        4
+    } else {
+        3
+    };
+    if lower_typed_ir(&projection)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
+        return Err(String::from("unpromoted projection admitted by lowerer"));
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_projection_requires_word_operands() -> Result<(), String>
+{
+    for signed in [true, false] {
+        for equal in [true, false] {
+            for halfword in [true, false] {
+                reject_promoted_comparison_projection(signed, equal, halfword)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_promoted_comparison_checkpoint(
+    signed: bool,
+    equal: bool,
+) -> Result<(), String> {
+    let pair = (0x80, 0x7f);
+    let (target, _) =
+        lowered_promoted_byte_comparison_fixture(pair, signed, equal)?;
+    let wire = assert_promoted_byte_checkpoint(pair, signed, equal, &target)?;
+    let cmp_tag = match (signed, equal) {
+        (true, true) => 35u8,
+        (false, true) => 36,
+        (true, false) => 37,
+        (false, false) => 38,
+    };
+    let cmp_prefix = [cmp_tag, 2, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0];
+    let cmp_offset = wire
+        .windows(cmp_prefix.len())
+        .position(|part| part == cmp_prefix)
+        .ok_or_else(|| String::from("promoted comparison tag absent"))?;
+    let cast_tag = if signed {
+        82u8
+    } else {
+        83
+    };
+    let cast_offset = wire
+        .windows(5)
+        .position(|part| part == [cast_tag, 1, 0, 0, 0])
+        .ok_or_else(|| String::from("promoted halfword tag absent"))?;
+    let invalid = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    let mutations = [
+        (
+            cmp_offset,
+            if signed {
+                cmp_tag.saturating_add(1)
+            } else {
+                cmp_tag.saturating_sub(1)
+            },
+            invalid,
+        ),
+        (cmp_offset.saturating_add(1), 99, invalid),
+        (cmp_offset.saturating_add(5), 1, invalid),
+        (
+            cast_offset,
+            if signed {
+                83
+            } else {
+                82
+            },
+            invalid,
+        ),
+        (
+            cast_offset,
+            if signed {
+                51
+            } else {
+                16
+            },
+            invalid,
+        ),
+        (cast_offset, 84, TernaryProgramCodecError::UnknownTag),
+    ];
+    check_promoted_wire_mutations(&wire, &mutations)
+}
+
+fn check_promoted_wire_mutations(
+    wire: &[u8],
+    mutations: &[PromotedWireMutation],
+) -> Result<(), String> {
+    for &(offset, replacement, expected) in mutations {
+        let mut forged = wire.to_vec();
+        *forged
+            .get_mut(offset)
+            .ok_or_else(|| String::from("forged checkpoint byte absent"))? =
+            replacement;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!(
+                "promoted checkpoint forgery {offset} admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_decoder_rejects_width_and_ssa_forgery()
+-> Result<(), String> {
+    for signed in [true, false] {
+        for equal in [true, false] {
+            reject_promoted_comparison_checkpoint(signed, equal)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_inspector_converges_on_boundary_bytes()
+-> Result<(), String> {
+    for (pair, suffix) in [((0x80u8, 0x7f), "ne"), ((0xff, 0xff), "eq")] {
+        for signed in [true, false] {
+            let (target, projection) =
+                lowered_promoted_byte_comparison_fixture(
+                    pair,
+                    signed,
+                    suffix == "eq",
+                )?;
+            let label = match (signed, suffix) {
+                (true, "eq") => "signed-promotion-equal",
+                (true, _) => "signed-promotion-not-equal",
+                (false, "eq") => "unsigned-promotion-equal",
+                (false, _) => "unsigned-promotion-not-equal",
+            };
+            assert_boolean_inspector_convergence(label, &target, &projection)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_crash_boundaries_preserve_generation()
+-> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for signed in [true, false] {
+        for equal in [true, false] {
+            let (target, _) = lowered_promoted_byte_comparison_fixture(
+                (0x80, 0x7f),
+                signed,
+                equal,
+            )?;
+            assert_boolean_crash_generation(&previous, &target)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn promoted_comparison_inspector_rejects_forged_halfword_tag()
+-> Result<(), String> {
+    for (signed, equal, label) in [
+        (true, true, "promoted-halfword-invalid-signed"),
+        (false, false, "promoted-halfword-invalid-unsigned"),
+    ] {
+        let (target, _) = lowered_promoted_byte_comparison_fixture(
+            (0x80, 0x7f),
+            signed,
+            equal,
+        )?;
+        let cast_tag = if signed {
+            82
+        } else {
+            83
+        };
+        let reversed = if signed {
+            83
+        } else {
+            82
+        };
+        assert_boolean_progress_tag_rejected(
+            label,
+            &target,
+            (cast_tag, 1, reversed),
         )?;
     }
     Ok(())

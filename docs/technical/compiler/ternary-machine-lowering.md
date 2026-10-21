@@ -598,6 +598,22 @@ Production-inspector resume converges with fresh lowering across zero and
 byte sign boundaries, and every crash-publication boundary preserves the
 previous committed generation.
 
+Validated multi-width promotion chains now round-trip two independently
+defined `i8 → i16 → i32` or `u8 → u16 → u32` values and compare them at
+the admitted 32-bit width. Each byte and widening cast has a separate
+canonical SSA identity, exact source span and unchanged bit provenance.
+
+For all 256 byte patterns, both equality and inequality comparisons consume
+only the correctly typed word SSA values, with a distinct Boolean return.
+Independent decoder admission rejects retagged widening widths, mismatched
+signedness and malformed SSA, while inspector restore and all ten durable
+crash-publication boundaries agree with fresh lowering.
+
+The validated typed-IR contract rejects unpromoted `i8`/`u8` and `i16`/`u16`
+equality operations, and the ternary stage independently rejects projections
+that use those narrow operands. These tests document the required explicit
+promotion boundary without introducing invented narrow comparison opcodes.
+
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
 C integer promotions of the Boolean result.
