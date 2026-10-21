@@ -73,7 +73,9 @@ Signed and unsigned 32-bit equality/inequality predicates may feed
 Validated signed `i16` and unsigned `u16` constants now materialize as
 11-trit scalars under tags `61` and `62`, with matching direct return tags
 `63` and `64`. No host integer interpretation or implicit promotion occurs.
-Integer arithmetic and nontrivial casts at this width remain unsupported.
+Narrow `IntegerToBool` is symbolic at tags `65` and `66`, preserving
+separate Boolean SSA and direct Boolean returns. Other 16-bit arithmetic,
+bitcasts, promotions, and casts remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest

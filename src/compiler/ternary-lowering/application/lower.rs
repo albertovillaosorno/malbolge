@@ -1371,11 +1371,48 @@ fn lower_truncate_word_to_byte(
     })
 }
 
+fn lower_halfword_to_bool(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    if type_kind != InputScalarType::Bool {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let signed = state.signed_halves.contains(&value);
+    let unsigned = state.unsigned_halves.contains(&value);
+    if !signed && !unsigned {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = state.bools.insert(result);
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    let converted_span = copy_span(span);
+    Ok(if signed {
+        TernaryOperation::I16ToBool {
+            result,
+            span: converted_span,
+            value,
+        }
+    } else {
+        TernaryOperation::U16ToBool {
+            result,
+            span: converted_span,
+            value,
+        }
+    })
+}
+
 fn lower_integer_to_bool(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if state.signed_halves.contains(&value)
+        || state.unsigned_halves.contains(&value)
+    {
+        return lower_halfword_to_bool(input, state);
+    }
     if type_kind != InputScalarType::Bool {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
