@@ -246,6 +246,13 @@ instruction.
   terminator into the value-returning function. Production inspector recovery
   converges on the same checkpoint, all ten crash-publication boundaries
   preserve committed generations, and swapped function IDs fail closed.
+- Signed and unsigned 32-bit equality/inequality comparisons now compose
+  through Boolean SSA, `BoolToI8` and direct `ReturnI8`, with all 20 typed-IR
+  comparison/word cases preserving exact target checkpoint identities.
+  Independent decode rejects cross-signedness comparison retags, wrong cast
+  widths, undefined Boolean sources and tag `61`; production inspector
+  recovery converges and ten crash-publication boundaries preserve committed
+  generations for each predicate/sign category.
 - Validated Boolean-to-signed-byte `BoolToSigned` now emits symbolic
   `BoolToI8` at canonical `MCTR` tag `60`, a new signed-byte SSA definition
   consuming a defined Boolean operand without host value evaluation. Both

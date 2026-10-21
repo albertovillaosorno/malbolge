@@ -453,6 +453,17 @@ SSA results, and unknown tag `61`. Production-inspector recovery converges
 with fresh lowering and all ten crash-publication boundaries preserve the
 committed generation for both source digits and both return widths.
 
+Validated signed and unsigned 32-bit equality and inequality comparisons
+also feed `BoolToI8` without host evaluation. Twenty combinations of signedness,
+comparison kind and representative word operands preserve independent Boolean,
+signed-byte, and `ReturnI8` SSA identities and exact source spans.
+
+Canonical re-admission rejects swapping a signed comparison for an unsigned
+one, changing the conversion to `BoolToI32`, using an undefined Boolean
+operand or substituting tag `61`. Fresh lowering matches inspector recovery,
+with all ten crash-publication boundaries preserving the committed generation
+for representative comparison inputs and each signedness/predicate family.
+
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
 C integer promotions of the Boolean result.

@@ -2635,6 +2635,299 @@ fn bool_to_i8_inspector_rejects_forged_tags() -> Result<(), String> {
     Ok(())
 }
 
+fn comparison_to_i8_types(signed: bool) -> Vec<TypeEntry> {
+    vec![
+        TypeEntry::new(
+            TypeId::new(0),
+            if signed {
+                TypeDef::I32
+            } else {
+                TypeDef::U32
+            },
+        ),
+        TypeEntry::new(TypeId::new(1), TypeDef::Bool),
+        TypeEntry::new(TypeId::new(2), TypeDef::I8),
+        TypeEntry::new(
+            TypeId::new(3),
+            TypeDef::function(Vec::new(), Some(TypeId::new(2)), false),
+        ),
+    ]
+}
+
+fn comparison_to_i8_instructions(
+    pair: (u32, u32),
+    equal: bool,
+) -> Vec<LocatedInstruction> {
+    let (left, right) = pair;
+    let comparison = if equal {
+        CompareOp::Equal
+    } else {
+        CompareOp::NotEqual
+    };
+    vec![
+        low_byte_constant(left, 0, 0, TypeId::new(0)),
+        low_byte_constant(right, 1, 1, TypeId::new(0)),
+        LocatedInstruction::new(
+            Instruction::Compare {
+                left: ValueId::new(0),
+                operation: comparison,
+                result: ValueId::new(2),
+                right: ValueId::new(1),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(2, 3),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::BoolToSigned,
+                result: ValueId::new(3),
+                type_id: TypeId::new(2),
+                value: ValueId::new(2),
+            },
+            fixture_span(3, 4),
+        ),
+    ]
+}
+
+fn comparison_to_i8_module(
+    signed: bool,
+    equal: bool,
+    pair: (u32, u32),
+) -> Module {
+    let instructions = comparison_to_i8_instructions(pair, equal);
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: fixture_span(0, 5),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(3)),
+                },
+                terminator_span: fixture_span(4, 5),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("compare_to_signed_byte"),
+            parameters: Vec::new(),
+            signature: TypeId::new(3),
+            span: fixture_span(0, 5),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/compare-to-i8.c"),
+        source_sha256: [0x61; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: comparison_to_i8_types(signed),
+    })
+}
+
+fn lowered_comparison_to_i8_fixture(
+    signed: bool,
+    equal: bool,
+    pair: (u32, u32),
+) -> Result<LoweredByteFixture, String> {
+    let module = comparison_to_i8_module(signed, equal, pair);
+    validate_module(&module)
+        .map_err(|error| format!("admit compare to i8: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode compare to i8: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore compare to i8: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("compare-to-i8 typed IR drifted"));
+    }
+    let projection = project_typed_ir(&restored)?;
+    let target = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower compare to i8: {error:?}"))?;
+    assert_program_provenance(&restored, &target)?;
+    Ok((target, projection))
+}
+
+const fn expected_compare_to_i8_operation(
+    signed: bool,
+    equal: bool,
+) -> TernaryOperation {
+    let (left, result, right, span) =
+        (0, 2, 1, output_span(fixture_span(2, 3)));
+    match (signed, equal) {
+        (true, true) => TernaryOperation::EqualI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        (false, true) => TernaryOperation::EqualU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        (true, false) => TernaryOperation::NotEqualI32 {
+            left,
+            result,
+            right,
+            span,
+        },
+        (false, false) => TernaryOperation::NotEqualU32 {
+            left,
+            result,
+            right,
+            span,
+        },
+    }
+}
+
+fn assert_compared_bool_to_i8_checkpoint(
+    signed: bool,
+    equal: bool,
+    target: &ternary_lowering::TernaryProgram,
+) -> Result<Vec<u8>, String> {
+    let operations = &target
+        .functions
+        .first()
+        .ok_or_else(|| String::from("compare-to-i8 target missing"))?
+        .operations;
+    if operations.get(2)
+        != Some(&expected_compare_to_i8_operation(signed, equal))
+        || operations.get(3)
+            != Some(&TernaryOperation::BoolToI8 {
+                result: 3,
+                span: output_span(fixture_span(3, 4)),
+                value: 2,
+            })
+        || operations.last()
+            != Some(&TernaryOperation::ReturnI8 {
+                span: output_span(fixture_span(4, 5)),
+                value: 3,
+            })
+    {
+        return Err(String::from("compare-to-i8 SSA chain drifted"));
+    }
+    let wire = canonical_ternary_bytes(target)
+        .map_err(|error| format!("encode compare-to-i8 target: {error:?}"))?;
+    if !wire.windows(5).any(|part| part == [60, 3, 0, 0, 0])
+        || canonical_ternary_program(&wire) != Ok(target.clone())
+    {
+        return Err(String::from("compare-to-i8 canonical wire drifted"));
+    }
+    Ok(wire)
+}
+
+#[test]
+fn typed_comparisons_preserve_boolean_to_signed_byte_ssa_chain()
+-> Result<(), String> {
+    for (signed, equal) in
+        [(true, true), (true, false), (false, true), (false, false)]
+    {
+        for pair in [
+            (0u32, 0u32),
+            (0, 1),
+            (u32::MAX, 0),
+            (u32::MAX, u32::MAX),
+            (0x8000_0000, u32::MAX),
+        ] {
+            let (target, input) =
+                lowered_comparison_to_i8_fixture(signed, equal, pair)?;
+            if input.functions.first().map(|function| function.return_kind)
+                != Some(InputScalarType::I8)
+            {
+                return Err(String::from("compare-to-i8 return kind drifted"));
+            }
+            let _wire =
+                assert_compared_bool_to_i8_checkpoint(signed, equal, &target)?;
+        }
+    }
+    Ok(())
+}
+
+fn reject_compared_bool_to_i8_wire_mutations(
+    signed: bool,
+    equal: bool,
+) -> Result<(), String> {
+    let (target, _projection) = lowered_comparison_to_i8_fixture(
+        signed,
+        equal,
+        (0x8000_0000, u32::MAX),
+    )?;
+    let wire = assert_compared_bool_to_i8_checkpoint(signed, equal, &target)?;
+    let comparison_tag = match (signed, equal) {
+        (true, true) => 35u8,
+        (false, true) => 36,
+        (true, false) => 37,
+        (false, false) => 38,
+    };
+    let swapped = if signed {
+        comparison_tag.saturating_add(1)
+    } else {
+        comparison_tag.saturating_sub(1)
+    };
+    let compare_prefix = [comparison_tag, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0];
+    let comparison_offset = wire
+        .windows(compare_prefix.len())
+        .position(|part| part == compare_prefix)
+        .ok_or_else(|| String::from("comparison-to-i8 record absent"))?;
+    let cast_offset = wire
+        .windows(5)
+        .position(|part| part == [60, 3, 0, 0, 0])
+        .ok_or_else(|| String::from("comparison-to-i8 cast absent"))?;
+    let failure = TernaryProgramCodecError::Validation(
+        TernaryProgramValidationError::SsaValue,
+    );
+    for (offset, replacement, expected) in [
+        (comparison_offset, swapped, failure),
+        (cast_offset, 44, failure),
+        (cast_offset, 61, TernaryProgramCodecError::UnknownTag),
+        (cast_offset.saturating_add(29), 99, failure),
+    ] {
+        let mut forged = wire.clone();
+        *forged.get_mut(offset).ok_or_else(|| {
+            String::from("forged compare-to-i8 offset absent")
+        })? = replacement;
+        if canonical_ternary_program(&forged) != Err(expected) {
+            return Err(format!(
+                "compare-to-i8 offset {offset} retag {replacement} admitted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn compared_boolean_to_i8_rejects_cross_signedness_and_ssa_forgeries()
+-> Result<(), String> {
+    for (signed, equal) in
+        [(true, true), (true, false), (false, true), (false, false)]
+    {
+        reject_compared_bool_to_i8_wire_mutations(signed, equal)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn compared_boolean_to_i8_inspector_and_crash_recovery() -> Result<(), String> {
+    let previous = lowered_return_fixture()?;
+    for (signed, equal) in
+        [(true, true), (true, false), (false, true), (false, false)]
+    {
+        for pair in [(0u32, 0u32), (0x8000_0000, u32::MAX)] {
+            let (target, projection) =
+                lowered_comparison_to_i8_fixture(signed, equal, pair)?;
+            let label = if signed {
+                "signed-comparison-to-i8"
+            } else {
+                "unsigned-comparison-to-i8"
+            };
+            assert_boolean_inspector_convergence(label, &target, &projection)?;
+            assert_boolean_crash_generation(&previous, &target)?;
+        }
+    }
+    Ok(())
+}
+
 fn boolean_constant_types(return_type: TypeId) -> Vec<TypeEntry> {
     vec![
         TypeEntry::new(TypeId::new(0), TypeDef::Bool),
