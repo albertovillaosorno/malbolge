@@ -281,6 +281,10 @@ and rejects unassigned tag `49`. Typed-IR and checkpoint round trips cover
 both values with direct Boolean and promoted signed returns, preserving the
 original source span and result identities.
 
+An exhaustive decoder regression enumerates all 256 possible byte digits for
+both original Boolean constants, requiring canonical restoration for `0` and
+`1` alone and `InvalidScalar` for every other value.
+
 Production progress-inspector recovery now agrees with fresh lowering for
 both Boolean constant-return forms and explicit signed promotion. Invalid
 digits and unknown tags fail closed after opaque state extraction, and all

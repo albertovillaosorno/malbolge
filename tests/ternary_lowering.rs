@@ -6774,6 +6774,60 @@ fn reject_boolean_constant_wire_forgery(
     Ok(())
 }
 
+fn check_canonical_boolean_digit(
+    digit: u8,
+    wire: &[u8],
+    offset: usize,
+) -> Result<(), String> {
+    let mut forged = wire.to_vec();
+    *forged
+        .get_mut(offset.saturating_add(5))
+        .ok_or_else(|| String::from("Boolean digit absent"))? = digit;
+    let restored = canonical_ternary_program(&forged);
+    if digit > 1 {
+        if restored != Err(TernaryProgramCodecError::InvalidScalar) {
+            return Err(format!("non-Boolean digit {digit} admitted"));
+        }
+        return Ok(());
+    }
+    let recovered = restored.map_err(|error| {
+        format!("Boolean digit {digit} rejected: {error:?}")
+    })?;
+    let expected = TernaryOperation::MaterializeBool {
+        result: 0,
+        value: digit == 1,
+        span: output_span(fixture_span(0, 1)),
+    };
+    if recovered
+        .functions
+        .first()
+        .and_then(|function| function.operations.first())
+        != Some(&expected)
+        || canonical_ternary_bytes(&recovered) != Ok(forged)
+    {
+        return Err(format!("Boolean digit {digit} changed identity"));
+    }
+    Ok(())
+}
+
+#[test]
+fn boolean_checkpoint_decoder_exhaustively_checks_all_encoded_digits()
+-> Result<(), String> {
+    for bit in [0u8, 1] {
+        let (target, _projection) =
+            lowered_boolean_constant_fixture(bit, false)?;
+        let wire = assert_boolean_constant_checkpoint(bit, false, &target)?;
+        let offset = wire
+            .windows(6)
+            .position(|chunk| chunk == [48, 0, 0, 0, 0, bit])
+            .ok_or_else(|| String::from("Boolean constant record absent"))?;
+        for digit in u8::MIN..=u8::MAX {
+            check_canonical_boolean_digit(digit, &wire, offset)?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn boolean_constant_codec_rejects_noncanonical_value_and_ssa()
 -> Result<(), String> {
