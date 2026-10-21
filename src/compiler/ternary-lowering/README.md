@@ -128,6 +128,9 @@ A 23-program adversarial corpus checks every checkpoint prefix, trailing
 bytes, all single-bit mutations, and each unassigned opcode `84..255` at a
 structural tag offset.
 
+Header tests reject invalid magic/version/UTF-8, identities and oversized
+counts; the source SHA-256 field is preserved provenance, not authentication.
+
 Composition now exposes one explicit product compiler selector between fresh
 typed-IR projection lowering and durable progress-sidecar restore. The progress
 route delegates portable-envelope validation to the trusted inspector and then

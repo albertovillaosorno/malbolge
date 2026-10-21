@@ -267,6 +267,12 @@ instruction.
   source-order effects, typed SSA identities and provenance, without host
   evaluation. Decoder and inspector reject retagged lanes and unknown `84`,
   and all ten durable crash boundaries retain committed generations.
+- Independent `MCTR` header tests reject mutated magic/version fields,
+  invalid UTF-8 and ABI/profile/source identities, and oversized declared
+  string/function/operation counts before count-sized eager allocation.
+  Changing any of the 32 source-digest bytes remains a different canonical
+  state with unchanged operations: the digest is carried provenance, not a
+  cryptographic authentication mechanism or source validation result.
 - A deterministic 23-program `MCTR` adversarial corpus now rejects every
   strict prefix and appended byte, while trying each of eight bit flips at
   every checkpoint byte. Any mutated state that remains admissible must

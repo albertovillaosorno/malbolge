@@ -417,6 +417,19 @@ struct TernaryCrashPaths {
     second: PathBuf,
 }
 
+struct TernaryWireIdentityOffsets {
+    abi_data: usize,
+    abi_length: usize,
+    digest: usize,
+    function_count: usize,
+    name_length: usize,
+    operation_count: usize,
+    profile_data: usize,
+    profile_length: usize,
+    source_data: usize,
+    source_length: usize,
+}
+
 struct VmProfileInstructionDecoder;
 
 impl ProfileInstructionDecoder for VmProfileInstructionDecoder {
@@ -10494,6 +10507,212 @@ fn ternary_checkpoint_rejects_every_unassigned_opcode_in_each_record_family()
     let (comparison, _) =
         lowered_promoted_byte_comparison_fixture((0x80, 0x7f), true, false)?;
     assert_entire_unassigned_tag_space_rejected(&comparison, 50)?;
+    Ok(())
+}
+
+fn fixture_wire_identity_offsets(
+    bytes: &[u8],
+) -> Result<TernaryWireIdentityOffsets, String> {
+    let abi_length = 8usize;
+    let abi_data = abi_length.saturating_add(4);
+    let profile_length = skip_fixture_wire_string(bytes, abi_length)?;
+    let profile_data = profile_length.saturating_add(4);
+    let source_length = skip_fixture_wire_string(bytes, profile_length)?;
+    let source_data = source_length.saturating_add(4);
+    let digest = skip_fixture_wire_string(bytes, source_length)?;
+    let function_count = digest.saturating_add(32);
+    let name_length = function_count.saturating_add(8);
+    let after_name = skip_fixture_wire_string(bytes, name_length)?;
+    let operation_count = after_name.saturating_add(24);
+    let _verified_count = read_fixture_wire_u32(bytes, operation_count)?;
+    Ok(TernaryWireIdentityOffsets {
+        abi_data,
+        abi_length,
+        digest,
+        function_count,
+        name_length,
+        operation_count,
+        profile_data,
+        profile_length,
+        source_data,
+        source_length,
+    })
+}
+
+fn mutate_fixture_wire_byte(
+    bytes: &[u8],
+    offset: usize,
+    value: u8,
+) -> Result<Vec<u8>, String> {
+    let mut forged = bytes.to_vec();
+    *forged
+        .get_mut(offset)
+        .ok_or_else(|| String::from("identity mutation byte absent"))? = value;
+    Ok(forged)
+}
+
+fn assert_identity_byte_failure(
+    bytes: &[u8],
+    offset: usize,
+    value: u8,
+    expected: TernaryProgramCodecError,
+) -> Result<(), String> {
+    let mutated = mutate_fixture_wire_byte(bytes, offset, value)?;
+    let outcome = canonical_ternary_program(&mutated);
+    if outcome != Err(expected) {
+        return Err(format!("wire identity {offset}={value}: {outcome:?}"));
+    }
+    Ok(())
+}
+
+fn assert_identity_word_failure(
+    bytes: &[u8],
+    offset: usize,
+    value: u32,
+    expected: TernaryProgramCodecError,
+) -> Result<(), String> {
+    let mut forged = bytes.to_vec();
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("identity word overflow"))?;
+    forged
+        .get_mut(offset..end)
+        .ok_or_else(|| String::from("identity word absent"))?
+        .copy_from_slice(&value.to_le_bytes());
+    let outcome = canonical_ternary_program(&forged);
+    if outcome != Err(expected) {
+        return Err(format!(
+            "wire identity count {offset}={value}: {outcome:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_checkpoint_identity_and_utf8_fail_closed() -> Result<(), String> {
+    let (program, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    let wire = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode identity fixture: {error:?}"))?;
+    let offsets = fixture_wire_identity_offsets(&wire)?;
+    for index in 0usize..4usize {
+        assert_identity_byte_failure(
+            &wire,
+            index,
+            0xff,
+            TernaryProgramCodecError::InvalidMagic,
+        )?;
+    }
+    for index in 4usize..6usize {
+        assert_identity_byte_failure(
+            &wire,
+            index,
+            0xff,
+            TernaryProgramCodecError::UnsupportedVersion,
+        )?;
+    }
+    for index in 6usize..8usize {
+        assert_identity_byte_failure(
+            &wire,
+            index,
+            0xff,
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::ProgramIdentity,
+            ),
+        )?;
+    }
+    for offset in [offsets.abi_data, offsets.profile_data, offsets.source_data]
+    {
+        assert_identity_byte_failure(
+            &wire,
+            offset,
+            0xff,
+            TernaryProgramCodecError::InvalidUtf8,
+        )?;
+    }
+    for offset in [offsets.abi_data, offsets.profile_data] {
+        assert_identity_byte_failure(
+            &wire,
+            offset,
+            b'X',
+            TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::ProgramIdentity,
+            ),
+        )?;
+    }
+    assert_identity_byte_failure(
+        &wire,
+        offsets.source_data,
+        b'/',
+        TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::ProgramIdentity,
+        ),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn ternary_checkpoint_declared_counts_reject_oversized_allocations()
+-> Result<(), String> {
+    let (program, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    let wire = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode count fixture: {error:?}"))?;
+    let offsets = fixture_wire_identity_offsets(&wire)?;
+    for offset in [
+        offsets.abi_length,
+        offsets.profile_length,
+        offsets.source_length,
+        offsets.function_count,
+        offsets.name_length,
+        offsets.operation_count,
+    ] {
+        assert_identity_word_failure(
+            &wire,
+            offset,
+            u32::MAX,
+            TernaryProgramCodecError::Truncated,
+        )?;
+    }
+    assert_identity_word_failure(
+        &wire,
+        offsets.function_count,
+        0,
+        TernaryProgramCodecError::TrailingBytes,
+    )?;
+    assert_identity_word_failure(
+        &wire,
+        offsets.operation_count,
+        0,
+        TernaryProgramCodecError::Truncated,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn ternary_checkpoint_source_digest_is_provenance_not_authentication()
+-> Result<(), String> {
+    let (program, _) = lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    let wire = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode digest fixture: {error:?}"))?;
+    let offsets = fixture_wire_identity_offsets(&wire)?;
+    for index in 0usize..32usize {
+        let byte_offset = offsets.digest.saturating_add(index);
+        let original = *wire
+            .get(byte_offset)
+            .ok_or_else(|| String::from("digest byte absent"))?;
+        let mutated =
+            mutate_fixture_wire_byte(&wire, byte_offset, original ^ 1)?;
+        let restored = canonical_ternary_program(&mutated)
+            .map_err(|error| format!("digest change rejected: {error:?}"))?;
+        let reencoded = canonical_ternary_bytes(&restored)
+            .map_err(|error| format!("reencode changed digest: {error:?}"))?;
+        if restored.source_sha256 == program.source_sha256
+            || restored.abi_id != program.abi_id
+            || restored.functions != program.functions
+            || reencoded != mutated
+        {
+            return Err(String::from("digest provenance distinction drifted"));
+        }
+    }
     Ok(())
 }
 

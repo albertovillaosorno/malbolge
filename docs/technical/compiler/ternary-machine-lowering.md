@@ -83,6 +83,17 @@ rejected as `UnknownTag` in scalar, void-return, byte-effect and comparison
 fixtures. These tests locate actual operation offsets through wire structure,
 not arbitrary byte-pattern occurrences within metadata or source spans.
 
+Independent wire-identity tests exercise each magic/version byte,
+length-prefixed ABI/profile/source identity, invalid UTF-8 and overlarge
+string, function and operation counts, rejecting malformed input without
+count-sized eager allocations.
+
+A change to any of the 32 embedded source-SHA-256 bytes remains a distinct,
+individually canonical `MCTR` state with unchanged operations. The field is
+copied source provenance, not cryptographic authentication or a signature;
+external progress-envelope integrity and source-policy verification are
+separate trust boundaries and must not be inferred from this codec.
+
 Canonical `MCTR` decoding bounds collection counts against remaining wire
 bytes and grows decoded function/operation vectors only as records are parsed.
 Each function requires at least 36 bytes and each operation at least 25 bytes,
