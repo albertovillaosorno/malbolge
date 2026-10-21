@@ -691,6 +691,15 @@ fn decode_unsigned_byte(
     })
 }
 
+fn decode_signed_byte_return(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::ReturnI8 {
+        span: decode_span(decoder)?,
+        value: decoder.u32()?,
+    })
+}
+
 fn decode_operation(
     decoder: &mut Decoder<'_>,
 ) -> Result<TernaryOperation, TernaryProgramCodecError> {
@@ -720,6 +729,7 @@ fn decode_operation(
         49 => decode_void_return(decoder)?,
         50 => decode_signed_byte(decoder)?,
         8 => decode_unsigned_byte(decoder)?,
+        57 => decode_signed_byte_return(decoder)?,
         9 => TernaryOperation::ReturnU8 {
             span: decode_span(decoder)?,
             value: decoder.u32()?,
@@ -1288,6 +1298,8 @@ fn encode_return_model(
         11
     } else if matches!(operation, TernaryOperation::ReturnBool { .. }) {
         39
+    } else if matches!(operation, TernaryOperation::ReturnI8 { .. }) {
+        57
     } else {
         9
     };
@@ -1455,7 +1467,8 @@ fn encode_non_word_operation(
     if let TernaryOperation::Return { span, value }
     | TernaryOperation::ReturnBool { span, value }
     | TernaryOperation::ReturnU32 { span, value }
-    | TernaryOperation::ReturnU8 { span, value } = operation
+    | TernaryOperation::ReturnU8 { span, value }
+    | TernaryOperation::ReturnI8 { span, value } = operation
     {
         encode_return_model(encoder, operation, span, value);
         return;
@@ -1564,6 +1577,7 @@ const fn operation_span(operation: TernaryOperation) -> TernarySourceSpan {
         | TernaryOperation::Return { span, .. }
         | TernaryOperation::ReturnU32 { span, .. }
         | TernaryOperation::ReturnU8 { span, .. }
+        | TernaryOperation::ReturnI8 { span, .. }
         | TernaryOperation::TruncateI32ToU8 { span, .. }
         | TernaryOperation::TruncateU32ToU8 { span, .. }
         | TernaryOperation::ZeroExtendU8ToU32 { span, .. }
@@ -1785,6 +1799,8 @@ fn validate_return_value(
         ValueKind::U32
     } else if matches!(operation, TernaryOperation::ReturnBool { .. }) {
         ValueKind::Bool
+    } else if matches!(operation, TernaryOperation::ReturnI8 { .. }) {
+        ValueKind::I8
     } else {
         ValueKind::Byte
     };
@@ -2000,6 +2016,7 @@ fn validate_operation(
     if let TernaryOperation::Return { value, .. }
     | TernaryOperation::ReturnU32 { value, .. }
     | TernaryOperation::ReturnU8 { value, .. }
+    | TernaryOperation::ReturnI8 { value, .. }
     | TernaryOperation::ReturnBool { value, .. } = operation
     {
         return validate_return_value(values, value, operation);
@@ -2058,6 +2075,7 @@ fn validate_operations(
         TernaryOperation::Return { .. }
             | TernaryOperation::ReturnU32 { .. }
             | TernaryOperation::ReturnU8 { .. }
+            | TernaryOperation::ReturnI8 { .. }
             | TernaryOperation::ReturnBool { .. }
             | TernaryOperation::ReturnVoid { .. }
     ) || !validate_operation(*last, &mut values)?

@@ -184,6 +184,12 @@ fn lower_return_operation(
                 value: return_value,
             }
         },
+        InputScalarType::I8 if state.signed_bytes.contains(&return_value) => {
+            TernaryOperation::ReturnI8 {
+                span,
+                value: return_value,
+            }
+        },
         InputScalarType::I32 if state.signed.contains(&return_value) => {
             TernaryOperation::Return {
                 span,
@@ -204,10 +210,10 @@ fn lower_return_operation(
         },
         InputScalarType::Bool
         | InputScalarType::I32
+        | InputScalarType::I8
         | InputScalarType::Other
         | InputScalarType::U32
         | InputScalarType::U8
-        | InputScalarType::I8
         | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedTerminator);
         },

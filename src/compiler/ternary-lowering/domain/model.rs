@@ -1248,6 +1248,13 @@ pub enum TernaryOperation {
         /// Defined boolean source SSA identity.
         value: u32,
     },
+    /// Return one previously defined exact signed 8-bit value.
+    ReturnI8 {
+        /// Original typed-IR terminator provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed-byte SSA identity.
+        value: u32,
+    },
     /// Return one previously materialized exact unsigned 32-bit value.
     ReturnU32 {
         /// Original terminator provenance.
