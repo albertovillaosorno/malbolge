@@ -332,6 +332,13 @@ Production inspector recovery agrees with fresh lowering for both void cases,
 and rejects unknown retagged terminators after checkpoint extraction. All ten
 crash-publication boundaries preserve the committed generation for each case.
 
+Mixed two-function modules also preserve independent SSA scopes and typed
+returns when a void member precedes or follows an `i32`-returning member.
+Canonical restoration and the production inspector converge in either order,
+including void byte effects; the independent validator rejects reordered
+function IDs. All ten crash-publication boundaries preserve the previously
+committed generation for each combination.
+
 Older decoders reject newly emitted tags, and resume remains bound to the exact
 compiler toolchain fingerprint. This slice does not yet realize branching or
 C integer promotions of the Boolean result.

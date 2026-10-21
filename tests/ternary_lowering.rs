@@ -1562,6 +1562,101 @@ fn void_function_module(with_io: bool) -> Module {
     })
 }
 
+fn mixed_void_function(id: u32, with_io: bool) -> Function {
+    let start = id.saturating_mul(5);
+    let instructions = if with_io {
+        vec![
+            LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: ValueId::new(0),
+                    type_id: TypeId::new(0),
+                },
+                fixture_span(start, start.saturating_add(1)),
+            ),
+            LocatedInstruction::new(
+                Instruction::ByteOutput { value: ValueId::new(0) },
+                fixture_span(start.saturating_add(1), start.saturating_add(2)),
+            ),
+        ]
+    } else {
+        Vec::new()
+    };
+    let end = start.saturating_add(if with_io {
+        3
+    } else {
+        1
+    });
+    Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(0),
+            instructions,
+            phis: Vec::new(),
+            span: fixture_span(start, end),
+            terminator: Terminator::Return { value: None },
+            terminator_span: fixture_span(end.saturating_sub(1), end),
+        })],
+        entry: BlockId::new(0),
+        id: FunctionId::new(id),
+        name: String::from("void_member"),
+        parameters: Vec::new(),
+        signature: TypeId::new(2),
+        span: fixture_span(start, end),
+    })
+}
+
+fn mixed_value_function(id: u32) -> Function {
+    let start = id.saturating_mul(5);
+    let end = start.saturating_add(2);
+    Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(0),
+            instructions: vec![low_byte_constant(7, 0, start, TypeId::new(1))],
+            phis: Vec::new(),
+            span: fixture_span(start, end),
+            terminator: Terminator::Return {
+                value: Some(ValueId::new(0)),
+            },
+            terminator_span: fixture_span(end.saturating_sub(1), end),
+        })],
+        entry: BlockId::new(0),
+        id: FunctionId::new(id),
+        name: String::from("value_member"),
+        parameters: Vec::new(),
+        signature: TypeId::new(3),
+        span: fixture_span(start, end),
+    })
+}
+
+fn mixed_return_module(void_first: bool, with_io: bool) -> Module {
+    let functions = if void_first {
+        vec![mixed_void_function(0, with_io), mixed_value_function(1)]
+    } else {
+        vec![mixed_value_function(0), mixed_void_function(1, with_io)]
+    };
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions,
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/mixed-return.c"),
+        source_sha256: [0xdc; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(TypeId::new(1), TypeDef::I32),
+            TypeEntry::new(
+                TypeId::new(2),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+            TypeEntry::new(
+                TypeId::new(3),
+                TypeDef::function(Vec::new(), Some(TypeId::new(1)), false),
+            ),
+        ],
+    })
+}
+
 fn boolean_constant_types(return_type: TypeId) -> Vec<TypeEntry> {
     vec![
         TypeEntry::new(TypeId::new(0), TypeDef::Bool),
@@ -6552,6 +6647,109 @@ fn typed_truncated_byte_truth_preserves_three_cast_identities()
     for bits in [0u32, 1, 0xff, 0x100, 0x8000_0080, u32::MAX] {
         let (target, _projection) = lowered_truncated_byte_truth_fixture(bits)?;
         assert_truncated_byte_truth_operations(bits, &target)?;
+    }
+    Ok(())
+}
+
+fn assert_mixed_return_members(
+    target: &ternary_lowering::TernaryProgram,
+    void_first: bool,
+    with_io: bool,
+) -> Result<(), String> {
+    let void_index = usize::from(!void_first);
+    let value_index = usize::from(void_first);
+    let void = target
+        .functions
+        .get(void_index)
+        .ok_or_else(|| String::from("void member absent"))?;
+    let value = target
+        .functions
+        .get(value_index)
+        .ok_or_else(|| String::from("value member absent"))?;
+    let void_end = if with_io {
+        3
+    } else {
+        1
+    };
+    let void_start = u32::try_from(void_index)
+        .map_err(|error| format!("void index overflow: {error}"))?
+        .saturating_mul(5);
+    let void_final = void_start.saturating_add(void_end);
+    if void.id != u32::try_from(void_index).unwrap_or(u32::MAX)
+        || void.name != "void_member"
+        || void.operations.len()
+            != if with_io {
+                3
+            } else {
+                1
+            }
+        || void.operations.last()
+            != Some(&TernaryOperation::ReturnVoid {
+                span: output_span(fixture_span(
+                    void_final.saturating_sub(1),
+                    void_final,
+                )),
+            })
+        || value.id != u32::try_from(value_index).unwrap_or(u32::MAX)
+        || value.name != "value_member"
+        || value.operations.last().is_none_or(|operation| {
+            !matches!(operation, TernaryOperation::Return { value: 0, .. })
+        })
+    {
+        return Err(String::from("mixed return order or SSA drifted"));
+    }
+    Ok(())
+}
+
+fn assert_mixed_return_fixture(
+    void_first: bool,
+    with_io: bool,
+) -> Result<(), String> {
+    let module = mixed_return_module(void_first, with_io);
+    validate_module(&module)
+        .map_err(|error| format!("admit mixed returns: {error:?}"))?;
+    let typed = canonical_bytes(&module)
+        .map_err(|error| format!("encode mixed returns: {error:?}"))?;
+    if canonical_module(&typed) != Ok(module.clone()) {
+        return Err(String::from("mixed typed functions drifted"));
+    }
+    let projection = project_typed_ir(&module)?;
+    let target = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower mixed returns: {error:?}"))?;
+    assert_mixed_return_members(&target, void_first, with_io)?;
+    let encoded = canonical_ternary_bytes(&target)
+        .map_err(|error| format!("encode mixed target: {error:?}"))?;
+    if canonical_ternary_program(&encoded) != Ok(target.clone()) {
+        return Err(String::from("mixed target restoration drifted"));
+    }
+    let label = match (void_first, with_io) {
+        (true, true) => "mixed-void-first-byte",
+        (true, false) => "mixed-void-first-empty",
+        (false, true) => "mixed-value-first-byte",
+        (false, false) => "mixed-value-first-empty",
+    };
+    assert_boolean_inspector_convergence(label, &target, &projection)?;
+    let previous = lowered_return_fixture()?;
+    assert_boolean_crash_generation(&previous, &target)?;
+    let mut swapped = target;
+    swapped.functions.swap(0, 1);
+    if canonical_ternary_bytes(&swapped)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::FunctionIdentity,
+        ))
+    {
+        return Err(String::from("swapped mixed function order admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn mixed_void_and_value_functions_preserve_function_local_ssa()
+-> Result<(), String> {
+    for void_first in [true, false] {
+        for with_io in [true, false] {
+            assert_mixed_return_fixture(void_first, with_io)?;
+        }
     }
     Ok(())
 }

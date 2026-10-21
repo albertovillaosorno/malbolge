@@ -239,6 +239,13 @@ instruction.
   256 one-byte digits from both original literals: only `0` and `1` are
   admitted, both reproduce canonical bytes and SSA value, and all 254
   out-of-domain values fail independently with `InvalidScalar`.
+- Mixed two-function typed modules now round-trip a void member and an
+  independent signed-value member in either function order, both with and
+  without guest byte effects. The canonical target preserves per-function
+  SSA numbering, source spans and return types without leaking the void
+  terminator into the value-returning function. Production inspector recovery
+  converges on the same checkpoint, all ten crash-publication boundaries
+  preserve committed generations, and swapped function IDs fail closed.
 - Validated no-result typed-IR functions now admit a value-free `ReturnVoid`
   terminator at canonical `MCTR` tag `49`, with the exact 24-byte source span
   and no fabricated SSA operand. The decoder's minimum operation size is now
