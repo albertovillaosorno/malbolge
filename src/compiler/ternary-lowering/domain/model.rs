@@ -1497,80 +1497,112 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
-    /// Truncate signed 32-bit bits into new signed halfword SSA without host
-    /// math.
+    /// Preserve a defined `i16` to `i8` truncation symbolically.
+    TruncateI16ToI8 {
+        /// Distinct result SSA identity with exact destination type.
+        result: u32,
+        /// Original validated cast provenance.
+        span: TernarySourceSpan,
+        /// Defined `i16` source SSA operand identity.
+        value: u32,
+    },
+    /// Preserve a defined `i16` to `u8` truncation symbolically.
+    TruncateI16ToU8 {
+        /// Distinct result SSA identity with exact destination type.
+        result: u32,
+        /// Original validated cast provenance.
+        span: TernarySourceSpan,
+        /// Defined `i16` source SSA operand identity.
+        value: u32,
+    },
+    /// Preserve a defined `i32` to `i16` truncation symbolically.
     TruncateI32ToI16 {
-        /// Newly defined destination SSA identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Exact typed-IR cast provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Defined signed 32-bit source SSA identity.
+        /// Defined `i32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate one exact signed word to signed byte bits without host math.
+    /// Preserve a defined `i32` to `i8` truncation symbolically.
     TruncateI32ToI8 {
-        /// Distinct signed-byte SSA result.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Original typed-IR cast source provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Previously defined signed 32-bit SSA identity.
+        /// Defined `i32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate signed 32-bit bits into new unsigned halfword SSA without host
-    /// math.
+    /// Preserve a defined `i32` to `u16` truncation symbolically.
     TruncateI32ToU16 {
-        /// Newly defined destination SSA identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Exact typed-IR cast provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Defined signed 32-bit source SSA identity.
+        /// Defined `i32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate one exact `i32` value to its low eight bits as `u8`.
+    /// Preserve a defined `i32` to `u8` truncation symbolically.
     TruncateI32ToU8 {
-        /// Upstream SSA result identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Original instruction provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Upstream SSA source value identity.
+        /// Defined `i32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate unsigned 32-bit bits into new signed halfword SSA without host
-    /// math.
+    /// Preserve a defined `u16` to `i8` truncation symbolically.
+    TruncateU16ToI8 {
+        /// Distinct result SSA identity with exact destination type.
+        result: u32,
+        /// Original validated cast provenance.
+        span: TernarySourceSpan,
+        /// Defined `u16` source SSA operand identity.
+        value: u32,
+    },
+    /// Preserve a defined `u16` to `u8` truncation symbolically.
+    TruncateU16ToU8 {
+        /// Distinct result SSA identity with exact destination type.
+        result: u32,
+        /// Original validated cast provenance.
+        span: TernarySourceSpan,
+        /// Defined `u16` source SSA operand identity.
+        value: u32,
+    },
+    /// Preserve a defined `u32` to `i16` truncation symbolically.
     TruncateU32ToI16 {
-        /// Newly defined destination SSA identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Exact typed-IR cast provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Defined unsigned 32-bit source SSA identity.
+        /// Defined `u32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate one unsigned word to signed byte bits without host math.
+    /// Preserve a defined `u32` to `i8` truncation symbolically.
     TruncateU32ToI8 {
-        /// Distinct signed-byte SSA result.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Original typed-IR cast source provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Previously defined unsigned 32-bit SSA identity.
+        /// Defined `u32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate unsigned 32-bit bits into new unsigned halfword SSA without
-    /// host math.
+    /// Preserve a defined `u32` to `u16` truncation symbolically.
     TruncateU32ToU16 {
-        /// Newly defined destination SSA identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Exact typed-IR cast provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Defined unsigned 32-bit source SSA identity.
+        /// Defined `u32` source SSA operand identity.
         value: u32,
     },
-    /// Truncate an unsigned `u32` scalar to the exact low eight bits.
+    /// Preserve a defined `u32` to `u8` truncation symbolically.
     TruncateU32ToU8 {
-        /// Upstream SSA result identity.
+        /// Distinct result SSA identity with exact destination type.
         result: u32,
-        /// Original instruction provenance.
+        /// Original validated cast provenance.
         span: TernarySourceSpan,
-        /// Defined unsigned 32-bit source SSA identity.
+        /// Defined `u32` source SSA operand identity.
         value: u32,
     },
     /// Preserve unsigned 16-bit nonzero truth testing without host evaluation.

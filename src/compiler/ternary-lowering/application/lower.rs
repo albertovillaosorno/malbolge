@@ -1326,6 +1326,51 @@ fn lower_word_constant(
     }
 }
 
+fn lower_truncate_halfword_to_byte(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, kind, value) = input;
+    if !matches!(kind, InputScalarType::I8 | InputScalarType::U8) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let signed_source = state.signed_halves.contains(&value);
+    if !signed_source && !state.unsigned_halves.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = if kind == InputScalarType::I8 {
+        state.signed_bytes.insert(result)
+    } else {
+        state.bytes.insert(result)
+    };
+    debug_assert!(inserted, "new byte SSA was already preflighted");
+    let converted_span = copy_span(span);
+    Ok(match (signed_source, kind) {
+        (true, InputScalarType::I8) => TernaryOperation::TruncateI16ToI8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (true, InputScalarType::U8) => TernaryOperation::TruncateI16ToU8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::I8) => TernaryOperation::TruncateU16ToI8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::U8) => TernaryOperation::TruncateU16ToU8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
+}
+
 fn lower_truncate_word_to_halfword(
     input: TruncateInput,
     state: &mut LoweringState,
@@ -1378,6 +1423,11 @@ fn lower_truncate_word_to_byte(
     let (result, span, type_kind, value) = input;
     if matches!(type_kind, InputScalarType::I16 | InputScalarType::U16) {
         return lower_truncate_word_to_halfword(input, state);
+    }
+    if state.signed_halves.contains(&value)
+        || state.unsigned_halves.contains(&value)
+    {
+        return lower_truncate_halfword_to_byte(input, state);
     }
     if !matches!(type_kind, InputScalarType::U8 | InputScalarType::I8) {
         return Err(TernaryLoweringError::UnsupportedInstruction);

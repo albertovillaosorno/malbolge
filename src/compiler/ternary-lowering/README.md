@@ -89,6 +89,9 @@ source and result identities.
 Exact symbolic 32-to-16-bit truncations consume `i32`/`u32` SSA and define
 `i16`/`u16` results under tags `74` through `77`, without host computation.
 
+Exact symbolic 16-to-8-bit truncations consume typed `i16`/`u16` SSA and
+define `i8`/`u8` results under tags `78` through `81`.
+
 Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
