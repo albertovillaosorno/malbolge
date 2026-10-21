@@ -92,6 +92,9 @@ Exact symbolic 32-to-16-bit truncations consume `i32`/`u32` SSA and define
 Exact symbolic 16-to-8-bit truncations consume typed `i16`/`u16` SSA and
 define `i8`/`u8` results under tags `78` through `81`.
 
+Signed-byte-to-halfword `SignExtendI8ToI16` and unsigned-byte-to-halfword
+`ZeroExtendU8ToU16` retain separate symbolic SSA under tags `82` and `83`.
+
 Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

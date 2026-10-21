@@ -164,21 +164,21 @@ instruction.
   SSA result and type-confused `ByteOutput` after bypassing the lowerer.
 
   Other decoder regressions reject illegal ternary digits and the next
-  unknown operation tag `82`.
+  unknown operation tag `84`.
 - The typed semantic projection now preserves each admitted function's result
   type category. No-argument one-block `u8` functions can return defined byte
   input or constant SSA values using `ReturnU8` (`MCTR` closed tag `9`), while
   existing `i32` returns keep tag `4` unchanged. End-to-end canonical typed IR
   and ternary round trips verify the declared signature, returned SSA ID,
   and terminator provenance. Forged projection result kinds, mismatched
-  scalar uses, rewritten return tags, and unknown tag `82` fail closed.
+  scalar uses, rewritten return tags, and unknown tag `84` fail closed.
 - Exact admitted `u32` constants now remain unsigned throughout projection,
   pre-layout lowering, and canonical checkpoint admission. `MCTR` tags `10`
   and `11` encode `MaterializeU32` and `ReturnU32` with distinct SSA value kinds
   while reusing the exact 21-trit bit representation. Regressions cover zero,
   signed-boundary and maximum patterns, forged width/type/signedness, swapped
   target tags, and in-range ternary digits encoding a value beyond `u32`.
-  Historical signed/byte tags remain byte-exact; unknown tag `82` fails closed.
+  Historical signed/byte tags remain byte-exact; unknown tag `84` fails closed.
 - Admitted signed and unsigned 32-bit equality/inequality comparisons now
   produce distinct Boolean SSA values without host evaluation. `MCTR` tags
   `35` through `38` preserve both source operands, the Boolean result, and
@@ -186,7 +186,7 @@ instruction.
   Canonical typed and ternary restoration covers signed/unsigned boundary
   patterns and aliased operands; forged signedness, missing or duplicate SSA,
   unsupported projection kinds, rewritten Boolean return tags, and unknown
-  tag `82` fail closed. Boolean-to-integer conversions, branches, and final
+  tag `84` fail closed. Boolean-to-integer conversions, branches, and final
   target realization remain separate unfinished work.
 - Admitted ordered signed/unsigned 32-bit `<` and `<=` predicates now
   preserve symbolic comparison operations at `MCTR` tags `40` through `43`,
@@ -195,7 +195,7 @@ instruction.
   result identity, and comparison signedness across zero, negative-boundary,
   maximum, and shared-operand patterns. Wrong-signedness predicates, malformed
   projections, duplicate or undefined SSA, substituted comparison tags, and
-  unknown tag `82` fail closed at the corresponding admission boundary.
+  unknown tag `84` fail closed at the corresponding admission boundary.
   Boolean-to-integer conversions, branch realization, and final target layout
   remain separate unfinished work.
 - Admitted `BoolToSigned` casts now convert one defined Boolean SSA value to
@@ -204,14 +204,14 @@ instruction.
   canonical target round trips cover true/false comparison outcomes with
   exact operand bit patterns, SSA identity, return type, and source spans.
   Independent validation rejects retyped destinations, non-Boolean sources,
-  duplicate result SSA, cast-tag substitutions, and unknown tag `82`; wider
+  duplicate result SSA, cast-tag substitutions, and unknown tag `84`; wider
   integer conversions remain separate work.
 - Signed and unsigned exact 32-bit `IntegerToBool` casts now lower to
   distinct symbolic Boolean SSA operations at closed `MCTR` tags `45` and
   `46`, using the existing cast identity/span layout. Typed-IR admission and
   canonical restoration preserve zero, signed-boundary and maximum source
   patterns without host truth-value computation. Forged destination kinds,
-  missing/duplicate SSA, swapped signedness tags and unknown tag `82` fail
+  missing/duplicate SSA, swapped signedness tags and unknown tag `84` fail
   closed. The byte case now has a separate admitted slice; pointer conversion
   remains unfinished.
 - A separately admitted typed-IR composition now chains signed/unsigned
@@ -225,14 +225,14 @@ instruction.
   Typed-IR and target round trips cover zero, high-bit and maximum byte bits,
   plus guest byte input, without host truth evaluation or raw EOF conflation.
   Forged cast widths, undefined/duplicate SSA, retagging and first unknown
-  tag `82` fail closed. Pointer truth conversion and target realization remain
+  tag `84` fail closed. Pointer truth conversion and target realization remain
   separate work.
 - Exact validated one-bit `Bool` constants now lower to `MaterializeBool`
   at canonical `MCTR` tag `48`, with a distinct Boolean SSA result, one
   canonical `0`/`1` digit and exact provenance. Both direct Boolean returns
   and explicit `BoolToSigned` casts round-trip through typed and ternary IR.
   Independent checkpoint admission rejects digits outside the Boolean domain,
-  undefined result SSA, wrong return type and unknown tag `82`. Production
+  undefined result SSA, wrong return type and unknown tag `84`. Production
   inspector recovery matches fresh lowering, rejects forged checkpoint data,
   and preserves committed generations across all ten crash boundaries.
 - The Boolean materialization decoder is now checked exhaustively for all
@@ -246,13 +246,21 @@ instruction.
   terminator into the value-returning function. Production inspector recovery
   converges on the same checkpoint, all ten crash-publication boundaries
   preserve committed generations, and swapped function IDs fail closed.
+- Validated `i8 → i16` sign extension and `u8 → u16` zero extension
+  now retain separate source/result SSA identities as canonical MCTR tags
+  `82` and `83` without host computation or untyped widening. Every byte
+  pattern round-trips from admitted typed IR through the target checkpoint,
+  with separate signed/unsigned direct halfword return operations.
+  Forged signedness, old 32-bit-width tags, duplicate/undefined SSA,
+  truncated records and the first unknown tag `84` fail admission;
+  production-inspector restoration and all ten crash boundaries converge.
 - Validated `i16`/`u16` to `i8`/`u8` truncations now retain all four
   signedness combinations under canonical `MCTR` tags `78` through `81`.
   Each consumes a defined halfword SSA and creates a distinct byte SSA
   without host evaluation; independently admitted typed IR and target
   checkpoints cover all 256 low bytes with four upper-byte boundaries.
   Decoder and inspector reject swapped signedness, old 32-bit-width tags,
-  undefined/duplicate SSA, truncated records and first unassigned tag `82`;
+  undefined/duplicate SSA, truncated records and first unassigned tag `84`;
   production recovery and ten crash-publication boundaries pass.
 - Validated `i32`/`u32` to `i16`/`u16` truncations now retain all four
   signedness combinations under canonical `MCTR` tags `74` through `77`.
@@ -261,7 +269,7 @@ instruction.
   and canonical checkpoints cover all 256 low bytes, four high-word and
   two halfword sign-boundary patterns with matching typed returns.
   Independent decode rejects swapped kinds, byte-width substitutions,
-  undefined/duplicate SSA, truncation and first unassigned tag `82`;
+  undefined/duplicate SSA, truncation and first unassigned tag `84`;
   inspector restoration and all ten crash-publication boundaries pass.
 - Validated equal-width `i16`/`u16` integer bitcasts now preserve all
   four same-kind/cross-kind SSA source and destination combinations under
@@ -270,7 +278,7 @@ instruction.
   Admitted typed IR and target checkpoints round-trip 256 low-byte patterns
   under four upper-byte boundaries for every pair, with direct typed returns.
   Independent decoding rejects swapped signedness, byte-width substitutes,
-  duplicate/undefined SSA, truncation, and the first unknown tag `82`;
+  duplicate/undefined SSA, truncation, and the first unknown tag `84`;
   real inspector recovery and all ten crash-publication boundaries pass.
 - Validated 16-to-32-bit integer promotion now preserves symbolic
   `SignExtendI16ToI32` and `ZeroExtendU16ToU32` as canonical tags `68`/`69`.
@@ -279,7 +287,7 @@ instruction.
   canonical checkpoints round-trip all low-byte patterns under four
   upper-byte boundaries for both kinds, preserving direct 32-bit returns.
   Independent decode rejects cross-signedness and byte-width substitutions,
-  missing/duplicate SSA, incomplete records and first unknown tag `82`;
+  missing/duplicate SSA, incomplete records and first unknown tag `84`;
   production-inspector recovery and ten crash-publication boundaries pass.
 - Validated Boolean-to-signed-16-bit casts now emit `BoolToI16` at tag
   `67`, preserving a new signed-halfword SSA result and the defined Boolean
@@ -287,7 +295,7 @@ instruction.
   through canonical typed IR and target checkpoints with direct `ReturnI16`
   or `I16ToBool` followed by `ReturnBool`. Independent decoding rejects
   byte-width substitution, reversed casts, duplicate/undefined SSA and the
-  first unassigned tag `82`; production inspector restoration converges and
+  first unassigned tag `84`; production inspector restoration converges and
   all ten crash-publication boundaries retain committed generations.
 - Signed and unsigned 16-bit `IntegerToBool` now preserves the defined
   narrow source and a distinct Boolean SSA under canonical `MCTR` tags `65`
@@ -296,7 +304,7 @@ instruction.
   across four upper-byte patterns for both kinds, with direct `ReturnBool`.
   Independent admission and production inspector reject cross-signedness
   retags, wrong-width casts, missing or duplicate SSA, truncated records,
-  and the first unassigned tag `82`. Fresh inspector recovery agrees and ten
+  and the first unassigned tag `84`. Fresh inspector recovery agrees and ten
   crash-publication boundaries preserve committed generations for both kinds.
 - Validated 16-bit `i16`/`u16` constant returns now preserve distinct
   signed/unsigned SSA and exact eleven-trit source bit patterns; canonical
@@ -305,14 +313,14 @@ instruction.
   round-trip, with typed-IR source/target recovery across every low-byte
   pattern and four upper-byte boundaries; independent admission rejects
   out-of-range trits, swapped signedness, wrong-width returns, duplicates,
-  undefined operands, truncated records and unknown tag `82`.
+  undefined operands, truncated records and unknown tag `84`.
   Production-inspector restoration and ten durable crash boundaries pass;
   the 32-bit helper retains an explicit width check against forged metadata.
 - Signed and unsigned 32-bit equality/inequality comparisons now compose
   through Boolean SSA, `BoolToI8` and direct `ReturnI8`, with all 20 typed-IR
   comparison/word cases preserving exact target checkpoint identities.
   Independent decode rejects cross-signedness comparison retags, wrong cast
-  widths, undefined Boolean sources and tag `82`; production inspector
+  widths, undefined Boolean sources and tag `84`; production inspector
   recovery converges and ten crash-publication boundaries preserve committed
   generations for each predicate/sign category.
 - Validated Boolean-to-signed-byte `BoolToSigned` now emits symbolic
@@ -321,7 +329,7 @@ instruction.
   Boolean constants round-trip through typed IR and canonical checkpoints,
   returning directly as `i8` or sign-extending into `i32`. Independent
   admission rejects retagged 32-bit casts, undefined or duplicate SSA, and
-  first unknown tag `82`. Production inspector restoration converges and
+  first unknown tag `84`. Production inspector restoration converges and
   all ten crash-publication boundaries retain committed generations for
   both source digits and return widths.
 - Validated `i32`/`u32` to signed `i8` truncation now preserves the
@@ -330,28 +338,28 @@ instruction.
   round-trips all 256 low byte patterns with three upper-word patterns from
   canonical typed IR through `ReturnI8`. Independent admission rejects
   swapped signedness, unsigned result types, duplicate/undefined SSA,
-  truncated bytes and unknown tag `82`. Inspector restoration converges and
+  truncated bytes and unknown tag `84`. Inspector restoration converges and
   all ten durable crash-publication boundaries retain committed generations.
 - Direct signed `i8` returns now preserve a defined signed-byte SSA operand
   without a synthetic widening cast, at canonical `MCTR` tag `57`. All 256
   signed constant bits round-trip through validated typed IR and target
   checkpoints; direct projected returns from constants or bitcasts retain
   original spans and IDs. Independent admission rejects swapped return kinds,
-  undefined values, and unknown tag `82`. Inspector restoration and all ten
+  undefined values, and unknown tag `84`. Inspector restoration and all ten
   crash-publication boundaries preserve committed representative generations.
 - Same-kind byte `IntegerBitcast` now admits exact `i8 -> i8` and
   `u8 -> u8` reinterprets under tags `55` and `56`, with a fresh SSA result
   distinct from its signed or unsigned source. All 256 byte patterns retain
   exact typed/ternary wire identity and destination-matched returns.
   Forged direction tags, wrong SSA types, duplicate/undefined values and
-  unknown tag `82` fail independent re-admission. Inspector recovery and
+  unknown tag `84` fail independent re-admission. Inspector recovery and
   all ten durable crash boundaries agree for representative byte patterns.
 - Validated narrow `IntegerBitcast` now preserves exact `i8 -> u8` and
   `u8 -> i8` SSA reinterprets at `MCTR` tags `53` and `54` without host byte
   evaluation or implicit promotions. Each direction round-trips all 256
   source byte patterns and a separate destination-typed widening/return.
   Canonical re-admission rejects direction-swapped or foreign cast tags,
-  duplicate and undefined SSA, and unknown tag `82`. Production inspector
+  duplicate and undefined SSA, and unknown tag `84`. Production inspector
   restoration agrees with fresh entry, and all ten crash-publication
   boundaries retain the committed generation for representative values.
 - Signed-byte `IntegerToBool` now emits distinct symbolic Boolean SSA at
@@ -359,7 +367,7 @@ instruction.
   without host truth-value evaluation. All 256 byte bit patterns preserve
   signed source identity and exact spans through typed/target round trips.
   Forged unsigned-byte and signed-word predicates, unsupported destination
-  kinds, undefined or duplicate SSA, and unknown tag `82` fail closed.
+  kinds, undefined or duplicate SSA, and unknown tag `84` fail closed.
   Production inspector recovery converges and all ten crash-publication
   boundaries preserve committed generations for selected signed patterns.
 - Signed `i8` constants now preserve exact 8-bit two's-complement source
@@ -368,14 +376,14 @@ instruction.
   tag `51` without host sign-extension evaluation. All 256 source patterns
   survive typed-IR and canonical ternary restoration. Independent admission
   rejects unsigned-byte substitution, forged zero extension, wrong result
-  types, undefined SSA and first unknown tag `82`. Production inspector
+  types, undefined SSA and first unknown tag `84`. Production inspector
   recovery converges and all ten crash-publication boundaries retain the
   committed generation for representative sign-boundary patterns.
 - Validated no-result typed-IR functions now admit a value-free `ReturnVoid`
   terminator at canonical `MCTR` tag `49`, with the exact 24-byte source span
   and no fabricated SSA operand. The decoder's minimum operation size is now
   25 bytes, while independent validation rejects premature or malformed
-  terminators and the first unknown tag `82`. Empty void functions and void
+  terminators and the first unknown tag `84`. Empty void functions and void
   byte-input/output effects retain typed/provenance order through canonical
   round trips, production-inspector restoration, and all ten crash boundaries.
 - A separate Boolean constant round-trip fixture now preserves the exact
@@ -398,7 +406,7 @@ instruction.
   results at `MCTR` tags `33` (`BitcastI32ToI32`) and `34`
   (`BitcastU32ToU32`). All boundary-bit patterns survive typed-IR and canonical
   target round trips without evaluating a host cast or eliminating the result.
-  Forged projection identities, cross-signedness tags, and unknown opcode `82`
+  Forged projection identities, cross-signedness tags, and unknown opcode `84`
   fail closed; fresh compilation and production inspector recovery converge
   through all ten crash-publication boundaries for both signedness kinds.
 - Admitted signed and unsigned 32-bit division/remainder now lower to four
@@ -406,7 +414,7 @@ instruction.
   result SSA signedness and source provenance. The stage never evaluates
   division by zero or signed overflow, leaving guest semantics to realization.
   Canonical typed and target round trips reject forged signedness, missing SSA,
-  duplicate results, and first unknown tag `82`. Real inspector recovery and
+  duplicate results, and first unknown tag `84`. Real inspector recovery and
   all ten crash-publication boundaries converge for each operation.
 - Separate typed-IR division/remainder boundary fixtures keep zero divisors
   and the signed minimum/negative-one pair unevaluated. Canonical target
@@ -424,7 +432,7 @@ instruction.
   `MultiplyI32` and `MultiplyU32` operations at `MCTR` tags `23` and `24`,
   preserving exact SSA identities and source spans without host evaluation.
   Typed-IR and canonical target round trips reject wrong signedness, missing
-  operand SSA, duplicate result SSA, and the next unknown tag `82`. The real
+  operand SSA, duplicate result SSA, and the next unknown tag `84`. The real
   progress inspector restores both variants and rejects signedness tag swaps;
   every crash-publication boundary preserves the committed generation.
 - Admitted `i32`/`u32` addition and subtraction now lower to four symbolic
@@ -440,7 +448,7 @@ instruction.
   target operations (`MCTR` tags `17` and `18`). Typed-IR admission and
   canonical checkpoints preserve all 32 bits, exact signedness, and source
   provenance. Both directions reject forged destination types, missing or
-  duplicate SSA identities, swapped cast tags, and unknown tag `82`.
+  duplicate SSA identities, swapped cast tags, and unknown tag `84`.
   Fresh compiler selection and real inspector-backed recovery converge; all
   ten crash publication boundaries preserve each committed generation in
   both directions.
@@ -454,7 +462,7 @@ instruction.
   defined byte-valued source and yields an unsigned 32-bit SSA result.
   Canonical typed and target round trips cover byte literals and successful
   byte input, while tests reject type/identity forgeries, truncation-tag
-  substitution, and unknown tag `82`. Real inspector progress restoration
+  substitution, and unknown tag `84`. Real inspector progress restoration
   converges with fresh compiler selection; all ten crash boundaries preserve
   the committed generation during signed-to-widened state publication.
 - Admitted `u32` to `u8` typed truncation now lowers to a distinct unsigned
@@ -462,13 +470,13 @@ instruction.
   existing signed truncation tag `5`. Typed-IR admission and target canonical
   round trips preserve the low-byte result and source SSA provenance.
   Regressions reject destination-type drift, duplicate and undefined operands,
-  a forged signed truncation tag, and the next unassigned tag `82`.
+  a forged signed truncation tag, and the next unassigned tag `84`.
 - The typed semantic slice now also lowers exact unsigned `u32` bitwise AND,
   OR, and XOR with signedness-specific SSA validation. Closed `MCTR` tags
   `12`, `13`, and `14` preserve three operand/result IDs and full source
   spans without changing existing signed opcode encodings. Canonical typed
   and ternary round-trip tests reject forged operand type, undefined use,
-  duplicate definition, swapped signed opcode, and unknown opcode `82`.
+  duplicate definition, swapped signed opcode, and unknown opcode `84`.
 
   A separate round-trip fixture confirms all unsigned bitwise operations
   accept both operands referencing the same valid SSA definition, across

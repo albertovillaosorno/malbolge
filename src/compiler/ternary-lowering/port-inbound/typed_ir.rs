@@ -367,7 +367,7 @@ pub enum InputInstruction {
         /// Defined signed/unsigned word or successful unsigned byte source.
         value: u32,
     },
-    /// Sign-extend a defined signed 8-bit or 16-bit scalar to `i32`.
+    /// Sign-extend a defined signed byte or halfword into wider signed SSA.
     SignExtendI8ToI32 {
         /// Newly defined signed 32-bit SSA identity.
         result: u32,
@@ -391,7 +391,7 @@ pub enum InputInstruction {
     },
     /// An admitted typed-IR instruction not implemented by this lowering slice.
     Unsupported,
-    /// Zero-extend a defined unsigned 8-bit or 16-bit scalar to `u32`.
+    /// Zero-extend a defined unsigned byte or halfword into wider SSA.
     ZeroExtendInteger {
         /// Upstream SSA result identity.
         result: u32,

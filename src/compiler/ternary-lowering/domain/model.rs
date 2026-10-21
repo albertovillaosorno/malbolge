@@ -1466,6 +1466,15 @@ pub enum TernaryOperation {
         /// Defined signed halfword SSA operand.
         value: u32,
     },
+    /// Sign-extend a defined signed byte into separate signed halfword SSA.
+    SignExtendI8ToI16 {
+        /// New signed halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Defined signed-byte SSA source identity.
+        value: u32,
+    },
     /// Sign-extend one defined signed byte to a distinct `i32` SSA value.
     SignExtendI8ToI32 {
         /// New signed word result SSA identity.
@@ -1661,6 +1670,15 @@ pub enum TernaryOperation {
         /// Exact typed-IR cast source provenance.
         span: TernarySourceSpan,
         /// Defined unsigned halfword SSA operand.
+        value: u32,
+    },
+    /// Zero-extend a defined unsigned byte into fresh unsigned halfword SSA.
+    ZeroExtendU8ToU16 {
+        /// New unsigned halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned byte SSA source identity.
         value: u32,
     },
     /// Zero-extend one defined `u8` value to an exact unsigned 32-bit value.
