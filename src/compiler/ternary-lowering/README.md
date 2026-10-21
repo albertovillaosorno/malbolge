@@ -73,6 +73,8 @@ Signed and unsigned 32-bit equality/inequality predicates may feed
 Validated signed `i16` and unsigned `u16` constants now materialize as
 11-trit scalars under tags `61` and `62`, with matching direct return tags
 `63` and `64`. No host integer interpretation or implicit promotion occurs.
+Independent canonical decoder tests exhaust all `177147` eleven-trit
+patterns and every non-ternary digit in both signedness categories.
 
 Narrow `IntegerToBool` is symbolic at tags `65` and `66`.
 These casts preserve separate Boolean SSA and direct Boolean returns.

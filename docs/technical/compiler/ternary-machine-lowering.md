@@ -480,6 +480,17 @@ wrong-width returns, incomplete records, and unknown tag `84`. Fresh lowering
 and production-inspector restoration converge, and every crash-publication
 boundary retains the committed generation for both 16-bit kinds.
 
+Independent eleven-trit scalar checkpoint restoration is also exhaustively
+verified across all `177147` ternary digit vectors for each signedness.
+Precisely the `65536` in-range values reconstruct their original 16-bit
+patterns, SSA definition, source span and matching typed return; all `111611`
+remaining numeric encodings fail as `InvalidScalar`.
+
+For each of the eleven digit positions, all `253` non-ternary byte values
+`3..255` also fail independently in both signedness categories. These tests
+exercise the real canonical decoder rather than merely the scalar helper,
+without changing any existing tag or assuming executable target lowering.
+
 The newly extracted 32-bit constant helper also preserves its explicit
 `bit_width == 32` gate. A four-byte payload with forged byte-width metadata
 cannot bypass admission, even if its storage width matches `u32`.

@@ -254,6 +254,12 @@ instruction.
   lowerer rejects forged narrow-operand projections, and independent decoder
   and production-inspector recovery reject retagged casts and invalid SSA;
   all ten crash-publication boundaries preserve committed generations.
+- The independent `MCTR` decoder now has exhaustive signed/unsigned
+  halfword scalar evidence for all `177147` eleven-trit vectors: exactly
+  `65536` patterns are admitted with bit-exact SSA, span and return;
+  all `111611` numeric out-of-range vectors are rejected per category.
+  Every invalid digit `3..255` at each of eleven positions also fails
+  canonical admission for both categories without assigning new opcodes.
 - Validated `i8 → i16` sign extension and `u8 → u16` zero extension
   now retain separate source/result SSA identities as canonical MCTR tags
   `82` and `83` without host computation or untyped widening. Every byte

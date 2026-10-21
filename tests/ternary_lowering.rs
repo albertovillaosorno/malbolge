@@ -1813,6 +1813,94 @@ fn halfword_scalar_covers_all_65536_patterns() -> Result<(), String> {
     Ok(())
 }
 
+fn encode_halfword_trit_digits(mut value: u32) -> [u8; 11] {
+    let mut digits = [0u8; 11];
+    for trit in &mut digits {
+        *trit = u8::try_from(value.checked_rem(3).unwrap_or_default())
+            .unwrap_or_default();
+        value = value.checked_div(3).unwrap_or_default();
+    }
+    digits
+}
+
+fn verify_halfword_numeric_checkpoint_domain(
+    signed: bool,
+) -> Result<(), String> {
+    let (base, _) = lowered_halfword_fixture(0, signed)?;
+    let mut wire = assert_halfword_checkpoint(0, signed, &base)?;
+    let (record, _) = halfword_record_offsets(&wire, signed)?;
+    let digit_offset = record.saturating_add(5);
+    for value in 0u32..177_147 {
+        let digits = encode_halfword_trit_digits(value);
+        let dest = wire
+            .get_mut(digit_offset..digit_offset.saturating_add(11))
+            .ok_or_else(|| String::from("halfword scalar digits absent"))?;
+        dest.copy_from_slice(&digits);
+        let restored = canonical_ternary_program(&wire);
+        if let Ok(bits) = u16::try_from(value) {
+            let program = restored.map_err(|error| {
+                format!("halfword domain {value} rejected: {error:?}")
+            })?;
+            let expected = halfword_expected_operations(bits, signed);
+            if program
+                .functions
+                .first()
+                .map(|function| function.operations.as_slice())
+                != Some(expected.as_slice())
+            {
+                return Err(format!(
+                    "halfword domain {value} value/SSA drifted"
+                ));
+            }
+        } else if restored != Err(TernaryProgramCodecError::InvalidScalar) {
+            return Err(format!("out-of-domain halfword {value} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_checkpoint_decoder_exhausts_all_177147_trit_combinations()
+-> Result<(), String> {
+    for signed in [true, false] {
+        verify_halfword_numeric_checkpoint_domain(signed)?;
+    }
+    Ok(())
+}
+
+fn reject_halfword_out_of_alphabet_digits(signed: bool) -> Result<(), String> {
+    let (target, _) = lowered_halfword_fixture(0x8000, signed)?;
+    let wire = assert_halfword_checkpoint(0x8000, signed, &target)?;
+    let (record, _) = halfword_record_offsets(&wire, signed)?;
+    let start = record.saturating_add(5);
+    for offset in 0usize..11 {
+        for digit in 3u8..=u8::MAX {
+            let mut forged = wire.clone();
+            *forged
+                .get_mut(start.saturating_add(offset))
+                .ok_or_else(|| String::from("halfword digit index absent"))? =
+                digit;
+            if canonical_ternary_program(&forged)
+                != Err(TernaryProgramCodecError::InvalidScalar)
+            {
+                return Err(format!(
+                    "invalid halfword digit {offset}/{digit} admitted"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn halfword_checkpoint_decoder_rejects_every_non_ternary_digit()
+-> Result<(), String> {
+    for signed in [true, false] {
+        reject_halfword_out_of_alphabet_digits(signed)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn halfword_checkpoint_roundtrips_every_lower_byte_pattern()
 -> Result<(), String> {
