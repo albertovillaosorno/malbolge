@@ -683,6 +683,10 @@ fn decode_cast_operation(
         67 => TernaryOperation::BoolToI16 { result, span, value },
         68 => TernaryOperation::SignExtendI16ToI32 { result, span, value },
         69 => TernaryOperation::ZeroExtendU16ToU32 { result, span, value },
+        70 => TernaryOperation::BitcastI16ToI16 { result, span, value },
+        71 => TernaryOperation::BitcastI16ToU16 { result, span, value },
+        72 => TernaryOperation::BitcastU16ToI16 { result, span, value },
+        73 => TernaryOperation::BitcastU16ToU16 { result, span, value },
         _ => return Err(TernaryProgramCodecError::UnknownTag),
     })
 }
@@ -773,7 +777,7 @@ fn decode_half_operation(
         62 => Some(decode_half_materialization(decoder, false)),
         63 => Some(decode_half_return(decoder, true)),
         64 => Some(decode_half_return(decoder, false)),
-        65..=69 => Some(decode_cast_operation(decoder, tag)),
+        65..=73 => Some(decode_cast_operation(decoder, tag)),
         _ => None,
     }
 }
@@ -1310,8 +1314,25 @@ const fn halfword_widen_tag(operation: TernaryOperation) -> Option<u8> {
     }
 }
 
+const fn halfword_bitcast_tag(operation: TernaryOperation) -> Option<u8> {
+    if matches!(operation, TernaryOperation::BitcastI16ToI16 { .. }) {
+        Some(70)
+    } else if matches!(operation, TernaryOperation::BitcastI16ToU16 { .. }) {
+        Some(71)
+    } else if matches!(operation, TernaryOperation::BitcastU16ToI16 { .. }) {
+        Some(72)
+    } else if matches!(operation, TernaryOperation::BitcastU16ToU16 { .. }) {
+        Some(73)
+    } else {
+        None
+    }
+}
+
 const fn cast_tag(operation: TernaryOperation) -> u8 {
     if let Some(tag) = halfword_cast_tag(operation) {
+        return tag;
+    }
+    if let Some(tag) = halfword_bitcast_tag(operation) {
         return tag;
     }
     if matches!(operation, TernaryOperation::TruncateI32ToI8 { .. }) {
@@ -1388,7 +1409,11 @@ const fn narrow_bitcast_tag(operation: TernaryOperation) -> u8 {
 }
 
 fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
-    let (TernaryOperation::SignExtendI16ToI32 { result, span, value }
+    let (TernaryOperation::BitcastI16ToI16 { result, span, value }
+    | TernaryOperation::BitcastI16ToU16 { result, span, value }
+    | TernaryOperation::BitcastU16ToI16 { result, span, value }
+    | TernaryOperation::BitcastU16ToU16 { result, span, value }
+    | TernaryOperation::SignExtendI16ToI32 { result, span, value }
     | TernaryOperation::ZeroExtendU16ToU32 { result, span, value }
     | TernaryOperation::BoolToI16 { result, span, value }
     | TernaryOperation::I16ToBool { result, span, value }
@@ -1618,7 +1643,11 @@ fn encode_narrow_materialization(
 const fn is_cast_operation(operation: TernaryOperation) -> bool {
     matches!(
         operation,
-        TernaryOperation::SignExtendI16ToI32 { .. }
+        TernaryOperation::BitcastI16ToI16 { .. }
+            | TernaryOperation::BitcastI16ToU16 { .. }
+            | TernaryOperation::BitcastU16ToI16 { .. }
+            | TernaryOperation::BitcastU16ToU16 { .. }
+            | TernaryOperation::SignExtendI16ToI32 { .. }
             | TernaryOperation::ZeroExtendU16ToU32 { .. }
             | TernaryOperation::BoolToI16 { .. }
             | TernaryOperation::I16ToBool { .. }
@@ -1797,6 +1826,10 @@ const fn operation_span_secondary(
     | Op::MaterializeI16 { span, .. }
     | Op::MaterializeU16 { span, .. }
     | Op::MaterializeI8 { span, .. }
+    | Op::BitcastI16ToI16 { span, .. }
+    | Op::BitcastI16ToU16 { span, .. }
+    | Op::BitcastU16ToI16 { span, .. }
+    | Op::BitcastU16ToU16 { span, .. }
     | Op::SignExtendI16ToI32 { span, .. }
     | Op::ZeroExtendU16ToU32 { span, .. }
     | Op::SignExtendI8ToI32 { span, .. }
@@ -2211,6 +2244,55 @@ fn validate_materialize_operation(
     Err(TernaryProgramValidationError::SsaValue)
 }
 
+fn validate_halfword_bitcast(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let TernaryOperation::BitcastI16ToI16 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I16, ValueKind::I16),
+        ));
+    }
+    if let TernaryOperation::BitcastI16ToU16 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::I16, ValueKind::U16),
+        ));
+    }
+    if let TernaryOperation::BitcastU16ToI16 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::U16, ValueKind::I16),
+        ));
+    }
+    if let TernaryOperation::BitcastU16ToU16 { result, value, .. } = operation {
+        return Some(validate_reinterpret_value(
+            values,
+            result,
+            value,
+            (ValueKind::U16, ValueKind::U16),
+        ));
+    }
+    None
+}
+
+fn validate_halfword_cast(
+    operation: TernaryOperation,
+    values: &mut BTreeMap<u32, ValueKind>,
+) -> Option<Result<bool, TernaryProgramValidationError>> {
+    if let Some(result) = validate_halfword_bitcast(operation, values) {
+        return Some(result);
+    }
+    validate_halfword_truth_cast(operation, values)
+}
+
 fn validate_halfword_truth_cast(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
@@ -2398,7 +2480,7 @@ fn validate_operation(
     if let Some(outcome) = validate_truncation_operation(operation, values) {
         return outcome;
     }
-    if let Some(outcome) = validate_halfword_truth_cast(operation, values) {
+    if let Some(outcome) = validate_halfword_cast(operation, values) {
         return outcome;
     }
     if let Some(outcome) = validate_signed_byte_cast(operation, values) {

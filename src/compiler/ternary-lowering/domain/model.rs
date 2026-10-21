@@ -930,6 +930,24 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Preserve exact signed 16-bit bits as distinct signed halfword SSA.
+    BitcastI16ToI16 {
+        /// Newly defined halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed 16-bit SSA source identity.
+        value: u32,
+    },
+    /// Preserve exact signed 16-bit bits as distinct unsigned halfword SSA.
+    BitcastI16ToU16 {
+        /// Newly defined halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed 16-bit SSA source identity.
+        value: u32,
+    },
     /// Reinterpret signed 32-bit bits into a distinct same-kind SSA value.
     BitcastI32ToI32 {
         /// Distinct upstream SSA result identity.
@@ -964,6 +982,24 @@ pub enum TernaryOperation {
         /// Original cast provenance.
         span: TernarySourceSpan,
         /// Previously defined signed byte source SSA identity.
+        value: u32,
+    },
+    /// Preserve exact unsigned 16-bit bits as distinct signed halfword SSA.
+    BitcastU16ToI16 {
+        /// Newly defined halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined unsigned 16-bit SSA source identity.
+        value: u32,
+    },
+    /// Preserve exact unsigned 16-bit bits as distinct unsigned halfword SSA.
+    BitcastU16ToU16 {
+        /// Newly defined halfword SSA result identity.
+        result: u32,
+        /// Exact typed-IR cast source provenance.
+        span: TernarySourceSpan,
+        /// Previously defined unsigned 16-bit SSA source identity.
         value: u32,
     },
     /// Reinterpret an unsigned 32-bit SSA scalar as signed without bit changes.

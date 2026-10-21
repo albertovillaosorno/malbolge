@@ -345,7 +345,7 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
-    /// Reinterpret an exact 32-bit integer without changing its bits.
+    /// Reinterpret equal-width 8-, 16- or 32-bit integer bits unchanged.
     IntegerBitcast {
         /// Upstream SSA result identity.
         result: u32,

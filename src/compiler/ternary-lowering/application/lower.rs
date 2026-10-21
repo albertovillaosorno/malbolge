@@ -1587,6 +1587,51 @@ fn lower_zero_extend_u8_to_u32(
     })
 }
 
+fn lower_halfword_bitcast(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
+    let signed_source = state.signed_halves.contains(&value);
+    let unsigned_source = state.unsigned_halves.contains(&value);
+    if !(signed_source || unsigned_source)
+        || !matches!(type_kind, InputScalarType::I16 | InputScalarType::U16)
+    {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = if type_kind == InputScalarType::I16 {
+        state.signed_halves.insert(result)
+    } else {
+        state.unsigned_halves.insert(result)
+    };
+    debug_assert!(inserted, "new halfword SSA was already preflighted");
+    let converted_span = copy_span(span);
+    Ok(match (signed_source, type_kind) {
+        (true, InputScalarType::I16) => TernaryOperation::BitcastI16ToI16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (true, InputScalarType::U16) => TernaryOperation::BitcastI16ToU16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::I16) => TernaryOperation::BitcastU16ToI16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::U16) => TernaryOperation::BitcastU16ToU16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
+}
+
 fn lower_byte_bitcast(
     input: TruncateInput,
     state: &mut LoweringState,
@@ -1636,10 +1681,23 @@ fn lower_integer_bitcast(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
-    let (result, span, type_kind, value) = input;
+    let (_, _, _, value) = input;
+    if state.signed_halves.contains(&value)
+        || state.unsigned_halves.contains(&value)
+    {
+        return lower_halfword_bitcast(input, state);
+    }
     if state.signed_bytes.contains(&value) || state.bytes.contains(&value) {
         return lower_byte_bitcast(input, state);
     }
+    lower_word_bitcast(input, state)
+}
+
+fn lower_word_bitcast(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, type_kind, value) = input;
     let source_kind = if state.signed.contains(&value) {
         InputScalarType::I32
     } else if state.unsigned.contains(&value) {

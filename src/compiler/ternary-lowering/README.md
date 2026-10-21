@@ -82,7 +82,11 @@ with direct `i16` return or Boolean round-trip as separate SSA.
 Signed `i16 → i32` sign extension and unsigned `u16 → u32` zero extension
 remain symbolic as tags `68` and `69`, each defining separate word SSA.
 
-Other 16-bit arithmetic, bitcasts, truncations and casts remain unsupported.
+All equal-width `i16`/`u16` signedness-preserving and signedness-changing
+bitcasts are symbolic under tags `70` through `73`, retaining distinct SSA
+source and result identities.
+
+Other 16-bit arithmetic, truncations and casts remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest
