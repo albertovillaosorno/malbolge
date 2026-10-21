@@ -36,6 +36,8 @@
 
 /// Number of trits required to preserve every 32-bit bit pattern.
 pub const I32_TERNARY_TRITS: usize = 21;
+/// Number of trits required to preserve every 16-bit bit pattern.
+pub const U16_TERNARY_TRITS: usize = 11;
 /// Number of trits required to preserve every 8-bit byte pattern.
 pub const U8_TERNARY_TRITS: usize = 6;
 
@@ -132,6 +134,46 @@ impl TernaryU8Scalar {
     /// Returns the exact least-significant-trit-first scalar encoding.
     #[must_use]
     pub const fn trits(&self) -> &[u8; U8_TERNARY_TRITS] {
+        &self.trits
+    }
+}
+
+/// Exact 16-bit scalar represented as eleven least-significant-first trits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TernaryU16Scalar {
+    trits: [u8; U16_TERNARY_TRITS],
+}
+
+impl TernaryU16Scalar {
+    /// Reconstructs the original signed or unsigned 16-bit bit pattern.
+    #[must_use]
+    pub fn bits(self) -> u16 {
+        let value = self.trits.iter().rev().fold(0u32, |value, trit| {
+            value.saturating_mul(3).saturating_add(u32::from(*trit))
+        });
+        u16::try_from(value).unwrap_or(u16::MAX)
+    }
+
+    /// Converts one exact 16-bit pattern to eleven ternary digits.
+    #[must_use]
+    pub fn from_bits(bits: u16) -> Self {
+        let mut remainder = bits;
+        let mut trits = [0u8; U16_TERNARY_TRITS];
+        for trit in &mut trits {
+            *trit = u8::try_from(remainder.checked_rem(3).unwrap_or_default())
+                .unwrap_or_default();
+            remainder = remainder.checked_div(3).unwrap_or_default();
+        }
+        debug_assert_eq!(
+            remainder, 0,
+            "eleven trits encode every 16-bit value"
+        );
+        Self { trits }
+    }
+
+    /// Returns the canonical least-significant-first trit encoding.
+    #[must_use]
+    pub const fn trits(&self) -> &[u8; U16_TERNARY_TRITS] {
         &self.trits
     }
 }
@@ -1116,6 +1158,15 @@ pub enum TernaryOperation {
         /// Original typed-IR instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Materialize one exact signed 16-bit pattern as eleven trits.
+    MaterializeI16 {
+        /// Newly defined signed 16-bit SSA identity.
+        result: u32,
+        /// Exact 16-bit two's-complement bit pattern.
+        scalar: TernaryU16Scalar,
+        /// Original typed-IR constant span.
+        span: TernarySourceSpan,
+    },
     /// Materialize one exact `i32` bit pattern as fixed-width target trits.
     MaterializeI32 {
         /// Upstream SSA result identity retained until later
@@ -1133,6 +1184,15 @@ pub enum TernaryOperation {
         /// Six-trit encoding of the unchanged 8-bit pattern.
         scalar: TernaryU8Scalar,
         /// Original source provenance.
+        span: TernarySourceSpan,
+    },
+    /// Materialize one exact unsigned 16-bit pattern as eleven trits.
+    MaterializeU16 {
+        /// Newly defined unsigned 16-bit SSA identity.
+        result: u32,
+        /// Exact 16-bit bit pattern.
+        scalar: TernaryU16Scalar,
+        /// Original typed-IR constant span.
         span: TernarySourceSpan,
     },
     /// Materialize one exact unsigned 32-bit bit pattern as 21 trits.
@@ -1257,11 +1317,25 @@ pub enum TernaryOperation {
         /// Defined boolean source SSA identity.
         value: u32,
     },
+    /// Return one previously defined exact signed 16-bit SSA value.
+    ReturnI16 {
+        /// Original typed-IR return provenance.
+        span: TernarySourceSpan,
+        /// Defined signed 16-bit SSA operand.
+        value: u32,
+    },
     /// Return one previously defined exact signed 8-bit value.
     ReturnI8 {
         /// Original typed-IR terminator provenance.
         span: TernarySourceSpan,
         /// Previously defined signed-byte SSA identity.
+        value: u32,
+    },
+    /// Return one previously defined exact unsigned 16-bit SSA value.
+    ReturnU16 {
+        /// Original typed-IR return provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned 16-bit SSA operand.
         value: u32,
     },
     /// Return one previously materialized exact unsigned 32-bit value.

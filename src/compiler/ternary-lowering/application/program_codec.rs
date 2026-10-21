@@ -43,7 +43,7 @@ use super::model::{
     I32_TERNARY_TRITS, TernaryFunction, TernaryI32Scalar,
     TernaryOperation as Op, TernaryOperation, TernaryProgram,
     TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
-    U8_TERNARY_TRITS,
+    TernaryU16Scalar, U8_TERNARY_TRITS, U16_TERNARY_TRITS,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -104,8 +104,10 @@ pub enum TernaryProgramValidationError {
 enum ValueKind {
     Bool,
     Byte,
+    I16,
     I32,
     I8,
+    U16,
     U32,
 }
 
@@ -150,6 +152,28 @@ impl<'bytes> Decoder<'bytes> {
             return Err(TernaryProgramCodecError::Truncated);
         }
         Ok(count)
+    }
+
+    fn half_scalar(
+        &mut self,
+    ) -> Result<TernaryU16Scalar, TernaryProgramCodecError> {
+        let encoded = self.raw(U16_TERNARY_TRITS)?;
+        if encoded.iter().any(|trit| *trit > 2) {
+            return Err(TernaryProgramCodecError::InvalidScalar);
+        }
+        let value = encoded.iter().rev().try_fold(0u32, |value, trit| {
+            value
+                .checked_mul(3)
+                .and_then(|next| next.checked_add(u32::from(*trit)))
+                .ok_or(TernaryProgramCodecError::InvalidScalar)
+        })?;
+        let bits = u16::try_from(value)
+            .map_err(|_error| TernaryProgramCodecError::InvalidScalar)?;
+        let scalar = TernaryU16Scalar::from_bits(bits);
+        if scalar.trits().as_slice() != encoded {
+            return Err(TernaryProgramCodecError::InvalidScalar);
+        }
+        Ok(scalar)
     }
 
     const fn new(bytes: &'bytes [u8]) -> Self {
@@ -239,6 +263,10 @@ impl Encoder {
 
     fn finish(self) -> Vec<u8> {
         self.bytes
+    }
+
+    fn half_scalar(&mut self, value: TernaryU16Scalar) {
+        self.raw(value.trits());
     }
 
     fn length(&mut self, value: usize) -> Result<(), TernaryProgramCodecError> {
@@ -704,20 +732,75 @@ fn decode_signed_byte_return(
     })
 }
 
+fn decode_half_materialization(
+    decoder: &mut Decoder<'_>,
+    signed: bool,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let result = decoder.u32()?;
+    let scalar = decoder.half_scalar()?;
+    let span = decode_span(decoder)?;
+    Ok(if signed {
+        TernaryOperation::MaterializeI16 { result, scalar, span }
+    } else {
+        TernaryOperation::MaterializeU16 { result, scalar, span }
+    })
+}
+
+fn decode_half_return(
+    decoder: &mut Decoder<'_>,
+    signed: bool,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    let span = decode_span(decoder)?;
+    let value = decoder.u32()?;
+    Ok(if signed {
+        TernaryOperation::ReturnI16 { span, value }
+    } else {
+        TernaryOperation::ReturnU16 { span, value }
+    })
+}
+
+fn decode_half_operation(
+    decoder: &mut Decoder<'_>,
+    tag: u8,
+) -> Option<Result<TernaryOperation, TernaryProgramCodecError>> {
+    match tag {
+        61 => Some(decode_half_materialization(decoder, true)),
+        62 => Some(decode_half_materialization(decoder, false)),
+        63 => Some(decode_half_return(decoder, true)),
+        64 => Some(decode_half_return(decoder, false)),
+        _ => None,
+    }
+}
+
+fn decode_byte_input(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::ByteInput {
+        result: decoder.u32()?,
+        span: decode_span(decoder)?,
+    })
+}
+
+fn decode_byte_output(
+    decoder: &mut Decoder<'_>,
+) -> Result<TernaryOperation, TernaryProgramCodecError> {
+    Ok(TernaryOperation::ByteOutput {
+        span: decode_span(decoder)?,
+        value: decoder.u32()?,
+    })
+}
+
 fn decode_operation(
     decoder: &mut Decoder<'_>,
 ) -> Result<TernaryOperation, TernaryProgramCodecError> {
     let tag = decoder.u8()?;
+    if let Some(outcome) = decode_half_operation(decoder, tag) {
+        return outcome;
+    }
     let operation = match tag {
         0 => decode_bitwise_operation(decoder, 0)?,
-        1 => TernaryOperation::ByteInput {
-            result: decoder.u32()?,
-            span: decode_span(decoder)?,
-        },
-        2 => TernaryOperation::ByteOutput {
-            span: decode_span(decoder)?,
-            value: decoder.u32()?,
-        },
+        1 => decode_byte_input(decoder)?,
+        2 => decode_byte_output(decoder)?,
         3 => TernaryOperation::MaterializeI32 {
             result: decoder.u32()?,
             scalar: decoder.scalar()?,
@@ -1305,6 +1388,21 @@ fn encode_cast_model(encoder: &mut Encoder, operation: TernaryOperation) {
     encoder.u32(value);
 }
 
+fn encode_half_return(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) -> bool {
+    if let TernaryOperation::ReturnI16 { span, value } = operation {
+        encode_return_operation(encoder, 63, span, value);
+        return true;
+    }
+    if let TernaryOperation::ReturnU16 { span, value } = operation {
+        encode_return_operation(encoder, 64, span, value);
+        return true;
+    }
+    false
+}
+
 fn encode_return_model(
     encoder: &mut Encoder,
     operation: TernaryOperation,
@@ -1429,6 +1527,35 @@ fn try_encode_comparison_operation(
     false
 }
 
+fn encode_half_materialization(
+    encoder: &mut Encoder,
+    operation: TernaryOperation,
+) -> bool {
+    if let TernaryOperation::MaterializeI16 { result, scalar, span } = operation
+    {
+        encode_half_scalar(encoder, 61, (result, scalar, span));
+        return true;
+    }
+    if let TernaryOperation::MaterializeU16 { result, scalar, span } = operation
+    {
+        encode_half_scalar(encoder, 62, (result, scalar, span));
+        return true;
+    }
+    false
+}
+
+fn encode_half_scalar(
+    encoder: &mut Encoder,
+    tag: u8,
+    payload: (u32, TernaryU16Scalar, TernarySourceSpan),
+) {
+    let (result, scalar, span) = payload;
+    encoder.u8(tag);
+    encoder.u32(result);
+    encoder.half_scalar(scalar);
+    encode_span(encoder, span);
+}
+
 fn encode_narrow_materialization(
     encoder: &mut Encoder,
     operation: TernaryOperation,
@@ -1501,12 +1628,18 @@ fn encode_non_word_operation(
         encode_span(encoder, span);
         return;
     }
+    if encode_half_materialization(encoder, operation) {
+        return;
+    }
     if encode_narrow_materialization(encoder, operation) {
         return;
     }
     if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation
     {
         encode_byte_scalar(encoder, result, scalar, span);
+        return;
+    }
+    if encode_half_return(encoder, operation) {
         return;
     }
     if let TernaryOperation::Return { span, value }
@@ -1617,6 +1750,8 @@ const fn operation_span_secondary(
     | Op::ByteOutput { span, .. }
     | Op::MaterializeBool { span, .. }
     | Op::ReturnVoid { span }
+    | Op::MaterializeI16 { span, .. }
+    | Op::MaterializeU16 { span, .. }
     | Op::MaterializeI8 { span, .. }
     | Op::SignExtendI8ToI32 { span, .. }
     | Op::MaterializeI32 { span, .. }
@@ -1625,6 +1760,8 @@ const fn operation_span_secondary(
     | Op::Return { span, .. }
     | Op::ReturnU32 { span, .. }
     | Op::ReturnU8 { span, .. }
+    | Op::ReturnI16 { span, .. }
+    | Op::ReturnU16 { span, .. }
     | Op::ReturnI8 { span, .. }
     | Op::TruncateI32ToI8 { span, .. }
     | Op::TruncateI32ToU8 { span, .. }
@@ -1842,11 +1979,25 @@ fn validate_widen_or_bitcast(
     validate_reinterpret_value(values, result, value, types)
 }
 
+const fn half_return_kind(operation: TernaryOperation) -> Option<ValueKind> {
+    if matches!(operation, TernaryOperation::ReturnI16 { .. }) {
+        Some(ValueKind::I16)
+    } else if matches!(operation, TernaryOperation::ReturnU16 { .. }) {
+        Some(ValueKind::U16)
+    } else {
+        None
+    }
+}
+
 fn validate_return_value(
     values: &BTreeMap<u32, ValueKind>,
     value: u32,
     operation: TernaryOperation,
 ) -> Result<bool, TernaryProgramValidationError> {
+    if let Some(kind) = half_return_kind(operation) {
+        require_value(values, value, kind)?;
+        return Ok(true);
+    }
     let kind = if matches!(operation, TernaryOperation::Return { .. }) {
         ValueKind::I32
     } else if matches!(operation, TernaryOperation::ReturnU32 { .. }) {
@@ -1971,6 +2122,21 @@ fn validate_byte_effect_operation(
     Err(TernaryProgramValidationError::SsaValue)
 }
 
+fn validate_half_scalar(
+    values: &mut BTreeMap<u32, ValueKind>,
+    result: u32,
+    scalar: TernaryU16Scalar,
+    kind: ValueKind,
+) -> Result<bool, TernaryProgramValidationError> {
+    if scalar.trits().iter().any(|trit| *trit > 2)
+        || TernaryU16Scalar::from_bits(scalar.bits()) != scalar
+    {
+        return Err(TernaryProgramValidationError::SsaValue);
+    }
+    insert_value(values, result, kind)?;
+    Ok(false)
+}
+
 fn validate_materialize_operation(
     operation: TernaryOperation,
     values: &mut BTreeMap<u32, ValueKind>,
@@ -1986,6 +2152,12 @@ fn validate_materialize_operation(
     }
     if let TernaryOperation::MaterializeU8 { result, scalar, .. } = operation {
         return validate_byte_scalar(values, result, scalar);
+    }
+    if let TernaryOperation::MaterializeI16 { result, scalar, .. } = operation {
+        return validate_half_scalar(values, result, scalar, ValueKind::I16);
+    }
+    if let TernaryOperation::MaterializeU16 { result, scalar, .. } = operation {
+        return validate_half_scalar(values, result, scalar, ValueKind::U16);
     }
     if let TernaryOperation::MaterializeI8 { result, scalar, .. } = operation {
         return validate_signed_byte_scalar(values, result, scalar);
@@ -2104,6 +2276,8 @@ fn validate_operation(
     if matches!(
         operation,
         TernaryOperation::MaterializeBool { .. }
+            | TernaryOperation::MaterializeI16 { .. }
+            | TernaryOperation::MaterializeU16 { .. }
             | TernaryOperation::MaterializeI8 { .. }
             | TernaryOperation::MaterializeI32 { .. }
             | TernaryOperation::MaterializeU32 { .. }
@@ -2117,6 +2291,8 @@ fn validate_operation(
     if let TernaryOperation::Return { value, .. }
     | TernaryOperation::ReturnU32 { value, .. }
     | TernaryOperation::ReturnU8 { value, .. }
+    | TernaryOperation::ReturnI16 { value, .. }
+    | TernaryOperation::ReturnU16 { value, .. }
     | TernaryOperation::ReturnI8 { value, .. }
     | TernaryOperation::ReturnBool { value, .. } = operation
     {
@@ -2175,6 +2351,8 @@ fn validate_operations(
         TernaryOperation::Return { .. }
             | TernaryOperation::ReturnU32 { .. }
             | TernaryOperation::ReturnU8 { .. }
+            | TernaryOperation::ReturnI16 { .. }
+            | TernaryOperation::ReturnU16 { .. }
             | TernaryOperation::ReturnI8 { .. }
             | TernaryOperation::ReturnBool { .. }
             | TernaryOperation::ReturnVoid { .. }

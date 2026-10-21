@@ -45,6 +45,7 @@ use super::input::{
 use super::model::{
     TernaryFunction, TernaryI32Scalar, TernaryOperation, TernaryProgram,
     TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
+    TernaryU16Scalar,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -53,6 +54,8 @@ const TYPED_IR_VERSION: u16 = 1;
 
 type Binary32Input = (u32, u32, u32, InputSourceSpan, InputScalarType);
 type ByteInput = (u32, InputSourceSpan, InputScalarType);
+type NarrowConstantInput<'input> =
+    (&'input [u8], u32, InputSourceSpan, InputScalarType);
 type ConstantI32Input<'input> =
     (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
 type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
@@ -84,7 +87,9 @@ struct LoweringState {
     bytes: BTreeSet<u32>,
     signed: BTreeSet<u32>,
     signed_bytes: BTreeSet<u32>,
+    signed_halves: BTreeSet<u32>,
     unsigned: BTreeSet<u32>,
+    unsigned_halves: BTreeSet<u32>,
 }
 
 /// Stable failures for the implemented ternary lowering slice.
@@ -184,6 +189,12 @@ fn lower_return_operation(
                 value: return_value,
             }
         },
+        InputScalarType::I16 if state.signed_halves.contains(&return_value) => {
+            TernaryOperation::ReturnI16 {
+                span,
+                value: return_value,
+            }
+        },
         InputScalarType::I8 if state.signed_bytes.contains(&return_value) => {
             TernaryOperation::ReturnI8 {
                 span,
@@ -192,6 +203,14 @@ fn lower_return_operation(
         },
         InputScalarType::I32 if state.signed.contains(&return_value) => {
             TernaryOperation::Return {
+                span,
+                value: return_value,
+            }
+        },
+        InputScalarType::U16
+            if state.unsigned_halves.contains(&return_value) =>
+        {
+            TernaryOperation::ReturnU16 {
                 span,
                 value: return_value,
             }
@@ -209,9 +228,11 @@ fn lower_return_operation(
             }
         },
         InputScalarType::Bool
+        | InputScalarType::I16
         | InputScalarType::I32
         | InputScalarType::I8
         | InputScalarType::Other
+        | InputScalarType::U16
         | InputScalarType::U32
         | InputScalarType::U8
         | InputScalarType::Void => {
@@ -781,6 +802,8 @@ fn lower_arithmetic_word32(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
@@ -796,6 +819,8 @@ fn lower_arithmetic_word32(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
@@ -881,6 +906,8 @@ const fn construct_add_operation(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
@@ -954,6 +981,8 @@ const fn construct_subtract_operation(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
@@ -1021,6 +1050,8 @@ fn lower_binary_word32(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
         },
@@ -1036,6 +1067,8 @@ fn lower_binary_word32(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
@@ -1105,6 +1138,8 @@ const fn construct_bitwise_operation(
             | InputScalarType::Other
             | InputScalarType::U8
             | InputScalarType::I8
+            | InputScalarType::I16
+            | InputScalarType::U16
             | InputScalarType::Void,
         ) => {
             return Err(TernaryLoweringError::UnsupportedInstruction);
@@ -1181,6 +1216,39 @@ fn lower_signed_byte_constant(
     })
 }
 
+fn lower_halfword_constant(
+    input: NarrowConstantInput<'_>,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (little_endian, result, span, kind) = input;
+    let bytes: [u8; 2] = little_endian
+        .try_into()
+        .map_err(|_error| TernaryLoweringError::UnsupportedInstruction)?;
+    if !matches!(kind, InputScalarType::I16 | InputScalarType::U16) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let scalar = TernaryU16Scalar::from_bits(u16::from_le_bytes(bytes));
+    let converted_span = copy_span(span);
+    Ok(if kind == InputScalarType::I16 {
+        let inserted = state.signed_halves.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
+        TernaryOperation::MaterializeI16 {
+            result,
+            scalar,
+            span: converted_span,
+        }
+    } else {
+        let inserted = state.unsigned_halves.insert(result);
+        debug_assert!(inserted, "new SSA value was already preflighted");
+        TernaryOperation::MaterializeU16 {
+            result,
+            scalar,
+            span: converted_span,
+        }
+    })
+}
+
 fn lower_constant_integer(
     input: ConstantI32Input<'_>,
     state: &mut LoweringState,
@@ -1188,6 +1256,12 @@ fn lower_constant_integer(
     let (bit_width, little_endian, result, span, type_kind) = input;
     if bit_width == 1 && type_kind == InputScalarType::Bool {
         return lower_boolean_constant(little_endian, result, span, state);
+    }
+    if bit_width == 16 {
+        return lower_halfword_constant(
+            (little_endian, result, span, type_kind),
+            state,
+        );
     }
     if bit_width == 8 && type_kind == InputScalarType::I8 {
         return lower_signed_byte_constant(little_endian, result, span, state);
@@ -1208,6 +1282,14 @@ fn lower_constant_integer(
     if bit_width != 32 {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
+    lower_word_constant((little_endian, result, span, type_kind), state)
+}
+
+fn lower_word_constant(
+    input: NarrowConstantInput<'_>,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (little_endian, result, span, type_kind) = input;
     let bytes: [u8; 4] = little_endian
         .try_into()
         .map_err(|_error| TernaryLoweringError::UnsupportedInstruction)?;
@@ -1236,6 +1318,8 @@ fn lower_constant_integer(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
@@ -1474,6 +1558,8 @@ fn lower_integer_bitcast(
         | InputScalarType::Other
         | InputScalarType::U8
         | InputScalarType::I8
+        | InputScalarType::I16
+        | InputScalarType::U16
         | InputScalarType::Void => false,
     };
     debug_assert!(inserted, "new SSA value was already preflighted");
@@ -1518,6 +1604,8 @@ fn ensure_new_value(
     if state.bools.contains(&value)
         || state.bytes.contains(&value)
         || state.signed_bytes.contains(&value)
+        || state.signed_halves.contains(&value)
+        || state.unsigned_halves.contains(&value)
         || state.signed.contains(&value)
         || state.unsigned.contains(&value)
     {

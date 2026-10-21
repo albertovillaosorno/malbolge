@@ -70,7 +70,10 @@ at tag `60`, with direct return or subsequent `i32` sign extension supported.
 Signed and unsigned 32-bit equality/inequality predicates may feed
 `BoolToI8` and direct `ReturnI8`, retaining distinct SSA identities.
 
-Other signed narrow widths remain unsupported.
+Validated signed `i16` and unsigned `u16` constants now materialize as
+11-trit scalars under tags `61` and `62`, with matching direct return tags
+`63` and `64`. No host integer interpretation or implicit promotion occurs.
+Integer arithmetic and nontrivial casts at this width remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest

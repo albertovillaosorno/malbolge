@@ -58,12 +58,16 @@ pub struct InputSourceSpan {
 pub enum InputScalarType {
     /// Exact C boolean value (zero or one).
     Bool,
+    /// Exact signed 16-bit C integer bit pattern.
+    I16,
     /// Exact signed 32-bit C integer semantics.
     I32,
     /// Exact signed 8-bit C integer bit pattern.
     I8,
     /// Any other already-admitted typed-IR type.
     Other,
+    /// Exact unsigned 16-bit C integer bit pattern.
+    U16,
     /// Exact unsigned 32-bit C integer semantics.
     U32,
     /// Exact unsigned 8-bit byte semantics.
