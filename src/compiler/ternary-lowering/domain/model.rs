@@ -969,6 +969,15 @@ pub enum TernaryOperation {
         /// Defined Boolean source identity.
         value: u32,
     },
+    /// Preserve a Boolean-to-signed-byte zero/one conversion symbolically.
+    BoolToI8 {
+        /// Distinct signed-byte SSA result identity.
+        result: u32,
+        /// Original cast source provenance.
+        span: TernarySourceSpan,
+        /// Defined Boolean source SSA identity.
+        value: u32,
+    },
     /// Read one successful guest `u8` byte effect.
     ///
     /// This is not the raw profile input word and therefore cannot represent

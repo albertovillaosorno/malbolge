@@ -65,6 +65,8 @@ Direct signed-byte `ReturnI8` at tag `57` requires a defined `i8` SSA operand
 and never invents a widened return value.
 Signed-byte word truncation creates a separately typed `i8` result at tags
 `58` and `59`, preserving low-eight-bit semantics symbolically.
+Boolean-to-signed-byte conversion also yields a distinct `i8` SSA value
+at tag `60`, with direct return or subsequent `i32` sign extension supported.
 Other signed narrow widths remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`

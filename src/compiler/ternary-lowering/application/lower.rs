@@ -670,7 +670,7 @@ fn lower_boolean_cast(
         value,
     } = instruction
     {
-        return Some(lower_bool_to_i32(
+        return Some(lower_bool_to_signed(
             (*result, *span, *type_kind, *value),
             state,
         ));
@@ -1333,21 +1333,36 @@ fn lower_integer_to_bool(
     })
 }
 
-fn lower_bool_to_i32(
+fn lower_bool_to_signed(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
-    if type_kind != InputScalarType::I32 || !state.bools.contains(&value) {
+    if !matches!(type_kind, InputScalarType::I32 | InputScalarType::I8)
+        || !state.bools.contains(&value)
+    {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    let inserted = state.signed.insert(result);
+    let inserted = if type_kind == InputScalarType::I8 {
+        state.signed_bytes.insert(result)
+    } else {
+        state.signed.insert(result)
+    };
     debug_assert!(inserted, "new SSA value was already preflighted");
-    Ok(TernaryOperation::BoolToI32 {
-        result,
-        span: copy_span(span),
-        value,
+    let converted_span = copy_span(span);
+    Ok(if type_kind == InputScalarType::I8 {
+        TernaryOperation::BoolToI8 {
+            result,
+            span: converted_span,
+            value,
+        }
+    } else {
+        TernaryOperation::BoolToI32 {
+            result,
+            span: converted_span,
+            value,
+        }
     })
 }
 
