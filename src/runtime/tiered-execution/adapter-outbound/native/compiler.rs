@@ -119,6 +119,8 @@ pub fn compile_preflighted_clang_c23<'requirement>(
 {
     let source = lower_preflighted_clang_c23(program, runtime, target)
         .map_err(BootstrapCompilerError::Preflight)?;
+    // Ambient host include/driver overrides cannot change pinned C23
+    // bootstrap sources or the headers used to compile them.
     let mut child = Command::new(compiler)
         .args([
             "-x",
@@ -126,10 +128,13 @@ pub fn compile_preflighted_clang_c23<'requirement>(
             "-",
             "-std=c23",
             "-ffreestanding",
-            "-nostdinc",
+            // Keep pinned Clang resource headers, not host system headers.
+            "-nostdlibinc",
             "-Wall",
             "-Wextra",
             "-Werror",
+            // Shared bootstrap helpers need not all be used by one region.
+            "-Wno-unused-function",
             "-O2",
             "-c",
             "-target",
@@ -137,6 +142,13 @@ pub fn compile_preflighted_clang_c23<'requirement>(
             "-o",
             "-",
         ])
+        .env_remove("CPATH")
+        .env_remove("C_INCLUDE_PATH")
+        .env_remove("CPLUS_INCLUDE_PATH")
+        .env_remove("OBJC_INCLUDE_PATH")
+        .env_remove("OBJCPLUS_INCLUDE_PATH")
+        .env_remove("INCLUDE")
+        .env_remove("CCC_OVERRIDE_OPTIONS")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

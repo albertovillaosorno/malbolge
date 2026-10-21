@@ -58,6 +58,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
 - Shared prerequisite evidence includes portable IR v1 and cache identity that
   distinguishes OS, ISA, backend/native ABI revisions, required features, and
   exact canonical IR even under forced bucket-digest collisions.
+- The external Clang adapter retains only pinned compiler resource headers
+  through `-nostdlibinc`, not ambient host standard includes. It removes
+  inherited include-path and driver override variables before spawning Clang,
+  and excludes only unused shared helper warnings from strict `-Werror`.
+  A separate-process regression injects hostile `stddef.h`/`stdint.h`
+  shadow headers and still validates complete x86-64/AArch64 COFF candidates.
 - A Clang C23 bootstrap backend now emits real untrusted x86-64/AArch64 Windows
   COFF object candidates from the same portable IR. This proves the shared
   host-code boundary and target split. Safe-Rust COFF admission now verifies

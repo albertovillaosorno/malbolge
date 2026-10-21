@@ -117,6 +117,18 @@ bytes from stdout without temporary files. Profile-capacity `002` and runtime
 `001` diagnostics therefore precede even a missing-compiler launch failure.
 Pinned Clang 22.1.8 materializes real Windows COFF objects for both x86-64 and
 AArch64 under strict warning-clean C23 compilation through that product path.
+
+The bootstrap compiler's `-nostdlibinc` driver flag preserves the pinned
+Clang resource headers (including `<stddef.h>`), but excludes host standard
+include directories. It keeps `-Wall`, `-Wextra` and `-Werror`, with the
+narrow `-Wno-unused-function` exception for unused shared static helpers.
+
+The external child also removes inherited C/C++/Objective-C header-path and
+`CCC_OVERRIDE_OPTIONS` overrides before launch. An isolated process test
+injects shadow `<stddef.h>` and `<stdint.h>` headers through `CPATH` and
+`C_INCLUDE_PATH`; both x86-64 and AArch64 compiled objects still pass all
+independent COFF structural-admission and forged-object checks.
+
 Source and object containers remain explicitly `Untrusted*`: matching IR/target
 identity proves provenance of the claim, not semantic correctness of
 

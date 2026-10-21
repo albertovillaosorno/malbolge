@@ -47,6 +47,13 @@ rejects unresolved external dependencies. Internal ARM64 relocations to defined
 one-based section or the COFF-defined absolute-symbol sentinel; undefined,
 debug-only, and out-of-range section references fail closed.
 
+The Clang C23 bootstrap adapter uses a freestanding driver invocation with
+`-nostdlibinc` so only the pinned Clang resource headers remain available.
+It strips caller-controlled include-path and driver override environment
+variables before compiling, and treats emitted COFF bytes as untrusted.
+The pinned x86-64/AArch64 bootstrap regression injects hostile ambient
+standard-header shadows and still requires independent structural admission.
+
 The COFF file header must identify an object module: image-only flags such as
 `RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the
 optional-header size is zero. Image-only large-address, aggressive working-set,

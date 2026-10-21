@@ -273,6 +273,8 @@ pub mod retry_turn;
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::convert::Infallible;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::env;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::ErrorKind;
@@ -46331,6 +46333,88 @@ fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
         check_compiled_coff_case(&clang, &program, case)?;
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn hostile_header_fixture(directory: &Path) -> Result<(), String> {
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("create Clang header fixture: {error}"))?;
+    for name in ["stddef.h", "stdint.h"] {
+        fs::write(directory.join(name), b"#error AMBIENT_HEADER_INJECTION\n")
+            .map_err(|error| format!("write hostile {name}: {error}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_native_bootstrap_with_injected_ambient_header() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");
+    let program = native_program();
+    for case in [
+        CoffCompileCase {
+            expected_machine: [0x64, 0x86],
+            isa: HostIsa::X86_64,
+        },
+        CoffCompileCase {
+            expected_machine: [0x64, 0xaa],
+            isa: HostIsa::AArch64,
+        },
+    ] {
+        check_compiled_coff_case(&clang, &program, case)?;
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_bootstrap_header_environment_cannot_override_clang(
+    directory: &Path,
+) -> Result<(), String> {
+    let executable = env::current_exe()
+        .map_err(|error| format!("locate test executable: {error}"))?;
+    let output = Command::new(executable)
+        .args([
+            "--exact",
+            "native_bootstrap_compiler_ignores_ambient_header_injection",
+        ])
+        .env("MALBOLGE_BOOTSTRAP_HEADER_TEST_CHILD", "1")
+        .env("CPATH", directory)
+        .env("C_INCLUDE_PATH", directory)
+        .output()
+        .map_err(|error| format!("launch isolated Clang test: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "ambient header affected Clang: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_bootstrap_compiler_ignores_ambient_header_injection()
+-> Result<(), String> {
+    if env::var_os("MALBOLGE_BOOTSTRAP_HEADER_TEST_CHILD").is_some() {
+        return check_native_bootstrap_with_injected_ambient_header();
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/tiered_execution_bootstrap_header_environment")
+        .join(process_id().to_string());
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => return Err(format!("clear header fixture: {error}")),
+    }
+    let result = hostile_header_fixture(&directory).and_then(|()| {
+        assert_bootstrap_header_environment_cannot_override_clang(&directory)
+    });
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove hostile Clang fixture: {error}"));
+    result?;
+    cleanup
 }
 
 fn check_compiled_coff_case(
