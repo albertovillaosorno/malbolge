@@ -1375,29 +1375,42 @@ fn lower_byte_bitcast(
     let (result, span, type_kind, value) = input;
     let signed_source = state.signed_bytes.contains(&value);
     let unsigned_source = state.bytes.contains(&value);
-    if !((signed_source && type_kind == InputScalarType::U8)
-        || (unsigned_source && type_kind == InputScalarType::I8))
+    if !(signed_source || unsigned_source)
+        || !matches!(type_kind, InputScalarType::I8 | InputScalarType::U8)
     {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }
     ensure_new_value(state, result)?;
-    if signed_source {
-        let inserted = state.bytes.insert(result);
-        debug_assert!(inserted, "new SSA value was already preflighted");
-        Ok(TernaryOperation::BitcastI8ToU8 {
-            result,
-            span: copy_span(span),
-            value,
-        })
+    let inserted = if type_kind == InputScalarType::I8 {
+        state.signed_bytes.insert(result)
     } else {
-        let inserted = state.signed_bytes.insert(result);
-        debug_assert!(inserted, "new SSA value was already preflighted");
-        Ok(TernaryOperation::BitcastU8ToI8 {
+        state.bytes.insert(result)
+    };
+    debug_assert!(inserted, "new SSA value was already preflighted");
+    let converted_span = copy_span(span);
+    Ok(match (signed_source, type_kind) {
+        (true, InputScalarType::I8) => TernaryOperation::BitcastI8ToI8 {
             result,
-            span: copy_span(span),
+            span: converted_span,
             value,
-        })
-    }
+        },
+        (true, InputScalarType::U8) => TernaryOperation::BitcastI8ToU8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::I8) => TernaryOperation::BitcastU8ToI8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::U8) => TernaryOperation::BitcastU8ToU8 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
 }
 
 fn lower_integer_bitcast(

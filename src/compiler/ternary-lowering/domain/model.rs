@@ -906,6 +906,15 @@ pub enum TernaryOperation {
         /// Defined signed 32-bit source SSA identity.
         value: u32,
     },
+    /// Preserve one exact signed byte in a distinct same-kind SSA value.
+    BitcastI8ToI8 {
+        /// New signed byte result identity.
+        result: u32,
+        /// Original typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Previously defined signed byte SSA operand.
+        value: u32,
+    },
     /// Reinterpret one defined signed byte as an unsigned byte SSA value.
     BitcastI8ToU8 {
         /// New unsigned byte result SSA identity.
@@ -940,6 +949,15 @@ pub enum TernaryOperation {
         /// Original cast provenance.
         span: TernarySourceSpan,
         /// Previously defined unsigned byte source SSA identity.
+        value: u32,
+    },
+    /// Preserve one exact unsigned byte in a distinct same-kind SSA value.
+    BitcastU8ToU8 {
+        /// New unsigned byte result identity.
+        result: u32,
+        /// Original typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Previously defined unsigned byte SSA operand.
         value: u32,
     },
     /// Preserve a Boolean-to-signed-32-bit zero/one conversion as a new SSA.

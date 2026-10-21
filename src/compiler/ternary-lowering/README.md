@@ -59,6 +59,7 @@ Boolean SSA at tag `52`.
 
 Equal-width `i8 <-> u8` integer bitcasts carry
 separate SSA results at tags `53` and `54` without changing byte patterns.
+Same-kind byte bitcasts retain a new SSA result at tags `55` and `56`.
 Other signed narrow widths remain unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
