@@ -1326,11 +1326,59 @@ fn lower_word_constant(
     }
 }
 
+fn lower_truncate_word_to_halfword(
+    input: TruncateInput,
+    state: &mut LoweringState,
+) -> Result<TernaryOperation, TernaryLoweringError> {
+    let (result, span, kind, value) = input;
+    if !matches!(kind, InputScalarType::I16 | InputScalarType::U16) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    let signed_source = state.signed.contains(&value);
+    if !signed_source && !state.unsigned.contains(&value) {
+        return Err(TernaryLoweringError::UnsupportedInstruction);
+    }
+    ensure_new_value(state, result)?;
+    let inserted = if kind == InputScalarType::I16 {
+        state.signed_halves.insert(result)
+    } else {
+        state.unsigned_halves.insert(result)
+    };
+    debug_assert!(inserted, "new halfword SSA was already preflighted");
+    let converted_span = copy_span(span);
+    Ok(match (signed_source, kind) {
+        (true, InputScalarType::I16) => TernaryOperation::TruncateI32ToI16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (true, InputScalarType::U16) => TernaryOperation::TruncateI32ToU16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::I16) => TernaryOperation::TruncateU32ToI16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (false, InputScalarType::U16) => TernaryOperation::TruncateU32ToU16 {
+            result,
+            span: converted_span,
+            value,
+        },
+        (_, _) => return Err(TernaryLoweringError::UnsupportedInstruction),
+    })
+}
+
 fn lower_truncate_word_to_byte(
     input: TruncateInput,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
     let (result, span, type_kind, value) = input;
+    if matches!(type_kind, InputScalarType::I16 | InputScalarType::U16) {
+        return lower_truncate_word_to_halfword(input, state);
+    }
     if !matches!(type_kind, InputScalarType::U8 | InputScalarType::I8) {
         return Err(TernaryLoweringError::UnsupportedInstruction);
     }

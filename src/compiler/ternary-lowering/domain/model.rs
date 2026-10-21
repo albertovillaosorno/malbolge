@@ -1497,6 +1497,16 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Truncate signed 32-bit bits into new signed halfword SSA without host
+    /// math.
+    TruncateI32ToI16 {
+        /// Newly defined destination SSA identity.
+        result: u32,
+        /// Exact typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Defined signed 32-bit source SSA identity.
+        value: u32,
+    },
     /// Truncate one exact signed word to signed byte bits without host math.
     TruncateI32ToI8 {
         /// Distinct signed-byte SSA result.
@@ -1504,6 +1514,16 @@ pub enum TernaryOperation {
         /// Original typed-IR cast source provenance.
         span: TernarySourceSpan,
         /// Previously defined signed 32-bit SSA identity.
+        value: u32,
+    },
+    /// Truncate signed 32-bit bits into new unsigned halfword SSA without host
+    /// math.
+    TruncateI32ToU16 {
+        /// Newly defined destination SSA identity.
+        result: u32,
+        /// Exact typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Defined signed 32-bit source SSA identity.
         value: u32,
     },
     /// Truncate one exact `i32` value to its low eight bits as `u8`.
@@ -1515,6 +1535,16 @@ pub enum TernaryOperation {
         /// Upstream SSA source value identity.
         value: u32,
     },
+    /// Truncate unsigned 32-bit bits into new signed halfword SSA without host
+    /// math.
+    TruncateU32ToI16 {
+        /// Newly defined destination SSA identity.
+        result: u32,
+        /// Exact typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned 32-bit source SSA identity.
+        value: u32,
+    },
     /// Truncate one unsigned word to signed byte bits without host math.
     TruncateU32ToI8 {
         /// Distinct signed-byte SSA result.
@@ -1522,6 +1552,16 @@ pub enum TernaryOperation {
         /// Original typed-IR cast source provenance.
         span: TernarySourceSpan,
         /// Previously defined unsigned 32-bit SSA identity.
+        value: u32,
+    },
+    /// Truncate unsigned 32-bit bits into new unsigned halfword SSA without
+    /// host math.
+    TruncateU32ToU16 {
+        /// Newly defined destination SSA identity.
+        result: u32,
+        /// Exact typed-IR cast provenance.
+        span: TernarySourceSpan,
+        /// Defined unsigned 32-bit source SSA identity.
         value: u32,
     },
     /// Truncate an unsigned `u32` scalar to the exact low eight bits.

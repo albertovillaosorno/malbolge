@@ -378,7 +378,7 @@ pub enum InputInstruction {
         /// Defined signed 8-bit or 16-bit source SSA identity.
         value: u32,
     },
-    /// Truncate a defined 32-bit integer to exact `u8` or signed `i8` bits.
+    /// Truncate a defined 32-bit word to 8-bit or 16-bit scalar bits.
     TruncateInteger {
         /// Upstream SSA result identity.
         result: u32,

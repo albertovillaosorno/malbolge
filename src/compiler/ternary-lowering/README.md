@@ -86,7 +86,10 @@ All equal-width `i16`/`u16` signedness-preserving and signedness-changing
 bitcasts are symbolic under tags `70` through `73`, retaining distinct SSA
 source and result identities.
 
-Other 16-bit arithmetic, truncations and casts remain unsupported.
+Exact symbolic 32-to-16-bit truncations consume `i32`/`u32` SSA and define
+`i16`/`u16` results under tags `74` through `77`, without host computation.
+
+Other 16-bit arithmetic and remaining casts are unsupported.
 
 Validated `void` functions now terminate through a value-free `ReturnVoid`
 operation with no fake SSA result, preserving any preceding successful guest
