@@ -3049,6 +3049,7 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
 )
 def test_source_path_rejects_host_unrepresentable_filenames(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
     source_name: str,
 ) -> None:
     """Impossible source names cannot become durable provenance metadata."""
@@ -3058,11 +3059,24 @@ def test_source_path_rejects_host_unrepresentable_filenames(
         _ = progress.validate(invalid)
     with pytest.raises(ERROR, match="source path"):
         _ = progress.write_atomic(invalid)
+    checkpoint = b"admitted-checkpoint-data"
+    generation = _checkpointed(invalid, checkpoint=checkpoint, partial=None)
+    with pytest.raises(ERROR, match="source path"):
+        _ = progress.write_checkpoint_generation(generation, checkpoint)
+    assert generation.checkpoint_path is not None
+    assert not Path(generation.checkpoint_path).exists()
+
     document = progress.to_document(original)
     document["source_path"] = source_name
+    wire = json.dumps(document)
     with pytest.raises(ERROR, match="source path"):
-        _ = progress.loads(json.dumps(document))
-    assert not Path(invalid.progress_path).exists()
+        _ = progress.loads(wire)
+    destination = Path(original.progress_path)
+    _ = destination.write_text(wire, encoding="utf-8")
+    assert progress.main([str(destination)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert INSPECTION_FAILED_PREFIX in captured.err
 
 
 @pytest.mark.skipif(
