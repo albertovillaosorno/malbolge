@@ -412,8 +412,9 @@ delegates metadata validation, binary-safe extraction, or continuous
 validated summary streaming without parsing sidecar JSON in Rust.
 
 The product CLI now launches that pinned interpreter with Python isolated
-mode, so ambient PYTHONPATH and user-site modules cannot inject an imported
-sitecustomize before the trusted sidecar inspector starts. End-to-end evidence
+mode, so ambient PYTHONPATH, PYTHONHOME and user-site modules cannot
+redirect startup or inject sitecustomize before the trusted inspector starts.
+End-to-end evidence
 provides an intentionally hostile module path and requires no marker write
 while the missing-pointer diagnostic still comes from the verified inspector.
 

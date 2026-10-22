@@ -316,6 +316,7 @@ fn checkpoint_info_does_not_import_ambient_sitecustomize() -> Result<(), String>
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .env("MALBOLGE_ROOT", root)
         .env("PYTHONPATH", &directory)
+        .env("PYTHONHOME", &directory)
         .arg("--checkpoint-info")
         .arg(&missing)
         .output()
