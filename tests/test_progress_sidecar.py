@@ -1408,6 +1408,37 @@ def test_direct_sidecar_foreign_fields_fail_typed(tmp_path: Path) -> None:
         _ = progress.validate(cast("progress.ProgressSidecar", object()))
 
 
+@pytest.mark.parametrize(
+    "invalid_output",
+    ["", ".", "..", "nested/", "nested/.", "nested/.."],
+)
+def test_output_path_requires_a_filename_before_publication(
+    invalid_output: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Directory-only output names cannot create hidden progress members."""
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ERROR, match="output path must name a file"):
+        _ = progress.progress_path(invalid_output)
+    with pytest.raises(ERROR, match="output path must name a file"):
+        _ = progress.checkpoint_path(invalid_output, 1)
+    with pytest.raises(ERROR, match="output path must name a file"):
+        _ = progress.partial_path(invalid_output, 1)
+
+    original = _sidecar(tmp_path)
+    candidate = replace(
+        original,
+        output_path=invalid_output,
+        progress_path=f"{invalid_output}.progress.json",
+    )
+    with pytest.raises(ERROR, match="output"):
+        _ = progress.validate(candidate)
+    with pytest.raises(ERROR, match="output"):
+        _ = progress.write_atomic(candidate)
+    assert not Path(candidate.progress_path).exists()
+
+
 def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
     """Generation paths are predictable and devices are not resume identity."""
     sidecar = _sidecar(tmp_path)

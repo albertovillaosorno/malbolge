@@ -583,10 +583,17 @@ def _admit_filesystem_path(text: str, context: str) -> str:
 
 def _output_path_text(output: object) -> str:
     if type(output) is str:
-        return _admit_filesystem_path(output, "output path")
-    if isinstance(output, Path):
-        return _admit_filesystem_path(str(output), "output path")
-    _fail("output path must use an exact string or pathlib Path")
+        text = output
+    elif isinstance(output, Path):
+        text = str(output)
+    else:
+        _fail("output path must use an exact string or pathlib Path")
+    admitted = _admit_filesystem_path(text, "output path")
+    # Path.name would normalize trailing separators and dot-only segments.
+    leaf = os.path.basename(admitted)  # ruff: ignore[os-path-basename]
+    if leaf in {"", ".", ".."}:
+        _fail("output path must name a file")
+    return admitted
 
 
 def _read_path(path: object) -> Path:
