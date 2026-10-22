@@ -200,6 +200,7 @@ fn extract_with_limits(
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command
+        .arg("-I")
         .arg("--")
         .arg(request.inspector)
         .arg(EXTRACT_ARGUMENT)

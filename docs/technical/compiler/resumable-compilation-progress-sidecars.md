@@ -390,6 +390,12 @@ command; the special lone `-` stdin-script argument is rejected before spawn.
 Typed-IR and ternary regressions reproduce the former misclassification
 and require transport rejection rather than accepting empty stdout.
 
+Both stage transports invoke their configured Python interpreters in isolated
+mode before the option terminator. This ignores inherited Python import-path
+and startup environment variables while preserving explicit inspector paths.
+Focused stage regressions require the child to report isolated mode; the
+production resume bridges still independently validate restored IR bytes.
+
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
 reaping the direct child. Regression fixtures verify that descendants cannot

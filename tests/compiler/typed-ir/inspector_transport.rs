@@ -88,6 +88,18 @@ fn limits(stdout: usize, stderr: usize, timeout: Duration) -> InspectorLimits {
 }
 
 #[test]
+fn requires_isolated_python_inspector_runtime() {
+    let observed = run_fixture(
+        concat!(
+            "import sys\n",
+            "sys.stdout.buffer.write(str(sys.flags.isolated).encode())\n"
+        ),
+        limits(1024, 1024, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Ok(b"1".to_vec()));
+}
+
+#[test]
 fn accepts_concurrent_large_stdout_drain() {
     let observed = run_fixture(
         "import sys\nsys.stdout.buffer.write(b'x' * 262144)\n",

@@ -96,6 +96,18 @@ fn inspect_script(
 }
 
 #[test]
+fn requires_isolated_python_inspector_runtime() {
+    let observed = inspect_script(
+        concat!(
+            "import sys\n",
+            "sys.stdout.buffer.write(str(sys.flags.isolated).encode())\n"
+        ),
+        budget(1024, 1024, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Ok(b"1".to_vec()));
+}
+
+#[test]
 fn returns_complete_stdout_larger_than_one_pipe_buffer() {
     let payload = inspect_script(
         "import sys\nsys.stdout.buffer.write(b'x'*262144)\n",

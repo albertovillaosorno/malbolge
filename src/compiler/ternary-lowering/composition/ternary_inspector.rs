@@ -216,6 +216,7 @@ fn extract_with_budget(
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command
+        .arg("-I")
         .arg("--")
         .arg(request.inspector)
         .arg(EXTRACT_SWITCH)
