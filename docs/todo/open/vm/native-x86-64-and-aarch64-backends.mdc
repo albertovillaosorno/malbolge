@@ -79,6 +79,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A nonzero direct-compiler exit now also kills remaining ordinary pipe
   holders before threaded output collection joins. Linux regressions require
   prompt exit-code and diagnostic preservation for both host ISAs.
+  The external group-signal helper now suppresses its own stdout/stderr;
+  host cleanup errors cannot impersonate compiler diagnostics.
 
   Termination uses the absolute `/usr/bin/kill` host utility; deliberately
   detached child sessions and non-Linux process-tree containment remain

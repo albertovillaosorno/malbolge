@@ -100,6 +100,8 @@ A failed direct compiler now also terminates ordinary inherited-pipe holders
 before joining its drain threads, rather than waiting for natural EOF from
 forked descendants. A Linux regression runs failing fake compilers for both
 host ISAs and verifies prompt error classification with exact stderr bytes.
+The cleanup signal helper has null stdout/stderr so an already-absent group
+cannot inject host utility errors into the caller's diagnostic stream.
 
 This containment covers ordinary inherited Linux process groups, not
 malicious descendants that deliberately detach into unrelated sessions.

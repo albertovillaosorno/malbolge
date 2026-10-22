@@ -177,9 +177,13 @@ fn terminate_bootstrap_group(child: &mut Child) {
     {
         // A fresh process group also contains ordinary forked pipe holders.
         // POSIX signalling requires a host utility under the safe-Rust policy.
+        // The group may already be gone; do not leak utility errors into
+        // caller stderr or confuse them with compiler diagnostics.
         let _group_signal = Command::new("/usr/bin/kill")
             .args(["-s", "KILL", "--"])
             .arg(format!("-{}", child.id()))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
     }
     let _child_signal = child.kill();
