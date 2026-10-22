@@ -66,6 +66,10 @@ artifact. Bounded nonzero-exit diagnostics retain their exact byte contents.
 Independent subprocess fixtures overproduce both streams for x86-64/AArch64
 while checking cleanup and error classification.
 
+Exact diagnostic-boundary fixtures additionally retain all 256 KiB of stderr
+from a failed compiler, including NUL bytes, for both target ISAs. A single
+additional byte instead yields the typed stderr OutputLimit outcome.
+
 Bootstrap compiler source submission now transfers ownership of the stdin
 pipe to the writer thread and closes it at write completion. That exact EOF
 boundary is required by pinned Clang; retaining the parent-owned write handle

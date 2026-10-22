@@ -47039,6 +47039,44 @@ fn check_exact_bootstrap_output_limit(
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_stderr_budget_accepts_exact_boundary()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-exact-diagnostics")
+        .join(process_id().to_string());
+    let expected = BootstrapCompilerError::CompilerFailure {
+        code: Some(29i32),
+        stderr: vec![0u8; 256 * 1024].into_boxed_slice(),
+    };
+    let result = check_fake_clang_stream_case(
+        &directory,
+        "exact-stderr",
+        "dd if=/dev/zero bs=65536 count=4 1>&2 2>/dev/null; exit 29",
+        &expected,
+    )
+    .and_then(|()| {
+        check_fake_clang_stream_case(
+            &directory,
+            "one-byte-over-stderr",
+            concat!(
+                "dd if=/dev/zero bs=65536 count=4 1>&2 2>/dev/null;",
+                " printf x >&2; exit 29"
+            ),
+            &BootstrapCompilerError::OutputLimit {
+                stream: "stderr",
+                maximum_bytes: 256 * 1024,
+            },
+        )
+    });
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove diagnostics fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_preserves_bounded_stderr() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let directory = root
