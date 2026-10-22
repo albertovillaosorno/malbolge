@@ -278,6 +278,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   re-admission. Integration regressions prove fresh and progress paths converge
   on the same admitted stage state.
 
+  The typed-IR and ternary checkpoint extractors now isolate their Linux
+  inspector children into private process groups and kill ordinary inherited-
+  pipe descendants on deadline failure. Independent subprocess regressions
+  verify that neither child can leave a delayed filesystem side effect after
+  timeout; detached sessions and non-Linux process trees remain out of scope.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

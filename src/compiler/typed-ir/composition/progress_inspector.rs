@@ -34,6 +34,8 @@
 //! Bounded checkpoint-inspector child transport.
 
 use std::io::{self, Read as _};
+#[cfg(target_os = "linux")]
+use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -117,6 +119,16 @@ fn poll_pipe(receiver: &PipeReceiver, limit: usize) -> PipePoll {
 }
 
 fn terminate(child: &mut Child) {
+    #[cfg(target_os = "linux")]
+    {
+        // The isolated process group includes ordinary inherited-pipe holders.
+        let _group_signal = Command::new("/usr/bin/kill")
+            .args(["-s", "KILL", "--"])
+            .arg(format!("-{}", child.id()))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _killed = child.kill();
     let _reaped = child.wait();
 }
@@ -166,16 +178,19 @@ fn extract_with_limits(
         return Err(InspectorFailure::Rejected);
     }
     let started = Instant::now();
-    let mut child = Command::new(request.interpreter)
+    let mut command = Command::new(request.interpreter);
+    let _configured = command
         .arg(request.inspector)
         .arg(EXTRACT_ARGUMENT)
         .arg(request.codec)
         .arg(request.progress)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|_error| InspectorFailure::Launch)?;
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "linux")]
+    let _group = command.process_group(0);
+    let mut child =
+        command.spawn().map_err(|_error| InspectorFailure::Launch)?;
     let result = (|| {
         let stdout_pipe =
             child.stdout.take().ok_or(InspectorFailure::Rejected)?;

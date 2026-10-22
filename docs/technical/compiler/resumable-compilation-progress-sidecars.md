@@ -344,8 +344,12 @@ accepts partial output from an inspector failing resource or status admission.
 Timeouts and output overruns terminate and reap the direct inspector child;
 a Linux regression independently verifies that a timed-out PID disappears.
 
-Descendants inheriting open pipes may leave detached reader workers after a
-failed call; terminating entire descendant process groups is not yet provided.
+On Linux, both transports isolate each inspector in a new process group and
+terminate ordinary inherited-pipe descendants on timeout or overflow before
+reaping the direct child. Regression fixtures verify that descendants cannot
+write delayed markers after the deadline. Other platforms retain direct-child
+termination, and deliberately detached Linux sessions are outside this bounded
+process-group claim.
 
 The product `malbolge` CLI now exposes
 `--checkpoint-info PROGRESS.json`,

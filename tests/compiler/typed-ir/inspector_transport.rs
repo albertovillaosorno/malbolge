@@ -140,6 +140,56 @@ fn terminates_stalled_child_at_inspection_deadline() {
     assert!(started.elapsed() < Duration::from_secs(3));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn kills_inherited_pipe_descendant_after_deadline() -> Result<(), String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("fixture clock failed: {error}"))?
+        .as_nanos();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
+    let marker =
+        root.join(format!("inspector-descendant-{}-{nonce}.txt", id()));
+    let ready = root.join(format!("inspector-launched-{}-{nonce}.txt", id()));
+    let child_code = format!(
+        concat!(
+            "import time,pathlib;time.sleep(1);",
+            "pathlib.Path({:?}).write_text('orphan')",
+        ),
+        marker.to_string_lossy(),
+    );
+    let script = format!(
+        concat!(
+            "import subprocess,sys,pathlib\n",
+            "subprocess.Popen([sys.executable,'-c',{:?}],",
+            "stdout=sys.stdout,stderr=sys.stderr)\n",
+            "pathlib.Path({:?}).write_text('ready')\n",
+        ),
+        child_code,
+        ready.to_string_lossy(),
+    );
+    let observed =
+        run_fixture(&script, limits(1024, 1024, Duration::from_millis(500)));
+    let launched = ready.exists();
+    if launched {
+        remove_file(&ready)
+            .map_err(|error| format!("cleanup launch evidence: {error}"))?;
+    }
+    std::thread::sleep(Duration::from_millis(1200));
+    let escaped = marker.exists();
+    if escaped {
+        remove_file(&marker)
+            .map_err(|error| format!("cleanup escaped marker: {error}"))?;
+    }
+    assert!(launched, "test inspector never launched its descendant");
+    assert_eq!(observed, Err(InspectorFailure::Rejected));
+    assert!(
+        !escaped,
+        "an inherited-pipe descendant survived the deadline"
+    );
+    Ok(())
+}
+
 #[test]
 fn zero_deadline_rejects_without_child_creation() {
     let observed = run_fixture(
