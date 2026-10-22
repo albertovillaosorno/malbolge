@@ -132,6 +132,9 @@ sidecar = progress.ProgressSidecar(
 progress.write_checkpoint_generation(sidecar, checkpoint)
 "#;
 
+type InspectorPoisonCase<'argument> =
+    (&'argument [&'argument str], &'argument str);
+
 fn repository_python(root: &Path) -> PathBuf {
     if cfg!(windows) {
         root.join(".dependencies/python/3.14.7/python.exe")
@@ -313,29 +316,42 @@ fn checkpoint_info_does_not_import_ambient_sitecustomize() -> Result<(), String>
     write(&site, source)
         .map_err(|error| format!("create hostile module: {error}"))?;
     let missing = directory.join("not-published.progress.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
-        .env("MALBOLGE_ROOT", root)
-        .env("PYTHONPATH", &directory)
-        .env("PYTHONHOME", &directory)
-        .arg("--checkpoint-info")
-        .arg(&missing)
-        .output()
-        .map_err(|error| format!("run poisoned CLI inspection: {error}"))?;
-    let loaded = marker.exists();
+    let cases: &[InspectorPoisonCase<'_>] = &[
+        (
+            &["--checkpoint-info"],
+            "portable checkpoint inspection failed:",
+        ),
+        (
+            &["--extract-checkpoint", PORTABLE_CODEC],
+            "portable checkpoint extraction failed:",
+        ),
+        (&["--follow-progress"], "progress sidecar follow failed:"),
+    ];
+    let result = cases.iter().try_for_each(|(arguments, expected)| {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .env("MALBOLGE_ROOT", root)
+            .env("PYTHONPATH", &directory)
+            .env("PYTHONHOME", &directory)
+            .args(*arguments)
+            .arg(&missing)
+            .output()
+            .map_err(|error| format!("run poisoned CLI inspection: {error}"))?;
+        let loaded = marker.exists();
+        if loaded
+            || output.status.success()
+            || !output.stdout.is_empty()
+            || !String::from_utf8_lossy(&output.stderr).contains(expected)
+        {
+            return Err(format!(
+                "poisoned inspector {arguments:?}: marker={loaded}, status={}",
+                output.status
+            ));
+        }
+        Ok(())
+    });
     remove_dir_all(&directory)
         .map_err(|error| format!("cleanup hostile module: {error}"))?;
-    if !loaded
-        && !output.status.success()
-        && output.stdout.is_empty()
-        && String::from_utf8_lossy(&output.stderr)
-            .contains("portable checkpoint inspection failed:")
-    {
-        Ok(())
-    } else {
-        Err(format!(
-            "ambient Python sitecustomize was admitted: {loaded}"
-        ))
-    }
+    result
 }
 
 #[test]

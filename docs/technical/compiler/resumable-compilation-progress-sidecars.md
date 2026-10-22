@@ -420,7 +420,8 @@ mode, so ambient PYTHONPATH, PYTHONHOME and user-site modules cannot
 redirect startup or inject sitecustomize before the trusted inspector starts.
 End-to-end evidence
 provides an intentionally hostile module path and requires no marker write
-while the missing-pointer diagnostic still comes from the verified inspector.
+for checkpoint inspection, checkpoint extraction, or progress following.
+All three missing-pointer diagnostics still come from the verified inspector.
 
 Product compiler resume selection/wiring remains
 open because no product compilation command yet consumes restored typed IR.

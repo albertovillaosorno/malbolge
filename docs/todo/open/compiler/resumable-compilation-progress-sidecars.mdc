@@ -268,7 +268,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and immediate one-line exit for an already terminal sidecar.
   CLI inspector launch uses isolated Python so inherited PYTHONPATH and
   PYTHONHOME cannot redirect startup; an injected sitecustomize fixture
-  now verifies the inspector's ordinary missing-pointer diagnostic remains.
+  now verifies the distinct missing-pointer diagnostics for inspection,
+  extraction, and following, with no imported module side effects.
 
   Operator status summaries now percent-encode original filesystem path
   bytes so paths containing whitespace, control characters, percent signs,
