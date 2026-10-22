@@ -270,6 +270,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   PYTHONHOME cannot redirect startup; an injected sitecustomize fixture
   now verifies the distinct missing-pointer diagnostics for inspection,
   extraction, and following, with no imported module side effects.
+  A positive extraction fixture additionally requires exact NUL/0xFF-bearing
+  state bytes under hostile Python startup settings.
 
   Operator status summaries now percent-encode original filesystem path
   bytes so paths containing whitespace, control characters, percent signs,

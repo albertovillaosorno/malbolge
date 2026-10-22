@@ -577,6 +577,47 @@ fn extract_checkpoint_delegates_validation_to_trusted_inspector()
 }
 
 #[test]
+fn extraction_stays_binary_exact_under_poisoned_python_startup()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp")
+        .join(format!("cli-poisoned-extract-fixture-{}", id()));
+    let progress_path = publish_portable_fixture(root, &directory, false)?;
+    let marker = directory.join("ambient-injected");
+    let site = directory.join("sitecustomize.py");
+    let source = format!(
+        "from pathlib import Path\nPath({:?}).touch()\n",
+        marker.display().to_string(),
+    );
+    write(&site, source)
+        .map_err(|error| format!("write hostile site module: {error}"))?;
+    let output_result = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", root)
+        .env("PYTHONPATH", &directory)
+        .env("PYTHONHOME", directory.join("bad-home"))
+        .args(["--extract-checkpoint", PORTABLE_CODEC])
+        .arg(&progress_path)
+        .output()
+        .map_err(|error| format!("launch isolated extraction: {error}"));
+    let injected = marker.exists();
+    remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup poisoned extraction: {error}"))?;
+    let output = output_result?;
+    if injected
+        || !output.status.success()
+        || output.stdout != b"product-cli-state\x00\xff"
+        || !output.stderr.is_empty()
+    {
+        return Err(format!(
+            "poisoned extraction: injected={injected} status={}",
+            output.status
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn extract_checkpoint_preserves_verified_binary_state() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let directory = root

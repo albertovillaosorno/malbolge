@@ -422,6 +422,9 @@ End-to-end evidence
 provides an intentionally hostile module path and requires no marker write
 for checkpoint inspection, checkpoint extraction, or progress following.
 All three missing-pointer diagnostics still come from the verified inspector.
+A separate positive extraction fixture under the same poisoned Python startup
+environment also requires exact verified binary state, including NUL and 0xFF,
+without importing the hostile module.
 
 Product compiler resume selection/wiring remains
 open because no product compilation command yet consumes restored typed IR.
