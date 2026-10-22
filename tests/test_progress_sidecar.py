@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
 from typing import override
+from urllib.parse import unquote_to_bytes
 
 import pytest
 from scripts import progress_sidecar as progress
@@ -5555,6 +5556,44 @@ def test_operator_summary_reports_exact_timing_and_resume_paths(
     assert f"progress={sidecar.progress_path}" in summary
     assert f"checkpoint={sidecar.checkpoint_path}" in summary
     assert f"partial={sidecar.partial_path}" in summary
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="Windows forbids line breaks"
+)
+def test_summary_encodes_unsafe_filesystem_path_bytes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Opaque file names never split an operator status into several lines."""
+    escaped = os.fsdecode(bytes((255,)))
+    output = tmp_path / f"job with space\tline\nbreak\r%{escaped}.malbolge"
+    original = _sidecar(tmp_path)
+    sidecar = replace(
+        original,
+        output_path=str(output),
+        progress_path=str(progress.progress_path(output)),
+    )
+    checkpointed = _checkpointed(sidecar)
+    summary = progress.render_summary(checkpointed)
+    assert summary.count("\n") == 1
+    parts = summary.removesuffix("\n").split(" ")
+    path_fields = dict(part.partition("=")[::2] for part in parts)
+    assert len(path_fields) == len(parts)
+    for key, path in (
+        ("progress", checkpointed.progress_path),
+        ("checkpoint", checkpointed.checkpoint_path),
+        ("partial", checkpointed.partial_path),
+    ):
+        assert path is not None
+        assert unquote_to_bytes(path_fields[key]) == os.fsencode(path)
+
+    destination = progress.write_atomic(sidecar)
+    assert progress.main([str(destination)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == progress.render_summary(sidecar)
+    assert captured.out.count("\n") == 1
+    assert not captured.err
 
 
 def test_inspector_cli_prints_summary_and_fails_closed(

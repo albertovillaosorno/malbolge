@@ -453,8 +453,15 @@ scientific timing:
 The summary includes status, stage, completed/total units, active/wall/paused
 nanoseconds, verification/serialization/checkpoint nanoseconds, and canonical
 progress/checkpoint/partial paths. The JSON sidecar remains the machine-readable
-authority; this line is an operator view over the same validated record. Invalid
-UTF-8 is converted to the same stable inspection failure as malformed schema or
+authority; this line is an operator view over the same validated record.
+
+Path values in the summary use percent-encoded filesystem bytes with `/`
+separators preserved, keeping each progress update on one line even if the
+original filename contains spaces, tabs, newlines, or non-UTF-8 POSIX bytes.
+Decode a displayed path with URL percent-decoding to bytes, followed by the
+host's filesystem decoding; `none` denotes an absent checkpoint or partial.
+The durable sidecar JSON retains its original canonical path spellings.
+Invalid UTF-8 is converted to the same stable inspection failure as malformed schema or
 missing storage rather than escaping as a decoder exception.
 
 A verified inner checkpoint payload can be extracted without trusting the

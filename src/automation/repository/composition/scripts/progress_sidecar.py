@@ -65,6 +65,7 @@ from typing import Never
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
+from urllib.parse import quote_from_bytes
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2460,6 +2461,18 @@ def render_checkpoint_metadata(metadata: PortableCheckpointMetadata) -> str:
     return " ".join(fields) + "\n"
 
 
+def _summary_path(path: str | None) -> str:
+    """Percent-encode original filesystem bytes for a single-line record.
+
+    Returns:
+        Lossless path field without raw whitespace or control characters.
+
+    """
+    if path is None:
+        return "none"
+    return quote_from_bytes(os.fsencode(path), safe="/")
+
+
 def render_summary(sidecar: ProgressSidecar) -> str:
     """Render one exact operator-facing progress and timing summary.
 
@@ -2469,8 +2482,8 @@ def render_summary(sidecar: ProgressSidecar) -> str:
     """
     value = validate(sidecar)
     total = "unknown" if value.units_total is None else str(value.units_total)
-    checkpoint = value.checkpoint_path or "none"
-    partial = value.partial_path or "none"
+    checkpoint = _summary_path(value.checkpoint_path)
+    partial = _summary_path(value.partial_path)
     fields = (
         f"status={value.status.value}",
         f"stage={value.stage}",
@@ -2481,7 +2494,7 @@ def render_summary(sidecar: ProgressSidecar) -> str:
         f"verification_ns={value.verification_elapsed_ns}",
         f"serialization_ns={value.serialization_elapsed_ns}",
         f"checkpoint_ns={value.checkpoint_elapsed_ns}",
-        f"progress={value.progress_path}",
+        f"progress={_summary_path(value.progress_path)}",
         f"checkpoint={checkpoint}",
         f"partial={partial}",
     )

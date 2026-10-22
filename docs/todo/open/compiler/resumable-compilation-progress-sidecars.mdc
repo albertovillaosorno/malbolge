@@ -264,6 +264,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   payload preservation through NUL/`0xFF`, fail-closed follow delegation,
   and immediate one-line exit for an already terminal sidecar.
 
+  Operator status summaries now percent-encode original filesystem path
+  bytes so paths containing whitespace, control characters, percent signs,
+  and non-UTF-8 POSIX names remain one-line and losslessly decodable.
+  Canonical durable sidecar paths and checkpoint bytes remain unchanged.
+
   The reference `--follow` inspector emits only validated changed snapshots at
   a fixed one-second poll cadence. It admits sampled checkpoint-generation
   jumps and short-lived `queued -> running -> checkpointed/completed` state
