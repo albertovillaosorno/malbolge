@@ -153,6 +153,27 @@ fn rejects_failed_inspector_before_inherited_pipe_holder_finishes() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_completed_diagnostics_without_waiting_for_stdout_descendant() {
+    let started = Instant::now();
+    let observed = run_fixture(
+        concat!(
+            "import subprocess,sys\n",
+            "subprocess.Popen([sys.executable,'-c',",
+            "'import time;time.sleep(3)'],",
+            "stdout=sys.stdout,stderr=subprocess.DEVNULL)\n",
+            "sys.stderr.write('invalid inspector diagnostics')\n",
+        ),
+        limits(1024, 1024, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Err(InspectorFailure::Rejected));
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "completed inspector diagnostics waited for a stdout pipe holder"
+    );
+}
+
 #[test]
 fn terminates_stalled_child_at_inspection_deadline() {
     let started = Instant::now();

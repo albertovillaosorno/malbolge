@@ -127,6 +127,10 @@ fn accept_event(
     if destination.is_some() || bytes.len() > max {
         return Err(TransportError::Rejected);
     }
+    if matches!(event.kind, PipeKind::Diagnostic) && !bytes.is_empty() {
+        // A completed diagnostic is fatal even when descendants hold stdout.
+        return Err(TransportError::Rejected);
+    }
     *destination = Some(bytes);
     Ok(())
 }

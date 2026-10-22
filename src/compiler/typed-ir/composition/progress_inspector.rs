@@ -152,6 +152,11 @@ fn collect(
         if diagnostics.is_none() {
             diagnostics = poll_pipe(&readers.stderr, limits.stderr)?;
         }
+        if diagnostics.as_ref().is_some_and(|bytes| !bytes.is_empty()) {
+            // A closed diagnostic stream already disqualifies all stdout.
+            // Do not wait for inherited stdout handles to close.
+            return Err(InspectorFailure::Rejected);
+        }
         if status.is_none() {
             status = child
                 .try_wait()

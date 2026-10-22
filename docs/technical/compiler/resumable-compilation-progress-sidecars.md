@@ -359,6 +359,11 @@ without waiting for pipe holders to close. The Linux regression launches a
 three-second inherited-pipe descendant from a failing inspector and confirms
 that rejection occurs before the descendant's natural exit.
 
+Both compiler inspector transports now also reject a completed nonempty
+stderr stream immediately, even when a successful direct child leaves stdout
+open in an inherited-pipe descendant. Linux regressions use a three-second
+stdout holder and require prompt failure without waiting for natural EOF.
+
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
 reaping the direct child. Regression fixtures verify that descendants cannot
