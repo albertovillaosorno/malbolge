@@ -119,8 +119,9 @@ On POSIX, valid byte-oriented filenames represented through Python's
 sidecar publication and inspection. Immutable checkpoint/partial members and
 the product checkpoint extractor also recover using those original byte paths.
 Malformed output paths cannot create sidecar pointers or sibling writer locks.
-Source provenance paths also reject NULs and host-unencodable surrogate text
-before any sidecar publication; valid POSIX byte-backed names remain allowed.
+Source provenance paths also reject NULs, unencodable surrogate text,
+and directory-only names before publication. Valid POSIX byte-backed and
+relative filenames remain allowed without filesystem existence checks.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and

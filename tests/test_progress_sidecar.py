@@ -3045,7 +3045,16 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "source_name",
-    ["source\x00evil.c", "source\ud800evil.c"],
+    [
+        "",
+        ".",
+        "..",
+        "nested/",
+        "nested/.",
+        "nested/..",
+        "source\x00evil.c",
+        "source\ud800evil.c",
+    ],
 )
 def test_source_path_rejects_host_unrepresentable_filenames(
     tmp_path: Path,
@@ -3055,13 +3064,13 @@ def test_source_path_rejects_host_unrepresentable_filenames(
     """Impossible source names cannot become durable provenance metadata."""
     original = _sidecar(tmp_path)
     invalid = replace(original, source_path=source_name)
-    with pytest.raises(ERROR, match="source path"):
+    with pytest.raises(ERROR, match=r"source[_ ]path"):
         _ = progress.validate(invalid)
-    with pytest.raises(ERROR, match="source path"):
+    with pytest.raises(ERROR, match=r"source[_ ]path"):
         _ = progress.write_atomic(invalid)
     checkpoint = b"admitted-checkpoint-data"
     generation = _checkpointed(invalid, checkpoint=checkpoint, partial=None)
-    with pytest.raises(ERROR, match="source path"):
+    with pytest.raises(ERROR, match=r"source[_ ]path"):
         _ = progress.write_checkpoint_generation(generation, checkpoint)
     assert generation.checkpoint_path is not None
     assert not Path(generation.checkpoint_path).exists()
@@ -3069,7 +3078,7 @@ def test_source_path_rejects_host_unrepresentable_filenames(
     document = progress.to_document(original)
     document["source_path"] = source_name
     wire = json.dumps(document)
-    with pytest.raises(ERROR, match="source path"):
+    with pytest.raises(ERROR, match=r"source[_ ]path"):
         _ = progress.loads(wire)
     destination = Path(original.progress_path)
     _ = destination.write_text(wire, encoding="utf-8")
@@ -3077,6 +3086,20 @@ def test_source_path_rejects_host_unrepresentable_filenames(
     captured = capsys.readouterr()
     assert not captured.out
     assert INSPECTION_FAILED_PREFIX in captured.err
+
+
+@pytest.mark.parametrize(
+    "source_name",
+    ["source.c", "nested/../source.c", "nested/./source.c"],
+)
+def test_source_path_preserves_unresolved_relative_provenance(
+    tmp_path: Path,
+    source_name: str,
+) -> None:
+    """Admission keeps valid lexical path text without opening the source."""
+    original = replace(_sidecar(tmp_path), source_path=source_name)
+    destination = progress.write_atomic(original)
+    assert progress.read(destination).source_path == source_name
 
 
 @pytest.mark.skipif(

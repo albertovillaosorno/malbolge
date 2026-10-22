@@ -1155,8 +1155,16 @@ def _validate_partial_path(sidecar: ProgressSidecar) -> None:
         _fail("partial_path does not match output and sequence")
 
 
+def _validate_source_path(path: str) -> None:
+    _ = _admit_filesystem_path(path, "source path")
+    # Path.name would discard trailing separators and dot-only segments.
+    leaf = os.path.basename(path)  # ruff: ignore[os-path-basename]
+    if leaf in {"", ".", ".."}:
+        _fail("source path must name a file")
+
+
 def _validate_paths(sidecar: ProgressSidecar) -> None:
-    _ = _admit_filesystem_path(sidecar.source_path, "source path")
+    _validate_source_path(sidecar.source_path)
     if sidecar.progress_path != str(progress_path(sidecar.output_path)):
         _fail("progress_path does not match output_path")
     _validate_checkpoint_path(sidecar)
