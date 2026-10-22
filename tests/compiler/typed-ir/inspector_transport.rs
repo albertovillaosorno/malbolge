@@ -317,6 +317,35 @@ fn zero_deadline_rejects_without_child_creation() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
+    let next = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let script =
+        temp_dir().join(format!("malbolge-typed-qualified-{}-{next}.py", id()));
+    write(
+        &script,
+        "import sys\nsys.stdout.buffer.write(b'qualified')\n",
+    )
+    .map_err(|error| format!("write inspector fixture: {error}"))?;
+    let observed = extract_with_limits(
+        ExtractRequest {
+            codec: "compiler.test-state-v1",
+            inspector: &script,
+            interpreter: Path::new("./.dependencies/python/3.14.7/bin/python"),
+            progress: Path::new("unread-progress.json"),
+        },
+        limits(1024, 1024, Duration::from_secs(5)),
+    );
+    remove_file(&script)
+        .map_err(|error| format!("clean inspector fixture: {error}"))?;
+    if observed == Ok(b"qualified".to_vec()) {
+        Ok(())
+    } else {
+        Err(format!("relative interpreter was rejected: {observed:?}"))
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn rejects_bare_interpreter_before_host_path_lookup() {
     let observed = extract_with_limits(
         ExtractRequest {

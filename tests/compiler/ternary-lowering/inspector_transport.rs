@@ -411,6 +411,35 @@ fn reaps_direct_inspector_child_after_deadline() -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
+    let next = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let script = temp_dir()
+        .join(format!("malbolge-ternary-qualified-{}-{next}.py", id()));
+    write(
+        &script,
+        "import sys\nsys.stdout.buffer.write(b'qualified')\n",
+    )
+    .map_err(|error| format!("write inspector fixture: {error}"))?;
+    let observed = extract_with_budget(
+        &RequestedInspector {
+            codec: "malbolge-ternary-ir-v1",
+            inspector: &script,
+            interpreter: Path::new("./.dependencies/python/3.14.7/bin/python"),
+            sidecar: Path::new("unread-progress.json"),
+        },
+        budget(1024, 1024, Duration::from_secs(5)),
+    );
+    remove_file(&script)
+        .map_err(|error| format!("clean inspector fixture: {error}"))?;
+    if observed == Ok(b"qualified".to_vec()) {
+        Ok(())
+    } else {
+        Err(format!("relative interpreter was rejected: {observed:?}"))
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn rejects_bare_interpreter_before_host_path_lookup() {
     let observed = extract_with_budget(
         &RequestedInspector {

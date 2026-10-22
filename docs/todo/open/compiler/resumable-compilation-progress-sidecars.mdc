@@ -295,6 +295,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Both stage transports now reject bare interpreter executable names
   before host PATH lookup. Rust integration regressions confirm the launch
   failure category rather than accepting an unrelated zero-exit executable.
+  Both stage suites also admit explicitly directory-qualified relative Python
+  paths and preserve the same complete stdout payload.
 
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux

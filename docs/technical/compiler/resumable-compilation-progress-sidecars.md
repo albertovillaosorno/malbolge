@@ -380,7 +380,9 @@ Both Rust compiler-stage inspector transports now require explicit
 directory-qualified interpreter paths. Bare executable names are rejected as
 launch failures before host PATH lookup, rather than admitting an unrelated
 zero-exit executable and empty checkpoint state. Their existing bounded pipe
-and deadline semantics remain unchanged.
+and deadline semantics remain unchanged. Linux positive fixtures also verify
+successful checkpoint extraction through directory-qualified relative Python
+interpreter paths in both compiler stages.
 
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
