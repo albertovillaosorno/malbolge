@@ -46536,6 +46536,22 @@ fn bootstrap_compiler_rejects_failed_child_without_inherited_pipe_wait()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn require_bootstrap_failure(
+    observed: &Result<(), BootstrapCompilerError<'_>>,
+    code: i32,
+    stderr: &[u8],
+) -> Result<(), String> {
+    let expected = Err(BootstrapCompilerError::CompilerFailure {
+        code: Some(code),
+        stderr: stderr.to_vec().into_boxed_slice(),
+    });
+    if observed != &expected {
+        return Err(format!("compiler failure identity drift: {observed:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn bootstrap_compiler_failed_group_preserves_independent_child()
 -> Result<(), String> {
@@ -46555,7 +46571,7 @@ fn bootstrap_compiler_failed_group_preserves_independent_child()
     )?;
     let program = native_program();
     let started = Instant::now();
-    let result = thread::scope(|scope| {
+    let result: Result<(), String> = thread::scope(|scope| {
         let sibling = scope.spawn(|| {
             compile_preflighted_clang_c23(
                 &unrelated,
@@ -46571,26 +46587,12 @@ fn bootstrap_compiler_failed_group_preserves_independent_child()
             native_target(HostIsa::X86_64),
         )
         .map(|_artifact| ());
-        let expected = Err(BootstrapCompilerError::CompilerFailure {
-            code: Some(29i32),
-            stderr: b"FAILED_GROUP\n".to_vec().into_boxed_slice(),
-        });
-        if observed != expected {
-            return Err(format!("failed group result: {observed:?}"));
-        }
+        require_bootstrap_failure(&observed, 29, b"FAILED_GROUP\n")?;
         let sibling_result = sibling
             .join()
             .map_err(|_panic| String::from("independent compiler panicked"))?
             .map(|_artifact| ());
-        let expected_sibling = Err(BootstrapCompilerError::CompilerFailure {
-            code: Some(31i32),
-            stderr: b"INDEPENDENT_OK\n".to_vec().into_boxed_slice(),
-        });
-        if sibling_result != expected_sibling {
-            return Err(format!(
-                "independent group result: {sibling_result:?}"
-            ));
-        }
+        require_bootstrap_failure(&sibling_result, 31, b"INDEPENDENT_OK\n")?;
         Ok(())
     });
     let elapsed = started.elapsed();
