@@ -169,6 +169,10 @@ checks similarly read at most the proposed immutable payload length, preventing
 oversized pre-existing files from forcing unbounded reads. Opaque checkpoint
 bytes retain their existing unrestricted payload contract.
 
+Bounded reads also use the opened inode's observed size to keep untrusted
+arbitrarily large declared counters from overflowing the host read-size API.
+Ordinary hash and exact byte-count checks still decide final admission.
+
 Atomic publication and directory durability confirmation are distinct commit
 phases. `ProgressSidecarCommittedError` carries the exact `published_path` when
 a failure is reported only after publication crossed its commit point. Its

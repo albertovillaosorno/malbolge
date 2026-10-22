@@ -1662,6 +1662,17 @@ def _read_regular_bytes(
     )
 
 
+def _read_with_budget(
+    stream: FileIO, max_bytes: int | None, observed_size: int
+) -> bytes:
+    if max_bytes is None:
+        return stream.read()
+    # A huge declared count cannot become an unrepresentable FileIO size
+    # when the admitted inode is much smaller.
+    read_size = min(max_bytes + 1, observed_size + 1, sys.maxsize)
+    return stream.read(read_size)
+
+
 def _read_stream_preserving_primary(
     stream: FileIO,
     *,
@@ -1680,9 +1691,7 @@ def _read_stream_preserving_primary(
     """
     path, context, initial = admission
     try:
-        payload = (
-            stream.read() if max_bytes is None else stream.read(max_bytes + 1)
-        )
+        payload = _read_with_budget(stream, max_bytes, initial.st_size)
         if max_bytes is not None and len(payload) > max_bytes:
             _fail(f"{context} exceeds maximum byte length")
         _verify_opened_read_identity(

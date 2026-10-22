@@ -1590,7 +1590,10 @@ def test_sidecar_reader_caps_payload_even_if_stream_overruns(
             ERROR, match="progress sidecar exceeds maximum byte"
         ):
             _ = progress.read(destination)
-    assert observed_sizes == [SIDECAR_WIRE_LIMIT + 1]
+    requested = min(
+        SIDECAR_WIRE_LIMIT + 1, destination.stat().st_size + 1
+    )
+    assert observed_sizes == [requested]
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
@@ -4133,6 +4136,21 @@ def test_checkpoint_read_rejects_named_pipe_generation_member(
     _make_named_pipe(payload_path)
     with pytest.raises(ERROR, match=f"{member} payload must be a regular file"):
         _ = progress.read_checkpoint_generation(sidecar)
+
+
+def test_partial_claim_larger_than_host_read_size_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """A huge declared byte count must not leak a FileIO size overflow."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"valid-partial"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+    inflated = replace(sidecar, partial_bytes=10**100)
+    with pytest.raises(ERROR, match="partial byte count does not match"):
+        _ = progress.read_checkpoint_generation(inflated)
 
 
 def test_immutable_collision_bounds_read_to_proposed_payload(
