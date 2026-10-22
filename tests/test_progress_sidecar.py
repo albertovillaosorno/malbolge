@@ -4940,6 +4940,46 @@ def test_write_atomic_wraps_mutable_publication_oserror(
         _ = progress.write_atomic(candidate)
 
 
+@pytest.mark.parametrize(
+    "publish",
+    [
+        pytest.param(progress.write_atomic, id="pointer"),
+        pytest.param(
+            lambda sidecar: progress.write_checkpoint_generation(
+                sidecar, b"valid checkpoint"
+            ),
+            id="generation",
+        ),
+    ],
+)
+def test_pointer_preflight_oserror_uses_stable_sidecar_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publish: Callable[[progress.ProgressSidecar], Path],
+) -> None:
+    """Metadata errors fail before a mutable pointer or generation write."""
+    candidate = _checkpointed(
+        _sidecar(tmp_path), checkpoint=b"valid checkpoint", partial=None
+    )
+    destination = Path(candidate.progress_path)
+    original_stat = Path.stat
+    denied_message = "injected pointer metadata failure"
+
+    def fail_pointer_probe(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == destination:
+            raise PermissionError(denied_message)
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", fail_pointer_probe)
+    with pytest.raises(ERROR, match="pointer preflight"):
+        _ = publish(candidate)
+    assert not destination.exists()
+    assert candidate.checkpoint_path is not None
+    assert not Path(candidate.checkpoint_path).exists()
+
+
 def test_write_atomic_rejects_short_stream_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

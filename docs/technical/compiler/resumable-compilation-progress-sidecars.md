@@ -546,7 +546,11 @@ diagnostic and never guessed into validity.
 
 Sidecar reads, writer-lock lifecycle, and mutable or immutable pre-publication
 failures are likewise translated into the stable sidecar error boundary rather
-than leaking host filesystem exceptions. Post-commit failures preserve the
+than leaking host filesystem exceptions. Both direct pointer updates and
+checkpoint generation publication use a non-following metadata probe: only
+an absent pointer is accepted as new, while permission and other metadata
+errors produce a typed failure before any durable generation is published.
+Post-commit failures preserve the
 committed path through `ProgressSidecarCommittedError`; directory-sync failures
 use its `ProgressSidecarDurabilityError` subtype, while later lock cleanup
 failures report that the pointer committed durably before cleanup failed.

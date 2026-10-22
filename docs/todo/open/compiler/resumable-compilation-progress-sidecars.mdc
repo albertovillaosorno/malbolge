@@ -293,6 +293,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   verify that neither child can leave a delayed filesystem side effect after
   timeout; detached sessions and non-Linux process trees remain out of scope.
 
+  Pointer preflight for direct sidecar and generation publication now uses
+  a non-following metadata probe, admitting only a genuinely missing pointer
+  and rejecting permission errors before publishing immutable state or JSON.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

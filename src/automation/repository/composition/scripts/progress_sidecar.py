@@ -2228,8 +2228,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     _reject_path_redirect(destination, "progress sidecar")
     with _writer_publication_lock(destination):
         _reject_path_redirect(destination, "progress sidecar")
-        if destination.exists():
-            _ = validate_transition(read(destination), validated)
+        _validate_existing_pointer(destination, validated)
         _validate_referenced_generation(validated)
         try:
             return _write_atomic_bytes(destination, payload)
@@ -2237,11 +2236,22 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             _fail(f"progress sidecar publication failed: {error}")
 
 
+def _validate_existing_pointer(
+    destination: Path, sidecar: ProgressSidecar
+) -> None:
+    try:
+        _ = destination.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        _fail(f"progress pointer preflight failed: {error}")
+    _ = validate_transition(read(destination), sidecar)
+
+
 def _preflight_generation_destination(sidecar: ProgressSidecar) -> None:
     destination = Path(sidecar.progress_path)
     _reject_path_redirect(destination, "progress sidecar")
-    if destination.exists():
-        _ = validate_transition(read(destination), sidecar)
+    _validate_existing_pointer(destination, sidecar)
 
 
 def _validated_generation_payloads(
