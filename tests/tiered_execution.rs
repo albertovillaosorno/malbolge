@@ -46506,6 +46506,37 @@ fn bootstrap_compiler_deadline_covers_inherited_pipe_holders()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_rejects_failed_child_without_inherited_pipe_wait()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-failed-descendant")
+        .join(process_id().to_string());
+    let started = Instant::now();
+    let result = check_fake_clang_stream_case(
+        &directory,
+        "failed-with-pipe-holder",
+        "sleep 3 & printf 'FAILURE_WITH_HOLDER\n' >&2; exit 29",
+        &BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"FAILURE_WITH_HOLDER\n".to_vec().into_boxed_slice(),
+        },
+    );
+    let elapsed = started.elapsed();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove failed descendant fixture: {error}"));
+    result?;
+    cleanup?;
+    if elapsed >= Duration::from_secs(2) {
+        return Err(format!(
+            "failed compiler waited for inherited pipe holders: {elapsed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_group_timeout_preserves_independent_child()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

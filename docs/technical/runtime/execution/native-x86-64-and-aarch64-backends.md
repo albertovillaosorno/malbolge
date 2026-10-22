@@ -96,6 +96,11 @@ An early nonzero compiler exit also retains its exit code and bounded stderr
 when an interrupted source write reports a broken pipe. A successful compiler
 still requires a completed source write before object admission.
 
+A failed direct compiler now also terminates ordinary inherited-pipe holders
+before joining its drain threads, rather than waiting for natural EOF from
+forked descendants. A Linux regression runs failing fake compilers for both
+host ISAs and verifies prompt error classification with exact stderr bytes.
+
 This containment covers ordinary inherited Linux process groups, not
 malicious descendants that deliberately detach into unrelated sessions.
 Non-Linux platforms retain the direct-child deadline and do not claim

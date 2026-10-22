@@ -239,6 +239,14 @@ fn wait_for_bounded_child(
                 },
             }
         }
+        if exit_status.is_some_and(|status| !status.success()) {
+            if !pipes.all_finished() {
+                // Failed compiler output cannot become a native artifact.
+                // Release inherited pipe holders without losing its exit code.
+                terminate_bootstrap_group(child);
+            }
+            return Ok(exit_status);
+        }
         if exit_status.is_some() && pipes.all_finished() {
             return Ok(exit_status);
         }
