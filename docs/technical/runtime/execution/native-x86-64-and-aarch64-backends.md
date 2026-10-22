@@ -105,6 +105,9 @@ cannot inject host utility errors into the caller's diagnostic stream.
 A concurrent failed-group regression also proves that early cleanup preserves
 an unrelated compiler's complete stderr and exit code on the other host ISA.
 
+A delayed-marker fixture also verifies that this early cleanup prevents
+ordinary descendants from creating files after their parent exits.
+
 This containment covers ordinary inherited Linux process groups, not
 malicious descendants that deliberately detach into unrelated sessions.
 Non-Linux platforms retain the direct-child deadline and do not claim

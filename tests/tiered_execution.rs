@@ -46536,6 +46536,52 @@ fn bootstrap_compiler_rejects_failed_child_without_inherited_pipe_wait()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_failed_group_cannot_write_delayed_marker()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-failed-descendant-marker")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("prepare marker fixture: {error}"))?;
+    let marker = directory.join("escaped-marker");
+    let ready = directory.join("child-launched");
+    let script = format!(
+        "(sleep 1; printf 'orphan' > '{}') & \
+         printf 'ready' > '{}'; \
+         printf 'GROUP_FAILURE\n' >&2; exit 29",
+        marker.display(),
+        ready.display(),
+    );
+    let started = Instant::now();
+    let observed = check_fake_clang_stream_case(
+        &directory,
+        "failed-descendant-marker",
+        &script,
+        &BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"GROUP_FAILURE\n".to_vec().into_boxed_slice(),
+        },
+    );
+    let elapsed = started.elapsed();
+    let launched = ready.is_file();
+    thread::sleep(Duration::from_millis(1200));
+    let escaped = marker.exists();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove marker fixture: {error}"));
+    observed?;
+    cleanup?;
+    if !launched || escaped || elapsed >= Duration::from_secs(2) {
+        return Err(format!(
+            "failed compiler left descendant: launched={launched}, \
+             escaped={escaped}, elapsed={elapsed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn require_bootstrap_failure(
     observed: &Result<(), BootstrapCompilerError<'_>>,
     code: i32,
