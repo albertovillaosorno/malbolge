@@ -69,6 +69,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   shadows and a forced Clang header via `CCC_OVERRIDE_OPTIONS`, while still
   validating complete x86-64/AArch64 COFF candidates.
 
+  Bare toolchain executable names now reject before spawning host PATH
+  commands; explicit directory-qualified paths remain allowed and profile
+  preflight still wins over a disallowed compiler path.
+
   Successful compiler timestamp normalization now requires the complete COFF
   file header and the exact requested target machine. Opaque truncated,
   foreign-machine, and wrong-target outputs remain byte-for-byte unchanged;

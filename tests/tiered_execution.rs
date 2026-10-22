@@ -36452,6 +36452,81 @@ fn bootstrap_compiler_rejects_capacity_before_process_launch()
     }
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn bootstrap_compiler_accepts_directory_qualified_relative_executable()
+-> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-relative-toolchain")
+        .join(process_id().to_string());
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "explicit-compiler",
+        "cat >/dev/null; printf 'EXPLICIT_PATH\n' >&2; exit 29",
+    )?;
+    let working = env::current_dir()
+        .map_err(|error| format!("locate test directory: {error}"))?;
+    let relative =
+        Path::new(".").join(compiler.strip_prefix(working).map_err(
+            |error| format!("relativize explicit compiler: {error}"),
+        )?);
+    let program = native_program();
+    let observed = compile_preflighted_clang_c23(
+        &relative,
+        &program,
+        safe_rust_profiled_capability(),
+        native_target(HostIsa::X86_64),
+    )
+    .map(|_artifact| ());
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove relative compiler fixture: {error}"));
+    let expected = Err(BootstrapCompilerError::CompilerFailure {
+        code: Some(29i32),
+        stderr: b"EXPLICIT_PATH\n".to_vec().into_boxed_slice(),
+    });
+    if observed != expected {
+        return Err(format!("relative compiler path changed: {observed:?}"));
+    }
+    cleanup
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn bootstrap_compiler_rejects_ambient_path_executable_lookup()
+-> Result<(), String> {
+    // A bare executable name invokes the host PATH search via Command::new.
+    let program = native_program();
+    let error = compile_preflighted_clang_c23(
+        Path::new("sh"),
+        &program,
+        safe_rust_profiled_capability(),
+        native_target(HostIsa::X86_64),
+    )
+    .map(|_artifact| ())
+    .err();
+    if !matches!(error, Some(BootstrapCompilerError::Launch(_))) {
+        return Err(format!(
+            "bare toolchain name reached host PATH: {error:?}"
+        ));
+    }
+    // Semantic profile validation still takes precedence over toolchain paths.
+    let preflight = compile_preflighted_clang_c23(
+        Path::new("sh"),
+        &program,
+        safe_rust_classic_capability(),
+        native_target(HostIsa::X86_64),
+    )
+    .map(|_artifact| ())
+    .err();
+    if matches!(preflight, Some(BootstrapCompilerError::Preflight(_))) {
+        Ok(())
+    } else {
+        Err(format!(
+            "toolchain path masked profile preflight: {preflight:?}"
+        ))
+    }
+}
+
 #[test]
 fn bootstrap_compiler_launch_failure_follows_profile_admission()
 -> Result<(), String> {

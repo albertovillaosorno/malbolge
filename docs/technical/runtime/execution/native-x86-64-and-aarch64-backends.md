@@ -54,6 +54,10 @@ variables before compiling, and treats emitted COFF bytes as untrusted.
 The pinned x86-64/AArch64 bootstrap regression injects hostile ambient
 standard-header shadows and still requires independent structural admission.
 
+Compiler paths must be absolute or directory-qualified relative paths. Bare
+executable names are rejected before launch instead of resolving through
+ambient host PATH, while semantic profile preflight retains precedence.
+
 The external compiler boundary now collects stdout and stderr on separate
 threads concurrently with source submission, rather than unbounded
 `wait_with_output()` collection. It admits at most 16 MiB of opaque object

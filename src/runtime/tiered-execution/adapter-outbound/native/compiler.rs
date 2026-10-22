@@ -432,6 +432,61 @@ fn normalize_compiler_output(
     UntrustedNativeObjectArtifact::from_compiler_output(source, object)
 }
 
+fn configured_clang_command(compiler: &Path, target_triple: &str) -> Command {
+    // Ambient host include/driver overrides cannot change pinned C23
+    // bootstrap sources or the headers used to compile them.
+    let mut command = Command::new(compiler);
+    let _configured = command
+        .args([
+            "-x",
+            "c",
+            "-",
+            "-std=c23",
+            "-ffreestanding",
+            // Keep pinned Clang resource headers, not host system headers.
+            "-nostdlibinc",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            // Shared bootstrap helpers need not all be used by one region.
+            "-Wno-unused-function",
+            "-O2",
+            "-c",
+            "-target",
+            target_triple,
+            "-o",
+            "-",
+        ])
+        .env_remove("CPATH")
+        .env_remove("C_INCLUDE_PATH")
+        .env_remove("CPLUS_INCLUDE_PATH")
+        .env_remove("OBJC_INCLUDE_PATH")
+        .env_remove("OBJCPLUS_INCLUDE_PATH")
+        .env_remove("INCLUDE")
+        .env_remove("CCC_OVERRIDE_OPTIONS")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt as _;
+        let _group = command.process_group(0);
+    }
+    command
+}
+
+fn require_explicit_compiler_path(
+    compiler: &Path,
+) -> Result<(), BootstrapCompilerError<'static>> {
+    // Bare executable names trigger host PATH lookup via Command::new.
+    if !compiler.is_absolute() && compiler.components().count() < 2 {
+        return Err(BootstrapCompilerError::Launch(
+            "native Clang executable must include an explicit directory".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Compile one portable region only after canonical profile/runtime preflight.
 ///
 /// The source is supplied on stdin and the object is captured from stdout, so
@@ -488,45 +543,9 @@ pub fn compile_preflighted_clang_c23_with_budget(
     }
     let source = lower_preflighted_clang_c23(program, runtime, target)
         .map_err(BootstrapCompilerError::Preflight)?;
-    // Ambient host include/driver overrides cannot change pinned C23
-    // bootstrap sources or the headers used to compile them.
-    let mut command = Command::new(compiler);
-    let _configured = command
-        .args([
-            "-x",
-            "c",
-            "-",
-            "-std=c23",
-            "-ffreestanding",
-            // Keep pinned Clang resource headers, not host system headers.
-            "-nostdlibinc",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            // Shared bootstrap helpers need not all be used by one region.
-            "-Wno-unused-function",
-            "-O2",
-            "-c",
-            "-target",
-            source.target_triple(),
-            "-o",
-            "-",
-        ])
-        .env_remove("CPATH")
-        .env_remove("C_INCLUDE_PATH")
-        .env_remove("CPLUS_INCLUDE_PATH")
-        .env_remove("OBJC_INCLUDE_PATH")
-        .env_remove("OBJCPLUS_INCLUDE_PATH")
-        .env_remove("INCLUDE")
-        .env_remove("CCC_OVERRIDE_OPTIONS")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt as _;
-        let _group = command.process_group(0);
-    }
+    require_explicit_compiler_path(compiler)?;
+    let mut command =
+        configured_clang_command(compiler, source.target_triple());
     let child = command.spawn().map_err(|error| {
         BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
     })?;
