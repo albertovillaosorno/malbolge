@@ -757,7 +757,7 @@ def _decode_portable_checkpoint_document(
         )
     except ProgressSidecarError:
         raise
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         _fail(f"invalid checkpoint JSON: {error}")
     return _portable_checkpoint_from_document(
         _mapping(parsed, "portable checkpoint"),
@@ -1582,7 +1582,7 @@ def loads(text: str) -> ProgressSidecar:
         )
     except ProgressSidecarError:
         raise
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         _fail(f"invalid progress JSON: {error}")
     return validate(_from_document(_mapping(parsed, "progress sidecar")))
 

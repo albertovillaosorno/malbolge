@@ -86,6 +86,7 @@ SUMMARY_FIELDS = (
     "checkpoint_ns=30",
 )
 CHECKPOINT_INSPECTION_FAILED_PREFIX = "portable checkpoint inspection failed:"
+CHECKPOINT_EXTRACTION_FAILED_PREFIX = "portable checkpoint extraction failed:"
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
 CHECKPOINT_INFO_HELP = "--checkpoint-info PROGRESS.json"
 EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
@@ -3042,6 +3043,45 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
         _ = progress.loads(huge_integer)
 
 
+def test_deep_json_progress_parser_and_cli_fail_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Nested JSON never leaks recursion exceptions to operator inspection."""
+    nested = ("[" * 100_000) + "null" + ("]" * 100_000)
+    with pytest.raises(ERROR, match="invalid progress JSON"):
+        _ = progress.loads(nested)
+
+    destination = tmp_path / PROGRESS_NAME
+    _ = destination.write_text(nested, encoding="utf-8")
+    assert progress.main([str(destination)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert INSPECTION_FAILED_PREFIX in captured.err
+
+
+def test_deep_portable_checkpoint_json_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Nested envelopes cannot produce partial checkpoint CLI output."""
+    raw = (("[" * 100_000) + "null" + ("]" * 100_000)).encode("ascii")
+    candidate = _checkpointed(_sidecar(tmp_path), checkpoint=raw, partial=None)
+    with pytest.raises(ERROR, match="invalid checkpoint JSON"):
+        _ = progress.decode_portable_checkpoint(candidate, "test-codec", raw)
+
+    destination = progress.write_checkpoint_generation(candidate, raw)
+    assert progress.main(["--checkpoint-info", str(destination)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert CHECKPOINT_INSPECTION_FAILED_PREFIX in captured.err
+    command = ["--extract-checkpoint", "test-codec", str(destination)]
+    assert progress.main(command) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert CHECKPOINT_EXTRACTION_FAILED_PREFIX in captured.err
+
+
 def test_impossible_timing_and_units_fail(tmp_path: Path) -> None:
     """Impossible counters or elapsed-time partitions are rejected."""
     sidecar = _sidecar(tmp_path)
@@ -4940,16 +4980,17 @@ def test_write_atomic_wraps_mutable_publication_oserror(
         _ = progress.write_atomic(candidate)
 
 
+def _publish_pointer_checkpoint_generation(
+    sidecar: progress.ProgressSidecar,
+) -> Path:
+    return progress.write_checkpoint_generation(sidecar, b"valid checkpoint")
+
+
 @pytest.mark.parametrize(
     "publish",
     [
         pytest.param(progress.write_atomic, id="pointer"),
-        pytest.param(
-            lambda sidecar: progress.write_checkpoint_generation(
-                sidecar, b"valid checkpoint"
-            ),
-            id="generation",
-        ),
+        pytest.param(_publish_pointer_checkpoint_generation, id="generation"),
     ],
 )
 def test_pointer_preflight_oserror_uses_stable_sidecar_failure(
