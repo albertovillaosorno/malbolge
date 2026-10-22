@@ -37,6 +37,8 @@ use std::fs::{remove_file, write};
 use std::path::{Path, PathBuf};
 use std::process::id;
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(target_os = "linux")]
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::{
@@ -175,18 +177,27 @@ fn kills_inherited_pipe_descendant_after_deadline() -> Result<(), String> {
         remove_file(&ready)
             .map_err(|error| format!("cleanup launch evidence: {error}"))?;
     }
-    std::thread::sleep(Duration::from_millis(1200));
+    thread::sleep(Duration::from_millis(1200));
     let escaped = marker.exists();
     if escaped {
         remove_file(&marker)
             .map_err(|error| format!("cleanup escaped marker: {error}"))?;
     }
-    assert!(launched, "test inspector never launched its descendant");
-    assert_eq!(observed, Err(InspectorFailure::Rejected));
-    assert!(
-        !escaped,
-        "an inherited-pipe descendant survived the deadline"
-    );
+    if !launched {
+        return Err(String::from(
+            "test inspector never launched its descendant",
+        ));
+    }
+    if observed != Err(InspectorFailure::Rejected) {
+        return Err(format!(
+            "expired inspector was not rejected: {observed:?}"
+        ));
+    }
+    if escaped {
+        return Err(String::from(
+            "inherited-pipe descendant survived deadline",
+        ));
+    }
     Ok(())
 }
 
