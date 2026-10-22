@@ -4105,7 +4105,7 @@ def test_partial_restoration_bounds_read_to_declared_byte_count(
     )
     assert sidecar.partial_path is not None
     with Path(sidecar.partial_path).open("r+b") as stream:
-        stream.truncate(8 * 1024 * 1024)
+        _ = stream.truncate(8 * 1024 * 1024)
     with pytest.raises(ERROR, match="partial payload exceeds maximum"):
         _ = progress.read_checkpoint_generation(sidecar)
     with pytest.raises(ERROR, match="partial payload exceeds maximum"):
@@ -4164,7 +4164,7 @@ def test_immutable_collision_bounds_read_to_proposed_payload(
     assert sidecar.checkpoint_path is not None
     collision = Path(sidecar.checkpoint_path)
     with collision.open("wb") as stream:
-        stream.truncate(8 * 1024 * 1024)
+        _ = stream.truncate(8 * 1024 * 1024)
     with pytest.raises(ERROR, match="immutable progress payload exceeds"):
         _ = progress.write_checkpoint_generation(sidecar, checkpoint)
     assert collision.stat().st_size == 8 * 1024 * 1024
