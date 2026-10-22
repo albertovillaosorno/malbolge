@@ -3043,6 +3043,45 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
         _ = progress.loads(huge_integer)
 
 
+@pytest.mark.parametrize(
+    "source_name",
+    ["source\x00evil.c", "source\ud800evil.c"],
+)
+def test_source_path_rejects_host_unrepresentable_filenames(
+    tmp_path: Path,
+    source_name: str,
+) -> None:
+    """Impossible source names cannot become durable provenance metadata."""
+    original = _sidecar(tmp_path)
+    invalid = replace(original, source_path=source_name)
+    with pytest.raises(ERROR, match="source path"):
+        _ = progress.validate(invalid)
+    with pytest.raises(ERROR, match="source path"):
+        _ = progress.write_atomic(invalid)
+    document = progress.to_document(original)
+    document["source_path"] = source_name
+    with pytest.raises(ERROR, match="source path"):
+        _ = progress.loads(json.dumps(document))
+    assert not Path(invalid.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX filesystem byte-backed names are platform-specific",
+)
+def test_source_path_retains_valid_posix_byte_backed_provenance(
+    tmp_path: Path,
+) -> None:
+    """Source identity accepts real POSIX byte filenames without rewriting."""
+    source = tmp_path / ("source-" + os.fsdecode(bytes((255,))) + ".c")
+    sidecar = replace(_sidecar(tmp_path), source_path=str(source))
+    destination = progress.write_atomic(sidecar)
+    assert progress.read(destination).source_path == str(source)
+    assert os.fsencode(progress.read(destination).source_path) == os.fsencode(
+        source
+    )
+
+
 def test_deep_json_progress_parser_and_cli_fail_closed(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

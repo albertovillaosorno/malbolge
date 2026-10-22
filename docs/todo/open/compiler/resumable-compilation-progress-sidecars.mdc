@@ -304,6 +304,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   converted to a stable sidecar or checkpoint-envelope error rather than a
   raw recursion traceback. A CLI regression also verifies no partial output.
 
+  Source provenance pathname validation now rejects NUL and unencodable
+  surrogate text before pointer publication, without demanding that the
+  referenced source file still exist or changing resume identity.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

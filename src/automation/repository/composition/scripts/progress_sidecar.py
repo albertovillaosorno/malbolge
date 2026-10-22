@@ -1156,6 +1156,7 @@ def _validate_partial_path(sidecar: ProgressSidecar) -> None:
 
 
 def _validate_paths(sidecar: ProgressSidecar) -> None:
+    _ = _admit_filesystem_path(sidecar.source_path, "source path")
     if sidecar.progress_path != str(progress_path(sidecar.output_path)):
         _fail("progress_path does not match output_path")
     _validate_checkpoint_path(sidecar)
