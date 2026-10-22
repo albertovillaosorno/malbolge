@@ -46337,6 +46337,43 @@ fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
     Ok(())
 }
 
+#[test]
+fn native_bootstrap_compiler_object_bytes_are_repeatable() -> Result<(), String>
+{
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");
+    if !clang.is_file() {
+        return Err(format!("pinned Clang missing: {}", clang.display()));
+    }
+    let program = native_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let target = native_target(isa);
+        let first = compile_preflighted_clang_c23(
+            &clang,
+            &program,
+            safe_rust_profiled_capability(),
+            target.clone(),
+        )
+        .map_err(|error| format!("initial {isa:?}: {error}"))?;
+        thread::sleep(Duration::from_millis(1100));
+        let second = compile_preflighted_clang_c23(
+            &clang,
+            &program,
+            safe_rust_profiled_capability(),
+            target,
+        )
+        .map_err(|error| format!("repeated {isa:?}: {error}"))?;
+        if first != second {
+            return Err(format!("{isa:?} COFF object bytes drifted"));
+        }
+        let _first_admitted = structurally_admit_coff(&first)
+            .map_err(|error| format!("{isa:?} COFF admission: {error}"))?;
+        let _second_admitted = structurally_admit_coff(&second)
+            .map_err(|error| format!("{isa:?} rebuilt COFF: {error}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn create_fake_bootstrap_clang(
     directory: &Path,

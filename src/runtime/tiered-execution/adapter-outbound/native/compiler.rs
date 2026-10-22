@@ -48,7 +48,8 @@ use malbolge::{RegionEffectProgram, RuntimeCapability};
 
 use super::{
     BootstrapProfilePreflightError, NativeArtifactError, NativeTargetIdentity,
-    UntrustedNativeObjectArtifact, lower_preflighted_clang_c23,
+    UntrustedNativeObjectArtifact, UntrustedNativeSourceArtifact,
+    lower_preflighted_clang_c23,
 };
 
 // Bootstrap Clang emits small relocatable objects; these are explicit host
@@ -392,6 +393,24 @@ fn collect_compiler_scoped<'requirement>(
     })
 }
 
+fn normalize_coff_timestamp(object: &mut [u8]) {
+    // COFF TimeDateStamp is linker bookkeeping, not an executed instruction.
+    // Normalize this host-clock field only for recognized bootstrap machines.
+    let supported =
+        object.starts_with(&[0x64, 0x86]) || object.starts_with(&[0x64, 0xaa]);
+    if supported && let Some(stamp) = object.get_mut(4..8) {
+        stamp.fill(0);
+    }
+}
+
+fn normalize_compiler_output(
+    source: &UntrustedNativeSourceArtifact,
+    mut object: Vec<u8>,
+) -> Result<UntrustedNativeObjectArtifact, NativeArtifactError> {
+    normalize_coff_timestamp(&mut object);
+    UntrustedNativeObjectArtifact::from_compiler_output(source, object)
+}
+
 /// Compile one portable region only after canonical profile/runtime preflight.
 ///
 /// The source is supplied on stdin and the object is captured from stdout, so
@@ -497,6 +516,6 @@ pub fn compile_preflighted_clang_c23_with_budget(
             stderr: output.stderr.into_boxed_slice(),
         });
     }
-    UntrustedNativeObjectArtifact::from_compiler_output(&source, output.stdout)
+    normalize_compiler_output(&source, output.stdout)
         .map_err(BootstrapCompilerError::Artifact)
 }

@@ -81,6 +81,11 @@ Both host ISAs pass real pinned-Clang object and independent COFF admission
 tests, while fake compiler cases verify stdin EOF, a 50-ms timed-out child,
 zero-budget early rejection, stream limits, and exact diagnostics.
 
+A repeated pinned-Clang compilation of the same canonical region IR and
+native key now proves byte-identical COFF for both x86-64 and AArch64.
+Each rebuilt object is independently structurally admitted before comparison
+is counted as durable reproducibility evidence.
+
 On Linux each compiler starts in its own process group. The deadline covers
 both direct-child execution and completion of source submission, stdout and
 stderr; observing the direct child's exit alone no longer releases the

@@ -62,6 +62,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   through `-nostdlibinc`, not ambient host standard includes. It removes
   inherited include-path and driver override variables before spawning Clang,
   and excludes only unused shared helper warnings from strict `-Werror`.
+  Both host ISAs also repeat a real pinned-Clang compile of the exact
+  same region and native key, requiring byte-identical COFF and independent
+  admission for each generated object.
   A separate-process regression injects hostile `stddef.h`/`stdint.h`
   shadows and a forced Clang header via `CCC_OVERRIDE_OPTIONS`, while still
   validating complete x86-64/AArch64 COFF candidates.
