@@ -46537,6 +46537,77 @@ fn bootstrap_compiler_rejects_failed_child_without_inherited_pipe_wait()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_failed_group_preserves_independent_child()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-failed-group-isolation")
+        .join(process_id().to_string());
+    let failed = create_fake_bootstrap_clang(
+        &directory,
+        "failed-group",
+        "sleep 3 & printf 'FAILED_GROUP\n' >&2; exit 29",
+    )?;
+    let unrelated = create_fake_bootstrap_clang(
+        &directory,
+        "independent-group",
+        "sleep 0.3; printf 'INDEPENDENT_OK\n' >&2; exit 31",
+    )?;
+    let program = native_program();
+    let started = Instant::now();
+    let result = thread::scope(|scope| {
+        let sibling = scope.spawn(|| {
+            compile_preflighted_clang_c23(
+                &unrelated,
+                &program,
+                safe_rust_profiled_capability(),
+                native_target(HostIsa::AArch64),
+            )
+        });
+        let observed = compile_preflighted_clang_c23(
+            &failed,
+            &program,
+            safe_rust_profiled_capability(),
+            native_target(HostIsa::X86_64),
+        )
+        .map(|_artifact| ());
+        let expected = Err(BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"FAILED_GROUP\n".to_vec().into_boxed_slice(),
+        });
+        if observed != expected {
+            return Err(format!("failed group result: {observed:?}"));
+        }
+        let sibling_result = sibling
+            .join()
+            .map_err(|_panic| String::from("independent compiler panicked"))?
+            .map(|_artifact| ());
+        let expected_sibling = Err(BootstrapCompilerError::CompilerFailure {
+            code: Some(31i32),
+            stderr: b"INDEPENDENT_OK\n".to_vec().into_boxed_slice(),
+        });
+        if sibling_result != expected_sibling {
+            return Err(format!(
+                "independent group result: {sibling_result:?}"
+            ));
+        }
+        Ok(())
+    });
+    let elapsed = started.elapsed();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove isolation fixture: {error}"));
+    result?;
+    cleanup?;
+    if elapsed >= Duration::from_secs(2) {
+        return Err(format!(
+            "failed group delayed independent child: {elapsed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_group_timeout_preserves_independent_child()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

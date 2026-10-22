@@ -81,6 +81,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   prompt exit-code and diagnostic preservation for both host ISAs.
   The external group-signal helper now suppresses its own stdout/stderr;
   host cleanup errors cannot impersonate compiler diagnostics.
+  A separate Linux sibling-group regression preserves an unrelated compiler
+  while the failed compiler's descendant group is terminated early.
 
   Termination uses the absolute `/usr/bin/kill` host utility; deliberately
   detached child sessions and non-Linux process-tree containment remain
