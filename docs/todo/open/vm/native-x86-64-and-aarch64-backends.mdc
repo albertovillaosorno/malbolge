@@ -70,7 +70,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A fixed 60-second host child deadline accepts tighter caller budgets,
   rejects zero before process launch, and terminates/reaps timed-out children.
   Fake processes verify EOF, 50-ms timeout, zero budget and unchanged stream
-  limits. Linux now isolates the compiler in a new process group and bounds
+  limits.
+
+  Linux now isolates the compiler in a new process group and bounds
   successful completion on EOF from all three pipes, not just direct-child
   exit. A 100-ms regression kills an ordinary three-second descendant that
   inherited stdout/stderr, while an unrelated concurrent compiler survives.
