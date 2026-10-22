@@ -315,6 +315,21 @@ fn zero_deadline_rejects_without_child_creation() {
     assert_eq!(observed, Err(InspectorFailure::Rejected));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_bare_interpreter_before_host_path_lookup() {
+    let observed = extract_with_limits(
+        ExtractRequest {
+            codec: "compiler.test-state-v1",
+            inspector: Path::new("ignored.py"),
+            interpreter: Path::new("true"),
+            progress: Path::new("ignored.json"),
+        },
+        limits(1024, 1024, Duration::from_secs(2)),
+    );
+    assert_eq!(observed, Err(InspectorFailure::Launch));
+}
+
 #[test]
 fn preserves_spawn_failure_category() {
     let observed = extract_with_limits(

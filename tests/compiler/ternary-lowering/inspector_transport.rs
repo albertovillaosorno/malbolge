@@ -409,6 +409,21 @@ fn reaps_direct_inspector_child_after_deadline() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_bare_interpreter_before_host_path_lookup() {
+    let observed = extract_with_budget(
+        &RequestedInspector {
+            codec: "malbolge-ternary-ir-v1",
+            inspector: Path::new("ignored.py"),
+            interpreter: Path::new("true"),
+            sidecar: Path::new("ignored.json"),
+        },
+        budget(1024, 1024, Duration::from_secs(2)),
+    );
+    assert_eq!(observed, Err(TransportError::Launch));
+}
+
 #[test]
 fn preserves_interpreter_launch_failure() {
     let observed = extract_with_budget(

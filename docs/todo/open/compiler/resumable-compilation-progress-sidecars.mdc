@@ -292,6 +292,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   waiting for descendants holding stdout/stderr open; a three-second inherited-
   pipe regression requires prompt failure instead of a deadline-sized wait.
 
+  Both stage transports now reject bare interpreter executable names
+  before host PATH lookup. Rust integration regressions confirm the launch
+  failure category rather than accepting an unrelated zero-exit executable.
+
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux
   regressions require fast rejection from zero-exit inspector children.

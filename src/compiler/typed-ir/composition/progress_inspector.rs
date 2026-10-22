@@ -187,6 +187,12 @@ fn extract_with_limits(
     if limits.timeout.is_zero() {
         return Err(InspectorFailure::Rejected);
     }
+    // A bare interpreter name would launch through ambient host PATH.
+    if !request.interpreter.is_absolute()
+        && request.interpreter.components().count() < 2
+    {
+        return Err(InspectorFailure::Launch);
+    }
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command

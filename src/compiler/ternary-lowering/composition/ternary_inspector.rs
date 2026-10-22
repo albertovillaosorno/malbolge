@@ -203,6 +203,12 @@ fn extract_with_budget(
     if budget.deadline.is_zero() {
         return Err(TransportError::Rejected);
     }
+    // Interpreter admission must never delegate to host PATH lookup.
+    if !request.interpreter.is_absolute()
+        && request.interpreter.components().count() < 2
+    {
+        return Err(TransportError::Launch);
+    }
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command

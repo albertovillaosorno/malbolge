@@ -376,6 +376,12 @@ stdout holder and require prompt failure without waiting for natural EOF.
 Additional marker fixtures prove that rejected diagnostics also terminate the
 ordinary descendants before they can perform delayed filesystem writes.
 
+Both Rust compiler-stage inspector transports now require explicit
+directory-qualified interpreter paths. Bare executable names are rejected as
+launch failures before host PATH lookup, rather than admitting an unrelated
+zero-exit executable and empty checkpoint state. Their existing bounded pipe
+and deadline semantics remain unchanged.
+
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
 reaping the direct child. Regression fixtures verify that descendants cannot
