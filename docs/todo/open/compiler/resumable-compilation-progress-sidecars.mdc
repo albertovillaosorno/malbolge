@@ -306,6 +306,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   The lone `-` stdin-script special case rejects before child launch.
   Both stage transports also require Python isolated mode before inspecting,
   with subprocess checks of the isolated interpreter startup flag.
+  Linux subprocess fixtures poison PYTHONHOME and PYTHONPATH while requiring
+  unchanged checkpoint bytes and no injected sitecustomize filesystem writes.
 
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux

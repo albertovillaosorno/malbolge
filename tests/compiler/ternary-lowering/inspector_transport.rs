@@ -33,7 +33,11 @@
 //! Ternary checkpoint process transport resource regressions.
 
 use std::env::temp_dir;
+#[cfg(target_os = "linux")]
+use std::fs::{Permissions, create_dir_all, remove_dir_all, set_permissions};
 use std::fs::{read_to_string, remove_file, write};
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::id;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -93,6 +97,59 @@ fn inspect_script(
     );
     remove_file(&script).map_err(|_error| TransportError::Rejected)?;
     result
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn isolated_python_ignores_poisoned_startup_modules() -> Result<(), String> {
+    let index = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let directory = temp_dir().join(format!(
+        "malbolge-ternary-inspector-poison-{}-{index}",
+        id()
+    ));
+    create_dir_all(&directory)
+        .map_err(|error| format!("create poison fixture: {error}"))?;
+    let marker = directory.join("injected");
+    let hostile = directory.join("sitecustomize.py");
+    let script = directory.join("trusted.py");
+    let wrapper = directory.join("interpreter");
+    let injected = format!(
+        "from pathlib import Path\nPath({:?}).touch()\n",
+        marker.display().to_string(),
+    );
+    write(&hostile, injected)
+        .map_err(|error| format!("write sitecustomize: {error}"))?;
+    write(&script, "import sys\nsys.stdout.buffer.write(b'trusted')\n")
+        .map_err(|error| format!("write trusted script: {error}"))?;
+    let launch = format!(
+        "#!/bin/sh\nPYTHONPATH='{}' PYTHONHOME='{}' exec '{}' \"$@\"\n",
+        directory.display(),
+        directory.join("bad-python-home").display(),
+        interpreter().display(),
+    );
+    write(&wrapper, launch)
+        .map_err(|error| format!("write poisoned wrapper: {error}"))?;
+    let permissions = Permissions::from_mode(0o700);
+    set_permissions(&wrapper, permissions)
+        .map_err(|error| format!("chmod poisoned wrapper: {error}"))?;
+    let observed = extract_with_budget(
+        &RequestedInspector {
+            codec: "malbolge-ternary-ir-v1",
+            inspector: &script,
+            interpreter: &wrapper,
+            sidecar: Path::new("not-consumed.json"),
+        },
+        budget(1024, 1024, Duration::from_secs(5)),
+    );
+    let injection_ran = marker.exists();
+    remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup poisoned fixture: {error}"))?;
+    if injection_ran || observed != Ok(b"trusted".to_vec()) {
+        return Err(format!(
+            "Python startup injection: {observed:?}, marker={injection_ran}"
+        ));
+    }
+    Ok(())
 }
 
 #[test]
