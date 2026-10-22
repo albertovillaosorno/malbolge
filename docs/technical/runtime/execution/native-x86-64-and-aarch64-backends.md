@@ -86,6 +86,17 @@ native key now proves byte-identical COFF for both x86-64 and AArch64.
 Each rebuilt object is independently structurally admitted before comparison
 is counted as durable reproducibility evidence.
 
+Timestamp normalization requires a complete 20-byte COFF file header and the
+exact machine ID of the requested host ISA. A short object, unrecognized
+machine, or wrong-target object retains its original opaque compiler bytes.
+Linux fake-compiler regression cases prove that only the intended timestamp
+bytes change for both target ISAs. None of this implies structural admission.
+
+The Linux fake-Clang fixture writes, chmods, and atomically renames staged
+executable scripts, rather than reopening a potentially executing inode.
+Repeated parallel bootstrap suites therefore avoid transient ETXTBSY failures
+without changing any native compiler output policy.
+
 On Linux each compiler starts in its own process group. The deadline covers
 both direct-child execution and completion of source submission, stdout and
 stderr; observing the direct child's exit alone no longer releases the

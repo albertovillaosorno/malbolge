@@ -51,6 +51,7 @@ use super::{
     UntrustedNativeObjectArtifact, UntrustedNativeSourceArtifact,
     lower_preflighted_clang_c23,
 };
+use crate::execution_cache::HostIsa;
 
 // Bootstrap Clang emits small relocatable objects; these are explicit host
 // safety budgets, not guest-profile capacity or a semantic size limit.
@@ -393,13 +394,18 @@ fn collect_compiler_scoped<'requirement>(
     })
 }
 
-fn normalize_coff_timestamp(object: &mut [u8]) {
-    // COFF TimeDateStamp is linker bookkeeping, not an executed instruction.
-    // Normalize this host-clock field only for recognized bootstrap machines.
-    let supported =
-        object.starts_with(&[0x64, 0x86]) || object.starts_with(&[0x64, 0xaa]);
-    if supported && let Some(stamp) = object.get_mut(4..8) {
-        stamp.fill(0);
+fn normalize_coff_timestamp(object: &mut [u8], isa: HostIsa) {
+    // TimeDateStamp is linker bookkeeping, never guest semantics. Preserve
+    // truncated and target-mismatched untrusted output byte-for-byte.
+    let machine: [u8; 2] = match isa {
+        HostIsa::AArch64 => [0x64, 0xaa],
+        HostIsa::X86_64 => [0x64, 0x86],
+    };
+    if object.len() >= 20
+        && object.starts_with(&machine)
+        && let Some(timestamp) = object.get_mut(4..8)
+    {
+        timestamp.fill(0);
     }
 }
 
@@ -407,7 +413,7 @@ fn normalize_compiler_output(
     source: &UntrustedNativeSourceArtifact,
     mut object: Vec<u8>,
 ) -> Result<UntrustedNativeObjectArtifact, NativeArtifactError> {
-    normalize_coff_timestamp(&mut object);
+    normalize_coff_timestamp(&mut object, source.key().target().host_isa());
     UntrustedNativeObjectArtifact::from_compiler_output(source, object)
 }
 

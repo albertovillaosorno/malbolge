@@ -2047,6 +2047,9 @@ struct PreparedComdatCycle {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+type FakeCoffBytePair<'bytes> = (&'bytes [u8], &'bytes [u8]);
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type NativeProcessPosixWorkerFixture = (PathBuf, NativeProcessHost);
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type PosixWorkerGuardMissStubs = [(Vec<u8>, NativeRegionMutationSurface); 7];
@@ -46375,6 +46378,94 @@ fn native_bootstrap_compiler_object_bytes_are_repeatable() -> Result<(), String>
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_fake_clang_object_bytes(
+    directory: &Path,
+    name: &str,
+    bytes: FakeCoffBytePair<'_>,
+    isa: HostIsa,
+) -> Result<(), String> {
+    let (raw, expected) = bytes;
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("create COFF fixture: {error}"))?;
+    let fixture = directory.join(format!("{name}.obj"));
+    fs::write(&fixture, raw)
+        .map_err(|error| format!("write COFF fixture: {error}"))?;
+    let compiler = create_fake_bootstrap_clang(
+        directory,
+        name,
+        &format!("cat >/dev/null; cat '{}'", fixture.display()),
+    )?;
+    let actual = compile_preflighted_clang_c23(
+        &compiler,
+        &native_program(),
+        safe_rust_profiled_capability(),
+        native_target(isa),
+    )
+    .map_err(|error| format!("{name} compiler: {error}"))?;
+    if actual.object() != expected {
+        return Err(format!("{name} changed unrelated opaque object bytes"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_timestamp_normalization_preserves_unrelated_object_bytes()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-timestamp-guard")
+        .join(process_id().to_string());
+    let mut valid_x86 = [0u8; 20];
+    valid_x86[..2].copy_from_slice(&[0x64, 0x86]);
+    valid_x86[4..8].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+    let mut canonical = valid_x86;
+    canonical[4..8].fill(0);
+    let mut valid_arm = valid_x86;
+    valid_arm[..2].copy_from_slice(&[0x64, 0xaa]);
+    let mut canonical_arm = valid_arm;
+    canonical_arm[4..8].fill(0);
+    let mut invalid_machine = valid_x86;
+    invalid_machine[..2].copy_from_slice(&[0x34, 0x12]);
+    let result = (|| {
+        check_fake_clang_object_bytes(
+            &directory,
+            "expected-x86",
+            (&valid_x86, &canonical),
+            HostIsa::X86_64,
+        )?;
+        check_fake_clang_object_bytes(
+            &directory,
+            "expected-arm",
+            (&valid_arm, &canonical_arm),
+            HostIsa::AArch64,
+        )?;
+        check_fake_clang_object_bytes(
+            &directory,
+            "wrong-isa",
+            (&valid_x86, &valid_x86),
+            HostIsa::AArch64,
+        )?;
+        check_fake_clang_object_bytes(
+            &directory,
+            "unknown-machine",
+            (&invalid_machine, &invalid_machine),
+            HostIsa::X86_64,
+        )?;
+        check_fake_clang_object_bytes(
+            &directory,
+            "truncated",
+            (&valid_x86[..8], &valid_x86[..8]),
+            HostIsa::X86_64,
+        )
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup timestamp fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn create_fake_bootstrap_clang(
     directory: &Path,
     name: &str,
@@ -46385,14 +46476,19 @@ fn create_fake_bootstrap_clang(
     fs::create_dir_all(directory)
         .map_err(|error| format!("create compiler fixture: {error}"))?;
     let executable = directory.join(name);
-    fs::write(&executable, format!("#!/bin/sh\n{script}\n"))
+    let staging = directory.join(format!(".{name}.next"));
+    // Never rewrite a shell script whose prior invocation may still be
+    // executing: Linux rejects that replacement with ETXTBSY.
+    fs::write(&staging, format!("#!/bin/sh\n{script}\n"))
         .map_err(|error| format!("write compiler fixture: {error}"))?;
-    let mut permissions = fs::metadata(&executable)
+    let mut permissions = fs::metadata(&staging)
         .map_err(|error| format!("stat compiler fixture: {error}"))?
         .permissions();
     permissions.set_mode(0o700);
-    fs::set_permissions(&executable, permissions)
+    fs::set_permissions(&staging, permissions)
         .map_err(|error| format!("chmod compiler fixture: {error}"))?;
+    fs::rename(&staging, &executable)
+        .map_err(|error| format!("publish compiler fixture: {error}"))?;
     Ok(executable)
 }
 

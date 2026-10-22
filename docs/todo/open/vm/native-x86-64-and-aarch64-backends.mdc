@@ -68,6 +68,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A separate-process regression injects hostile `stddef.h`/`stdint.h`
   shadows and a forced Clang header via `CCC_OVERRIDE_OPTIONS`, while still
   validating complete x86-64/AArch64 COFF candidates.
+
+  Successful compiler timestamp normalization now requires the complete COFF
+  file header and the exact requested target machine. Opaque truncated,
+  foreign-machine, and wrong-target outputs remain byte-for-byte unchanged;
+  tests independently cover both recognized targets and negative cases.
+  Fake-Clang executable fixtures are published by staging and atomic rename,
+  avoiding writes to scripts still in use by overlapping test subprocesses.
 - Bootstrap source submission now transfers and closes its stdin handle at
   EOF, fixing the otherwise indefinitely waiting pinned Clang process.
   A fixed 60-second host child deadline accepts tighter caller budgets,
