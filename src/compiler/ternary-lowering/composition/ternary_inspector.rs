@@ -209,9 +209,14 @@ fn extract_with_budget(
     {
         return Err(TransportError::Launch);
     }
+    // Python treats a lone dash as a stdin script even after `--`.
+    if request.inspector == Path::new("-") {
+        return Err(TransportError::Rejected);
+    }
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command
+        .arg("--")
         .arg(request.inspector)
         .arg(EXTRACT_SWITCH)
         .arg(request.codec)

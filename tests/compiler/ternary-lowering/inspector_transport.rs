@@ -454,6 +454,22 @@ fn rejects_bare_interpreter_before_host_path_lookup() {
 }
 
 #[test]
+fn interpreter_option_cannot_replace_trusted_inspector() {
+    for path in ["-V", "-"] {
+        let observed = extract_with_budget(
+            &RequestedInspector {
+                codec: "malbolge-ternary-ir-v1",
+                inspector: Path::new(path),
+                interpreter: &interpreter(),
+                sidecar: Path::new("not-used.json"),
+            },
+            budget(1024, 1024, Duration::from_secs(2)),
+        );
+        assert_eq!(observed, Err(TransportError::Rejected));
+    }
+}
+
+#[test]
 fn preserves_interpreter_launch_failure() {
     let observed = extract_with_budget(
         &RequestedInspector {

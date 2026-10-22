@@ -298,6 +298,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Both stage suites also admit explicitly directory-qualified relative Python
   paths and preserve the same complete stdout payload.
 
+  Python inspector script arguments now use the option terminator, preventing
+  interpreter flags such as `-V` from substituting for a trusted script.
+  The lone `-` stdin-script special case rejects before child launch.
+
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux
   regressions require fast rejection from zero-exit inspector children.

@@ -384,6 +384,12 @@ and deadline semantics remain unchanged. Linux positive fixtures also verify
 successful checkpoint extraction through directory-qualified relative Python
 interpreter paths in both compiler stages.
 
+Inspector script arguments now follow Python's `--` option terminator.
+A dash-prefixed script name cannot turn the interpreter into a version/option
+command; the special lone `-` stdin-script argument is rejected before spawn.
+Typed-IR and ternary regressions reproduce the former misclassification
+and require transport rejection rather than accepting empty stdout.
+
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
 reaping the direct child. Regression fixtures verify that descendants cannot

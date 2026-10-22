@@ -360,6 +360,22 @@ fn rejects_bare_interpreter_before_host_path_lookup() {
 }
 
 #[test]
+fn interpreter_option_cannot_replace_trusted_inspector() {
+    for path in ["-V", "-"] {
+        let observed = extract_with_limits(
+            ExtractRequest {
+                codec: "compiler.test-state-v1",
+                inspector: Path::new(path),
+                interpreter: &repository_python(),
+                progress: Path::new("not-used.json"),
+            },
+            limits(1024, 1024, Duration::from_secs(2)),
+        );
+        assert_eq!(observed, Err(InspectorFailure::Rejected));
+    }
+}
+
+#[test]
 fn preserves_spawn_failure_category() {
     let observed = extract_with_limits(
         ExtractRequest {
