@@ -5715,6 +5715,33 @@ def test_summary_encodes_unsafe_filesystem_path_bytes(
     assert not captured.err
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX byte-backed filenames differ from Windows pathnames",
+)
+def test_summary_preserves_every_admissible_posix_filename_byte(
+    tmp_path: Path,
+) -> None:
+    """All 254 non-NUL/non-separator bytes round-trip through summaries."""
+    original = _sidecar(tmp_path)
+    for value in range(1, 256):
+        if value == ord("/"):
+            continue
+        output = tmp_path / (
+            "opaque" + os.fsdecode(bytes((value,))) + ".malbolge"
+        )
+        candidate = replace(
+            original,
+            output_path=str(output),
+            progress_path=str(progress.progress_path(output)),
+        )
+        summary = progress.render_summary(candidate)
+        assert summary.count("\n") == 1
+        encoded = summary.removesuffix("\n").split("progress=", 1)[1]
+        encoded = encoded.split(" ", 1)[0]
+        assert unquote_to_bytes(encoded) == os.fsencode(candidate.progress_path)
+
+
 def test_inspector_cli_prints_summary_and_fails_closed(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -266,6 +266,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Operator status summaries now percent-encode original filesystem path
   bytes so paths containing whitespace, control characters, percent signs,
   and non-UTF-8 POSIX names remain one-line and losslessly decodable.
+  A 254-case POSIX filename-byte regression covers the complete admissible
+  single-byte domain, excluding NUL and the path separator.
   Canonical durable sidecar paths and checkpoint bytes remain unchanged.
 
   The reference `--follow` inspector emits only validated changed snapshots at
