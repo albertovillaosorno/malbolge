@@ -2049,7 +2049,8 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
 def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
     try:
         existing = _read_regular_bytes(
-            destination, "immutable progress payload"
+            destination, "immutable progress payload",
+            max_bytes=len(payload),
         )
     except OSError as error:
         _fail(f"immutable progress payload publication failed: {error}")
@@ -2177,9 +2178,13 @@ def _validate_payload(
     return payload
 
 
-def _read_payload(path: Path, context: str) -> bytes:
+def _read_payload(
+    path: Path, context: str, *, max_bytes: int | None = None
+) -> bytes:
     try:
-        return _read_regular_bytes(path, f"{context} payload")
+        return _read_regular_bytes(
+            path, f"{context} payload", max_bytes=max_bytes
+        )
     except OSError as error:
         _fail(f"{context} payload is unavailable: {error}")
 
@@ -2199,7 +2204,11 @@ def _validate_referenced_generation(sidecar: ProgressSidecar) -> None:
     )
     if sidecar.partial_path is None:
         return
-    partial = _read_payload(Path(sidecar.partial_path), "partial")
+    partial = _read_payload(
+        Path(sidecar.partial_path),
+        "partial",
+        max_bytes=sidecar.partial_bytes,
+    )
     _ = _validate_payload(
         partial,
         _PayloadReference(
@@ -2410,6 +2419,7 @@ def read_checkpoint_generation(
         partial = _read_payload(
             Path(validated.partial_path),
             "partial",
+            max_bytes=validated.partial_bytes,
         )
         _ = _validate_payload(
             partial,

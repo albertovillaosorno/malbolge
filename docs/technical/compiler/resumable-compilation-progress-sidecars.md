@@ -163,6 +163,12 @@ writers cannot both validate against one stale predecessor and then race the
 mutable pointer backward. A caller therefore cannot publish a syntactically
 valid sidecar that points at absent or corrupted generation bytes.
 
+Partial-output reads admit at most the sidecar-declared byte count before
+checking the complete payload hash and length. Immutable-generation collision
+checks similarly read at most the proposed immutable payload length, preventing
+oversized pre-existing files from forcing unbounded reads. Opaque checkpoint
+bytes retain their existing unrestricted payload contract.
+
 Atomic publication and directory durability confirmation are distinct commit
 phases. `ProgressSidecarCommittedError` carries the exact `published_path` when
 a failure is reported only after publication crossed its commit point. Its

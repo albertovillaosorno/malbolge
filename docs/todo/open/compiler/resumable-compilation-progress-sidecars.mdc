@@ -71,6 +71,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   sidecar-last atomic
   publication, a 1 MiB pointer-metadata admission budget checked before
   immutable publication and via bounded reads (not limiting opaque state),
+  declared-length bounded partial reads and proposed-length bounded immutable
+  collision reads without a new opaque checkpoint payload cap,
   process-shared writer serialization around transition validation
   and pointer replacement, typed fail-closed collision rechecks when an
   immutable target races away, direct-construction type admission,

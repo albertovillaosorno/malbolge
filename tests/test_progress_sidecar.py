@@ -4088,6 +4088,28 @@ def test_checkpoint_generation_publishes_payloads_before_pointer(
     assert Path(sidecar.partial_path or "").read_bytes() == partial
 
 
+def test_partial_restoration_bounds_read_to_declared_byte_count(
+    tmp_path: Path,
+) -> None:
+    """A forged larger partial must fail before its full bytes are loaded."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"tiny-partial"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    destination = progress.write_checkpoint_generation(
+        sidecar, checkpoint, partial
+    )
+    assert sidecar.partial_path is not None
+    with Path(sidecar.partial_path).open("r+b") as stream:
+        stream.truncate(8 * 1024 * 1024)
+    with pytest.raises(ERROR, match="partial payload exceeds maximum"):
+        _ = progress.read_checkpoint_generation(sidecar)
+    with pytest.raises(ERROR, match="partial payload exceeds maximum"):
+        _ = progress.write_atomic(sidecar)
+    assert progress.read(destination) == sidecar
+
+
 @pytest.mark.parametrize("member", ["checkpoint", "partial"])
 def test_checkpoint_read_rejects_named_pipe_generation_member(
     tmp_path: Path,
@@ -4111,6 +4133,24 @@ def test_checkpoint_read_rejects_named_pipe_generation_member(
     _make_named_pipe(payload_path)
     with pytest.raises(ERROR, match=f"{member} payload must be a regular file"):
         _ = progress.read_checkpoint_generation(sidecar)
+
+
+def test_immutable_collision_bounds_read_to_proposed_payload(
+    tmp_path: Path,
+) -> None:
+    """An oversized collided inode is rejected without loading its bytes."""
+    checkpoint = b"small-checkpoint"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    assert sidecar.checkpoint_path is not None
+    collision = Path(sidecar.checkpoint_path)
+    with collision.open("wb") as stream:
+        stream.truncate(8 * 1024 * 1024)
+    with pytest.raises(ERROR, match="immutable progress payload exceeds"):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert collision.stat().st_size == 8 * 1024 * 1024
+    assert not Path(sidecar.progress_path).exists()
 
 
 def test_immutable_collision_rejects_fifo_swapped_during_open(
