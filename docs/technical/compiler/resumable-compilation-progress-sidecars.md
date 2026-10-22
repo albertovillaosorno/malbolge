@@ -113,6 +113,7 @@ Canonical output-path helpers reject empty or directory-only output names
 instead of deriving hidden progress members in a working directory. Helpers
 and direct sidecar reads reject embedded NUL and ill-formed or host-unencodable
 Unicode filenames before storage access.
+
 On POSIX, valid byte-oriented filenames represented through Python's
 `surrogateescape` mechanism remain usable and round-trip through durable
 sidecar publication and inspection. Immutable checkpoint/partial members and
