@@ -295,6 +295,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Pointer preflight for direct sidecar and generation publication now uses
   a non-following metadata probe, admitting only a genuinely missing pointer
   and rejecting permission errors before publishing immutable state or JSON.
+  Regression coverage also preserves an already committed predecessor when
+  metadata admission fails for either publication route.
 
   Deeply nested valid JSON that overflows Python's JSON scanner is now
   converted to a stable sidecar or checkpoint-envelope error rather than a

@@ -5021,6 +5021,43 @@ def test_pointer_preflight_oserror_uses_stable_sidecar_failure(
     assert not Path(candidate.checkpoint_path).exists()
 
 
+@pytest.mark.parametrize(
+    "publish",
+    [
+        pytest.param(progress.write_atomic, id="pointer"),
+        pytest.param(_publish_pointer_checkpoint_generation, id="generation"),
+    ],
+)
+def test_pointer_preflight_denial_preserves_committed_predecessor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publish: Callable[[progress.ProgressSidecar], Path],
+) -> None:
+    """A denied metadata probe cannot replace a committed predecessor."""
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    candidate = _checkpointed(
+        original, checkpoint=b"valid checkpoint", partial=None
+    )
+    previous_stat = Path.stat
+    denied_message = "injected pointer access denied"
+
+    def reject_pointer_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == destination:
+            raise PermissionError(denied_message)
+        return previous_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", reject_pointer_stat)
+        with pytest.raises(ERROR, match="pointer preflight"):
+            _ = publish(candidate)
+    assert progress.read(destination) == original
+    assert candidate.checkpoint_path is not None
+    assert not Path(candidate.checkpoint_path).exists()
+
+
 def test_write_atomic_rejects_short_stream_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
