@@ -136,6 +136,12 @@ injects shadow `<stddef.h>` and `<stdint.h>` headers through `CPATH` and
 `CCC_OVERRIDE_OPTIONS`. Both x86-64 and AArch64 compiled objects still pass
 all independent COFF structural-admission and forged-object checks.
 
+The stdin writer now owns and closes the child pipe at source completion,
+allowing pinned Clang to observe EOF rather than remain blocked forever.
+A default 60-second direct-child host ceiling and a caller-selectable tighter
+positive budget terminate and reap non-exiting compilers with a typed deadline
+error; zero budget rejects before lowering and spawn.
+
 Source and object containers remain explicitly `Untrusted*`: matching IR/target
 identity proves provenance of the claim, not semantic correctness of
 

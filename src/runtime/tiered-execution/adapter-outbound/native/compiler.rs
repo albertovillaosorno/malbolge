@@ -39,7 +39,7 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use malbolge::{RegionEffectProgram, RuntimeCapability};
 
@@ -52,6 +52,7 @@ use super::{
 // safety budgets, not guest-profile capacity or a semantic size limit.
 const MAX_BOOTSTRAP_OBJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_BOOTSTRAP_DIAGNOSTIC_BYTES: usize = 256 * 1024;
+const MAX_BOOTSTRAP_COMPILER_MILLIS: u64 = 60_000;
 
 /// Failure while compiling one profile-preflighted bootstrap source artifact.
 #[derive(Debug, Eq, PartialEq)]
@@ -64,6 +65,11 @@ pub enum BootstrapCompilerError<'requirement> {
         code: Option<i32>,
         /// Exact compiler stderr bytes retained as untrusted diagnostics.
         stderr: Box<[u8]>,
+    },
+    /// Untrusted compiler exceeded the fixed wall-clock execution ceiling.
+    DeadlineExceeded {
+        /// Maximum allowed external compiler runtime in milliseconds.
+        maximum_ms: u64,
     },
     /// Compiler process could not be launched.
     Launch(Box<str>),
@@ -102,6 +108,9 @@ impl Display for BootstrapCompilerError<'_> {
                     "native Clang {stream} exceeded {maximum_bytes} bytes"
                 )
             },
+            Self::DeadlineExceeded { maximum_ms } => {
+                write!(f, "native Clang exceeded {maximum_ms} ms")
+            },
             Self::Launch(message) => {
                 write!(f, "native Clang launch failed: {message}")
             },
@@ -117,6 +126,24 @@ impl Display for BootstrapCompilerError<'_> {
             },
         }
     }
+}
+
+/// Bootstrap compiler request with explicit toolchain and semantic inputs.
+#[derive(Debug)]
+pub struct BootstrapCompilerRequest<'requirement> {
+    /// Explicit compiler executable, without ambient lookup.
+    pub compiler: &'requirement Path,
+    /// Preflighted portable region program.
+    pub program: &'requirement RegionEffectProgram,
+    /// Exact authoritative runtime capability.
+    pub runtime: &'static RuntimeCapability,
+    /// Exact target ISA and platform ABI.
+    pub target: NativeTargetIdentity,
+}
+
+struct CompilerDeadline {
+    budget: Duration,
+    started: Instant,
 }
 
 fn collect_bounded_pipe(
@@ -149,16 +176,22 @@ fn wait_for_bounded_child(
     child: &mut Child,
     object_limit: &AtomicBool,
     diagnostics_limit: &AtomicBool,
-) -> IoResult<ExitStatus> {
+    deadline: &CompilerDeadline,
+) -> IoResult<Option<ExitStatus>> {
     loop {
         if object_limit.load(Ordering::Acquire)
             || diagnostics_limit.load(Ordering::Acquire)
         {
             drop(child.kill());
-            return child.wait();
+            return child.wait().map(Some);
         }
         match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
+            Ok(Some(status)) => return Ok(Some(status)),
+            Ok(None) if deadline.started.elapsed() >= deadline.budget => {
+                drop(child.kill());
+                let _reaped = child.wait()?;
+                return Ok(None);
+            },
             Ok(None) => thread::sleep(Duration::from_millis(5)),
             Err(error) => {
                 drop(child.kill());
@@ -181,9 +214,43 @@ fn read_joined_pipe(
         .map_err(|error| BootstrapCompilerError::Wait(error.to_string().into()))
 }
 
+fn checked_compiler_status(
+    result: IoResult<Option<ExitStatus>>,
+    budget: Duration,
+) -> Result<ExitStatus, BootstrapCompilerError<'static>> {
+    result
+        .map_err(|error| {
+            BootstrapCompilerError::Wait(error.to_string().into())
+        })?
+        .ok_or_else(|| BootstrapCompilerError::DeadlineExceeded {
+            maximum_ms: u64::try_from(budget.as_millis())
+                .unwrap_or(MAX_BOOTSTRAP_COMPILER_MILLIS),
+        })
+}
+
+fn enforce_compiler_pipe_limits(
+    stdout_exceeded: &AtomicBool,
+    stderr_exceeded: &AtomicBool,
+) -> Result<(), BootstrapCompilerError<'static>> {
+    if stdout_exceeded.load(Ordering::Acquire) {
+        return Err(BootstrapCompilerError::OutputLimit {
+            stream: "stdout",
+            maximum_bytes: MAX_BOOTSTRAP_OBJECT_BYTES,
+        });
+    }
+    if stderr_exceeded.load(Ordering::Acquire) {
+        return Err(BootstrapCompilerError::OutputLimit {
+            stream: "stderr",
+            maximum_bytes: MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
+        });
+    }
+    Ok(())
+}
+
 fn collect_compiler_output<'requirement>(
     mut child: Child,
     source: &str,
+    budget: Duration,
 ) -> Result<Output, BootstrapCompilerError<'requirement>> {
     let stdout_pipe = child.stdout.take().ok_or_else(|| {
         BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
@@ -197,8 +264,13 @@ fn collect_compiler_output<'requirement>(
         .ok_or(BootstrapCompilerError::MissingInputPipe)?;
     let stdout_limit = AtomicBool::new(false);
     let stderr_limit = AtomicBool::new(false);
+    let deadline = CompilerDeadline {
+        budget,
+        started: Instant::now(),
+    };
     thread::scope(|scope| {
-        let writer = scope.spawn(|| stdin.write_all(source.as_bytes()));
+        // Ownership is transferred: closing stdin signals EOF to Clang.
+        let writer = scope.spawn(move || stdin.write_all(source.as_bytes()));
         let out = scope.spawn(|| {
             collect_bounded_pipe(
                 stdout_pipe,
@@ -213,8 +285,12 @@ fn collect_compiler_output<'requirement>(
                 &stderr_limit,
             )
         });
-        let status =
-            wait_for_bounded_child(&mut child, &stdout_limit, &stderr_limit);
+        let status = wait_for_bounded_child(
+            &mut child,
+            &stdout_limit,
+            &stderr_limit,
+            &deadline,
+        );
         let write_result = writer.join().map_err(|_panic| {
             BootstrapCompilerError::Wait(
                 "compiler source writer panicked".into(),
@@ -222,25 +298,12 @@ fn collect_compiler_output<'requirement>(
         })?;
         let stdout = read_joined_pipe(out)?;
         let stderr = read_joined_pipe(err)?;
-        if stdout_limit.load(Ordering::Acquire) {
-            return Err(BootstrapCompilerError::OutputLimit {
-                stream: "stdout",
-                maximum_bytes: MAX_BOOTSTRAP_OBJECT_BYTES,
-            });
-        }
-        if stderr_limit.load(Ordering::Acquire) {
-            return Err(BootstrapCompilerError::OutputLimit {
-                stream: "stderr",
-                maximum_bytes: MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
-            });
-        }
+        enforce_compiler_pipe_limits(&stdout_limit, &stderr_limit)?;
         write_result.map_err(|error| {
             BootstrapCompilerError::SourceWrite(error.to_string().into())
         })?;
         Ok(Output {
-            status: status.map_err(|error| {
-                BootstrapCompilerError::Wait(error.to_string().into())
-            })?,
+            status: checked_compiler_status(status, budget)?,
             stdout,
             stderr,
         })
@@ -260,12 +323,47 @@ fn collect_compiler_output<'requirement>(
 /// process I/O fails, Clang rejects the source, or no object bytes are
 /// produced.
 pub fn compile_preflighted_clang_c23<'requirement>(
-    compiler: &Path,
+    compiler: &'requirement Path,
     program: &'requirement RegionEffectProgram,
     runtime: &'static RuntimeCapability,
     target: NativeTargetIdentity,
 ) -> Result<UntrustedNativeObjectArtifact, BootstrapCompilerError<'requirement>>
 {
+    compile_preflighted_clang_c23_with_budget(
+        BootstrapCompilerRequest {
+            compiler,
+            program,
+            runtime,
+            target,
+        },
+        Duration::from_millis(MAX_BOOTSTRAP_COMPILER_MILLIS),
+    )
+}
+
+/// Compile preflighted bootstrap source using a caller-owned tighter timeout.
+///
+/// The budget is capped at the fixed maximum external compiler wall clock.
+/// Zero budget fails before lowering or spawning any compiler process.
+///
+/// # Errors
+///
+/// Returns [`BootstrapCompilerError`] for deadline, preflight, compiler or
+/// output-admission failures; an expired compiler is terminated and reaped.
+pub fn compile_preflighted_clang_c23_with_budget(
+    request: BootstrapCompilerRequest<'_>,
+    requested_budget: Duration,
+) -> Result<UntrustedNativeObjectArtifact, BootstrapCompilerError<'_>> {
+    let BootstrapCompilerRequest {
+        compiler,
+        program,
+        runtime,
+        target,
+    } = request;
+    let budget = requested_budget
+        .min(Duration::from_millis(MAX_BOOTSTRAP_COMPILER_MILLIS));
+    if budget.is_zero() {
+        return Err(BootstrapCompilerError::DeadlineExceeded { maximum_ms: 0 });
+    }
     let source = lower_preflighted_clang_c23(program, runtime, target)
         .map_err(BootstrapCompilerError::Preflight)?;
     // Ambient host include/driver overrides cannot change pinned C23
@@ -305,7 +403,7 @@ pub fn compile_preflighted_clang_c23<'requirement>(
         .map_err(|error| {
             BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
         })?;
-    let output = collect_compiler_output(child, source.source())?;
+    let output = collect_compiler_output(child, source.source(), budget)?;
     if !output.status.success() {
         return Err(BootstrapCompilerError::CompilerFailure {
             code: output.status.code(),

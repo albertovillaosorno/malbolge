@@ -153,7 +153,10 @@ pub use coff::{
     CoffAdmissionError, StructurallyAdmittedNativeObjectArtifact,
     structurally_admit_coff,
 };
-pub use compiler::{BootstrapCompilerError, compile_preflighted_clang_c23};
+pub use compiler::{
+    BootstrapCompilerError, BootstrapCompilerRequest,
+    compile_preflighted_clang_c23, compile_preflighted_clang_c23_with_budget,
+};
 pub use direct::{
     AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
     AheadOfExecutionRegisterMaskedObjectRestoreError,

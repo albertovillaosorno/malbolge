@@ -66,6 +66,24 @@ artifact. Bounded nonzero-exit diagnostics retain their exact byte contents.
 Independent subprocess fixtures overproduce both streams for x86-64/AArch64
 while checking cleanup and error classification.
 
+Bootstrap compiler source submission now transfers ownership of the stdin
+pipe to the writer thread and closes it at write completion. That exact EOF
+boundary is required by pinned Clang; retaining the parent-owned write handle
+would leave Clang waiting indefinitely even after source bytes were written.
+
+External bootstrap child execution has a 60-second host wall-clock ceiling.
+Callers can supply a tighter positive `Duration` through an explicit
+`BootstrapCompilerRequest`; a zero budget rejects before compilation or spawn.
+On timeout the owning child is terminated and reaped, and a distinct typed
+`DeadlineExceeded` reports the effective deadline in milliseconds.
+
+Both host ISAs pass real pinned-Clang object and independent COFF admission
+tests, while fake compiler cases verify stdin EOF, a 50-ms timed-out child,
+zero-budget early rejection, stream limits, and exact diagnostics. This direct
+child deadline does not promise to terminate arbitrary descendant processes
+that could inherit a subprocess pipe; such process-tree containment remains
+a separate hardening concern.
+
 The COFF file header must identify an object module: image-only flags such as
 `RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the
 optional-header size is zero. Image-only large-address, aggressive working-set,

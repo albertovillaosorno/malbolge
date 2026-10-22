@@ -65,6 +65,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A separate-process regression injects hostile `stddef.h`/`stdint.h`
   shadows and a forced Clang header via `CCC_OVERRIDE_OPTIONS`, while still
   validating complete x86-64/AArch64 COFF candidates.
+- Bootstrap source submission now transfers and closes its stdin handle at
+  EOF, fixing the otherwise indefinitely waiting pinned Clang process.
+  A fixed 60-second host child deadline accepts tighter caller budgets,
+  rejects zero before process launch, and terminates/reaps timed-out children.
+  Fake processes verify EOF, 50-ms timeout, zero budget and unchanged stream
+  limits; arbitrary descendant-owned pipe handles remain a separate boundary.
 - Bootstrap stream capture now bounds opaque stdout to 16 MiB and stderr to
   256 KiB with concurrent source submission, terminates and reaps overflow,
   and reports a distinct typed error per offending pipe. Fake subprocess

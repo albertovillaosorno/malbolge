@@ -557,9 +557,10 @@ use execution_native::{
     AheadOfExecutionPreflightedTier, AheadOfExecutionPreparationError,
     AheadOfExecutionStateGraphError, AheadOfExecutionStateGraphNodeClaim,
     AheadOfExecutionStateGraphPreparationError, BootstrapCompilerError,
-    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
-    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
-    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    BootstrapCompilerRequest, BootstrapProfilePreflightError,
+    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+    CachedPreflightedExecutionTier, CoffAdmissionError,
+    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
@@ -881,8 +882,9 @@ use execution_native::{
     acquire_direct_fused_native_sequence_transactionally,
     admit_cached_fused_direct_sequence, admit_direct_jit_candidate,
     admit_fused_direct_sequence, admit_register_masked_direct_native,
-    compile_preflighted_clang_c23, decode_native_process_call_request,
-    decode_native_process_call_response, decode_native_process_memory_request,
+    compile_preflighted_clang_c23, compile_preflighted_clang_c23_with_budget,
+    decode_native_process_call_request, decode_native_process_call_response,
+    decode_native_process_memory_request,
     decode_native_process_memory_response, emit_direct_crazy_coff,
     emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
@@ -46379,6 +46381,90 @@ fn check_fake_clang_stream_case(
         }
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_closes_source_pipe_at_eof() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-source-eof")
+        .join(process_id().to_string());
+    let result = check_fake_clang_stream_case(
+        &directory,
+        "consumes-all-stdin",
+        "cat >/dev/null; printf 'SOURCE_EOF_REACHED\\n' >&2; exit 29",
+        &BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"SOURCE_EOF_REACHED\n".to_vec().into_boxed_slice(),
+        },
+    );
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove stdin fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_bootstrap_deadline_case(
+    compiler: &Path,
+    program: &RegionEffectProgram,
+    isa: HostIsa,
+    budget: Duration,
+) -> Result<(), String> {
+    let observed = compile_preflighted_clang_c23_with_budget(
+        BootstrapCompilerRequest {
+            compiler,
+            program,
+            runtime: safe_rust_profiled_capability(),
+            target: native_target(isa),
+        },
+        budget,
+    )
+    .map(|_artifact| ());
+    let expected = BootstrapCompilerError::DeadlineExceeded {
+        maximum_ms: u64::try_from(budget.as_millis()).unwrap_or_default(),
+    };
+    if observed != Err(expected) {
+        return Err(format!("compiler {isa:?} budget result {observed:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_deadline_expires_and_reaps_stalled_child()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-deadline")
+        .join(process_id().to_string());
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "stalled-compiler",
+        "exec sleep 2",
+    )?;
+    let program = native_program();
+    let result = (|| {
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            check_bootstrap_deadline_case(
+                &compiler,
+                &program,
+                isa,
+                Duration::from_millis(50),
+            )?;
+        }
+        check_bootstrap_deadline_case(
+            Path::new("/nonexistent/bootstrap-compiler"),
+            &program,
+            HostIsa::X86_64,
+            Duration::ZERO,
+        )
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove deadline fixture: {error}"));
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
