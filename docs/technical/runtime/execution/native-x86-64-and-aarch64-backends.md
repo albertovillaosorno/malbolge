@@ -54,6 +54,18 @@ variables before compiling, and treats emitted COFF bytes as untrusted.
 The pinned x86-64/AArch64 bootstrap regression injects hostile ambient
 standard-header shadows and still requires independent structural admission.
 
+The external compiler boundary now collects stdout and stderr on separate
+threads concurrently with source submission, rather than unbounded
+`wait_with_output()` collection. It admits at most 16 MiB of opaque object
+stdout and 256 KiB of exact diagnostic stderr per invocation. The limits are
+host-resource policy, not guest-machine capacity or semantic restrictions.
+
+On either stream overflow, it terminates and reaps the compiler, reports a
+stream-specific `OutputLimit`, and never constructs an untrusted object
+artifact. Bounded nonzero-exit diagnostics retain their exact byte contents.
+Independent subprocess fixtures overproduce both streams for x86-64/AArch64
+while checking cleanup and error classification.
+
 The COFF file header must identify an object module: image-only flags such as
 `RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the
 optional-header size is zero. Image-only large-address, aggressive working-set,

@@ -46336,6 +46336,158 @@ fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn create_fake_bootstrap_clang(
+    directory: &Path,
+    name: &str,
+    script: &str,
+) -> Result<PathBuf, String> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("create compiler fixture: {error}"))?;
+    let executable = directory.join(name);
+    fs::write(&executable, format!("#!/bin/sh\n{script}\n"))
+        .map_err(|error| format!("write compiler fixture: {error}"))?;
+    let mut permissions = fs::metadata(&executable)
+        .map_err(|error| format!("stat compiler fixture: {error}"))?
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&executable, permissions)
+        .map_err(|error| format!("chmod compiler fixture: {error}"))?;
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_fake_clang_stream_case(
+    directory: &Path,
+    name: &str,
+    script: &str,
+    expected: &BootstrapCompilerError<'static>,
+) -> Result<(), String> {
+    let executable = create_fake_bootstrap_clang(directory, name, script)?;
+    let program = native_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let result = compile_preflighted_clang_c23(
+            &executable,
+            &program,
+            safe_rust_profiled_capability(),
+            native_target(isa),
+        );
+        let observed = result.map(|_artifact| ());
+        if observed.as_ref().err() != Some(expected) {
+            return Err(format!("{name} {isa:?} result {observed:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_limits_untrusted_stdout_and_stderr() -> Result<(), String>
+{
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-stream-limits")
+        .join(process_id().to_string());
+    match fs::remove_dir_all(&directory) {
+        Ok(()) => {},
+        Err(error) if error.kind() == ErrorKind::NotFound => {},
+        Err(error) => return Err(format!("clear compiler fixture: {error}")),
+    }
+    let result = check_fake_clang_stream_case(
+        &directory,
+        "overflow-stdout",
+        "dd if=/dev/zero bs=65536 count=300 2>/dev/null",
+        &BootstrapCompilerError::OutputLimit {
+            stream: "stdout",
+            maximum_bytes: 16 * 1024 * 1024,
+        },
+    )
+    .and_then(|()| {
+        check_fake_clang_stream_case(
+            &directory,
+            "overflow-stderr",
+            "dd if=/dev/zero bs=65536 count=5 1>&2 2>/dev/null",
+            &BootstrapCompilerError::OutputLimit {
+                stream: "stderr",
+                maximum_bytes: 256 * 1024,
+            },
+        )
+    });
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove compiler fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_accepts_exact_stdout_limit_as_untrusted_bytes()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-exact-stream-limit")
+        .join(process_id().to_string());
+    let executable = create_fake_bootstrap_clang(
+        &directory,
+        "exact-stdout",
+        "dd if=/dev/zero bs=65536 count=256 2>/dev/null",
+    )?;
+    let program = native_program();
+    let result = check_exact_bootstrap_output_limit(&executable, &program);
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove exact-limit fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_exact_bootstrap_output_limit(
+    executable: &Path,
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = compile_preflighted_clang_c23(
+            executable,
+            program,
+            safe_rust_profiled_capability(),
+            native_target(isa),
+        )
+        .map_err(|error| format!("bounded {isa:?} output: {error}"))?;
+        if artifact.object().len() != 16 * 1024 * 1024
+            || structurally_admit_coff(&artifact).is_ok()
+        {
+            return Err(format!("{isa:?} admitted fake output as COFF"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_preserves_bounded_stderr() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-diagnostics")
+        .join(process_id().to_string());
+    let result = check_fake_clang_stream_case(
+        &directory,
+        "compiler-error",
+        "printf 'NATIVE_BOOTSTRAP_DIAGNOSTIC\\n' >&2; exit 29",
+        &BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"NATIVE_BOOTSTRAP_DIAGNOSTIC\n"
+                .to_vec()
+                .into_boxed_slice(),
+        },
+    );
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove compiler fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn hostile_header_fixture(directory: &Path) -> Result<(), String> {
     fs::create_dir_all(directory)
         .map_err(|error| format!("create Clang header fixture: {error}"))?;

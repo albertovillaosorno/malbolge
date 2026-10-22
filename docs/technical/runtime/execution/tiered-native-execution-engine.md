@@ -47,6 +47,12 @@ resolve the exact production crate root. The existing integration test remains
 the executable behavioral harness; the validation target exists only to compile
 and analyze the product module tree under normal non-test semantics.
 
+The pinned Clang bootstrap subprocess now collects stdout and stderr with
+concurrent bounded readers during source submission. It admits at most 16 MiB
+of untrusted object bytes and 256 KiB of exact diagnostic bytes, terminates
+and reaps an overproducing compiler, and never publishes an oversized object.
+These are host-resource budgets, not guest-machine semantics.
+
 State-graph verification projects normative `ProfileStepTrace` records into that
 IR only after exact region verification. An untrusted portable artifact must
 match IR version, exact declared profile ID, canonical profile fingerprint,

@@ -34,9 +34,12 @@
 //! External Clang process boundary for preflighted native bootstrap artifacts.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
-use std::io::Write as _;
+use std::io::{Read, Result as IoResult, Write as _};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use malbolge::{RegionEffectProgram, RuntimeCapability};
 
@@ -44,6 +47,11 @@ use super::{
     BootstrapProfilePreflightError, NativeArtifactError, NativeTargetIdentity,
     UntrustedNativeObjectArtifact, lower_preflighted_clang_c23,
 };
+
+// Bootstrap Clang emits small relocatable objects; these are explicit host
+// safety budgets, not guest-profile capacity or a semantic size limit.
+const MAX_BOOTSTRAP_OBJECT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_BOOTSTRAP_DIAGNOSTIC_BYTES: usize = 256 * 1024;
 
 /// Failure while compiling one profile-preflighted bootstrap source artifact.
 #[derive(Debug, Eq, PartialEq)]
@@ -61,6 +69,13 @@ pub enum BootstrapCompilerError<'requirement> {
     Launch(Box<str>),
     /// Compiler stdin pipe was unexpectedly unavailable.
     MissingInputPipe,
+    /// Untrusted compiler stdout or stderr exceeded its explicit host budget.
+    OutputLimit {
+        /// Which compiler pipe exceeded the budget.
+        stream: &'static str,
+        /// Maximum admitted bytes in that pipe.
+        maximum_bytes: usize,
+    },
     /// Profile-preflighted bootstrap lowering failed before compiler launch.
     Preflight(BootstrapProfilePreflightError<'requirement>),
     /// Bootstrap source could not be written to compiler stdin.
@@ -81,6 +96,12 @@ impl Display for BootstrapCompilerError<'_> {
                 }
                 write!(f, ": {}", String::from_utf8_lossy(stderr))
             },
+            Self::OutputLimit { stream, maximum_bytes } => {
+                write!(
+                    f,
+                    "native Clang {stream} exceeded {maximum_bytes} bytes"
+                )
+            },
             Self::Launch(message) => {
                 write!(f, "native Clang launch failed: {message}")
             },
@@ -96,6 +117,134 @@ impl Display for BootstrapCompilerError<'_> {
             },
         }
     }
+}
+
+fn collect_bounded_pipe(
+    mut pipe: impl Read,
+    limit: usize,
+    exceeded: &AtomicBool,
+) -> IoResult<Vec<u8>> {
+    let mut result = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        let count = pipe.read(&mut chunk)?;
+        if count == 0 {
+            return Ok(result);
+        }
+        if result
+            .len()
+            .checked_add(count)
+            .is_none_or(|len| len > limit)
+        {
+            exceeded.store(true, Ordering::Release);
+            return Ok(result);
+        }
+        if let Some(next) = chunk.get(..count) {
+            result.extend_from_slice(next);
+        }
+    }
+}
+
+fn wait_for_bounded_child(
+    child: &mut Child,
+    object_limit: &AtomicBool,
+    diagnostics_limit: &AtomicBool,
+) -> IoResult<ExitStatus> {
+    loop {
+        if object_limit.load(Ordering::Acquire)
+            || diagnostics_limit.load(Ordering::Acquire)
+        {
+            drop(child.kill());
+            return child.wait();
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => thread::sleep(Duration::from_millis(5)),
+            Err(error) => {
+                drop(child.kill());
+                drop(child.wait());
+                return Err(error);
+            },
+        }
+    }
+}
+
+fn read_joined_pipe(
+    task: thread::ScopedJoinHandle<'_, IoResult<Vec<u8>>>,
+) -> Result<Vec<u8>, BootstrapCompilerError<'static>> {
+    task.join()
+        .map_err(|_panic| {
+            BootstrapCompilerError::Wait(
+                "native compiler pipe reader panicked".into(),
+            )
+        })?
+        .map_err(|error| BootstrapCompilerError::Wait(error.to_string().into()))
+}
+
+fn collect_compiler_output<'requirement>(
+    mut child: Child,
+    source: &str,
+) -> Result<Output, BootstrapCompilerError<'requirement>> {
+    let stdout_pipe = child.stdout.take().ok_or_else(|| {
+        BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
+    })?;
+    let stderr_pipe = child.stderr.take().ok_or_else(|| {
+        BootstrapCompilerError::Wait("compiler stderr pipe absent".into())
+    })?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or(BootstrapCompilerError::MissingInputPipe)?;
+    let stdout_limit = AtomicBool::new(false);
+    let stderr_limit = AtomicBool::new(false);
+    thread::scope(|scope| {
+        let writer = scope.spawn(|| stdin.write_all(source.as_bytes()));
+        let out = scope.spawn(|| {
+            collect_bounded_pipe(
+                stdout_pipe,
+                MAX_BOOTSTRAP_OBJECT_BYTES,
+                &stdout_limit,
+            )
+        });
+        let err = scope.spawn(|| {
+            collect_bounded_pipe(
+                stderr_pipe,
+                MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
+                &stderr_limit,
+            )
+        });
+        let status =
+            wait_for_bounded_child(&mut child, &stdout_limit, &stderr_limit);
+        let write_result = writer.join().map_err(|_panic| {
+            BootstrapCompilerError::Wait(
+                "compiler source writer panicked".into(),
+            )
+        })?;
+        let stdout = read_joined_pipe(out)?;
+        let stderr = read_joined_pipe(err)?;
+        if stdout_limit.load(Ordering::Acquire) {
+            return Err(BootstrapCompilerError::OutputLimit {
+                stream: "stdout",
+                maximum_bytes: MAX_BOOTSTRAP_OBJECT_BYTES,
+            });
+        }
+        if stderr_limit.load(Ordering::Acquire) {
+            return Err(BootstrapCompilerError::OutputLimit {
+                stream: "stderr",
+                maximum_bytes: MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
+            });
+        }
+        write_result.map_err(|error| {
+            BootstrapCompilerError::SourceWrite(error.to_string().into())
+        })?;
+        Ok(Output {
+            status: status.map_err(|error| {
+                BootstrapCompilerError::Wait(error.to_string().into())
+            })?,
+            stdout,
+            stderr,
+        })
+    })
 }
 
 /// Compile one portable region only after canonical profile/runtime preflight.
@@ -121,7 +270,7 @@ pub fn compile_preflighted_clang_c23<'requirement>(
         .map_err(BootstrapCompilerError::Preflight)?;
     // Ambient host include/driver overrides cannot change pinned C23
     // bootstrap sources or the headers used to compile them.
-    let mut child = Command::new(compiler)
+    let child = Command::new(compiler)
         .args([
             "-x",
             "c",
@@ -156,21 +305,7 @@ pub fn compile_preflighted_clang_c23<'requirement>(
         .map_err(|error| {
             BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
         })?;
-    let mut input = child
-        .stdin
-        .take()
-        .ok_or(BootstrapCompilerError::MissingInputPipe)?;
-    input
-        .write_all(source.source().as_bytes())
-        .map_err(|error| {
-            BootstrapCompilerError::SourceWrite(
-                error.to_string().into_boxed_str(),
-            )
-        })?;
-    drop(input);
-    let output = child.wait_with_output().map_err(|error| {
-        BootstrapCompilerError::Wait(error.to_string().into_boxed_str())
-    })?;
+    let output = collect_compiler_output(child, source.source())?;
     if !output.status.success() {
         return Err(BootstrapCompilerError::CompilerFailure {
             code: output.status.code(),
