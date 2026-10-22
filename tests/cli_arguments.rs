@@ -32,7 +32,7 @@
 
 //! End-to-end top-level CLI argument-policy evidence.
 
-use std::fs::{create_dir_all, remove_dir_all};
+use std::fs::{create_dir_all, remove_dir_all, write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 
@@ -293,6 +293,48 @@ fn checkpoint_info_requires_exactly_one_progress_path() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn checkpoint_info_does_not_import_ambient_sitecustomize() -> Result<(), String>
+{
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp")
+        .join(format!("cli-pythonpath-shadow-{}", id()));
+    create_dir_all(&directory)
+        .map_err(|error| format!("prepare module shadow: {error}"))?;
+    let marker = directory.join("ambient-python-loaded");
+    let site = directory.join("sitecustomize.py");
+    let source = format!(
+        "from pathlib import Path\nPath({:?}).write_text('loaded')\n",
+        marker.display().to_string(),
+    );
+    write(&site, source)
+        .map_err(|error| format!("create hostile module: {error}"))?;
+    let missing = directory.join("not-published.progress.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", root)
+        .env("PYTHONPATH", &directory)
+        .arg("--checkpoint-info")
+        .arg(&missing)
+        .output()
+        .map_err(|error| format!("run poisoned CLI inspection: {error}"))?;
+    let loaded = marker.exists();
+    remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup hostile module: {error}"))?;
+    if !loaded
+        && !output.status.success()
+        && output.stdout.is_empty()
+        && String::from_utf8_lossy(&output.stderr)
+            .contains("portable checkpoint inspection failed:")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "ambient Python sitecustomize was admitted: {loaded}"
+        ))
+    }
 }
 
 #[test]

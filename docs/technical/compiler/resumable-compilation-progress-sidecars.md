@@ -405,6 +405,12 @@ repository-pinned Python 3.14.7 interpreter plus this trusted inspector and
 delegates metadata validation, binary-safe extraction, or continuous
 validated summary streaming without parsing sidecar JSON in Rust.
 
+The product CLI now launches that pinned interpreter with Python isolated
+mode, so ambient PYTHONPATH and user-site modules cannot inject an imported
+sitecustomize before the trusted sidecar inspector starts. End-to-end evidence
+provides an intentionally hostile module path and requires no marker write
+while the missing-pointer diagnostic still comes from the verified inspector.
+
 Product compiler resume selection/wiring remains
 open because no product compilation command yet consumes restored typed IR.
 

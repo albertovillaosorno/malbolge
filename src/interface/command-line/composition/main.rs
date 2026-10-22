@@ -624,7 +624,10 @@ fn run_progress_inspector(
             inspector.display(),
         ));
     }
+    // A trusted script must not import ambient PYTHONPATH/sitecustomize
+    // modules before checkpoint validation begins.
     let status = Command::new(&interpreter)
+        .arg("-I")
         .arg(&inspector)
         .args(arguments)
         .stdin(Stdio::null())
