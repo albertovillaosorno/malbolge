@@ -1357,6 +1357,17 @@ _ALLOWED_TRANSITIONS: Final = {
 }
 
 
+# Following a mutable pointer can skip a short-lived RUNNING publication.
+# Strict writer admission continues to use _ALLOWED_TRANSITIONS.
+_ALLOWED_OBSERVED_TRANSITIONS: Final = {
+    **_ALLOWED_TRANSITIONS,
+    ProgressStatus.QUEUED: (
+        _ALLOWED_TRANSITIONS[ProgressStatus.QUEUED]
+        | _ALLOWED_TRANSITIONS[ProgressStatus.RUNNING]
+    ),
+}
+
+
 def _validate_total_transition(
     previous: ProgressSidecar,
     current: ProgressSidecar,
@@ -1484,7 +1495,7 @@ def _validate_observed_identity_and_status(
     for field_name in stable_fields:
         if getattr(new, field_name) != getattr(old, field_name):
             _fail(f"{field_name} changed across observed progress transition")
-    allowed = _ALLOWED_TRANSITIONS.get(old.status, frozenset())
+    allowed = _ALLOWED_OBSERVED_TRANSITIONS.get(old.status, frozenset())
     if new.status not in allowed:
         transition = f"{old.status.value}->{new.status.value}"
         _fail(f"invalid observed progress transition: {transition}")

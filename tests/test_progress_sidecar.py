@@ -5584,6 +5584,70 @@ def test_follow_inspector_emits_changes_and_stops_at_terminal(
     assert not publications
 
 
+@pytest.mark.parametrize(
+    "observed_status",
+    [progress.ProgressStatus.CHECKPOINTED, progress.ProgressStatus.COMPLETED],
+)
+def test_follow_admits_queued_to_running_to_later_status_between_polls(
+    tmp_path: Path,
+    observed_status: progress.ProgressStatus,
+) -> None:
+    """A sampled poll may miss a valid, short-lived running publication."""
+    running = _sidecar(tmp_path)
+    queued = replace(running, status=progress.ProgressStatus.QUEUED)
+    observed = (
+        _checkpointed(running)
+        if observed_status is progress.ProgressStatus.CHECKPOINTED
+        else replace(
+            running,
+            completed_at=COMPLETED,
+            status=progress.ProgressStatus.COMPLETED,
+            updated_at=COMPLETED,
+        )
+    )
+    _ = progress.validate_transition(queued, running)
+    _ = progress.validate_transition(running, observed)
+    with pytest.raises(ERROR, match="invalid progress transition"):
+        _ = progress.validate_transition(queued, observed)
+
+    observe = cast(
+        "Callable[..., progress.ProgressSidecar]",
+        vars(progress)["_validate_observed_transition"],
+    )
+    assert observe(queued, observed) == observed
+
+
+def test_follow_inspector_observes_queued_to_completed_between_polls(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fast job can finish between polls without an observed running state."""
+    running = _sidecar(tmp_path)
+    queued = replace(running, status=progress.ProgressStatus.QUEUED)
+    completed = replace(
+        running,
+        completed_at=COMPLETED,
+        status=progress.ProgressStatus.COMPLETED,
+        updated_at=COMPLETED,
+    )
+    path = progress.write_atomic(queued)
+    waits: list[float] = []
+
+    def wait(interval: float) -> None:
+        waits.append(interval)
+        _ = progress.write_atomic(running)
+        _ = progress.write_atomic(completed)
+
+    follow = cast("Callable[..., int]", vars(progress)["_follow_path"])
+    assert follow(path, wait=wait) == 0
+    captured = capsys.readouterr()
+    assert captured.out == (
+        progress.render_summary(queued) + progress.render_summary(completed)
+    )
+    assert not captured.err
+    assert waits == [FOLLOW_INTERVAL_SECONDS]
+
+
 def test_follow_inspector_rejects_backward_observation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

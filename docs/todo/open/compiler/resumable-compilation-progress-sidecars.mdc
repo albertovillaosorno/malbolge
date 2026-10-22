@@ -265,9 +265,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 
   The reference `--follow` inspector emits only validated changed snapshots at
   a fixed one-second poll cadence. It admits sampled checkpoint-generation
-  jumps that can occur between polls while rejecting backward sequence, timing/
-  unit regression, stable-identity drift, and same-generation payload-reference
-  changes. Terminal state is emitted once before exit.
+  jumps and short-lived `queued -> running -> checkpointed/completed` state
+  changes between polls, while rejecting backward sequence, timing/unit
+  regression, stable-identity drift, and same-generation payload-reference
+  changes. Writer transitions remain strict and terminal state is emitted once.
 
   Typed-IR and ternary-lowering composition now each expose one explicit
   Fresh-versus-Progress selector. Fresh input enters the existing stage

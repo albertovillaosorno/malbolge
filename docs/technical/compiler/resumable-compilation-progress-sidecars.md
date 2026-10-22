@@ -314,9 +314,11 @@ cancelled/completed/failed state. Observed transitions retain stable job
 identity, monotonic timing/unit evidence, immutable same-generation payload
 references, and nondecreasing checkpoint sequence.
 
-Polling may skip
-intermediate checkpoint generations, so sampled sequence jumps are admitted
-while regression fails closed. The reference poll interval is one second.
+Polling may skip intermediate checkpoint generations or the transient
+`running` publication between `queued` and `checkpointed`/`completed`. The
+observer admits these reachable sampled states, but the writer still requires
+each immediate lifecycle transition to be valid. Sequence, elapsed-time, and
+identity regression remain rejected. The reference poll interval is one second.
 
 The optimizer still consumes an explicit extracted file. Typed-IR compiler
 composition now has `resume_typed_ir_from_progress()`, a composition bridge that
