@@ -131,6 +131,7 @@ decoder/type exceptions, and direct JSON parsing requires an exact string
 instead of accepting byte/bytearray aliases or leaking decoder `TypeError`.
 Excessively nested JSON values that exhaust the parser stack are also reported
 as typed progress or portable checkpoint failures, including CLI inspection.
+
 Oversized JSON integer literals that hit the interpreter conversion
 limit remain inside the stable sidecar error boundary, and impossible UTC
 calendar timestamps are reported the same way. UTC timestamp ordering retains
