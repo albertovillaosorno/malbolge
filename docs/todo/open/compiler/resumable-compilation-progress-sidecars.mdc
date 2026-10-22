@@ -163,9 +163,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   covers empty/partial prefixes, packed candidate storage, request/batch drift,
   invalid counts, boolean header aliases, and entire-prefix identities and
   payload header types plus noncanonical JSON rejected before any base64
-  decoding, alongside malformed payloads and mutable aliases,
-  and absence of backend/device
-  identity.
+  decoding, alongside malformed payloads, parser-stack overflow, and mutable
+  aliases, and absence of backend/device identity.
 - `src/optimization/accelerator/application/accelerator/resumable_search.py`
   implements `evaluated-search-prefix-resume-v1`: it validates the exact search
   again, preserves packed indexed suffix storage, evaluates only unfinished

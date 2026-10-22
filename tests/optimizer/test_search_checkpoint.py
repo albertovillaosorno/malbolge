@@ -425,6 +425,15 @@ def test_search_checkpoint_rejects_boolean_completed_count() -> None:
         _ = decode_search_checkpoint(payload, request, batch)
 
 
+def test_search_checkpoint_rejects_parser_stack_overflow() -> None:
+    """A deeply nested JSON document cannot escape the codec error type."""
+    nested = (b"[" * 100_000) + b"null" + (b"]" * 100_000)
+    with pytest.raises(
+        SearchCheckpointError, match="invalid search checkpoint JSON"
+    ):
+        _ = decode_search_checkpoint(nested, _request(), _batch())
+
+
 def test_search_checkpoint_rejects_corrupt_and_noncanonical_json() -> None:
     """Malformed payloads and alternate JSON spellings fail closed."""
     request = _request()

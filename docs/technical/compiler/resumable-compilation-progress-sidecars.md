@@ -246,6 +246,9 @@ missing line termination and whitespace aliases are rejected early. Malformed
 counts, boolean aliases, and later nonprefix evidence also fail without
 consuming untrusted evidence payload bytes.
 
+The search codec also wraps JSON parser-stack exhaustion as a stable typed
+checkpoint error instead of leaking `RecursionError` to resume callers.
+
 `evaluated-search-prefix-resume-v1` now consumes that codec for ordinary
 evaluated search. It rebuilds and validates the exact candidate batch, evaluates
 only the unfinished request-order suffix through the selected backend, combines

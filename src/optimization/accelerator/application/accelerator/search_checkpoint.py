@@ -338,7 +338,7 @@ def _decode_document(payload: bytes) -> JsonObject:
         )
     except SearchCheckpointError:
         raise
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         _fail(f"invalid search checkpoint JSON: {error}")
     document = _mapping(parsed, "search checkpoint")
     _exact_keys(document, _TOP_LEVEL_KEYS)
