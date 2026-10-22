@@ -291,6 +291,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux
   regressions require fast rejection from zero-exit inspector children.
+  Delayed-marker fixtures also prove that neither inspector leaves an
+  inherited stdout descendant alive after rejecting diagnostic output.
 
   The typed-IR and ternary checkpoint extractors now isolate their Linux
   inspector children into private process groups and kill ordinary inherited-

@@ -363,6 +363,8 @@ Both compiler inspector transports now also reject a completed nonempty
 stderr stream immediately, even when a successful direct child leaves stdout
 open in an inherited-pipe descendant. Linux regressions use a three-second
 stdout holder and require prompt failure without waiting for natural EOF.
+Additional marker fixtures prove that rejected diagnostics also terminate the
+ordinary descendants before they can perform delayed filesystem writes.
 
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
