@@ -46526,6 +46526,54 @@ fn bootstrap_timestamp_preserves_foreign_machine_bytes() -> Result<(), String> {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_timestamp_preserves_foreign_target_bytes() -> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-noncoff-timestamp")
+        .join(process_id().to_string());
+    let bytes = fake_coff_header([0x64, 0x86]);
+    let fixture = directory.join("opaque.o");
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "foreign-format",
+        &format!("cat >/dev/null; cat '{}'", fixture.display()),
+    )?;
+    fs::write(&fixture, bytes)
+        .map_err(|error| format!("write foreign object: {error}"))?;
+    let program = native_program();
+    let result = (|| {
+        for host_os in [HostOperatingSystem::Linux, HostOperatingSystem::MacOs]
+        {
+            let target = NativeTargetIdentity::new(NativeTargetConfig {
+                backend_id: String::from(CLANG_C23_BOOTSTRAP_BACKEND_ID),
+                backend_revision: CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+                host_isa: HostIsa::X86_64,
+                host_os,
+                native_abi_revision: NATIVE_REGION_ABI_REVISION,
+                required_features: Vec::new(),
+            });
+            let object = compile_preflighted_clang_c23(
+                &compiler,
+                &program,
+                safe_rust_profiled_capability(),
+                target,
+            )
+            .map_err(|error| format!("{host_os:?} fake compiler: {error}"))?;
+            if object.object() != bytes {
+                return Err(format!(
+                    "{host_os:?} non-COFF target bytes mutated"
+                ));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup foreign target fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn create_fake_bootstrap_clang(
     directory: &Path,
     name: &str,

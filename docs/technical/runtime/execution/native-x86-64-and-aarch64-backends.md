@@ -92,6 +92,10 @@ machine, or wrong-target object retains its original opaque compiler bytes.
 Linux fake-compiler regression cases prove that only the intended timestamp
 bytes change for both target ISAs. None of this implies structural admission.
 
+The timestamp rewrite is restricted to Windows COFF target identities.
+Linux ELF and macOS Mach-O requests retain all opaque compiler bytes, even
+if their content begins with a recognized COFF machine prefix.
+
 The timestamp rewrite additionally requires a nonzero section count and
 enough object bytes for the complete declared 40-byte section headers.
 Optional-header declarations and image-only characteristics prevent rewriting

@@ -73,8 +73,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   file header and the exact requested target machine. Opaque truncated,
   foreign-machine, and wrong-target outputs remain byte-for-byte unchanged;
   tests independently cover both recognized targets and negative cases.
-  Timestamp rewriting also requires declared section-header coverage, a
-  positive section count, zero optional-header size, and object-only flags.
+
+  Timestamp rewriting is Windows COFF-only; Linux and macOS output retain
+  opaque bytes even when they start with a recognizable machine header.
+  It also requires declared section-header coverage, a positive section
+  count, zero optional-header size, and object-only flags.
   Incomplete tables and image-only COFF headers remain opaque on rejection.
 
   Fake-Clang executable fixtures are published by staging and atomic rename,
