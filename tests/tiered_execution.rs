@@ -46469,6 +46469,98 @@ fn bootstrap_compiler_deadline_expires_and_reaps_stalled_child()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_deadline_covers_inherited_pipe_holders()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-descendant-deadline")
+        .join(process_id().to_string());
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "orphaned-pipe-holder",
+        "sleep 3 & exit 0",
+    )?;
+    let program = native_program();
+    let start = Instant::now();
+    let result = (|| {
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            check_bootstrap_deadline_case(
+                &compiler,
+                &program,
+                isa,
+                Duration::from_millis(100),
+            )?;
+        }
+        if start.elapsed() > Duration::from_secs(2) {
+            return Err(String::from(
+                "inherited compiler pipes bypassed deadline",
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove descendant fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_group_timeout_preserves_independent_child()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-group-isolation")
+        .join(process_id().to_string());
+    let timed = create_fake_bootstrap_clang(
+        &directory,
+        "timed-group",
+        "sleep 3 & exit 0",
+    )?;
+    let unrelated = create_fake_bootstrap_clang(
+        &directory,
+        "unrelated-compiler",
+        "sleep 0.3; printf 'SIBLING_OK\\n' >&2; exit 29",
+    )?;
+    let program = native_program();
+    let result = thread::scope(|scope| {
+        let sibling = scope.spawn(|| {
+            compile_preflighted_clang_c23(
+                &unrelated,
+                &program,
+                safe_rust_profiled_capability(),
+                native_target(HostIsa::AArch64),
+            )
+        });
+        check_bootstrap_deadline_case(
+            &timed,
+            &program,
+            HostIsa::X86_64,
+            Duration::from_millis(75),
+        )?;
+        let observed = sibling
+            .join()
+            .map_err(|_panic| String::from("unrelated compiler panicked"))?
+            .map(|_object| ());
+        let expected = Err(BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"SIBLING_OK\n".to_vec().into_boxed_slice(),
+        });
+        if observed != expected {
+            return Err(format!(
+                "compiler group termination crossed boundary: {observed:?}"
+            ));
+        }
+        Ok(())
+    });
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove sibling fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_limits_untrusted_stdout_and_stderr() -> Result<(), String>
 {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

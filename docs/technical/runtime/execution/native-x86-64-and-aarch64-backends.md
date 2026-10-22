@@ -79,10 +79,27 @@ On timeout the owning child is terminated and reaped, and a distinct typed
 
 Both host ISAs pass real pinned-Clang object and independent COFF admission
 tests, while fake compiler cases verify stdin EOF, a 50-ms timed-out child,
-zero-budget early rejection, stream limits, and exact diagnostics. This direct
-child deadline does not promise to terminate arbitrary descendant processes
-that could inherit a subprocess pipe; such process-tree containment remains
-a separate hardening concern.
+zero-budget early rejection, stream limits, and exact diagnostics.
+
+On Linux each compiler starts in its own process group. The deadline covers
+both direct-child execution and completion of source submission, stdout and
+stderr; observing the direct child's exit alone no longer releases the
+caller while a forked descendant still owns any pipe handle.
+
+On deadline or stream overflow the adapter sends a group-wide kill through
+the absolute host `/usr/bin/kill` utility, then reaps the direct child. A
+100-ms fake-compiler regression forks a three-second pipe holder and proves
+bounded completion for both ISAs; a concurrent test confirms that an unrelated
+compiler in another group completes and retains its exact diagnostics.
+
+An early nonzero compiler exit also retains its exit code and bounded stderr
+when an interrupted source write reports a broken pipe. A successful compiler
+still requires a completed source write before object admission.
+
+This containment covers ordinary inherited Linux process groups, not
+malicious descendants that deliberately detach into unrelated sessions.
+Non-Linux platforms retain the direct-child deadline and do not claim
+process-tree containment without corresponding platform tests.
 
 The COFF file header must identify an object module: image-only flags such as
 `RELOCS_STRIPPED`, `EXECUTABLE_IMAGE`, and `DLL` are rejected even when the

@@ -36,7 +36,10 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::io::{Read, Result as IoResult, Write as _};
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::process::{
+    Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output,
+    Stdio,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -146,6 +149,42 @@ struct CompilerDeadline {
     started: Instant,
 }
 
+struct CompilerPipes {
+    diagnostics: ChildStderr,
+    input: ChildStdin,
+    output: ChildStdout,
+}
+
+#[derive(Default)]
+struct CompilerPipeState {
+    diagnostics_done: AtomicBool,
+    diagnostics_exceeded: AtomicBool,
+    input_done: AtomicBool,
+    output_done: AtomicBool,
+    output_exceeded: AtomicBool,
+}
+
+impl CompilerPipeState {
+    fn all_finished(&self) -> bool {
+        self.diagnostics_done.load(Ordering::Acquire)
+            && self.input_done.load(Ordering::Acquire)
+            && self.output_done.load(Ordering::Acquire)
+    }
+}
+
+fn terminate_bootstrap_group(child: &mut Child) {
+    #[cfg(target_os = "linux")]
+    {
+        // A fresh process group also contains ordinary forked pipe holders.
+        // POSIX signalling requires a host utility under the safe-Rust policy.
+        let _group_signal = Command::new("/usr/bin/kill")
+            .args(["-s", "KILL", "--"])
+            .arg(format!("-{}", child.id()))
+            .status();
+    }
+    let _child_signal = child.kill();
+}
+
 fn collect_bounded_pipe(
     mut pipe: impl Read,
     limit: usize,
@@ -174,31 +213,36 @@ fn collect_bounded_pipe(
 
 fn wait_for_bounded_child(
     child: &mut Child,
-    object_limit: &AtomicBool,
-    diagnostics_limit: &AtomicBool,
+    pipes: &CompilerPipeState,
     deadline: &CompilerDeadline,
 ) -> IoResult<Option<ExitStatus>> {
+    let mut exit_status = None;
     loop {
-        if object_limit.load(Ordering::Acquire)
-            || diagnostics_limit.load(Ordering::Acquire)
+        if pipes.output_exceeded.load(Ordering::Acquire)
+            || pipes.diagnostics_exceeded.load(Ordering::Acquire)
         {
-            drop(child.kill());
+            terminate_bootstrap_group(child);
             return child.wait().map(Some);
         }
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(Some(status)),
-            Ok(None) if deadline.started.elapsed() >= deadline.budget => {
-                drop(child.kill());
-                let _reaped = child.wait()?;
-                return Ok(None);
-            },
-            Ok(None) => thread::sleep(Duration::from_millis(5)),
-            Err(error) => {
-                drop(child.kill());
-                drop(child.wait());
-                return Err(error);
-            },
+        if deadline.started.elapsed() >= deadline.budget {
+            terminate_bootstrap_group(child);
+            let _reaped = child.wait()?;
+            return Ok(None);
         }
+        if exit_status.is_none() {
+            match child.try_wait() {
+                Ok(status) => exit_status = status,
+                Err(error) => {
+                    terminate_bootstrap_group(child);
+                    drop(child.wait());
+                    return Err(error);
+                },
+            }
+        }
+        if exit_status.is_some() && pipes.all_finished() {
+            return Ok(exit_status);
+        }
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -252,45 +296,63 @@ fn collect_compiler_output<'requirement>(
     source: &str,
     budget: Duration,
 ) -> Result<Output, BootstrapCompilerError<'requirement>> {
-    let stdout_pipe = child.stdout.take().ok_or_else(|| {
-        BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
-    })?;
-    let stderr_pipe = child.stderr.take().ok_or_else(|| {
-        BootstrapCompilerError::Wait("compiler stderr pipe absent".into())
-    })?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or(BootstrapCompilerError::MissingInputPipe)?;
-    let stdout_limit = AtomicBool::new(false);
-    let stderr_limit = AtomicBool::new(false);
+    let pipes = CompilerPipes {
+        diagnostics: child.stderr.take().ok_or_else(|| {
+            BootstrapCompilerError::Wait("compiler stderr pipe absent".into())
+        })?,
+        input: child
+            .stdin
+            .take()
+            .ok_or(BootstrapCompilerError::MissingInputPipe)?,
+        output: child.stdout.take().ok_or_else(|| {
+            BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
+        })?,
+    };
+    collect_compiler_scoped(&mut child, pipes, source, budget)
+}
+
+fn collect_compiler_scoped<'requirement>(
+    child: &mut Child,
+    pipes: CompilerPipes,
+    source: &str,
+    budget: Duration,
+) -> Result<Output, BootstrapCompilerError<'requirement>> {
+    let CompilerPipes {
+        diagnostics,
+        mut input,
+        output,
+    } = pipes;
+    let state = CompilerPipeState::default();
     let deadline = CompilerDeadline {
         budget,
         started: Instant::now(),
     };
     thread::scope(|scope| {
-        // Ownership is transferred: closing stdin signals EOF to Clang.
-        let writer = scope.spawn(move || stdin.write_all(source.as_bytes()));
+        let writer = scope.spawn(|| {
+            let result = input.write_all(source.as_bytes());
+            drop(input);
+            state.input_done.store(true, Ordering::Release);
+            result
+        });
         let out = scope.spawn(|| {
-            collect_bounded_pipe(
-                stdout_pipe,
+            let bytes = collect_bounded_pipe(
+                output,
                 MAX_BOOTSTRAP_OBJECT_BYTES,
-                &stdout_limit,
-            )
+                &state.output_exceeded,
+            );
+            state.output_done.store(true, Ordering::Release);
+            bytes
         });
         let err = scope.spawn(|| {
-            collect_bounded_pipe(
-                stderr_pipe,
+            let bytes = collect_bounded_pipe(
+                diagnostics,
                 MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
-                &stderr_limit,
-            )
+                &state.diagnostics_exceeded,
+            );
+            state.diagnostics_done.store(true, Ordering::Release);
+            bytes
         });
-        let status = wait_for_bounded_child(
-            &mut child,
-            &stdout_limit,
-            &stderr_limit,
-            &deadline,
-        );
+        let status = wait_for_bounded_child(child, &state, &deadline);
         let write_result = writer.join().map_err(|_panic| {
             BootstrapCompilerError::Wait(
                 "compiler source writer panicked".into(),
@@ -298,12 +360,20 @@ fn collect_compiler_output<'requirement>(
         })?;
         let stdout = read_joined_pipe(out)?;
         let stderr = read_joined_pipe(err)?;
-        enforce_compiler_pipe_limits(&stdout_limit, &stderr_limit)?;
-        write_result.map_err(|error| {
-            BootstrapCompilerError::SourceWrite(error.to_string().into())
-        })?;
+        enforce_compiler_pipe_limits(
+            &state.output_exceeded,
+            &state.diagnostics_exceeded,
+        )?;
+        let exit_status = checked_compiler_status(status, budget)?;
+        // An early compiler failure may close stdin before the writer ends.
+        // Keep its exit code and diagnostic instead of masking it with EPIPE.
+        if exit_status.success() {
+            write_result.map_err(|error| {
+                BootstrapCompilerError::SourceWrite(error.to_string().into())
+            })?;
+        }
         Ok(Output {
-            status: checked_compiler_status(status, budget)?,
+            status: exit_status,
             stdout,
             stderr,
         })
@@ -368,7 +438,8 @@ pub fn compile_preflighted_clang_c23_with_budget(
         .map_err(BootstrapCompilerError::Preflight)?;
     // Ambient host include/driver overrides cannot change pinned C23
     // bootstrap sources or the headers used to compile them.
-    let child = Command::new(compiler)
+    let mut command = Command::new(compiler);
+    let _configured = command
         .args([
             "-x",
             "c",
@@ -398,11 +469,15 @@ pub fn compile_preflighted_clang_c23_with_budget(
         .env_remove("CCC_OVERRIDE_OPTIONS")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| {
-            BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
-        })?;
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt as _;
+        let _group = command.process_group(0);
+    }
+    let child = command.spawn().map_err(|error| {
+        BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
+    })?;
     let output = collect_compiler_output(child, source.source(), budget)?;
     if !output.status.success() {
         return Err(BootstrapCompilerError::CompilerFailure {

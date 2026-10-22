@@ -70,7 +70,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A fixed 60-second host child deadline accepts tighter caller budgets,
   rejects zero before process launch, and terminates/reaps timed-out children.
   Fake processes verify EOF, 50-ms timeout, zero budget and unchanged stream
-  limits; arbitrary descendant-owned pipe handles remain a separate boundary.
+  limits. Linux now isolates the compiler in a new process group and bounds
+  successful completion on EOF from all three pipes, not just direct-child
+  exit. A 100-ms regression kills an ordinary three-second descendant that
+  inherited stdout/stderr, while an unrelated concurrent compiler survives.
+  Termination uses the absolute `/usr/bin/kill` host utility; deliberately
+  detached child sessions and non-Linux process-tree containment remain
+  outside this bounded claim. Early nonzero Clang exits preserve exact stderr
+  rather than being masked by racing stdin `Broken pipe` errors.
 - Bootstrap stream capture now bounds opaque stdout to 16 MiB and stderr to
   256 KiB with concurrent source submission, terminates and reaps overflow,
   and reports a distinct typed error per offending pipe. Fake subprocess
