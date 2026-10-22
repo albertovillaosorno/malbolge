@@ -344,6 +344,11 @@ accepts partial output from an inspector failing resource or status admission.
 Timeouts and output overruns terminate and reap the direct inspector child;
 a Linux regression independently verifies that a timed-out PID disappears.
 
+Typed-IR extraction rejects a direct inspector's nonzero exit immediately
+without waiting for pipe holders to close. The Linux regression launches a
+three-second inherited-pipe descendant from a failing inspector and confirms
+that rejection occurs before the descendant's natural exit.
+
 On Linux, both transports isolate each inspector in a new process group and
 terminate ordinary inherited-pipe descendants on timeout or overflow before
 reaping the direct child. Regression fixtures verify that descendants cannot

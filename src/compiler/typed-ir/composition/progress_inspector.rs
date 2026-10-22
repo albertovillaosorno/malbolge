@@ -157,6 +157,11 @@ fn collect(
                 .try_wait()
                 .map_err(|_error| InspectorFailure::Rejected)?;
         }
+        if status.is_some_and(|exit| !exit.success()) {
+            // No valid checkpoint can follow a failed inspector exit.
+            // Do not wait for descendants holding inherited pipe handles.
+            return Err(InspectorFailure::Rejected);
+        }
         if status.is_some() && state.is_some() && diagnostics.is_some() {
             let successful = status.is_some_and(|exit| exit.success())
                 && diagnostics.as_ref().is_some_and(Vec::is_empty);

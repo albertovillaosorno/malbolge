@@ -131,6 +131,28 @@ fn rejects_child_diagnostics_even_on_zero_exit_status() {
     assert_eq!(observed, Err(InspectorFailure::Rejected));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_failed_inspector_before_inherited_pipe_holder_finishes() {
+    let started = Instant::now();
+    let observed = run_fixture(
+        concat!(
+            "import subprocess,sys\n",
+            "subprocess.Popen([sys.executable,'-c',",
+            "'import time;time.sleep(3)'],",
+            "stdout=sys.stdout,stderr=sys.stderr)\n",
+            "sys.stderr.write('failed')\n",
+            "sys.exit(7)\n",
+        ),
+        limits(1024, 1024, Duration::from_secs(5)),
+    );
+    assert_eq!(observed, Err(InspectorFailure::Rejected));
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "a failed inspector waited for an unrelated pipe holder"
+    );
+}
+
 #[test]
 fn terminates_stalled_child_at_inspection_deadline() {
     let started = Instant::now();

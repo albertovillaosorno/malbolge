@@ -278,6 +278,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   re-admission. Integration regressions prove fresh and progress paths converge
   on the same admitted stage state.
 
+  Typed-IR inspector transport now rejects an early nonzero exit without
+  waiting for descendants holding stdout/stderr open; a three-second inherited-
+  pipe regression requires prompt failure instead of a deadline-sized wait.
+
   The typed-IR and ternary checkpoint extractors now isolate their Linux
   inspector children into private process groups and kill ordinary inherited-
   pipe descendants on deadline failure. Independent subprocess regressions
