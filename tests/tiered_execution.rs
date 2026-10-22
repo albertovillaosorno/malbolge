@@ -46409,58 +46409,118 @@ fn check_fake_clang_object_bytes(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn fake_coff_header(machine: [u8; 2]) -> [u8; 60] {
+    let mut header = [0u8; 60];
+    header[..2].copy_from_slice(&machine);
+    header[2..4].copy_from_slice(&[1, 0]);
+    header[4..8].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+    header
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
-fn bootstrap_timestamp_normalization_preserves_unrelated_object_bytes()
+fn bootstrap_timestamp_normalizes_matching_complete_headers()
 -> Result<(), String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let directory = root
-        .join(".temp/native-bootstrap-timestamp-guard")
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-matching-timestamp")
         .join(process_id().to_string());
-    let mut valid_x86 = [0u8; 20];
-    valid_x86[..2].copy_from_slice(&[0x64, 0x86]);
-    valid_x86[4..8].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
-    let mut canonical = valid_x86;
-    canonical[4..8].fill(0);
-    let mut valid_arm = valid_x86;
-    valid_arm[..2].copy_from_slice(&[0x64, 0xaa]);
-    let mut canonical_arm = valid_arm;
+    let x86 = fake_coff_header([0x64, 0x86]);
+    let arm = fake_coff_header([0x64, 0xaa]);
+    let mut canonical_x86 = x86;
+    canonical_x86[4..8].fill(0);
+    let mut canonical_arm = arm;
     canonical_arm[4..8].fill(0);
-    let mut invalid_machine = valid_x86;
-    invalid_machine[..2].copy_from_slice(&[0x34, 0x12]);
     let result = (|| {
         check_fake_clang_object_bytes(
             &directory,
             "expected-x86",
-            (&valid_x86, &canonical),
+            (&x86, &canonical_x86),
             HostIsa::X86_64,
         )?;
         check_fake_clang_object_bytes(
             &directory,
             "expected-arm",
-            (&valid_arm, &canonical_arm),
+            (&arm, &canonical_arm),
             HostIsa::AArch64,
-        )?;
+        )
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup matching fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_timestamp_preserves_invalid_header_layouts() -> Result<(), String>
+{
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-invalid-timestamp")
+        .join(process_id().to_string());
+    let x86 = fake_coff_header([0x64, 0x86]);
+    let mut empty_sections = x86;
+    empty_sections[2..4].fill(0);
+    let mut image_flags = x86;
+    image_flags[18..20].copy_from_slice(&[2, 0]);
+    let mut optional_header = x86;
+    optional_header[16..18].copy_from_slice(&[4, 0]);
+    let cases = [
+        ("truncated", &x86[..8], &x86[..8]),
+        ("missing-section", &x86[..20], &x86[..20]),
+        (
+            "empty-sections",
+            empty_sections.as_slice(),
+            empty_sections.as_slice(),
+        ),
+        (
+            "image-flags",
+            image_flags.as_slice(),
+            image_flags.as_slice(),
+        ),
+        (
+            "optional-header",
+            optional_header.as_slice(),
+            optional_header.as_slice(),
+        ),
+    ];
+    let result = cases.into_iter().try_for_each(|(name, raw, expected)| {
+        check_fake_clang_object_bytes(
+            &directory,
+            name,
+            (raw, expected),
+            HostIsa::X86_64,
+        )
+    });
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("cleanup invalid fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_timestamp_preserves_foreign_machine_bytes() -> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-foreign-timestamp")
+        .join(process_id().to_string());
+    let x86 = fake_coff_header([0x64, 0x86]);
+    let unknown = fake_coff_header([0x34, 0x12]);
+    let result = (|| {
         check_fake_clang_object_bytes(
             &directory,
             "wrong-isa",
-            (&valid_x86, &valid_x86),
+            (&x86, &x86),
             HostIsa::AArch64,
         )?;
         check_fake_clang_object_bytes(
             &directory,
             "unknown-machine",
-            (&invalid_machine, &invalid_machine),
-            HostIsa::X86_64,
-        )?;
-        check_fake_clang_object_bytes(
-            &directory,
-            "truncated",
-            (&valid_x86[..8], &valid_x86[..8]),
+            (&unknown, &unknown),
             HostIsa::X86_64,
         )
     })();
     let cleanup = fs::remove_dir_all(&directory)
-        .map_err(|error| format!("cleanup timestamp fixture: {error}"));
+        .map_err(|error| format!("cleanup foreign fixture: {error}"));
     result?;
     cleanup
 }

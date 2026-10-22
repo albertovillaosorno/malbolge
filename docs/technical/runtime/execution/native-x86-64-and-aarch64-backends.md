@@ -92,6 +92,12 @@ machine, or wrong-target object retains its original opaque compiler bytes.
 Linux fake-compiler regression cases prove that only the intended timestamp
 bytes change for both target ISAs. None of this implies structural admission.
 
+The timestamp rewrite additionally requires a nonzero section count and
+enough object bytes for the complete declared 40-byte section headers.
+Optional-header declarations and image-only characteristics prevent rewriting
+even when the machine matches. A malformed container remains untrusted and
+the structural COFF checker still owns independent admission.
+
 The Linux fake-Clang fixture writes, chmods, and atomically renames staged
 executable scripts, rather than reopening a potentially executing inode.
 Repeated parallel bootstrap suites therefore avoid transient ETXTBSY failures

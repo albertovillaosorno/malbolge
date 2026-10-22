@@ -401,8 +401,20 @@ fn normalize_coff_timestamp(object: &mut [u8], isa: HostIsa) {
         HostIsa::AArch64 => [0x64, 0xaa],
         HostIsa::X86_64 => [0x64, 0x86],
     };
-    if object.len() >= 20
+    let sections = match object.get(2..4) {
+        Some([low, high]) => usize::from(u16::from_le_bytes([*low, *high])),
+        _ => return,
+    };
+    // Admission is separate; avoid rewriting bytes that do not even describe
+    // a complete relocatable COFF header and its declared section table.
+    let complete = sections > 0
+        && sections
+            .checked_mul(40)
+            .and_then(|bytes| bytes.checked_add(20))
+            .is_some_and(|minimum| object.len() >= minimum);
+    if complete
         && object.starts_with(&machine)
+        && object.get(16..20) == Some(&[0u8; 4][..])
         && let Some(timestamp) = object.get_mut(4..8)
     {
         timestamp.fill(0);
