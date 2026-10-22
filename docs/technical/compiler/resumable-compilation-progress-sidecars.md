@@ -461,8 +461,8 @@ original filename contains spaces, tabs, newlines, or non-UTF-8 POSIX bytes.
 Decode a displayed path with URL percent-decoding to bytes, followed by the
 host's filesystem decoding; `none` denotes an absent checkpoint or partial.
 The durable sidecar JSON retains its original canonical path spellings.
-Invalid UTF-8 is converted to the same stable inspection failure as malformed schema or
-missing storage rather than escaping as a decoder exception.
+Invalid UTF-8 is converted to the same stable inspection failure as malformed
+schema or missing storage rather than escaping as a decoder exception.
 
 A verified inner checkpoint payload can be extracted without trusting the
 mutable pointer or outer envelope directly:
