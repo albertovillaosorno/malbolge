@@ -401,6 +401,7 @@ mode before the option terminator. This ignores inherited Python import-path
 and startup environment variables while preserving explicit inspector paths.
 Focused stage regressions require the child to report isolated mode; the
 production resume bridges still independently validate restored IR bytes.
+
 Linux subprocess fixtures further poison both PYTHONPATH with a side-effect
 sitecustomize module and PYTHONHOME with an invalid root, then require exact
 checkpoint bytes without the injected marker. Both compiler stages use

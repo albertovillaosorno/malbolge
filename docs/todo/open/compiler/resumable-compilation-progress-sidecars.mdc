@@ -268,6 +268,7 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   duplicates no sidecar parsing. End-to-end CLI regressions prove exact binary
   payload preservation through NUL/`0xFF`, fail-closed follow delegation,
   and immediate one-line exit for an already terminal sidecar.
+
   CLI inspector launch uses isolated Python so inherited PYTHONPATH and
   PYTHONHOME cannot redirect startup; an injected sitecustomize fixture
   now verifies the distinct missing-pointer diagnostics for inspection,
