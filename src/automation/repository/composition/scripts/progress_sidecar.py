@@ -1584,6 +1584,12 @@ def loads(text: str) -> ProgressSidecar:
     """
     if type(text) is not str:
         _fail("progress JSON text must use exact string type")
+    # Direct parser calls must obey the same UTF-8 wire budget as file reads.
+    # Check character count first to avoid even encoding oversized input.
+    if len(text) > _MAX_SIDECAR_BYTES or len(
+        text.encode("utf-8", errors="surrogatepass")
+    ) > _MAX_SIDECAR_BYTES:
+        _fail("progress sidecar exceeds maximum byte length")
     try:
         parsed = cast(
             "object",
@@ -1593,7 +1599,11 @@ def loads(text: str) -> ProgressSidecar:
         raise
     except (ValueError, RecursionError) as error:
         _fail(f"invalid progress JSON: {error}")
-    return validate(_from_document(_mapping(parsed, "progress sidecar")))
+    sidecar = validate(_from_document(_mapping(parsed, "progress sidecar")))
+    # A short noncanonical UTF-8 spelling may expand beyond the canonical
+    # ensure-ASCII pointer budget after decoding (e.g. multibyte text).
+    _ = _admit_sidecar_wire_size(sidecar)
+    return sidecar
 
 
 def _verify_opened_read_identity(

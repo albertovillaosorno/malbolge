@@ -1491,6 +1491,7 @@ def test_sidecar_exact_byte_ceiling_round_trips(tmp_path: Path) -> None:
     destination = progress.write_atomic(admitted)
     assert destination.stat().st_size == SIDECAR_WIRE_LIMIT
     assert progress.read(destination) == admitted
+    assert progress.loads(progress.encode(admitted).decode("utf-8")) == admitted
 
 
 def test_large_opaque_checkpoint_is_not_limited_as_sidecar_metadata(
@@ -3072,6 +3073,52 @@ def test_loads_rejects_foreign_text_types() -> None:
     for value in foreign_values:
         with pytest.raises(ERROR, match="JSON text must use exact string type"):
             _ = progress.loads(cast("str", value))
+
+
+@pytest.mark.parametrize(
+    "oversized_text",
+    [
+        " " * (SIDECAR_WIRE_LIMIT + 1),
+        "é" * (SIDECAR_WIRE_LIMIT // 2 + 1),
+    ],
+    ids=["ascii", "multibyte-utf8"],
+)
+def test_direct_progress_parser_rejects_oversized_wire_before_json(
+    oversized_text: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct parser input shares the bounded progress-pointer wire budget."""
+
+    def prohibit_json_parser(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("oversized progress JSON reached the decoder")
+
+    with monkeypatch.context() as context:
+        context.setattr(json, "loads", prohibit_json_parser)
+        with pytest.raises(
+            ERROR, match="progress sidecar exceeds maximum byte"
+        ):
+            _ = progress.loads(oversized_text)
+
+
+def test_loads_and_reads_reject_overbudget_canonical_metadata(
+    tmp_path: Path,
+) -> None:
+    """A smaller noncanonical UTF-8 spelling cannot evade the wire budget."""
+    sidecar = replace(_sidecar(tmp_path), source_path="é" * 180_000)
+    noncanonical = json.dumps(
+        progress.to_document(sidecar), ensure_ascii=False, sort_keys=True
+    )
+    payload = noncanonical.encode("utf-8")
+    assert len(payload) < SIDECAR_WIRE_LIMIT
+    assert len(progress.encode(sidecar)) > SIDECAR_WIRE_LIMIT
+
+    with pytest.raises(ERROR, match="progress sidecar exceeds maximum byte"):
+        _ = progress.loads(noncanonical)
+    pointer = Path(sidecar.progress_path)
+    _ = pointer.write_bytes(payload)
+    with pytest.raises(ERROR, match="progress sidecar exceeds maximum byte"):
+        _ = progress.read(pointer)
 
 
 def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:

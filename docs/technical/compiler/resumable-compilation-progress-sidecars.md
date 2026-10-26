@@ -55,6 +55,12 @@ stream allocation and use a bounded read to catch concurrent growth. The
 limit applies only to mutable metadata, not to immutable checkpoint and
 partial payload bytes.
 
+Direct `loads()` parsing enforces the same UTF-8 input budget before invoking
+the JSON decoder, including multibyte input. Decoded sidecars also have their
+canonical serialized size admitted, since a shorter noncanonical UTF-8 spelling
+can expand beyond the canonical limit. The inclusive ceiling remains accepted;
+immutable checkpoint state is outside this pointer-only budget.
+
 Reads and immutable-generation collision checks reject pre-existing nonregular
 filesystem entries, including named pipes, before attempting blocking payload
 reads. The opened file descriptor is independently checked against the regular-
