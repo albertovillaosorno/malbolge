@@ -69,7 +69,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   lifecycle/timing validation, monotonic
   transitions, immutable sequence-addressed checkpoint/partial generations,
   sidecar-last atomic
-  publication, a 1 MiB pointer-metadata admission budget checked before
+  publication, strict public checkpoint-metadata rendering admission for exact
+  types, position, stage/codec identifiers, and digest integrity,
+  a 1 MiB pointer-metadata admission budget checked before
   immutable publication, via bounded reads, and both before and after direct
   JSON decoding for UTF-8 input/canonical output (not limiting opaque state),
   declared-length bounded partial reads and proposed-length bounded immutable

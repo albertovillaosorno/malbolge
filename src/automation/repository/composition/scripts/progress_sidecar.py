@@ -2500,6 +2500,17 @@ def render_checkpoint_metadata(metadata: PortableCheckpointMetadata) -> str:
         One newline-terminated key/value record with no opaque payload bytes.
 
     """
+    if type(metadata) is not PortableCheckpointMetadata:
+        _fail("checkpoint metadata must use exact immutable type")
+    _ = _validate_checkpoint_position(
+        PortableCheckpointPosition(
+            checkpoint_sequence=metadata.checkpoint_sequence,
+            stage=metadata.stage,
+            units_completed=metadata.units_completed,
+        ),
+    )
+    _identifier(metadata.state_codec, "checkpoint state codec")
+    _digest(metadata.payload_sha256, "checkpoint payload digest")
     fields = (
         f"checkpoint_sequence={metadata.checkpoint_sequence}",
         f"stage={metadata.stage}",

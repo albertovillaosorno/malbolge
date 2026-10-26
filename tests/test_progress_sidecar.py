@@ -859,6 +859,37 @@ def test_progress_cli_reports_verified_typed_ir_checkpoint_metadata(
     assert not completed.stderr
 
 
+def test_checkpoint_metadata_renderer_rejects_forged_identity() -> None:
+    """Operator records cannot render forged fields as extra key/value lines."""
+    admitted = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="typed-ir-v1",
+        units_completed=14,
+    )
+    assert progress.render_checkpoint_metadata(admitted) == (
+        f"checkpoint_sequence=1 stage=candidate-search units_completed=14 "
+        f"state_codec=typed-ir-v1 payload_sha256={SOURCE_HASH}\n"
+    )
+    invalid = (
+        replace(admitted, checkpoint_sequence=True),
+        replace(admitted, checkpoint_sequence=0),
+        replace(admitted, units_completed=-1),
+        replace(admitted, units_completed=False),
+        replace(admitted, stage="phase\nstatus=completed"),
+        replace(admitted, state_codec="codec\nstatus=completed"),
+        replace(admitted, payload_sha256="sha256:invalid"),
+    )
+    for forged in invalid:
+        with pytest.raises(ERROR):
+            _ = progress.render_checkpoint_metadata(forged)
+    with pytest.raises(ERROR, match="checkpoint metadata must use exact"):
+        _ = progress.render_checkpoint_metadata(
+            cast("progress.PortableCheckpointMetadata", object())
+        )
+
+
 def test_checkpoint_info_rejects_nonportable_checkpoint_generation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

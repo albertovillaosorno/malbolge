@@ -33,6 +33,12 @@ the artifact is complete and independently verified.
 
 ## Current Behavior
 
+Checkpoint operator metadata is a single newline-terminated key/value record.
+Direct `render_checkpoint_metadata()` callers are admitted through the same
+positive sequence, nonnegative units, stable stage/codec identifiers, and
+SHA-256 digest validation as parsed checkpoint envelopes. Forged dataclass
+fields cannot inject newlines or noncanonical values into operator output.
+
 The repository now exposes a reference `malbolge-progress-v1` validator and
 durable generation writer in `scripts/progress_sidecar.py`. It defines canonical
 sequence-addressed paths, backend-neutral resume identity, exact timing and
