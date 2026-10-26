@@ -77332,6 +77332,39 @@ fn native_process_session_rejects_short_response_header() -> Result<(), String>
 }
 
 #[test]
+fn native_process_session_rejects_bare_worker_path() -> Result<(), String> {
+    // Explicit workers must not resolve through ambient PATH, even when
+    // configuration supplies its own working directory.
+    for configured in [
+        NativeProcessSessionConfig::new(PathBuf::from("sh")),
+        NativeProcessSessionConfig::new(PathBuf::from(
+            "malbolge-unqualified-native-worker",
+        )),
+        NativeProcessSessionConfig::new(PathBuf::from(
+            "malbolge-unqualified-native-worker",
+        ))
+        .working_directory(PathBuf::from(".")),
+    ] {
+        let observed = configured.spawn().err();
+        let expected =
+            NativeProcessSessionError::Spawn(ErrorKind::InvalidInput);
+        if observed != Some(expected) {
+            return Err(format!(
+                "native worker PATH lookup admitted: {observed:?}"
+            ));
+        }
+    }
+    let qualified = NativeProcessSessionConfig::new(PathBuf::from(
+        "./malbolge-unqualified-native-worker",
+    ));
+    let expected = NativeProcessSessionError::Spawn(ErrorKind::NotFound);
+    if qualified.spawn().err() != Some(expected) {
+        return Err(String::from("explicit relative worker path was rejected"));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
 {
     let mut session =

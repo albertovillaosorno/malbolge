@@ -145,6 +145,15 @@ impl NativeProcessSessionConfig {
     pub fn spawn(
         &self,
     ) -> Result<NativeProcessSession, NativeProcessSessionError> {
+        // Command::new searches ambient PATH for unqualified program names.
+        // Worker selection is explicit even when a working directory is set.
+        let unqualified = !self.program.is_absolute()
+            && self.program.components().count() < 2;
+        if unqualified {
+            return Err(NativeProcessSessionError::Spawn(
+                ErrorKind::InvalidInput,
+            ));
+        }
         let mut command = Command::new(&self.program);
         let _arguments = command.args(&self.arguments);
         for (key, value) in &self.environment {

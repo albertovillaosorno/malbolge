@@ -923,6 +923,12 @@ Response buffers now use fallible exact reservation, returning typed
 `ResponseAllocation` rather than aborting on failed allocation. A child that
 announces a 4-EiB response exercises this rejection without reading payload.
 
+Persistent process sessions now also reject bare worker executable names before
+spawn. Only absolute or directory-qualified paths are admitted, so even a
+configured child working directory cannot trigger ambient host PATH lookup.
+Directory-qualified nonexistent paths continue through ordinary spawn-error
+reporting without being misclassified as unqualified commands.
+
 Any I/O, truncation, or size failure poisons and terminates the session.
 Deterministic workers prove one
 child survives multiple exchanges and that oversized/truncated responses fail
