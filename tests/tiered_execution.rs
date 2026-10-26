@@ -46698,7 +46698,7 @@ fn bootstrap_compiler_rejects_busy_executable() -> Result<(), String> {
             )
             .map(|_object| ());
             let expected = Err(BootstrapCompilerError::CompilerFailure {
-                code: Some(29),
+                code: Some(29i32),
                 stderr: b"WRITER_RELEASED\n".to_vec().into_boxed_slice(),
             });
             if attempt != expected {
