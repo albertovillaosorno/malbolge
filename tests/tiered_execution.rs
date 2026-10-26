@@ -46654,6 +46654,53 @@ fn bootstrap_timestamp_preserves_foreign_target_bytes() -> Result<(), String> {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_busy_bootstrap_launches(
+    compiler: &Path,
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let attempt = compile_preflighted_clang_c23(
+            compiler,
+            program,
+            safe_rust_profiled_capability(),
+            native_target(isa),
+        )
+        .map(|_object| ());
+        let Err(BootstrapCompilerError::Launch(message)) = attempt else {
+            return Err(format!("writable compiler {isa:?} ran: {attempt:?}"));
+        };
+        if !message.contains("os error 26") {
+            return Err(format!("writable compiler {isa:?}: {message}"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn check_released_bootstrap_launches(
+    compiler: &Path,
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let attempt = compile_preflighted_clang_c23(
+            compiler,
+            program,
+            safe_rust_profiled_capability(),
+            native_target(isa),
+        )
+        .map(|_object| ());
+        let expected = Err(BootstrapCompilerError::CompilerFailure {
+            code: Some(29i32),
+            stderr: b"WRITER_RELEASED\n".to_vec().into_boxed_slice(),
+        });
+        if attempt != expected {
+            return Err(format!("closed writer {isa:?}: {attempt:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
 fn bootstrap_compiler_rejects_busy_executable() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -46667,45 +46714,49 @@ fn bootstrap_compiler_rejects_busy_executable() -> Result<(), String> {
     )?;
     let program = native_program();
     let result = (|| {
-        let writer = fs::OpenOptions::new()
-            .write(true)
-            .open(&compiler)
-            .map_err(|error| format!("hold fake compiler writable: {error}"))?;
-        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-            let attempt = compile_preflighted_clang_c23(
-                &compiler,
-                &program,
-                safe_rust_profiled_capability(),
-                native_target(isa),
-            )
-            .map(|_object| ());
-            let Err(BootstrapCompilerError::Launch(message)) = attempt else {
-                return Err(format!(
-                    "writable compiler {isa:?} ran: {attempt:?}"
+        // Hold the deliberate writable descriptor in a separate child.
+        // Otherwise concurrent test forks can inherit it and keep ETXTBSY
+        // alive even after this test closes its own copy.
+        let mut writer = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "exec 3>>\"$1\"; printf 'READY\n'; cat >/dev/null",
+                "fixture-writer",
+            ])
+            .arg(&compiler)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("start busy compiler writer: {error}"))?;
+        let held_result = (|| {
+            let mut readiness = [0u8; 6];
+            writer
+                .stdout
+                .take()
+                .ok_or("busy compiler writer stdout absent")?
+                .read_exact(&mut readiness)
+                .map_err(|error| {
+                    format!("await busy compiler writer: {error}")
+                })?;
+            if readiness != *b"READY\n" {
+                return Err(String::from(
+                    "busy compiler writer readiness changed",
                 ));
-            };
-            if !message.contains("os error 26") {
-                return Err(format!("writable compiler {isa:?}: {message}"));
             }
+            check_busy_bootstrap_launches(&compiler, &program)
+        })();
+        drop(writer.stdin.take());
+        let writer_status = writer
+            .wait()
+            .map_err(|error| format!("reap busy compiler writer: {error}"))?;
+        held_result?;
+        if !writer_status.success() {
+            return Err(format!(
+                "busy compiler writer exited: {writer_status}"
+            ));
         }
-        drop(writer);
-        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-            let attempt = compile_preflighted_clang_c23(
-                &compiler,
-                &program,
-                safe_rust_profiled_capability(),
-                native_target(isa),
-            )
-            .map(|_object| ());
-            let expected = Err(BootstrapCompilerError::CompilerFailure {
-                code: Some(29i32),
-                stderr: b"WRITER_RELEASED\n".to_vec().into_boxed_slice(),
-            });
-            if attempt != expected {
-                return Err(format!("closed writer {isa:?}: {attempt:?}"));
-            }
-        }
-        Ok(())
+        check_released_bootstrap_launches(&compiler, &program)
     })();
     let cleanup = fs::remove_dir_all(&directory)
         .map_err(|error| format!("remove busy compiler fixture: {error}"));
@@ -46725,10 +46776,29 @@ fn create_fake_bootstrap_clang(
         .map_err(|error| format!("create compiler fixture: {error}"))?;
     let executable = directory.join(name);
     let staging = directory.join(format!(".{name}.next"));
-    // Never rewrite a shell script whose prior invocation may still be
-    // executing: Linux rejects that replacement with ETXTBSY.
-    fs::write(&staging, format!("#!/bin/sh\n{script}\n"))
-        .map_err(|error| format!("write compiler fixture: {error}"))?;
+    // Concurrent spawns can inherit a writable file descriptor during fork,
+    // even if the creating thread closes it before launching this compiler.
+    // Keep that descriptor in a short-lived child, not the test process.
+    let mut writer = Command::new("/usr/bin/tee")
+        .arg(&staging)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("start compiler fixture writer: {error}"))?;
+    let mut input = writer
+        .stdin
+        .take()
+        .ok_or("compiler fixture writer stdin absent")?;
+    let written = input.write_all(format!("#!/bin/sh\n{script}\n").as_bytes());
+    drop(input);
+    let status = writer
+        .wait()
+        .map_err(|error| format!("wait compiler fixture writer: {error}"))?;
+    written.map_err(|error| format!("write compiler fixture: {error}"))?;
+    if !status.success() {
+        return Err(format!("compiler fixture writer exited: {status}"));
+    }
     let mut permissions = fs::metadata(&staging)
         .map_err(|error| format!("stat compiler fixture: {error}"))?
         .permissions();
@@ -46738,6 +46808,45 @@ fn create_fake_bootstrap_clang(
     fs::rename(&staging, &executable)
         .map_err(|error| format!("publish compiler fixture: {error}"))?;
     Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_fake_compiler_publishes_private_script() -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-bootstrap-private-fixture")
+        .join(process_id().to_string());
+    let script = "printf 'EXACT_FIXTURE\\n' >&2; exit 29";
+    let result = (|| {
+        let published = create_fake_bootstrap_clang(
+            &directory,
+            "exact-private-script",
+            script,
+        )?;
+        let bytes = fs::read(&published)
+            .map_err(|error| format!("read fake compiler: {error}"))?;
+        let expected = format!("#!/bin/sh\n{script}\n").into_bytes();
+        if bytes != expected {
+            return Err(String::from("fake compiler bytes changed"));
+        }
+        let mode = fs::metadata(&published)
+            .map_err(|error| format!("stat fake compiler: {error}"))?
+            .permissions()
+            .mode();
+        if mode & 0o777u32 != 0o700u32 {
+            return Err(format!("fake compiler permissions changed: {mode:o}"));
+        }
+        if directory.join(".exact-private-script.next").exists() {
+            return Err(String::from("fake compiler staging file persisted"));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove private fixture: {error}"));
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

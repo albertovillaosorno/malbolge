@@ -90,13 +90,16 @@ synchronization, and hardening remain adapters rather than VM semantics.
   count, zero optional-header size, and object-only flags.
   Incomplete tables and image-only COFF headers remain opaque on rejection.
 
-  Fake-Clang executable fixtures are published by staging and atomic rename,
-  avoiding writes to scripts still in use by overlapping test subprocesses.
-  A Linux regression holds one fake compiler executable open for writing,
-  requires typed `ETXTBSY` launch failure on both ISAs, then checks exact
-  compiler failure diagnostics after closing the writer without any retry.
-  Intermittent `ETXTBSY` in parallel bootstrap runs remains under investigation;
-  staged publication alone is not claimed to eliminate every host launch race.
+  Fake-Clang executable fixtures use a short-lived `/usr/bin/tee` child to
+  write staged bytes, then chmod and atomically rename after writer exit. The
+  test process never holds the writable script descriptor, preventing other
+  concurrently forked test workers from inheriting it before `exec` and
+  spuriously rejecting the newly published compiler as `ETXTBSY`.
+  A separate Linux regression deliberately holds the compiler open for
+  writing, requires typed `ETXTBSY` on both ISAs, and checks exact compiler
+  diagnostics after release, without production launch retries.
+  Default-threaded parallel bootstrap repetition passed 60 of 60 runs
+  (35 tests each), versus three failed runs out of 32 before this isolation.
 - Bootstrap source submission now transfers and closes its stdin handle at
   EOF, fixing the otherwise indefinitely waiting pinned Clang process.
   A fixed 60-second host child deadline accepts tighter caller budgets,

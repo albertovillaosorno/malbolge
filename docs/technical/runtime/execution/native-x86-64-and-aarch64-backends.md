@@ -110,13 +110,24 @@ Optional-header declarations and image-only characteristics prevent rewriting
 even when the machine matches. A malformed container remains untrusted and
 the structural COFF checker still owns independent admission.
 
-The Linux fake-Clang fixture writes, chmods, and atomically renames staged
-executable scripts, rather than reopening a potentially executing inode.
-Parallel bootstrap suites have nevertheless intermittently reported Linux
-`ETXTBSY`; staging alone does not prove all launch races impossible. A
-deterministic Linux regression holds an executable open for writing, requires a
-typed `Launch` failure on both ISAs, releases the writer, and then verifies the
-normal compiler exit code and diagnostic without a launch retry.
+The Linux fake-Clang fixture publishes executables by staging, chmod, and
+atomic rename. To close an inherited-descriptor race under parallel test
+spawns, the staging file's writable descriptor is owned by a short-lived
+`/usr/bin/tee` subprocess rather than any test-process thread. The helper
+closes its stdin and waits for the writer to exit before chmod and publication.
+A concurrent `fork` of another test subprocess therefore cannot inherit that
+writable descriptor from the test process.
+
+This fixes a fixture race, not the production compiler's launch policy or
+process-error classification.
+
+The deterministic Linux busy-executable regression still deliberately holds
+an executable open for writing and requires a typed `ETXTBSY` launch failure
+on both ISAs. Closing the writer then restores the normal compiler exit code
+and diagnostic without any retry. Repeating the default-threaded
+`cargo test --offline --test tiered_execution bootstrap_ --quiet` suite
+60 times (35 tests per run) passed without failures after isolating both
+writers; three of 32 runs had failed before fixing the busy-test writer.
 
 On Linux each compiler starts in its own process group. The deadline covers
 both direct-child execution and completion of source submission, stdout and
