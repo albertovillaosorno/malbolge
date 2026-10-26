@@ -70,7 +70,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   transitions, immutable sequence-addressed checkpoint/partial generations,
   sidecar-last atomic
   publication, strict public checkpoint-metadata rendering admission for exact
-  types, position, stage/codec identifiers, and digest integrity,
+  types, position, stage/codec identifiers, and digest syntax (durable bytes
+  are verified by checkpoint readers),
   a 1 MiB pointer-metadata admission budget checked before
   immutable publication, via bounded reads, and both before and after direct
   JSON decoding for UTF-8 input/canonical output (not limiting opaque state),
