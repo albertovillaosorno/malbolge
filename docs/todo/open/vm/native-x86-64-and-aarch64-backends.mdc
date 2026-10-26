@@ -75,6 +75,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Persistent native worker sessions likewise reject bare executable names,
   including when a working directory is configured. A qualified nonexistent
   worker retains its ordinary filesystem launch failure.
+  Relative worker paths with a configured child working directory also reject
+  before spawn rather than relying on platform-specific executable lookup;
+  absolute workers with child working directories remain admissible.
 
   Successful compiler timestamp normalization now requires the complete COFF
   file header and the exact requested target machine. Opaque truncated,

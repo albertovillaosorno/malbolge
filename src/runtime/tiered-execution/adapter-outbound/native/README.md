@@ -93,8 +93,10 @@ single-owner path. Exchanges use an outer little-endian `u64` length frame,
 check the announced response length against the caller bound before allocation,
 and poison/terminate the child after any transport or framing failure. The
 session intentionally does not interpret MBNPC1 or executable-memory commands.
+
 Worker executables must be absolute or directory-qualified; ambient PATH lookup
-is forbidden even if a child working directory is configured.
+is forbidden. With a child working-directory override, an absolute executable
+is required to avoid platform-dependent relative resolution.
 
 `process_memory_wire.rs` defines `MBNPM1`, a transport-only little-endian wire
 for allocate, copy, protect, synchronize, and release. It preserves exact

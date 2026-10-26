@@ -77365,6 +77365,34 @@ fn native_process_session_rejects_bare_worker_path() -> Result<(), String> {
 }
 
 #[test]
+fn native_process_session_rejects_relative_worker_with_custom_cwd()
+-> Result<(), String> {
+    // Rust does not define which working directory resolves a relative
+    // executable when Command::current_dir is also set.
+    let ambiguous = NativeProcessSessionConfig::new(PathBuf::from(
+        "./malbolge-unqualified-native-worker",
+    ))
+    .working_directory(PathBuf::from("."));
+    let expected = NativeProcessSessionError::Spawn(ErrorKind::InvalidInput);
+    if ambiguous.spawn().err() != Some(expected) {
+        return Err(String::from(
+            "relative worker path with custom cwd reached platform spawn",
+        ));
+    }
+    // Absolute program selection still reaches ordinary filesystem admission.
+    let absolute = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-worker-absolute-path-absent");
+    let configured = NativeProcessSessionConfig::new(absolute)
+        .working_directory(PathBuf::from("."));
+    if configured.spawn().err()
+        != Some(NativeProcessSessionError::Spawn(ErrorKind::NotFound))
+    {
+        return Err(String::from("absolute worker with cwd was rejected"));
+    }
+    Ok(())
+}
+
+#[test]
 fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
 {
     let mut session =

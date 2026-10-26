@@ -929,6 +929,12 @@ configured child working directory cannot trigger ambient host PATH lookup.
 Directory-qualified nonexistent paths continue through ordinary spawn-error
 reporting without being misclassified as unqualified commands.
 
+A relative worker path paired with an explicit child working directory is
+also rejected before spawn, because the executable's base directory varies
+by host platform. Absolute worker paths retain ordinary spawn behavior with
+configured working directories; qualified relative paths remain admissible
+without a child working-directory override.
+
 Any I/O, truncation, or size failure poisons and terminates the session.
 Deterministic workers prove one
 child survives multiple exchanges and that oversized/truncated responses fail

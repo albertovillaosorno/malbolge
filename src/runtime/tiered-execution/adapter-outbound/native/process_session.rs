@@ -145,11 +145,13 @@ impl NativeProcessSessionConfig {
     pub fn spawn(
         &self,
     ) -> Result<NativeProcessSession, NativeProcessSessionError> {
-        // Command::new searches ambient PATH for unqualified program names.
-        // Worker selection is explicit even when a working directory is set.
-        let unqualified = !self.program.is_absolute()
-            && self.program.components().count() < 2;
-        if unqualified {
+        // Bare names can resolve through ambient PATH. A relative executable
+        // combined with current_dir has platform-dependent resolution in
+        // Command::spawn; admit only an absolute executable for that case.
+        let relative = !self.program.is_absolute();
+        let unqualified = relative && self.program.components().count() < 2;
+        let ambiguous = relative && self.working_directory.is_some();
+        if unqualified || ambiguous {
             return Err(NativeProcessSessionError::Spawn(
                 ErrorKind::InvalidInput,
             ));
