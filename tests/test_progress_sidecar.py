@@ -2733,6 +2733,29 @@ def test_new_writer_lock_uses_private_file_permissions(
     assert stat.S_IMODE(expected.stat().st_mode) & 0o177 == 0
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX lock inode mode is not a Windows admission contract",
+)
+def test_existing_writer_lock_retains_its_permissions(tmp_path: Path) -> None:
+    """Acquisition must not chmod or replace an existing coordination inode."""
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    lock_path.write_bytes(b"")
+    retained_mode = 0o640
+    lock_path.chmod(retained_mode)
+    original = lock_path.stat()
+
+    _ = progress.write_atomic(_sidecar(tmp_path))
+
+    updated = lock_path.stat()
+    assert (updated.st_dev, updated.st_ino) == (
+        original.st_dev,
+        original.st_ino,
+    )
+    assert stat.S_IMODE(updated.st_mode) == retained_mode
+
+
 def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
     """A pre-existing FIFO lock cannot block the publisher."""
     destination = tmp_path / PROGRESS_NAME
