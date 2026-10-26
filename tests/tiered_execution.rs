@@ -46654,6 +46654,66 @@ fn bootstrap_timestamp_preserves_foreign_target_bytes() -> Result<(), String> {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_rejects_busy_executable() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-busy-executable")
+        .join(process_id().to_string());
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "busy-compiler",
+        "cat >/dev/null; printf 'WRITER_RELEASED\n' >&2; exit 29",
+    )?;
+    let program = native_program();
+    let result = (|| {
+        let writer = fs::OpenOptions::new()
+            .write(true)
+            .open(&compiler)
+            .map_err(|error| format!("hold fake compiler writable: {error}"))?;
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            let attempt = compile_preflighted_clang_c23(
+                &compiler,
+                &program,
+                safe_rust_profiled_capability(),
+                native_target(isa),
+            )
+            .map(|_object| ());
+            let Err(BootstrapCompilerError::Launch(message)) = attempt else {
+                return Err(format!(
+                    "writable compiler {isa:?} ran: {attempt:?}"
+                ));
+            };
+            if !message.contains("os error 26") {
+                return Err(format!("writable compiler {isa:?}: {message}"));
+            }
+        }
+        drop(writer);
+        for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+            let attempt = compile_preflighted_clang_c23(
+                &compiler,
+                &program,
+                safe_rust_profiled_capability(),
+                native_target(isa),
+            )
+            .map(|_object| ());
+            let expected = Err(BootstrapCompilerError::CompilerFailure {
+                code: Some(29),
+                stderr: b"WRITER_RELEASED\n".to_vec().into_boxed_slice(),
+            });
+            if attempt != expected {
+                return Err(format!("closed writer {isa:?}: {attempt:?}"));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove busy compiler fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn create_fake_bootstrap_clang(
     directory: &Path,
     name: &str,

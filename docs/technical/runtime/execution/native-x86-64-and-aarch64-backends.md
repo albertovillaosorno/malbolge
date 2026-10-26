@@ -112,8 +112,11 @@ the structural COFF checker still owns independent admission.
 
 The Linux fake-Clang fixture writes, chmods, and atomically renames staged
 executable scripts, rather than reopening a potentially executing inode.
-Repeated parallel bootstrap suites therefore avoid transient ETXTBSY failures
-without changing any native compiler output policy.
+Parallel bootstrap suites have nevertheless intermittently reported Linux
+`ETXTBSY`; staging alone does not prove all launch races impossible. A
+deterministic Linux regression holds an executable open for writing, requires a
+typed `Launch` failure on both ISAs, releases the writer, and then verifies the
+normal compiler exit code and diagnostic without a launch retry.
 
 On Linux each compiler starts in its own process group. The deadline covers
 both direct-child execution and completion of source submission, stdout and

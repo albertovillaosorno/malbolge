@@ -92,6 +92,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Fake-Clang executable fixtures are published by staging and atomic rename,
   avoiding writes to scripts still in use by overlapping test subprocesses.
+  A Linux regression holds one fake compiler executable open for writing,
+  requires typed `ETXTBSY` launch failure on both ISAs, then checks exact
+  compiler failure diagnostics after closing the writer without any retry.
+  Intermittent `ETXTBSY` in parallel bootstrap runs remains under investigation;
+  staged publication alone is not claimed to eliminate every host launch race.
 - Bootstrap source submission now transfers and closes its stdin handle at
   EOF, fixing the otherwise indefinitely waiting pinned Clang process.
   A fixed 60-second host child deadline accepts tighter caller budgets,
