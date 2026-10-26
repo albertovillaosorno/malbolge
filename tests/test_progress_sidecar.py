@@ -2704,6 +2704,35 @@ def test_writer_lock_rechecks_parent_after_mkdir(
     assert not tuple(foreign.glob(".*.tmp"))
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX lock inode mode is not a Windows admission contract",
+)
+def test_new_writer_lock_uses_private_file_permissions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock files must not request world/group access or executable bits."""
+    original_open = os.open
+    destination = tmp_path / PROGRESS_NAME
+    expected = Path(f"{destination}.lock")
+    observed_modes: list[int] = []
+
+    def audit_open(
+        path: Path, flags: int, mode: int = 0o777
+    ) -> int:
+        if Path(path) == expected:
+            observed_modes.append(mode)
+        return original_open(path, flags, mode)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", audit_open)
+        _ = progress.write_atomic(_sidecar(tmp_path))
+
+    assert observed_modes == [0o600]
+    assert stat.S_IMODE(expected.stat().st_mode) & 0o177 == 0
+
+
 def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
     """A pre-existing FIFO lock cannot block the publisher."""
     destination = tmp_path / PROGRESS_NAME
@@ -2731,11 +2760,11 @@ def test_writer_lock_rejects_fifo_substitution_during_open(
     original_open = os.open
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
 
-    def swap_then_open(path: Path, flags: int) -> int:
+    def swap_then_open(path: Path, flags: int, mode: int = 0o777) -> int:
         assert Path(path) == lock_path
         assert flags & vars(os)["O_NONBLOCK"]
         _make_named_pipe(lock_path)
-        return original_open(path, flags)
+        return original_open(path, flags, mode)
 
     with monkeypatch.context() as context:
         context.setattr(os, "open", swap_then_open)
@@ -2761,11 +2790,11 @@ def test_writer_lock_rejects_symlink_substitution_during_open(
     original_open = os.open
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
 
-    def swap_then_open(path: Path, flags: int) -> int:
+    def swap_then_open(path: Path, flags: int, mode: int = 0o777) -> int:
         assert Path(path) == lock_path
         assert flags & vars(os)["O_NOFOLLOW"]
         lock_path.symlink_to(foreign)
-        return original_open(path, flags)
+        return original_open(path, flags, mode)
 
     with monkeypatch.context() as context:
         context.setattr(os, "open", swap_then_open)
@@ -2788,8 +2817,8 @@ def test_writer_lock_closes_rejected_open_descriptor(
     opened: list[int] = []
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
 
-    def capture_open(path: Path, flags: int) -> int:
-        descriptor = original_open(path, flags)
+    def capture_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = original_open(path, flags, mode)
         opened.append(descriptor)
         return descriptor
 

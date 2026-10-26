@@ -1825,7 +1825,8 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
     flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
     flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
     flags |= cast("int", getattr(os, "O_BINARY", 0))
-    descriptor = os.open(lock_path, flags)
+    # Persistent coordination files must not request broad access or execute.
+    descriptor = os.open(lock_path, flags, 0o600)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             _fail(f"{context} must be a regular file")

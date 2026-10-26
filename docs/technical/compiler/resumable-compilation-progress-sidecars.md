@@ -102,6 +102,12 @@ nonblocking/no-follow opens where available. Its lock-path recheck after
 creating the parent directory rejects a parent-link substitution before the
 writer-lock file is opened.
 
+New persistent lock inodes are explicitly created with requested owner-only
+`0o600` permissions before applying the process umask. Existing lock inodes
+retain their permissions; acquisition still validates regular-file identity.
+POSIX regression evidence checks the requested mode and absence of group,
+world, and executable access bits on newly created lock files.
+
 After acquiring the process lock,
 the publisher rechecks every path component for links and confirms that the
 lock pathname still identifies the acquired descriptor's device and inode.
