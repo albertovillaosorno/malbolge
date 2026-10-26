@@ -2741,7 +2741,7 @@ def test_existing_writer_lock_retains_its_permissions(tmp_path: Path) -> None:
     """Acquisition must not chmod or replace an existing coordination inode."""
     destination = tmp_path / PROGRESS_NAME
     lock_path = Path(f"{destination}.lock")
-    lock_path.write_bytes(b"")
+    _ = lock_path.write_bytes(b"")
     retained_mode = 0o640
     lock_path.chmod(retained_mode)
     original = lock_path.stat()
