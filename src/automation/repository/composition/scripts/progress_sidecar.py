@@ -1921,7 +1921,7 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
     try:
         opened = os.fstat(stream.fileno())
         current = lock_path.stat(follow_symlinks=False)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"progress writer lock identity cannot be verified: {error}")
     if (
         not stat.S_ISREG(current.st_mode)
@@ -1937,7 +1937,7 @@ def _writer_lock(destination: Path) -> Generator[None]:
     try:
         try:
             release = _acquire_writer_lock(stream)
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             _fail(f"progress writer lock cannot be acquired: {error}")
         try:
             _verify_acquired_writer_lock(_writer_lock_path(destination), stream)

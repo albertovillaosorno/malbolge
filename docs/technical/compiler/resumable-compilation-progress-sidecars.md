@@ -251,6 +251,11 @@ precedence also applies when an injected cleanup operation raises
 fails after durable pointer publication, those same unexpected error classes
 retain the exact committed path via `ProgressSidecarCommittedError`.
 
+Unexpected `ValueError` and `RuntimeError` from lock acquisition or the
+post-acquisition inode identity probe become typed prepublication failures.
+Neither failure authorizes entry to the lock body, and stream teardown keeps
+the acquisition or identity error primary.
+
 Mutable replacement does not unlink the moved temporary pathname after
 commit. Before replacement, mutable temporary-cleanup failure is retained
 as secondary evidence

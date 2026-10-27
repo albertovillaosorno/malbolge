@@ -3036,6 +3036,49 @@ def test_writer_lock_stream_open_retains_primary_on_unusual_fd_close(
         assert not destination.exists()
 
 
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_writer_lock_identity_probe_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected acquired-lock metadata failures cannot admit publication."""
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    original_stat = Path.stat
+    original_acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    acquired = False
+    failure = "injected acquired writer lock inode failure"
+
+    def acquire_and_mark(stream: object) -> Callable[[], None]:
+        nonlocal acquired
+        release = original_acquire(stream)
+        acquired = True
+        return release
+
+    def fail_identity_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if acquired and path == lock_path:
+            raise failure_type(failure)
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", acquire_and_mark)
+        context.setattr(Path, "stat", fail_identity_stat)
+        with (
+            pytest.raises(ERROR, match="lock identity cannot be verified"),
+            writer_lock(destination),
+        ):
+            pytest.fail("failed acquired-lock identity entered publication")
+    with writer_lock(destination):
+        assert not destination.exists()
+
+
 def test_writer_lock_rejects_replaced_inode_after_acquisition(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5442,9 +5485,11 @@ def test_writer_lock_wraps_descriptor_close_oserror(
         pass
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_writer_lock_preserves_acquire_failure_before_close_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Lock-stream close cleanup cannot mask acquisition failure."""
     writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
@@ -5457,7 +5502,7 @@ def test_writer_lock_preserves_acquire_failure_before_close_failure(
 
     def fail_acquire(stream: object) -> Callable[[], None]:
         del stream
-        raise OSError(acquire_failure)
+        raise failure_type(acquire_failure)
 
     def fail_close(stream: object) -> None:
         original_close(stream)
