@@ -40,8 +40,8 @@ use std::path::Path;
 
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
-use super::input::TypedIrInput;
-use super::model::TernaryProgram;
+use super::input::{InputScalarType, TypedIrInput};
+use super::model::{TernaryOperation, TernaryProgram};
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 
@@ -62,8 +62,8 @@ pub enum TernaryCompilerStageInput<'input> {
         /// Durable progress sidecar selecting the committed checkpoint.
         progress: &'input Path,
     },
-    /// Restore state only when its source/ABI/profile matches the expected
-    /// already-admitted typed-IR projection.
+    /// Restore state only when module and function provenance match the
+    /// expected already-admitted typed-IR projection.
     ProgressForSource {
         /// Source of the expected compilation identity (not executable state).
         expected: &'input TypedIrInput,
@@ -88,7 +88,7 @@ pub enum TernaryCompilerStageError {
 /// Stable failures for progress-sidecar ternary-stage resume.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryProgressCheckpointError {
-    /// Restored provenance is not the caller's expected source/ABI/profile.
+    /// Restored module/function provenance differs from the expected source.
     IdentityMismatch,
     /// The configured progress inspector could not be launched.
     InspectorLaunch,
@@ -134,13 +134,59 @@ pub fn resume_ternary_from_progress(
         .map_err(Into::into)
 }
 
+// The target model encodes its return category in the final operation.
+// Checking it against the source signature prevents same-provenance state
+// from silently changing the caller-visible function result type.
+const fn matches_expected_return(
+    expected: InputScalarType,
+    last: Option<&TernaryOperation>,
+) -> bool {
+    matches!(
+        (expected, last),
+        (InputScalarType::Bool, Some(TernaryOperation::ReturnBool { .. }))
+            | (InputScalarType::I8, Some(TernaryOperation::ReturnI8 { .. }))
+            | (InputScalarType::I16, Some(TernaryOperation::ReturnI16 { .. }))
+            | (InputScalarType::I32, Some(TernaryOperation::Return { .. }))
+            | (InputScalarType::U8, Some(TernaryOperation::ReturnU8 { .. }))
+            | (InputScalarType::U16, Some(TernaryOperation::ReturnU16 { .. }))
+            | (InputScalarType::U32, Some(TernaryOperation::ReturnU32 { .. }))
+            | (InputScalarType::Void, Some(TernaryOperation::ReturnVoid { .. }))
+    )
+}
+
+// This comparison is deliberately structural rather than a fresh lowering:
+// resuming a large job must not re-run the work stored in its checkpoint.
+// It binds function identity and exact source spans in addition to module
+// provenance, while the upstream source digest remains caller-authenticated.
+fn matches_expected_functions(
+    program: &TernaryProgram,
+    expected: &TypedIrInput,
+) -> bool {
+    program.functions.len() == expected.functions.len()
+        && program.functions.iter().zip(&expected.functions).all(
+            |(saved, current)| {
+                saved.id == current.id
+                    && saved.name == current.name
+                    && saved.span.begin.byte == current.span.begin.byte
+                    && saved.span.begin.column == current.span.begin.column
+                    && saved.span.begin.line == current.span.begin.line
+                    && saved.span.end.byte == current.span.end.byte
+                    && saved.span.end.column == current.span.end.column
+                    && saved.span.end.line == current.span.end.line
+                    && matches_expected_return(
+                        current.return_kind, saved.operations.last(),
+                    )
+            },
+        )
+}
+
 /// Restores a checkpoint only for the caller's expected compiler source.
 ///
 /// The progress inspector still verifies checkpoint-envelope compatibility,
 /// and canonical stage admission validates the extracted ternary program.
 /// This additional check binds that program to separately supplied expected
-/// source/ABI/profile provenance; it does not authenticate the source digest
-/// or substitute for the caller's toolchain/revision compatibility policy.
+/// module and function provenance; it does not authenticate the source digest,
+/// compare operation semantics, or substitute for toolchain/revision policy.
 ///
 /// # Errors
 ///
@@ -160,6 +206,7 @@ pub fn resume_ternary_from_progress_for_source(
         || program.source_id != expected.source_id
         || program.source_sha256 != expected.source_sha256
         || program.target_profile != expected.target_profile
+        || !matches_expected_functions(&program, expected)
     {
         return Err(TernaryProgressCheckpointError::IdentityMismatch);
     }

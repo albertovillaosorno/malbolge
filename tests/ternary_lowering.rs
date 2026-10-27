@@ -11747,6 +11747,64 @@ fn assert_foreign_progress_source_rejected(
     Ok(())
 }
 
+fn assert_foreign_progress_function_rejected(
+    expected: &TypedIrInput,
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+) -> Result<(), String> {
+        for field in 0u8..4u8 {
+            let mut changed = expected.clone();
+            match field {
+                0 | 1 => {
+                    let function = changed.functions.first_mut().ok_or_else(
+                        || String::from("source has no function"),
+                    )?;
+                    if field == 0 {
+                        function.name.push_str("-renamed");
+                    } else {
+                        function.span.end.column = function.span.end.column
+                            .checked_add(1)
+                            .ok_or_else(|| String::from("span overflow"))?;
+                    }
+                },
+                2 => changed.functions.clear(),
+                3 => {
+                    changed.functions.first_mut()
+                        .ok_or_else(|| String::from("source has no function"))?
+                        .return_kind = InputScalarType::U32;
+                },
+                _ => return Err(String::from("unknown function mutation")),
+            }
+            let observed = resume_ternary_from_progress_for_source(
+                interpreter, inspector, progress, &changed,
+            );
+            if observed
+                != Err(TernaryProgressCheckpointError::IdentityMismatch)
+            {
+                return Err(format!(
+                    "function drift {field} admitted: {observed:?}"
+                ));
+            }
+            let selected_foreign = enter_ternary_compiler_stage(
+                TernaryCompilerStageInput::ProgressForSource {
+                    expected: &changed,
+                    inspector,
+                    interpreter,
+                    progress,
+                },
+            );
+            if selected_foreign != Err(TernaryCompilerStageError::Progress(
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )) {
+                return Err(format!(
+                    "product function drift {field}: {selected_foreign:?}"
+                ));
+            }
+        }
+    Ok(())
+}
+
 #[test]
 fn progress_resume_for_source_binds_caller_identity()
 -> Result<(), String> {
@@ -11782,10 +11840,58 @@ fn progress_resume_for_source_binds_caller_identity()
         }
         assert_foreign_progress_source_rejected(
             &expected, &interpreter, &inspector, &progress,
-        )
+        )?;
+        assert_foreign_progress_function_rejected(
+            &expected, &interpreter, &inspector, &progress,
+        )?;
+        Ok(())
     })();
     let cleanup = remove_dir_all(&directory)
         .map_err(|error| format!("remove source-bound fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn progress_resume_rejects_forged_function_provenance_with_same_digest()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower original source: {error:?}"))?;
+    let mut forged = original.clone();
+    forged.functions.first_mut()
+        .ok_or_else(|| String::from("forged program has no function"))?
+        .name.push_str("-foreign");
+    ternary_lowering::validate_ternary_program(&forged)
+        .map_err(|error| format!("admit forged function: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&forged)
+        .map_err(|error| format!("encode forged function: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("foreign-function", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let unrestricted = resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if unrestricted != Ok(forged.clone()) {
+            return Err(format!(
+                "valid foreign function rejected: {unrestricted:?}"
+            ));
+        }
+        if original.source_sha256 != forged.source_sha256 {
+            return Err(String::from("forgery changed the source digest"));
+        }
+        let checked = resume_ternary_from_progress_for_source(
+            &interpreter, &inspector, &progress, &expected,
+        );
+        if checked != Err(TernaryProgressCheckpointError::IdentityMismatch) {
+            return Err(format!("foreign function admitted: {checked:?}"));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove forged function fixture: {error}"));
     result?;
     cleanup
 }

@@ -921,12 +921,16 @@ place allocation-capable user code before the required bind.
 
 An opt-in source-matched progress selector now compares the restored,
 independently admitted ternary program with the caller's admitted typed-IR
-projection for exact source path/digest, ABI, typed-IR version, and target
-profile. The ordinary progress route remains available but does not bind an
-expected source. The source-matched route rejects an internally valid foreign
-checkpoint as `IdentityMismatch`, while preserving inspector and codec failures.
-This checks provenance equality, **not** the authenticity of the supplied
-source digest or the caller's external revision/toolchain compatibility policy.
+projection for exact source path/digest, ABI, typed-IR version, target
+profile, ordered function count/IDs/names, complete function source spans, and
+function return category derived from the last admitted ternary operation.
+The ordinary progress route remains available but does not bind an expected
+source. The source-matched route rejects an independently valid checkpoint
+with changed function identity despite a matching module digest, as well as
+caller function-name/span/count drift, using `IdentityMismatch` without
+re-running lowering. Inspector and codec failures remain distinct. This checks
+provenance equality, **not** the authenticity of the supplied source digest,
+operation-level semantic equivalence, or external toolchain/revision policy.
 
 The compiler's fresh ternary-stage entry now also runs the independent
 `validate_ternary_program` admission gate after successful lowering, matching
