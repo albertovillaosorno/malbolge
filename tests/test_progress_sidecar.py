@@ -1123,6 +1123,84 @@ def test_binary_checkpoint_stdout_rejects_flush_failure(
         writer(payload)
 
 
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("phase", ["write", "flush"])
+def test_checkpoint_binary_stdout_unexpected_io_failure_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    phase: str,
+) -> None:
+    """Unexpected operator output failures preserve typed diagnostic cause."""
+    failure_message = f"injected binary stdout {phase} failure"
+    payload = b"verified-state"
+    write_phase = "write"
+    flush_phase = "flush"
+
+    class FaultyBinaryOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            if phase == write_phase:
+                raise failure_type(failure_message)
+            return len(data)
+
+        @staticmethod
+        def flush() -> None:
+            if phase == flush_phase:
+                raise failure_type(failure_message)
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    monkeypatch.setattr(progress, "_binary_stdout", FaultyBinaryOutput)
+    with pytest.raises(
+        ERROR, match="portable checkpoint extraction stdout failed"
+    ) as captured:
+        writer(payload)
+    assert type(captured.value) is ERROR
+    assert isinstance(captured.value.__cause__, failure_type)
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_checkpoint_cli_reports_unexpected_binary_output_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure_type: type[Exception],
+) -> None:
+    """Binary stream failure exits nonzero instead of escaping the CLI."""
+    failure = "injected operator binary stdout failure"
+    codec = "search.evaluated-prefix-v1"
+    payload = b"verified-state"
+
+    class BrokenBinaryOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            del data
+            raise failure_type(failure)
+
+        @staticmethod
+        def flush() -> None:
+            pytest.fail("flush after failed binary write")
+
+    def fake_payload(path: Path, state_codec: str) -> bytes:
+        del path, state_codec
+        return payload
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_binary_stdout", BrokenBinaryOutput)
+        context.setattr(
+            progress, "_portable_payload_from_path", fake_payload
+        )
+        assert progress.main([
+            "--extract-checkpoint",
+            codec,
+            "unused.progress.json",
+        ]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert CHECKPOINT_EXTRACTION_FAILED_PREFIX in captured.err
+    assert failure in captured.err
+
+
 def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -2549,9 +2627,11 @@ def test_checkpoint_payload_read_retains_failure_before_stream_close(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.parametrize("close_type", [OSError, ValueError, RuntimeError])
 def test_read_reports_stream_close_failure_after_valid_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
 ) -> None:
     """A close-only failure never publishes a trusted read result."""
     sidecar = _sidecar(tmp_path)
@@ -2560,13 +2640,19 @@ def test_read_reports_stream_close_failure_after_valid_payload(
     opened: list[int] = []
     binary_mode = "rb"
 
+    class FailingCloseStream(FailingReadStream):
+        @override
+        def close(self) -> None:
+            os.close(self.descriptor)
+            raise close_type(self.close_failure)
+
     def fail_read_stream(
         descriptor: int, mode: str, *, closefd: bool
-    ) -> FailingReadStream:
+    ) -> FailingCloseStream:
         assert mode == binary_mode
         assert closefd
         opened.append(descriptor)
-        return FailingReadStream(
+        return FailingCloseStream(
             descriptor=descriptor,
             payload=progress.encode(sidecar),
             close_failure=close_failure,
@@ -2580,6 +2666,47 @@ def test_read_reports_stream_close_failure_after_valid_payload(
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("close_type", [ValueError, RuntimeError])
+def test_checkpoint_read_reports_unexpected_stream_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
+) -> None:
+    """An immutable member's close-only error stays inside the read API."""
+    checkpoint = b"resume-bytes"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    closed: list[int] = []
+    close_failure = "injected checkpoint stream close failure"
+
+    class FailedCloseStream(FailingReadStream):
+        @override
+        def close(self) -> None:
+            os.close(self.descriptor)
+            closed.append(self.descriptor)
+            raise close_type(self.close_failure)
+
+    def fake_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> FailedCloseStream:
+        assert (mode, closefd) == ("rb", True)
+        return FailedCloseStream(
+            descriptor=descriptor,
+            payload=checkpoint,
+            close_failure=close_failure,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fake_stream)
+        with pytest.raises(ERROR, match="checkpoint payload is unavailable"):
+            _ = progress.read_checkpoint_generation(sidecar)
+    assert len(closed) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(closed[0])
 
 
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:

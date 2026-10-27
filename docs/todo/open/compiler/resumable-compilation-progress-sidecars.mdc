@@ -90,6 +90,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   same-inode rewrite detection,
   non-`OSError` read-stream close failures are secondary to a prior read
   failure rather than replacing the primary error,
+  close-only `ValueError` and `RuntimeError` on pointer or checkpoint
+  payload reads remain typed untrusted-input failures while preserving the
+  primary exception cause and secondary descriptor cleanup notes,
+  unexpected binary checkpoint stdout write or flush exceptions likewise
+  produce typed extraction failure and a nonzero operator CLI exit,
   raw read and writer-lock descriptor cleanup retains primary
   stream-construction errors even if closing a raw descriptor raises
   `ValueError` or `RuntimeError`,

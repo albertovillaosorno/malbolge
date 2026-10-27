@@ -565,6 +565,15 @@ def _fail(message: str) -> Never:
     raise ProgressSidecarError(message)
 
 
+def _fail_with_source(message: str, source: Exception) -> Never:
+    """Wrap untrusted I/O while retaining its cause and close-failure notes."""
+    failure = ProgressSidecarError(message)
+    notes = cast("list[str]", getattr(source, "__notes__", []))
+    for note in notes:
+        failure.add_note(note)
+    raise failure from source
+
+
 def _admit_filesystem_path(text: str, context: str) -> str:
     """Reject strings the host filesystem cannot interpret as pathnames.
 
@@ -1750,6 +1759,10 @@ def read(path: Path) -> ProgressSidecar:
     Returns:
         Immutable validated progress sidecar.
 
+    Raises:
+        ProgressSidecarError: If filesystem admission, reading, or validation
+            fails, including unexpected stream cleanup exceptions.
+
     """
     admitted_path = _read_path(path)
     try:
@@ -1758,8 +1771,10 @@ def read(path: Path) -> ProgressSidecar:
         ).decode("utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid progress UTF-8: {error}")
-    except OSError as error:
-        _fail(f"progress sidecar is unavailable: {error}")
+    except ProgressSidecarError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(f"progress sidecar is unavailable: {error}", error)
     return loads(text)
 
 
@@ -2221,8 +2236,10 @@ def _read_payload(
         return _read_regular_bytes(
             path, f"{context} payload", max_bytes=max_bytes
         )
-    except OSError as error:
-        _fail(f"{context} payload is unavailable: {error}")
+    except ProgressSidecarError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(f"{context} payload is unavailable: {error}", error)
 
 
 def _validate_referenced_generation(sidecar: ProgressSidecar) -> None:
@@ -2591,10 +2608,17 @@ def _binary_stdout() -> _BinaryOutput:
 
 def _write_binary_stdout(payload: bytes) -> None:
     stream = _binary_stdout()
-    written = stream.write(payload)
-    if type(written) is not int or written != len(payload):
-        _fail("portable checkpoint extraction wrote incomplete stdout")
-    stream.flush()
+    try:
+        written = stream.write(payload)
+        if type(written) is not int or written != len(payload):
+            _fail("portable checkpoint extraction wrote incomplete stdout")
+        stream.flush()
+    except ProgressSidecarError:
+        raise
+    except (ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"portable checkpoint extraction stdout failed: {error}", error
+        )
 
 
 def _read_canonical_pointer(path: Path) -> ProgressSidecar:

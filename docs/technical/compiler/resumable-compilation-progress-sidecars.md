@@ -112,6 +112,16 @@ raises a non-`OSError` exception. The cleanup failure is attached as a
 secondary diagnostic, and descriptor close does not replace the primary read
 failure.
 
+An unexpected `ValueError` or `RuntimeError` raised by a close-only read
+failure is translated to `ProgressSidecarError` for both mutable pointer and
+immutable checkpoint-payload reads. The published read API does not leak the
+stream implementation's raw exception or accept incomplete admission.
+
+When wrapping unexpected I/O errors, the typed reader retains the original
+exception as its cause and propagates attached secondary cleanup notes.
+Descriptor cleanup diagnostics remain inspectable without replacing the
+stable public failure category.
+
 Raw-descriptor cleanup during failed read-stream or writer-lock stream
 construction follows the same precedence, including `ValueError` or
 `RuntimeError` from `os.close`. Exact stream-construction errors remain
@@ -389,6 +399,11 @@ Binary checkpoint extraction requires an exact integer stdout write count
 and a successful flush after full state validation. A short, invalid, or
 failed write returns failure; callers must ignore any bytes received from a
 failed invocation instead of treating partial stdout as recoverable state.
+
+Unexpected `ValueError` or `RuntimeError` from binary stdout write or flush
+also produce a typed extraction failure and a nonzero operator exit status.
+The original output error is retained as the cause, without making any
+partially emitted bytes authoritative checkpoint data.
 
 The progress-sidecar inspector provides two verified portable-checkpoint views.
 `--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
