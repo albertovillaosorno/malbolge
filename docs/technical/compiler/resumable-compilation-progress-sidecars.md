@@ -236,9 +236,13 @@ generation members commit, a mutable sidecar prepublication failure likewise
 reports the last committed member until the pointer itself crosses commit.
 
 During lock unwinding, a later release or close failure is secondary evidence
-when an
-acquisition, body, or release failure is already active. Mutable replacement
-does not unlink the moved temporary pathname after commit. Before
+when an acquisition, body, or release failure is already active. This
+precedence also applies when an injected cleanup operation raises
+`ValueError` or `RuntimeError` rather than a typed sidecar error. If cleanup
+fails after durable pointer publication, those same unexpected error classes
+retain the exact committed path via `ProgressSidecarCommittedError`.
+
+Mutable replacement does not unlink the moved temporary pathname after commit. Before
 replacement, mutable temporary-cleanup failure is retained as secondary evidence
 and cannot mask the primary publication failure.
 

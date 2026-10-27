@@ -1897,7 +1897,7 @@ def _release_writer_lock_preserving_primary(
     primary_error = sys.exception()
     try:
         _release_writer_lock(release)
-    except ProgressSidecarError as error:
+    except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(f"writer lock release also failed: {error}")
             return
@@ -1908,7 +1908,7 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
     primary_error = sys.exception()
     try:
         _close_writer_lock_stream(stream)
-    except ProgressSidecarError as error:
+    except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(f"writer lock close also failed: {error}")
             return
@@ -1957,7 +1957,7 @@ def _writer_publication_lock(destination: Path) -> Generator[None]:
             publication_completed = True
     except ProgressSidecarCommittedError:
         raise
-    except ProgressSidecarError as error:
+    except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if not publication_completed:
             raise
         message = (
