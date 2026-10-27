@@ -3950,8 +3950,10 @@ def test_directory_close_failure_preserves_primary_sync_failure(
     assert getattr(primary_error, "__notes__", None) == [expected_note]
 
 
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
     monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
 ) -> None:
     """Failed stream ownership transfer still closes the raw descriptor."""
     writer = cast(
@@ -3970,7 +3972,7 @@ def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
 
     def fail_close(observed: int) -> None:
         assert observed == descriptor
-        raise OSError(close_failure)
+        raise cleanup_type(close_failure)
 
     with monkeypatch.context() as context:
         context.setattr(os, "fdopen", fail_fdopen)
@@ -4423,9 +4425,11 @@ def test_partial_generation_reports_committed_durability_failure(
     assert progress.read(destination) == sidecar
 
 
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
 ) -> None:
     """Immutable temp cleanup cannot hide a durable generation member."""
     checkpoint = b"checkpoint-state-v1"
@@ -4444,7 +4448,7 @@ def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
     ) -> None:
         if path.name.endswith(".tmp"):
             message = "injected immutable temporary cleanup failure"
-            raise OSError(message)
+            raise cleanup_type(message)
         original_unlink(path, missing_ok=missing_ok)
 
     with monkeypatch.context() as context:
@@ -5792,9 +5796,11 @@ def test_write_atomic_preserves_write_before_close_failure(
     assert not Path(candidate.progress_path).exists()
 
 
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_write_atomic_preserves_primary_before_cleanup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
 ) -> None:
     """Mutable temp cleanup cannot mask a prepublication replace failure."""
     original = _sidecar(tmp_path)
@@ -5820,7 +5826,7 @@ def test_write_atomic_preserves_primary_before_cleanup_failure(
         missing_ok: bool = False,
     ) -> None:
         if path.name.endswith(".tmp"):
-            raise OSError(cleanup_failure)
+            raise cleanup_type(cleanup_failure)
         original_unlink(path, missing_ok=missing_ok)
 
     with monkeypatch.context() as context:

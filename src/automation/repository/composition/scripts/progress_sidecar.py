@@ -1977,7 +1977,7 @@ def _cleanup_mutable_temporary(
     primary_error = sys.exception()
     try:
         temporary.unlink(missing_ok=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(
                 f"mutable temporary cleanup also failed: {error}"
@@ -2057,7 +2057,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
     except BaseException as error:
         try:
             os.close(descriptor)
-        except OSError as close_error:
+        except (OSError, ValueError, RuntimeError) as close_error:
             note = (
                 "payload descriptor ownership cleanup also failed: "
                 f"{close_error}"
@@ -2118,7 +2118,7 @@ def _cleanup_immutable_temporary(
     primary_error = sys.exception()
     try:
         temporary.unlink(missing_ok=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(
                 f"immutable temporary cleanup also failed: {error}"

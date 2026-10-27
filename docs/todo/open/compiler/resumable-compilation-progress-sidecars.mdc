@@ -111,7 +111,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   acquisition/body/release failure as primary, shared mutable/immutable payload
   raw-descriptor cleanup also covers non-`OSError` stream-construction
   failures without replacing their primary exception,
+  payload raw-descriptor cleanup also preserves the primary constructor
+  failure when `os.close` raises `ValueError` or `RuntimeError`,
   and non-`OSError` stream-close errors cannot mask earlier write failures,
+  and non-`OSError` mutable and immutable temporary unlink errors preserve
+  primary prepublication failures or exact committed-generation evidence,
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
   temp unlink after replacement, and primary-error preservation when mutable
