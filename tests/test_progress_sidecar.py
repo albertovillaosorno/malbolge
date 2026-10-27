@@ -3113,7 +3113,7 @@ def test_public_numeric_rendering_rejects_host_decimal_limits(
     host_digit_limit = sys.get_int_max_str_digits()
     if host_digit_limit == 0:
         pytest.skip("host integer-to-decimal conversion is unlimited")
-    enormous = 10**host_digit_limit
+    enormous = cast("int", 10**host_digit_limit)
     with pytest.raises(ERROR, match="seed cannot be rendered as decimal"):
         _ = progress.resume_compatibility_fingerprint(
             replace(_resume_identity(), seed=enormous)
@@ -3163,7 +3163,7 @@ def test_host_decimal_ceiling_remains_admitted_when_representable(
     host_digit_limit = sys.get_int_max_str_digits()
     if host_digit_limit == 0:
         pytest.skip("host integer-to-decimal conversion is unlimited")
-    largest_power = 10 ** (host_digit_limit - 1)
+    largest_power = cast("int", 10 ** (host_digit_limit - 1))
     identity = replace(_resume_identity(), seed=largest_power)
     fingerprint = progress.resume_compatibility_fingerprint(identity)
     sidecar = replace(
