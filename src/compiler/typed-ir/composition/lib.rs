@@ -88,7 +88,7 @@ pub use module::*;
 pub use progress_resume::{
     ProgressCheckpointError, TypedIrCompilerStageError,
     TypedIrCompilerStageInput, enter_typed_ir_compiler_stage,
-    resume_typed_ir_from_progress,
+    resume_typed_ir_from_progress, resume_typed_ir_from_progress_for_source,
 };
 pub use source::*;
 pub use stage::{TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage};

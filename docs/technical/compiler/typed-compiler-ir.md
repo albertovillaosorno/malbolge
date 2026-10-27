@@ -214,6 +214,17 @@ launch failure, nonzero status, or any inspector diagnostics, and submits the
 exact stdout bytes to `enter_typed_ir_stage()` for complete checkpoint
 admission.
 
+An opt-in `ProgressForSource` product selector and direct
+`resume_typed_ir_from_progress_for_source()` route additionally compare the
+independently admitted checkpoint to a separately supplied normalized frontend
+artifact. They require exact ABI, source path/digest, target profile, ordered
+function count/names, and full function source spans. The unrestricted route
+retains its original behavior. Matched frontend evidence converges with fresh
+lowering, while valid foreign checkpoints and caller module/function provenance
+drift return `IdentityMismatch` through both entrypoints. The source check
+does not rerun frontend lowering, authenticate a caller-supplied digest,
+compare function operations, or replace revision/toolchain compatibility.
+
 ### Relationship to LLVM IR
 
 LLVM's language reference is useful design evidence for explicit basic-block

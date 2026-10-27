@@ -59,7 +59,8 @@ use typed_ir::{
     TypedIrCompilerStageInput, TypedIrStageError, TypedIrStageInput,
     ValidationError, ValueId, canonical_bytes, canonical_debug_text,
     canonical_module, enter_typed_ir_compiler_stage, enter_typed_ir_stage,
-    lower_frontend_artifact, resume_typed_ir_from_progress, validate_module,
+    lower_frontend_artifact, resume_typed_ir_from_progress,
+    resume_typed_ir_from_progress_for_source, validate_module,
 };
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -1528,6 +1529,178 @@ fn compiler_stage_selector_converges_fresh_and_progress() -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+fn changed_frontend_function(
+    function: &FrontendReturnIntegerFunction,
+    change_span: bool,
+) -> FrontendReturnIntegerFunction {
+    FrontendReturnIntegerFunction::new(FrontendReturnIntegerFunctionSpec {
+        body_span: function.body_span(),
+        constant_decimal: String::from(function.constant_decimal()),
+        definition: String::from(function.definition()),
+        function_span: if change_span {
+            frontend_span(1207, 1, 1235, 28)
+        } else {
+            function.function_span()
+        },
+        inline_specified: function.inline_specified(),
+        linkage: String::from(function.linkage()),
+        name: if change_span {
+            String::from(function.name())
+        } else {
+            format!("{}-foreign", function.name())
+        },
+        return_span: function.return_span(),
+        signature: String::from(function.signature()),
+        storage_class: String::from(function.storage_class()),
+        value_span: function.value_span(),
+        value_type: String::from(function.value_type()),
+    })
+}
+
+fn different_frontend_provenance(
+    expected: &FrontendArtifact,
+    field: u8,
+) -> Result<FrontendArtifact, String> {
+    let mut spec = FrontendArtifactSpec {
+        abi_id: String::from(expected.abi_id()),
+        artifact_id: String::from(expected.artifact_id()),
+        clang_target: String::from(expected.clang_target()),
+        clang_version: String::from(expected.clang_version()),
+        functions: expected.functions().to_vec(),
+        language: String::from(expected.language()),
+        schema_version: expected.schema_version(),
+        source_id: String::from(expected.source_id()),
+        source_sha256: *expected.source_sha256(),
+        target_profile: String::from(expected.target_profile()),
+    };
+    match field {
+        0 => spec.abi_id.push_str("-foreign"),
+        1 => spec.source_id.push_str("-foreign"),
+        2 => spec.source_sha256[0] ^= 1,
+        3 => spec.target_profile.push_str("-foreign"),
+        4 => spec.functions.clear(),
+        5 => spec.functions.push(frontend_function(
+            "fn()->i32", "i32", "7",
+        )),
+        6 | 7 => {
+            let original = spec.functions.first()
+                .ok_or_else(|| String::from("frontend function missing"))?;
+            let changed = changed_frontend_function(original, field == 7);
+            spec.functions.clear();
+            spec.functions.push(changed);
+        },
+        _ => return Err(String::from("unknown frontend provenance field")),
+    }
+    Ok(FrontendArtifact::new(spec))
+}
+
+fn assert_foreign_frontend_rejected(
+    expected: &FrontendArtifact,
+    interpreter: &Path,
+    inspector: &Path,
+    golden: &Path,
+) -> Result<(), String> {
+    for field in 0u8..8u8 {
+        let foreign = different_frontend_provenance(expected, field)?;
+        let direct = resume_typed_ir_from_progress_for_source(
+            interpreter, inspector, golden, &foreign,
+        );
+        if direct != Err(ProgressCheckpointError::IdentityMismatch) {
+            return Err(format!("foreign frontend {field} resumed: {direct:?}"));
+        }
+        let selected = enter_typed_ir_compiler_stage(
+            TypedIrCompilerStageInput::ProgressForSource {
+                expected: &foreign,
+                inspector,
+                interpreter,
+                progress: golden,
+            },
+        );
+        if selected != Err(TypedIrCompilerStageError::Progress(
+            ProgressCheckpointError::IdentityMismatch,
+        )) {
+            return Err(format!(
+                "product accepted frontend drift {field}: {selected:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_ir_progress_for_source_checks_expected_frontend()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let fresh = enter_typed_ir_compiler_stage(
+        TypedIrCompilerStageInput::Fresh(&expected),
+    )
+    .map_err(|error| format!("lower expected frontend: {error:?}"))?;
+    let inspector = temporary_inspector(
+        "frontend-source-bound", INSPECTOR_SUCCESS_SCRIPT,
+    )?;
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(LOWERING_GOLDEN_PATH);
+    let result = (|| {
+        let interpreter = repository_python();
+        let direct = resume_typed_ir_from_progress_for_source(
+            &interpreter, &inspector, &golden, &expected,
+        );
+        if direct != Ok(fresh.clone()) {
+            return Err(format!("matched frontend resume failed: {direct:?}"));
+        }
+        let selected = enter_typed_ir_compiler_stage(
+            TypedIrCompilerStageInput::ProgressForSource {
+                expected: &expected,
+                inspector: &inspector,
+                interpreter: &interpreter,
+                progress: &golden,
+            },
+        );
+        if selected != Ok(fresh) {
+            return Err(format!("matched product resume failed: {selected:?}"));
+        }
+        assert_foreign_frontend_rejected(
+            &expected, &interpreter, &inspector, &golden,
+        )
+    })();
+    let cleanup = remove_file(&inspector)
+        .map_err(|error| format!("remove source inspector: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn typed_ir_progress_for_source_rejects_other_valid_checkpoint()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = compiler_crash_directory("source-mismatch")?;
+    let output = directory.join("program.malbolge");
+    launch_compiler_crash(root, &output, "before-checkpoint-file-sync")?;
+    let progress = directory.join("program.malbolge.progress.json");
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = typed_ir_progress_inspector();
+        let original = resume_typed_ir_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if original != Ok(valid_module()) {
+            return Err(format!("foreign typed state invalid: {original:?}"));
+        }
+        let expected = frontend_return_projection();
+        let observed = resume_typed_ir_from_progress_for_source(
+            &interpreter, &inspector, &progress, &expected,
+        );
+        if observed != Err(ProgressCheckpointError::IdentityMismatch) {
+            return Err(format!("foreign source admitted: {observed:?}"));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"));
+    result?;
+    cleanup
 }
 
 #[test]

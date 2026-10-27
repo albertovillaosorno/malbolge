@@ -43,8 +43,11 @@ use std::path::Path;
 use inspector_transport::{InspectorFailure, extract_checkpoint};
 
 use super::encode::TYPED_IR_CODEC_ID;
-use super::frontend_semantics::FrontendArtifact;
+use super::frontend_semantics::{
+    FrontendArtifact, FrontendPosition, FrontendSpan,
+};
 use super::module::Module;
+use super::source::{SourcePosition, SourceSpan};
 use super::stage::{
     TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage,
 };
@@ -56,6 +59,18 @@ pub enum TypedIrCompilerStageInput<'input> {
     Fresh(&'input FrontendArtifact),
     /// Restore verified typed IR from one durable progress sidecar.
     Progress {
+        /// Explicit interpreter used to run the trusted inspector.
+        interpreter: &'input Path,
+        /// Explicit trusted progress-sidecar inspector.
+        inspector: &'input Path,
+        /// Durable progress sidecar selecting the committed checkpoint.
+        progress: &'input Path,
+    },
+    /// Resume only when the admitted checkpoint matches expected frontend
+    /// source identity and function provenance.
+    ProgressForSource {
+        /// Caller-admitted frontend source, not executable checkpoint state.
+        expected: &'input FrontendArtifact,
         /// Explicit interpreter used to run the trusted inspector.
         interpreter: &'input Path,
         /// Explicit trusted progress-sidecar inspector.
@@ -77,6 +92,8 @@ pub enum TypedIrCompilerStageError {
 /// Stable failure categories for progress-sidecar typed-IR resume adaptation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgressCheckpointError {
+    /// Restored module or function provenance differs from expected source.
+    IdentityMismatch,
     /// The configured progress inspector could not be launched.
     InspectorLaunch,
     /// The inspector rejected the generation or emitted diagnostics.
@@ -117,6 +134,65 @@ pub fn resume_typed_ir_from_progress(
         .map_err(Into::into)
 }
 
+// These are provenance comparisons, not a re-run of frontend lowering.
+// Checkpoints lack Clang invocation identity and cannot attest that the
+// supplied source digest was authenticated by the caller.
+const fn matches_position(
+    saved: SourcePosition,
+    expected: FrontendPosition,
+) -> bool {
+    saved.byte() == expected.byte()
+        && saved.line() == expected.line()
+        && saved.column() == expected.column()
+}
+
+const fn matches_span(saved: SourceSpan, expected: FrontendSpan) -> bool {
+    matches_position(saved.begin(), expected.begin())
+        && matches_position(saved.end(), expected.end())
+}
+
+fn matches_expected_frontend(
+    saved: &Module,
+    expected: &FrontendArtifact,
+) -> bool {
+    saved.abi_id() == expected.abi_id()
+        && saved.source_id() == expected.source_id()
+        && saved.source_sha256() == expected.source_sha256()
+        && saved.target_profile() == expected.target_profile()
+        && saved.functions().len() == expected.functions().len()
+        && saved.functions().iter().zip(expected.functions()).all(
+            |(function, source)| {
+                function.name() == source.name()
+                    && matches_span(function.span(), source.function_span())
+            },
+        )
+}
+
+/// Restores a typed checkpoint only for the caller's expected frontend source.
+///
+/// This check matches module and ordered function provenance after complete
+/// checkpoint admission, without re-running frontend lowering. It does not
+/// authenticate the supplied source digest, compare function instructions,
+/// or replace the caller's revision/toolchain compatibility policy.
+///
+/// # Errors
+///
+/// Preserves inspector and typed-stage errors, or reports `IdentityMismatch`
+/// when the restored module differs from the caller's source metadata.
+pub fn resume_typed_ir_from_progress_for_source(
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+    expected: &FrontendArtifact,
+) -> Result<Module, ProgressCheckpointError> {
+    let module =
+        resume_typed_ir_from_progress(interpreter, inspector, progress)?;
+    if !matches_expected_frontend(&module, expected) {
+        return Err(ProgressCheckpointError::IdentityMismatch);
+    }
+    Ok(module)
+}
+
 /// Enters typed IR from either fresh frontend evidence or durable progress.
 ///
 /// # Errors
@@ -136,5 +212,14 @@ pub fn enter_typed_ir_compiler_stage(
             progress,
         } => resume_typed_ir_from_progress(interpreter, inspector, progress)
             .map_err(TypedIrCompilerStageError::Progress),
+        TypedIrCompilerStageInput::ProgressForSource {
+            expected,
+            inspector,
+            interpreter,
+            progress,
+        } => resume_typed_ir_from_progress_for_source(
+            interpreter, inspector, progress, expected,
+        )
+        .map_err(TypedIrCompilerStageError::Progress),
     }
 }
