@@ -228,6 +228,15 @@ broader committed error because durability is already confirmed. If sync and
 close both fail, the sync failure remains primary and close failure is secondary
 evidence.
 
+This ordering also applies when directory close raises `ValueError` or
+`RuntimeError` rather than `OSError`. Confirmed sync retains the exact
+committed path; failed sync retains typed uncertain-durability evidence and
+records the close error as a secondary note.
+
+Directory `fsync` failures of types `OSError`, `ValueError`, and
+`RuntimeError` all retain uncertain-durability path evidence. A non-OS sync
+failure remains primary even if the subsequent directory close also fails.
+
 Writer-lock release/close and immutable temporary-file cleanup failure after
 durable publication follow the same committed-evidence principle. If a durable
 checkpoint member commits before a later partial member fails prepublication,

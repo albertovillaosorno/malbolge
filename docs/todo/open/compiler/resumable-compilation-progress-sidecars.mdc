@@ -100,7 +100,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   pre-publication filesystem failures, exact committed-path evidence for
   post-publication directory-sync failures, committed evidence when directory
   close fails after successful sync, primary-sync preservation when close also
-  fails, durable-pointer evidence when writer-lock or immutable temporary
+  fails, including `ValueError` and `RuntimeError` from raw directory close,
+  typed uncertain-durability outcomes also cover non-`OSError` directory
+  sync failures, keeping them primary over later close errors,
+  durable-pointer evidence when writer-lock or immutable temporary
   cleanup fails after commit, exact committed-generation evidence when a later
   partial member or mutable sidecar fails prepublication, regular writer-lock
   descriptor admission rejects FIFO/link substitution, lock-inode drift,

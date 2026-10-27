@@ -1767,17 +1767,17 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
     if platform == WINDOWS_PLATFORM:
         return
     descriptor = os.open(path, os.O_RDONLY)
-    sync_error: OSError | None = None
+    sync_error: Exception | None = None
     try:
         try:
             os.fsync(descriptor)
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             sync_error = error
             raise
     finally:
         try:
             os.close(descriptor)
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             if sync_error is not None:
                 sync_error.add_note(
                     f"directory descriptor close also failed: {error}"
@@ -1801,7 +1801,7 @@ def _confirm_publication_durability(
             f"{error}"
         )
         raise ProgressSidecarCommittedError(message, published_path) from error
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = (
             f"{context} committed but durability confirmation failed: "
             f"{error}"

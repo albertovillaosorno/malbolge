@@ -3864,9 +3864,11 @@ def test_checkpoint_generation_wraps_immutable_publication_oserror(
     assert not Path(sidecar.progress_path).exists()
 
 
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_directory_close_after_sync_reports_committed_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
 ) -> None:
     """Directory close failure cannot make confirmed durability uncertain."""
     published_path = tmp_path / PROGRESS_NAME
@@ -3887,7 +3889,7 @@ def test_directory_close_after_sync_reports_committed_path(
     def fail_close(observed: int) -> None:
         calls.append(("close", observed))
         message = "injected directory close failure"
-        raise OSError(message)
+        raise cleanup_type(message)
 
     with monkeypatch.context() as context:
         context.setattr(os, "open", open_directory)
@@ -3907,9 +3909,56 @@ def test_directory_close_after_sync_reports_committed_path(
     assert calls == [("sync", descriptor), ("close", descriptor)]
 
 
+@pytest.mark.parametrize("sync_type", [ValueError, RuntimeError])
+def test_directory_unexpected_sync_failure_stays_uncertain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    sync_type: type[Exception],
+) -> None:
+    """A non-OS sync error retains uncertain-durability path evidence."""
+    published_path = tmp_path / PROGRESS_NAME
+    descriptor = 79
+    failure = "injected non-OS directory sync failure"
+    closed: list[int] = []
+    confirm = cast(
+        "Callable[..., None]",
+        vars(progress)["_confirm_publication_durability"],
+    )
+
+    def open_directory(path: Path, flags: int) -> int:
+        del path, flags
+        return descriptor
+
+    def fail_sync(observed: int) -> None:
+        del observed
+        raise sync_type(failure)
+
+    def close_directory(observed: int) -> None:
+        closed.append(observed)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", open_directory)
+        context.setattr(os, "fsync", fail_sync)
+        context.setattr(os, "close", close_directory)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=failure,
+        ) as captured:
+            confirm(published_path, context="progress sidecar")
+    assert captured.value.published_path == published_path
+    assert isinstance(captured.value.__cause__, sync_type)
+    assert closed == [descriptor]
+
+
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("sync_type", [OSError, ValueError, RuntimeError])
 def test_directory_close_failure_preserves_primary_sync_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
+    *,
+    sync_type: type[Exception],
 ) -> None:
     """Directory close failure remains secondary to failed durability sync."""
     published_path = tmp_path / PROGRESS_NAME
@@ -3927,11 +3976,11 @@ def test_directory_close_failure_preserves_primary_sync_failure(
 
     def fail_sync(observed: int) -> None:
         del observed
-        raise OSError(sync_failure)
+        raise sync_type(sync_failure)
 
     def fail_close(observed: int) -> None:
         del observed
-        raise OSError(close_failure)
+        raise cleanup_type(close_failure)
 
     with monkeypatch.context() as context:
         context.setattr(os, "open", open_directory)
@@ -3944,7 +3993,7 @@ def test_directory_close_failure_preserves_primary_sync_failure(
             confirm(published_path, context="progress sidecar")
 
     primary_error = captured.value.__cause__
-    assert isinstance(primary_error, OSError)
+    assert isinstance(primary_error, sync_type)
     assert str(primary_error) == sync_failure
     expected_note = f"directory descriptor close also failed: {close_failure}"
     assert getattr(primary_error, "__notes__", None) == [expected_note]
