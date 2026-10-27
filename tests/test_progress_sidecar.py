@@ -2405,6 +2405,58 @@ def test_read_preserves_primary_read_failure_before_stream_close(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.parametrize(
+    "close_type", [ValueError, RuntimeError],
+    ids=["value-error", "runtime-error"],
+)
+def test_read_non_os_close_keeps_primary_read_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
+) -> None:
+    """A non-OS read-stream close error cannot mask the earlier read error."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    read_failure = "injected primary read failure"
+    close_failure = "injected non-OS read stream close failure"
+    binary_mode = "rb"
+    opened: list[int] = []
+
+    class UnexpectedCloseStream(FailingReadStream):
+        @override
+        def close(self) -> None:
+            os.close(self.descriptor)
+            raise close_type(self.close_failure)
+
+    def fail_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> UnexpectedCloseStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return UnexpectedCloseStream(
+            descriptor=descriptor,
+            payload=b"unused",
+            close_failure=close_failure,
+            read_failure=read_failure,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        with pytest.raises(
+            ERROR, match="progress sidecar is unavailable"
+        ) as captured:
+            _ = progress.read(destination)
+    primary = captured.value.__context__
+    assert isinstance(primary, OSError)
+    assert str(primary) == read_failure
+    assert getattr(primary, "__notes__", None) == [
+        f"read stream close also failed: {close_failure}"
+    ]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def test_checkpoint_payload_read_retains_failure_before_stream_close(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

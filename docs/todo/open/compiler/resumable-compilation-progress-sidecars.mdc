@@ -88,6 +88,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   read descriptor/path inode identity matching against replacement or unlink,
   and pre/post read size and nanosecond modification/change-time admission for
   same-inode rewrite detection,
+  non-`OSError` read-stream close failures are secondary to a prior read
+  failure rather than replacing the primary error,
   post-`mkdir` mutable pointer path
   re-admission against directory-swap races, post-staging mutable/immutable
   path re-admission before publication, stable read with read-before-close

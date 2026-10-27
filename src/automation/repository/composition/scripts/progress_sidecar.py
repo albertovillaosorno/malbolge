@@ -1712,8 +1712,7 @@ def _read_stream_preserving_primary(
     Returns:
         Exact bytes from the admitted regular-file stream.
 
-    Raises:
-        OSError: If either the stream read or close fails.
+    Read failures retain precedence over later stream-close exceptions.
 
     """
     path, context, initial = admission
@@ -1736,7 +1735,7 @@ def _read_stream_preserving_primary(
         primary_error = sys.exception()
         try:
             stream.close()
-        except OSError as error:
+        except BaseException as error:
             if primary_error is not None:
                 primary_error.add_note(
                     f"read stream close also failed: {error}"
