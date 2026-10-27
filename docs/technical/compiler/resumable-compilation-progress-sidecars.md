@@ -399,7 +399,16 @@ Operator text output for summary, checkpoint discovery, and follow status now
 uses a shared typed stdout boundary. Unexpected `OSError`, `ValueError`, or
 `RuntimeError` during writing returns the command's stable failure status;
 follow additionally rejects a failed flush instead of accepting an incomplete
-terminal record. No partially emitted text becomes recovery authority.
+terminal record. An output stream must report the exact integer character count;
+boolean, missing, short, negative, and exaggerated counts are rejected even
+without a raised write exception.
+
+Each operator record must flush successfully
+before the command reports success; neither a rejected count nor a failed flush
+can authorize follow completion or a one-shot inspection result. No partially
+emitted text becomes recovery authority. The `--help` usage record obeys the
+same exact-write and flush admission; incomplete or unflushed help returns a
+nonzero status with a stable diagnostic rather than falsely claiming success.
 
 Binary checkpoint extraction requires an exact integer stdout write count
 and a successful flush after full state validation. A short, invalid, or

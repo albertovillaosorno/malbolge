@@ -93,6 +93,7 @@ EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
 FOLLOW_HELP = "--follow PROGRESS.json"
 FOLLOW_BACKWARD_DIAGNOSTIC = "moved backward"
 FOLLOW_FAILED_PREFIX = "progress sidecar follow failed:"
+HELP_FAILED_PREFIX = "progress sidecar help failed:"
 FOLLOW_INTERVAL_SECONDS = 1.0
 WRONG_CODEC_DIAGNOSTIC = b"checkpoint state codec"
 BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
@@ -1211,6 +1212,51 @@ def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     assert EXTRACT_HELP in captured.out
     assert FOLLOW_HELP in captured.out
     assert not captured.err
+
+
+@pytest.mark.parametrize("reported", [None, True, 0, 5, 2**20])
+def test_operator_help_rejects_incomplete_text_output(
+    monkeypatch: pytest.MonkeyPatch,
+    reported: object,
+) -> None:
+    """Help must not report success when stdout omits some usage text."""
+    stderr = StringIO()
+
+    class BrokenHelpOutput(StringIO):
+        @override
+        def write(self, content: str) -> int:
+            del content
+            return cast("int", reported)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", BrokenHelpOutput())
+        context.setattr(sys, "stderr", stderr)
+        status = progress.main(["--help"])
+    assert status == 1
+    assert HELP_FAILED_PREFIX in stderr.getvalue()
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_operator_help_flush_failure_returns_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Help output is not successful if the buffered usage cannot flush."""
+    failure = "injected help stdout flush failure"
+    stderr = StringIO()
+
+    class FailedHelpFlush(StringIO):
+        @override
+        def flush(self) -> None:
+            raise failure_type(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", FailedHelpFlush())
+        context.setattr(sys, "stderr", stderr)
+        status = progress.main(["--help"])
+    assert status == 1
+    assert HELP_FAILED_PREFIX in stderr.getvalue()
+    assert failure in stderr.getvalue()
 
 
 def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
@@ -6935,6 +6981,121 @@ def test_operator_text_stdout_failure_returns_stable_exit(
     assert status == 1
     assert expected_prefixes[mode] in error_sink.getvalue()
     assert failure in error_sink.getvalue()
+
+
+@pytest.mark.parametrize(
+    "claimed_count", [None, True, False, -1, 0, 2**20]
+)
+@pytest.mark.parametrize("mode", ["inspect", "checkpoint-info", "follow"])
+def test_operator_text_rejects_untrusted_write_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    claimed_count: object,
+    mode: str,
+) -> None:
+    """A malformed or short text write cannot certify an operator update."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(completed)
+    metadata = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="search.evaluated-prefix-v1",
+        units_completed=completed.units_completed,
+    )
+    invocations = {
+        "inspect": [str(destination)],
+        "checkpoint-info": ["--checkpoint-info", str(destination)],
+        "follow": ["--follow", str(destination)],
+    }
+    failure_prefixes = {
+        "inspect": INSPECTION_FAILED_PREFIX,
+        "checkpoint-info": CHECKPOINT_INSPECTION_FAILED_PREFIX,
+        "follow": FOLLOW_FAILED_PREFIX,
+    }
+    flushes: list[bool] = []
+
+    class FakeShortWriter(StringIO):
+        @override
+        def write(self, data: str) -> int:
+            del data
+            return cast("int", claimed_count)
+
+        @override
+        def flush(self) -> None:
+            flushes.append(True)
+
+    def fake_metadata(
+        candidate: progress.ProgressSidecar,
+    ) -> progress.PortableCheckpointMetadata:
+        del candidate
+        return metadata
+
+    error_sink = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", FakeShortWriter())
+        context.setattr(sys, "stderr", error_sink)
+        context.setattr(
+            progress, "read_portable_checkpoint_metadata", fake_metadata
+        )
+        status = progress.main(invocations[mode])
+    assert status == 1
+    assert failure_prefixes[mode] in error_sink.getvalue()
+    assert not flushes
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("mode", ["inspect", "checkpoint-info"])
+def test_operator_single_record_flush_failure_returns_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    mode: str,
+) -> None:
+    """A buffered one-shot operator result cannot succeed before flush."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(completed)
+    failure = "injected one-shot operator stdout flush failure"
+    metadata = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="search.evaluated-prefix-v1",
+        units_completed=completed.units_completed,
+    )
+    invocations = {
+        "inspect": [str(destination)],
+        "checkpoint-info": ["--checkpoint-info", str(destination)],
+    }
+    failure_prefixes = {
+        "inspect": INSPECTION_FAILED_PREFIX,
+        "checkpoint-info": CHECKPOINT_INSPECTION_FAILED_PREFIX,
+    }
+
+    class FailingFlush(StringIO):
+        @override
+        def flush(self) -> None:
+            raise failure_type(failure)
+
+    def fake_metadata(
+        candidate: progress.ProgressSidecar,
+    ) -> progress.PortableCheckpointMetadata:
+        del candidate
+        return metadata
+
+    stderr = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", FailingFlush())
+        context.setattr(sys, "stderr", stderr)
+        context.setattr(
+            progress, "read_portable_checkpoint_metadata", fake_metadata
+        )
+        result = progress.main(invocations[mode])
+    assert result == 1
+    assert failure_prefixes[mode] in stderr.getvalue()
+    assert failure in stderr.getvalue()
 
 
 @pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])

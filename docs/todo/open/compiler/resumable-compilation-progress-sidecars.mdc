@@ -96,8 +96,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   unexpected binary checkpoint stdout write or flush exceptions likewise
   produce typed extraction failure and a nonzero operator CLI exit,
   operator text output across inspection, checkpoint discovery, and follow
-  likewise rejects unexpected stdout write and follow flush exceptions with
-  stable command failures, without admitting partially written status lines,
+  likewise rejects unexpected stdout write and follow flush exceptions and
+  demands an exact integer text-write count, rejecting boolean, missing,
+  short, and overstated counts and requires a successful text flush for
+  every operator record, including `--help`, before reporting success,
   raw read and writer-lock descriptor cleanup retains primary
   stream-construction errors even if closing a raw descriptor raises
   `ValueError` or `RuntimeError`,

@@ -2621,7 +2621,7 @@ def _write_binary_stdout(payload: bytes) -> None:
         )
 
 
-def _write_operator_text(text: str, *, flush: bool = False) -> None:
+def _write_operator_text(text: str) -> None:
     """Write operator metadata through the typed stdout failure boundary.
 
     Raises:
@@ -2629,9 +2629,10 @@ def _write_operator_text(text: str, *, flush: bool = False) -> None:
 
     """
     try:
-        _ = sys.stdout.write(text)
-        if flush:
-            _ = sys.stdout.flush()
+        written = sys.stdout.write(text)
+        if type(written) is not int or written != len(text):
+            _fail("progress operator stdout wrote incomplete text")
+        _ = sys.stdout.flush()
     except ProgressSidecarError:
         raise
     except (OSError, ValueError, RuntimeError) as error:
@@ -2727,7 +2728,7 @@ def _follow_validated_path(
 ) -> int:
     current = _read_canonical_pointer(path)
     while True:
-        _write_operator_text(render_summary(current), flush=True)
+        _write_operator_text(render_summary(current))
         if current.status.value in TERMINAL_STATUSES:
             return 0
         current = _next_observed_change(path, current, wait)
@@ -2786,7 +2787,11 @@ def main(argv: list[str] | None = None) -> int:
         "       progress_sidecar.py --follow PROGRESS.json\n"
     )
     if arguments in (["-h"], ["--help"]):
-        _ = sys.stdout.write(usage)
+        try:
+            _write_operator_text(usage)
+        except ProgressSidecarError as error:
+            _ = sys.stderr.write(f"progress sidecar help failed: {error}\n")
+            return 1
         return 0
     return _dispatch_inspection(arguments, usage)
 
