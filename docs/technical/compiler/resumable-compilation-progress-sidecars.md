@@ -104,9 +104,11 @@ and after reading to reject observed in-place same-inode rewrites.
 
 Bounded raw reads continue after a short chunk, staying within the admitted
 byte budget,
-and reject premature EOF before the opened inode's recorded size. Even a valid
-JSON prefix cannot stand in for unread file bytes. These are metadata-based
-checks and do not establish an atomic filesystem snapshot.
+and reject premature EOF before the opened inode's recorded size. Raw stream
+results must be exact bytes, cannot exceed the requested size, and must match
+the initially admitted inode length. Even a valid JSON prefix cannot stand in
+for unread file bytes. These are metadata-based checks and do not establish an
+atomic filesystem snapshot.
 
 These are bounded admission checks, not a promise of immunity to subsequent
 filesystem mutation after the stream closes. Descriptor read errors remain

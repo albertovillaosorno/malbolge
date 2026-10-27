@@ -511,6 +511,38 @@ class ShortChunkReadStream:
 
 
 @dataclass(slots=True)
+class MalformedRawReadStream:
+    """Return an untrusted read result while owning a real open descriptor."""
+
+    descriptor: int
+    invalid_chunk: str
+
+    def read(self, size: int = -1) -> bytes:
+        """Inject a non-byte or overlong result.
+
+        Returns:
+            Inadmissible stream result for boundary testing.
+
+        """
+        available = os.fstat(self.descriptor).st_size
+        source = os.read(
+            self.descriptor, available if size < 0 else min(size, available)
+        )
+        malformed: dict[str, object] = {
+            "foreign-text": "not bytes",
+            "bytearray": bytearray(source),
+            "integer": 7,
+            "none": None,
+            "overlong": source + b"unexpected extra byte",
+        }
+        return cast("bytes", malformed[self.invalid_chunk])
+
+    def close(self) -> None:
+        """Close the exact descriptor owned by this fake raw stream."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
 class MutatingReadStream:
     """Rewrite an admitted regular inode before a read returns its bytes."""
 
@@ -1776,7 +1808,7 @@ def test_sidecar_reader_caps_payload_even_if_stream_overruns(
     with monkeypatch.context() as context:
         context.setattr(progress, "FileIO", overfill_stream)
         with pytest.raises(
-            ERROR, match="progress sidecar exceeds maximum byte"
+            ERROR, match="invalid raw stream read result"
         ):
             _ = progress.read(destination)
     requested = min(
@@ -1826,6 +1858,48 @@ def test_progress_read_never_admits_incomplete_raw_stream(
         else:
             assert progress.read(destination) == sidecar
 
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize(
+    "invalid_chunk",
+    ["foreign-text", "bytearray", "integer", "none", "overlong"],
+)
+@pytest.mark.parametrize("source", ["pointer", "checkpoint"])
+def test_read_rejects_malformed_raw_stream_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    invalid_chunk: str,
+    source: str,
+) -> None:
+    """An untrusted stream result cannot impersonate admitted file bytes."""
+    checkpoint = b"checkpoint-bytes"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+    readers: dict[str, Callable[[], object]] = {
+        "pointer": lambda: progress.read(destination),
+        "checkpoint": lambda: progress.read_checkpoint_generation(sidecar),
+    }
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def malformed_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> MalformedRawReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return MalformedRawReadStream(descriptor, invalid_chunk)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", malformed_stream)
+        with pytest.raises(ERROR, match="invalid raw stream read"):
+            _ = readers[source]()
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])

@@ -1734,18 +1734,25 @@ def _read_regular_bytes(
     )
 
 
+def _read_raw_chunk(stream: FileIO, size: int | None) -> bytes:
+    chunk = stream.read() if size is None else stream.read(size)
+    if type(chunk) is not bytes or (size is not None and len(chunk) > size):
+        _fail("invalid raw stream read result")
+    return chunk
+
+
 def _read_with_budget(
     stream: FileIO, max_bytes: int | None, observed_size: int
 ) -> bytes:
     if max_bytes is None:
-        return stream.read()
+        return _read_raw_chunk(stream, None)
     # A huge declared count cannot become an unrepresentable FileIO size
     # when the admitted inode is much smaller.
     read_size = min(max_bytes + 1, observed_size + 1, sys.maxsize)
     chunks: list[bytes] = []
     remaining = read_size
     while remaining > 0:
-        chunk = stream.read(remaining)
+        chunk = _read_raw_chunk(stream, remaining)
         if not chunk:
             break
         chunks.append(chunk)
@@ -1756,6 +1763,8 @@ def _read_with_budget(
 def _require_complete_read(payload: bytes, expected: int, context: str) -> None:
     if len(payload) < expected:
         _fail(f"{context} incomplete file read")
+    if len(payload) > expected:
+        _fail(f"{context} invalid raw stream read length")
 
 
 def _read_stream_preserving_primary(
