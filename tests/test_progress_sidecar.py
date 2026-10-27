@@ -7552,6 +7552,56 @@ def test_operator_text_missing_stdout_returns_failure(
     assert marker in errors.getvalue()
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_error_diagnostic_flush_failure_preserves_original_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Rejected inspection stays rejected if buffered stderr cannot flush."""
+    failure = "injected diagnostic flush failure"
+    writes: list[str] = []
+
+    class BufferedDiagnosticStream(StringIO):
+        @override
+        def write(self, value: str) -> int:
+            writes.append(value)
+            return len(value)
+
+        @override
+        def flush(self) -> None:
+            raise failure_type(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", BufferedDiagnosticStream())
+        assert progress.main([str(tmp_path / "missing-progress.json")]) == 1
+    assert len(writes) == 1
+    assert INSPECTION_FAILED_PREFIX in writes[0]
+
+
+def test_error_diagnostic_flushes_before_returning_failed_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI failure records must reach a writable buffered diagnostic sink."""
+    events: list[str] = []
+
+    class ObservedDiagnostics(StringIO):
+        @override
+        def write(self, value: str) -> int:
+            events.append("write")
+            return super().write(value)
+
+        @override
+        def flush(self) -> None:
+            events.append("flush")
+            super().flush()
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", ObservedDiagnostics())
+        assert progress.main([str(tmp_path / "missing-progress.json")]) == 1
+    assert events == ["write", "flush"]
+
+
 @pytest.mark.parametrize(
     "mode", ["inspect", "checkpoint-info", "extract", "follow", "usage", "help"]
 )

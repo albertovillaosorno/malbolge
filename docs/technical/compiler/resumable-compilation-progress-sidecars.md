@@ -453,7 +453,10 @@ Error reporting is best-effort: a broken, closed, or invalid stderr stream may
 prevent diagnostic delivery but cannot convert a rejected inspection,
 extraction, follow, help, or usage operation into an uncaught stream exception
 or successful exit. The original error status remains authoritative.
-Absent standard streams and noncallable output methods follow the same rule,
+
+Diagnostics are flushed on the best-effort path; errors during the flush
+also preserve the original failure status. Absent standard streams and
+noncallable output methods follow the same rule,
 including failures to acquire a usable binary stdout stream before extraction.
 
 Binary checkpoint extraction requires an exact integer stdout write count

@@ -2735,6 +2735,7 @@ def _write_error_diagnostic(message: str) -> None:
     """Preserve a known CLI failure even if stderr cannot accept text."""
     try:
         _ = sys.stderr.write(message)
+        _ = sys.stderr.flush()
     except _OUTPUT_STREAM_ERRORS:
         # The caller already rejected the operation. The status must remain
         # nonzero even when the diagnostic sink is unavailable.
