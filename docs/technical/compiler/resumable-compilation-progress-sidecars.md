@@ -100,8 +100,10 @@ been read and before the admitted descriptor is closed. Concurrent pathname
 replacement during the read cannot turn a stale regular-file snapshot into
 trusted progress evidence, even when the replacement has identical bytes.
 File size and nanosecond modification/change times are also checked before
-and after reading to reject observed in-place same-inode rewrites. Bounded raw
-reads continue after a short chunk, staying within the admitted byte budget,
+and after reading to reject observed in-place same-inode rewrites.
+
+Bounded raw reads continue after a short chunk, staying within the admitted
+byte budget,
 and reject premature EOF before the opened inode's recorded size. Even a valid
 JSON prefix cannot stand in for unread file bytes. These are metadata-based
 checks and do not establish an atomic filesystem snapshot.
