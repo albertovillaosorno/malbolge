@@ -2711,6 +2711,16 @@ def _write_operator_text(text: str) -> None:
         _fail_with_source(f"progress operator stdout failed: {error}", error)
 
 
+def _write_error_diagnostic(message: str) -> None:
+    """Preserve a known CLI failure even if stderr cannot accept text."""
+    try:
+        _ = sys.stderr.write(message)
+    except (OSError, ValueError, RuntimeError):
+        # The caller already rejected the operation. The status must remain
+        # nonzero even when the diagnostic sink is unavailable.
+        return
+
+
 def _read_canonical_pointer(path: Path) -> ProgressSidecar:
     """Bind operator-visible inspection to the declared pointer location.
 
@@ -2744,7 +2754,7 @@ def _checkpoint_info_path(path: Path) -> int:
         _write_operator_text(render_checkpoint_metadata(metadata))
     except (OSError, ProgressSidecarError) as error:
         message = f"portable checkpoint inspection failed: {error}\n"
-        _ = sys.stderr.write(message)
+        _write_error_diagnostic(message)
         return 1
     return 0
 
@@ -2755,7 +2765,7 @@ def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
         _write_binary_stdout(payload)
     except (OSError, ProgressSidecarError) as error:
         message = f"portable checkpoint extraction failed: {error}\n"
-        _ = sys.stderr.write(message)
+        _write_error_diagnostic(message)
         return 1
     return 0
 
@@ -2766,7 +2776,7 @@ def _inspect_path(path: Path) -> int:
         _write_operator_text(render_summary(sidecar))
     except (OSError, ProgressSidecarError) as error:
         message = f"progress sidecar inspection failed: {error}\n"
-        _ = sys.stderr.write(message)
+        _write_error_diagnostic(message)
         return 1
     return 0
 
@@ -2815,7 +2825,7 @@ def _follow_path(
         return _follow_validated_path(path, wait)
     except (OSError, ProgressSidecarError) as error:
         message = f"progress sidecar follow failed: {error}\n"
-        _ = sys.stderr.write(message)
+        _write_error_diagnostic(message)
         return 1
 
 
@@ -2838,7 +2848,7 @@ def _dispatch_inspection(arguments: list[str], usage: str) -> int:
     elif len(arguments) == 1:
         status = _inspect_path(Path(arguments[0]))
     else:
-        _ = sys.stderr.write(usage)
+        _write_error_diagnostic(usage)
         status = 2
     return status
 
@@ -2862,7 +2872,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             _write_operator_text(usage)
         except ProgressSidecarError as error:
-            _ = sys.stderr.write(f"progress sidecar help failed: {error}\n")
+            _write_error_diagnostic(f"progress sidecar help failed: {error}\n")
             return 1
         return 0
     return _dispatch_inspection(arguments, usage)

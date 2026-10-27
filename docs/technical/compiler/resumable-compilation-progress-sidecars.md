@@ -439,6 +439,10 @@ can authorize follow completion or a one-shot inspection result. No partially
 emitted text becomes recovery authority. The `--help` usage record obeys the
 same exact-write and flush admission; incomplete or unflushed help returns a
 nonzero status with a stable diagnostic rather than falsely claiming success.
+Error reporting is best-effort: a broken, closed, or invalid stderr stream may
+prevent diagnostic delivery but cannot convert a rejected inspection,
+extraction, follow, help, or usage operation into an uncaught stream exception
+or successful exit. The original error status remains authoritative.
 
 Binary checkpoint extraction requires an exact integer stdout write count
 and a successful flush after full state validation. A short, invalid, or

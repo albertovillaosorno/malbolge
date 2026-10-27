@@ -7343,6 +7343,45 @@ def test_follow_text_flush_failure_returns_stable_exit(
     assert failure in error_sink.getvalue()
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "extract", "follow", "usage", "help"]
+)
+def test_cli_preserves_failure_status_when_stderr_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    mode: str,
+) -> None:
+    """An unavailable diagnostic sink must not mask a rejected operation."""
+    missing = str(tmp_path / "missing.progress.json")
+    invocations = {
+        "inspect": [missing],
+        "checkpoint-info": ["--checkpoint-info", missing],
+        "extract": ["--extract-checkpoint", "search.state-v1", missing],
+        "follow": ["--follow", missing],
+        "usage": ["--unsupported-option", missing],
+        "help": ["--help"],
+    }
+    usage_mode = "usage"
+    help_mode = "help"
+    expected = 2 if mode == usage_mode else 1
+    diagnostic_failure = "injected stderr failure"
+
+    class BrokenErrorStream(StringIO):
+        @override
+        def write(self, value: str) -> int:
+            del value
+            raise failure_type(diagnostic_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", BrokenErrorStream())
+        if mode == help_mode:
+            context.setattr(sys, "stdout", BrokenErrorStream())
+        assert progress.main(invocations[mode]) == expected
+
+
 def test_inspector_rejects_invalid_utf8_as_stable_failure(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -104,6 +104,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   demands an exact integer text-write count, rejecting boolean, missing,
   short, and overstated counts and requires a successful text flush for
   every operator record, including `--help`, before reporting success,
+  CLI diagnostics preserve rejected operation exit status when stderr writing
+  itself raises `OSError`, `ValueError`, or `RuntimeError`,
   raw read and writer-lock descriptor cleanup retains primary
   stream-construction errors even if closing a raw descriptor raises
   `ValueError` or `RuntimeError`,
