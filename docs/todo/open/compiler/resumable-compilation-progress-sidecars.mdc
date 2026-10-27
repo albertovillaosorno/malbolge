@@ -101,7 +101,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   payload reads remain typed untrusted-input failures while preserving the
   primary exception cause and secondary descriptor cleanup notes,
   malformed raw-reader `TypeError` and `AttributeError` faults also preserve
-  typed pointer/checkpoint rejection, original causes, and descriptor cleanup,
+  typed pointer/checkpoint rejection, original causes, and descriptor cleanup;
+  temporary write-stream failures of the same types fail closed before pointer
+  or immutable checkpoint publication, retaining descriptor cleanup evidence,
   unexpected binary checkpoint stdout write or flush exceptions likewise
   produce typed extraction failure and a nonzero operator CLI exit,
   operator text output across inspection, checkpoint discovery, and follow

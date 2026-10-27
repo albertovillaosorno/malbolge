@@ -2408,7 +2408,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             return _write_atomic_bytes(destination, payload)
         except ProgressSidecarCommittedError:
             raise
-        except (OSError, ValueError, RuntimeError) as error:
+        except _OUTPUT_STREAM_ERRORS as error:
             _fail(f"progress sidecar publication failed: {error}")
 
 
@@ -2459,7 +2459,7 @@ def _validated_generation_payloads(
 
 
 def _raise_generation_publication_failure(
-    error: ProgressSidecarError | OSError | ValueError | RuntimeError,
+    error: Exception,
     *,
     checkpoint_path: Path,
     checkpoint_committed: bool,
@@ -2492,7 +2492,7 @@ def _publish_generation_payloads(
         checkpoint_committed = True
         if partial is not None and sidecar.partial_path is not None:
             _ = _write_immutable(Path(sidecar.partial_path), partial)
-    except (ProgressSidecarError, OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _raise_generation_publication_failure(
             error,
             checkpoint_path=checkpoint_path,

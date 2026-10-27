@@ -6404,6 +6404,67 @@ def _publish_pointer_checkpoint_generation(
     return progress.write_checkpoint_generation(sidecar, b"valid checkpoint")
 
 
+def _publish_with_temporary_stream_fault(
+    directory: Path, *, generation: bool
+) -> Path:
+    """Exercise the real mutable or immutable temporary-file writer.
+
+    Returns:
+        Published progress path when the injected fault does not occur.
+
+    """
+    sidecar = _sidecar(directory)
+    if generation:
+        checkpoint = b"checkpoint-payload"
+        candidate = _checkpointed(
+            sidecar, checkpoint=checkpoint, partial=None
+        )
+        return progress.write_checkpoint_generation(candidate, checkpoint)
+    return progress.write_atomic(sidecar)
+
+
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+@pytest.mark.parametrize("generation", [False, True])
+def test_malformed_temporary_writer_failure_is_typed_prepublication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    generation: bool,
+) -> None:
+    """A malformed payload stream cannot leak raw errors or publish bytes."""
+    failure = "injected temporary writer protocol failure"
+    opened: list[int] = []
+
+    class BrokenWriteStream(ShortPayloadStream):
+        @override
+        def write(self, payload: bytes) -> int:
+            del payload
+            raise failure_type(failure)
+
+    def broken_fdopen(descriptor: int, mode: str) -> BrokenWriteStream:
+        binary_mode = "wb"
+        assert mode == binary_mode
+        opened.append(descriptor)
+        return BrokenWriteStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", broken_fdopen)
+        with pytest.raises(ERROR, match="publication failed") as captured:
+            _ = _publish_with_temporary_stream_fault(
+                tmp_path, generation=generation
+            )
+
+    assert isinstance(captured.value.__context__, failure_type)
+    assert str(captured.value.__context__) == failure
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+    assert not progress.progress_path(tmp_path / "program.malbolge").exists()
+    assert not tuple(tmp_path.glob("*.checkpoint.*"))
+    assert not tuple(tmp_path.glob(".*.tmp"))
+
+
 @pytest.mark.parametrize(
     "publish",
     [
