@@ -5630,6 +5630,66 @@ class CloseFailingStream:
         raise OSError(self.message)
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_writer_lock_open_failure_is_typed_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected lock-stream setup errors cannot escape publication APIs."""
+    candidate = _sidecar(tmp_path)
+    failure_message = "injected writer lock stream open failure"
+
+    def broken_lock_stream(path: Path) -> None:
+        del path
+        raise failure_type(failure_message)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_open_regular_writer_lock", broken_lock_stream
+        )
+        with pytest.raises(
+            ERROR, match="writer lock cannot be opened"
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+    assert type(captured.value) is ERROR
+    assert isinstance(captured.value.__cause__, failure_type)
+    assert not Path(candidate.progress_path).exists()
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_writer_lock_parent_creation_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A parent directory setup error must block publication with a cause."""
+    candidate = _sidecar(tmp_path)
+    expected_parent = Path(candidate.progress_path).parent
+    original_mkdir = Path.mkdir
+    failure_message = "injected writer lock parent creation failure"
+
+    def fail_parent(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == expected_parent:
+            raise failure_type(failure_message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "mkdir", fail_parent)
+        with pytest.raises(
+            ERROR, match="writer lock cannot be opened"
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+    assert isinstance(captured.value.__cause__, failure_type)
+    assert not Path(candidate.progress_path).exists()
+
+
 def test_writer_lock_wraps_descriptor_close_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

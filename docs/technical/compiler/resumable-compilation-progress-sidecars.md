@@ -150,6 +150,13 @@ nonblocking/no-follow opens where available. Its lock-path recheck after
 creating the parent directory rejects a parent-link substitution before the
 writer-lock file is opened.
 
+Unexpected `ValueError` and `RuntimeError` from writer-lock stream opening,
+including filesystem admission and raw descriptor construction, now receive
+the same typed prepublication classification as `OSError`. The primary
+stream error remains the cause, and any secondary descriptor-cleanup notes
+remain inspectable on the typed error. No pointer update can be admitted
+after a failed lock-open operation.
+
 New persistent lock inodes are explicitly created with requested owner-only
 `0o600` permissions before applying the process umask. Existing lock inodes
 retain their permissions; acquisition still validates regular-file identity.

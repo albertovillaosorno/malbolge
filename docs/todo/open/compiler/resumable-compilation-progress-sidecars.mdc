@@ -125,7 +125,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   descriptor admission rejects FIFO/link substitution, lock-inode drift,
   and same-inode parent links installed after lock acquisition,
   typed rejection of unexpected `ValueError` and `RuntimeError` during
-  writer-lock acquisition or its post-acquisition identity probe,
+  writer-lock stream opening, acquisition, or post-acquisition identity
+  admission, with no publication attempted after failed lock-open,
   owner-only requested POSIX permissions for newly created writer locks
   without changing existing lock inodes,
   and writer-lock teardown preserves an earlier

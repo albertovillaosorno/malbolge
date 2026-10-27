@@ -1924,8 +1924,10 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         _reject_path_redirect(lock_path, "progress writer lock")
         return _open_regular_writer_lock(lock_path)
-    except OSError as error:
-        _fail(f"progress writer lock cannot be opened: {error}")
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"progress writer lock cannot be opened: {error}", error
+        )
 
 
 def _release_writer_lock(release: Callable[[], None]) -> None:
