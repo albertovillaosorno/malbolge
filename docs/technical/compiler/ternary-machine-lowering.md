@@ -919,6 +919,14 @@ capacity of at least 32 bytes, `u32` logical-address containment, exact
 one bind action followed by user entry, so later layout/linkage cannot silently
 place allocation-capable user code before the required bind.
 
+The compiler's fresh ternary-stage entry now also runs the independent
+`validate_ternary_program` admission gate after successful lowering, matching
+checkpoint restoration rather than trusting the producer alone. Its distinct
+`ProjectionOutput` failure preserves the difference between malformed inbound
+projections and a lowerer-generated program rejected by target validation.
+Byte-I/O, low-byte, and signed-return regressions preserve exact fresh/resumed
+semantics; no target layout or guest execution authority is implied.
+
 The program-bound startup entrypoint additionally revalidates the entire
 pre-layout `TernaryProgram` before accepting a resolved startup plan. It
 requires the requested user-entry function ID to exist in that admitted

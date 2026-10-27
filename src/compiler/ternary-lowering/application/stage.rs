@@ -38,7 +38,8 @@ use super::input::TypedIrInput;
 use super::lower::{TernaryLoweringError, lower_typed_ir};
 use super::model::TernaryProgram;
 use super::program_codec::{
-    TernaryProgramCodecError, canonical_ternary_program,
+    TernaryProgramCodecError, TernaryProgramValidationError,
+    canonical_ternary_program, validate_ternary_program,
 };
 
 /// One admitted source of pre-layout ternary stage state.
@@ -57,6 +58,8 @@ pub enum TernaryStageError {
     Checkpoint(TernaryProgramCodecError),
     /// Fresh typed-IR projection lowering failed.
     Projection(TernaryLoweringError),
+    /// Fresh lowering emitted a program rejected by independent admission.
+    ProjectionOutput(TernaryProgramValidationError),
 }
 
 impl From<TernaryProgramCodecError> for TernaryStageError {
@@ -71,12 +74,21 @@ impl From<TernaryLoweringError> for TernaryStageError {
     }
 }
 
+fn admit_projection_output(
+    program: TernaryProgram,
+) -> Result<TernaryProgram, TernaryStageError> {
+    validate_ternary_program(&program)
+        .map_err(TernaryStageError::ProjectionOutput)?;
+    Ok(program)
+}
+
 /// Enters the ternary stage from fresh projected semantics or durable state.
 ///
 /// # Errors
 ///
 /// Returns `TernaryStageError` when lowering or canonical checkpoint
-/// restoration fails its complete stage admission boundary.
+/// restoration fails its complete stage admission boundary. Fresh lowering
+/// output also undergoes independent program validation before publication.
 pub fn enter_ternary_stage(
     input: TernaryStageInput<'_>,
 ) -> Result<TernaryProgram, TernaryStageError> {
@@ -85,7 +97,9 @@ pub fn enter_ternary_stage(
             canonical_ternary_program(checkpoint).map_err(Into::into)
         },
         TernaryStageInput::Projection(projection) => {
-            lower_typed_ir(projection).map_err(Into::into)
+            let program = lower_typed_ir(projection)
+                .map_err(TernaryStageError::Projection)?;
+            admit_projection_output(program)
         },
     }
 }

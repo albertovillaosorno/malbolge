@@ -11613,6 +11613,48 @@ fn ternary_progress_inspector_admits_freshly_republished_source_provenance()
 }
 
 #[test]
+fn ternary_fresh_stage_independently_admits_multiple_typed_semantics()
+-> Result<(), String> {
+    let projections = [
+        ("signed-return", project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?),
+        ("byte-io", projected_byte_io_fixture()?),
+        ("low-byte", projected_low_byte_fixture()?),
+    ];
+    for (name, projection) in &projections {
+        let direct = lower_typed_ir(projection)
+            .map_err(|error| format!("lower {name}: {error:?}"))?;
+        let fresh =
+            enter_ternary_stage(TernaryStageInput::Projection(projection))
+                .map_err(|error| format!("fresh {name}: {error:?}"))?;
+        if fresh != direct {
+            return Err(format!("fresh {name} changed lowered semantics"));
+        }
+        ternary_lowering::validate_ternary_program(&fresh)
+            .map_err(|error| format!("admit fresh {name}: {error:?}"))?;
+        let wire = canonical_ternary_bytes(&fresh)
+            .map_err(|error| format!("encode {name}: {error:?}"))?;
+        let checkpoint =
+            enter_ternary_stage(TernaryStageInput::Checkpoint(&wire))
+                .map_err(|error| format!("restore {name}: {error:?}"))?;
+        if checkpoint != fresh {
+            return Err(format!("fresh/checkpoint {name} admission diverged"));
+        }
+    }
+    let mut invalid = projected_byte_io_fixture()?;
+    invalid.functions.first_mut()
+        .ok_or_else(|| String::from("invalid fixture has no functions"))?
+        .id = u32::MAX;
+    if enter_ternary_stage(TernaryStageInput::Projection(&invalid))
+        != Err(TernaryStageError::Projection(
+            TernaryLoweringError::InvalidProjection,
+        ))
+    {
+        return Err(String::from("malformed fresh projection was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_stage_rejects_malformed_checkpoint() {
     assert_eq!(
         enter_ternary_stage(TernaryStageInput::Checkpoint(b"bad")),

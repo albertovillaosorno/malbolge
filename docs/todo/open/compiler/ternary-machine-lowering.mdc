@@ -600,6 +600,11 @@ instruction.
   same startup order for valid entries and rejects empty/missing entries,
   malformed program identity or function ordering, and invalid startup inputs
   without assigning guest addresses or executing the bind call.
+- Fresh ternary-stage selection now re-admits each lowerer-produced program
+  through the independent canonical program validator before returning it.
+  A distinct output-validation error identifies a violated producer/consumer
+  contract; signed-return, byte-I/O, and low-byte fixtures converge with
+  canonical checkpoint restoration without changing their semantics.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
