@@ -3598,8 +3598,14 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(ERROR, match="missing progress keys"):
         _ = progress.loads(json.dumps(missing_revision))
 
-    huge_integer = '{"x":' + ("9" * 5_000) + "}"
-    with pytest.raises(ERROR, match="invalid progress JSON"):
+    digit_count = 5_000
+    huge_integer = '{"x":' + ("9" * digit_count) + "}"
+    expected_failure = (
+        "invalid progress JSON"
+        if 0 < sys.get_int_max_str_digits() < digit_count
+        else "missing progress keys"
+    )
+    with pytest.raises(ERROR, match=expected_failure):
         _ = progress.loads(huge_integer)
 
 
