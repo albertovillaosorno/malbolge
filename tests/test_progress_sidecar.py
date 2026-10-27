@@ -1863,6 +1863,41 @@ def test_progress_read_never_admits_incomplete_raw_stream(
         _ = os.fstat(opened[0])
 
 
+def test_checkpoint_read_recovers_many_one_byte_raw_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Highly fragmented raw checkpoint reads retain exact state bytes."""
+    checkpoint = b"fragmented-state" * 4096
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    opened: list[int] = []
+    streams: list[ShortChunkReadStream] = []
+    binary_mode = "rb"
+
+    def one_byte_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> ShortChunkReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        stream = ShortChunkReadStream(descriptor, chunk_size=1, early_eof=False)
+        streams.append(stream)
+        return stream
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", one_byte_stream)
+        recovered = progress.read_checkpoint_generation(sidecar)
+        assert recovered == (checkpoint, None)
+
+    assert len(opened) == 1
+    assert streams[0].calls == len(checkpoint) + 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 @pytest.mark.parametrize(
     "invalid_chunk",
     ["foreign-text", "bytearray", "integer", "none", "overlong"],
@@ -2880,6 +2915,17 @@ def test_checkpoint_read_reports_unexpected_stream_close_failure(
     close_failure = "injected checkpoint stream close failure"
 
     class FailedCloseStream(FailingReadStream):
+        @override
+        def read(self, size: int = -1) -> bytes:
+            """Read real descriptor bytes once, then admit EOF.
+
+            Returns:
+                The requested raw bytes, or empty bytes at EOF.
+
+            """
+            length = os.fstat(self.descriptor).st_size
+            return os.read(self.descriptor, length if size < 0 else size)
+
         @override
         def close(self) -> None:
             os.close(self.descriptor)

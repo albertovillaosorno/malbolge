@@ -1734,9 +1734,9 @@ def _read_regular_bytes(
     )
 
 
-def _read_raw_chunk(stream: FileIO, size: int | None) -> bytes:
-    chunk = stream.read() if size is None else stream.read(size)
-    if type(chunk) is not bytes or (size is not None and len(chunk) > size):
+def _read_raw_chunk(stream: FileIO, size: int) -> bytes:
+    chunk = stream.read(size)
+    if type(chunk) is not bytes or len(chunk) > size:
         _fail("invalid raw stream read result")
     return chunk
 
@@ -1744,20 +1744,24 @@ def _read_raw_chunk(stream: FileIO, size: int | None) -> bytes:
 def _read_with_budget(
     stream: FileIO, max_bytes: int | None, observed_size: int
 ) -> bytes:
-    if max_bytes is None:
-        return _read_raw_chunk(stream, None)
-    # A huge declared count cannot become an unrepresentable FileIO size
-    # when the admitted inode is much smaller.
-    read_size = min(max_bytes + 1, observed_size + 1, sys.maxsize)
-    chunks: list[bytes] = []
+    # The admitted regular inode is a natural allocation boundary even for
+    # opaque checkpoint state, which has no separate fixed payload cap.
+    # A huge declared count must not overflow the host read-size API.
+    read_size = min(
+        observed_size + 1,
+        sys.maxsize,
+        max_bytes + 1 if max_bytes is not None else sys.maxsize,
+    )
+    # Repeated tiny raw reads should not retain a Python object per chunk.
+    assembled = bytearray()
     remaining = read_size
     while remaining > 0:
         chunk = _read_raw_chunk(stream, remaining)
         if not chunk:
             break
-        chunks.append(chunk)
+        assembled.extend(chunk)
         remaining -= len(chunk)
-    return b"".join(chunks)
+    return bytes(assembled)
 
 
 def _require_complete_read(payload: bytes, expected: int, context: str) -> None:

@@ -110,6 +110,11 @@ the initially admitted inode length. Even a valid JSON prefix cannot stand in
 for unread file bytes. These are metadata-based checks and do not establish an
 atomic filesystem snapshot.
 
+Both pointer and opaque checkpoint reads are bounded by the opened inode's
+observed byte length plus one sentinel byte, never a fabricated global limit
+on state size. Repeated small chunks accumulate in a compact byte buffer
+instead of retaining a separate Python list entry per read.
+
 These are bounded admission checks, not a promise of immunity to subsequent
 filesystem mutation after the stream closes. Descriptor read errors remain
 primary if stream close also fails; close-only failures reject the read.
