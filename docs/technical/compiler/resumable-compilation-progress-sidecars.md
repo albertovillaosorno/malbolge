@@ -420,6 +420,15 @@ stdout holder and require prompt failure without waiting for natural EOF.
 Additional marker fixtures prove that rejected diagnostics also terminate the
 ordinary descendants before they can perform delayed filesystem writes.
 
+Linux startup-isolation fixture wrappers are published by a short-lived
+`/usr/bin/install` child from non-executable source files, rather than being
+written as executable inodes by the multithreaded test process. This keeps
+writable wrapper descriptors out of unrelated concurrent test forks and
+prevents spurious `ETXTBSY` launch failures. The inspector launch policy,
+Python isolated startup requirement, and poison-marker checks remain
+unchanged. Repeating the default-threaded compiler-IR suite 50 times passed
+after this fixture isolation; two of 25 runs had failed before the change.
+
 Both Rust compiler-stage inspector transports now require explicit
 directory-qualified interpreter paths. Bare executable names are rejected as
 launch failures before host PATH lookup, rather than admitting an unrelated

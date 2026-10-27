@@ -329,6 +329,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Linux subprocess fixtures poison PYTHONHOME and PYTHONPATH while requiring
   unchanged checkpoint bytes and no injected sitecustomize filesystem writes.
 
+  Both Linux startup-isolation wrappers are now installed by a child process
+  from non-executable sources to prevent writable interpreter inode handles
+  from leaking into concurrent test forks. The default-threaded compiler-IR
+  suite passed 50 repetitions after this isolation, versus two failures in
+  25 repetitions before the change; the inspector's production launch and
+  validation policies are unaffected.
+
   Both inspector transports now reject completed nonempty diagnostics
   without waiting for unrelated stdout pipe holders; independent Linux
   regressions require fast rejection from zero-exit inspector children.

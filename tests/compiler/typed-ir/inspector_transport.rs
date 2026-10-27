@@ -34,11 +34,11 @@
 
 use std::env::temp_dir;
 #[cfg(target_os = "linux")]
-use std::fs::{Permissions, create_dir_all, remove_dir_all, set_permissions};
+use std::fs::{create_dir_all, remove_dir_all};
 use std::fs::{remove_file, write};
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
+use std::process::Command;
 use std::process::id;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(target_os = "linux")]
@@ -117,11 +117,20 @@ fn isolated_python_ignores_poisoned_startup_modules() -> Result<(), String> {
         directory.join("bad-python-home").display(),
         repository_python().display(),
     );
-    write(&wrapper, launch)
-        .map_err(|error| format!("write poisoned wrapper: {error}"))?;
-    let permissions = Permissions::from_mode(0o700);
-    set_permissions(&wrapper, permissions)
-        .map_err(|error| format!("chmod poisoned wrapper: {error}"))?;
+    // The parent must not hold the executable inode open for writing:
+    // concurrent test forks can inherit that descriptor and cause ETXTBSY.
+    let source = directory.join("interpreter-source");
+    write(&source, launch)
+        .map_err(|error| format!("write poisoned wrapper source: {error}"))?;
+    let installed = Command::new("/usr/bin/install")
+        .args(["-m", "700"])
+        .arg(&source)
+        .arg(&wrapper)
+        .status()
+        .map_err(|error| format!("publish poisoned wrapper: {error}"))?;
+    if !installed.success() {
+        return Err(format!("publish poisoned wrapper exited: {installed}"));
+    }
     let observed = extract_with_limits(
         ExtractRequest {
             codec: "compiler.test-state-v1",
