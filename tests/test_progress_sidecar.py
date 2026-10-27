@@ -1120,11 +1120,15 @@ def test_binary_checkpoint_stdout_rejects_flush_failure(
         "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
     )
     monkeypatch.setattr(progress, "_binary_stdout", FailingBinaryOutput)
-    with pytest.raises(OSError, match=flush_error):
+    with pytest.raises(
+        ERROR, match="portable checkpoint extraction stdout failed"
+    ) as captured:
         writer(payload)
+    assert isinstance(captured.value.__cause__, OSError)
+    assert flush_error in str(captured.value.__cause__)
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 @pytest.mark.parametrize("phase", ["write", "flush"])
 def test_checkpoint_binary_stdout_unexpected_io_failure_is_typed(
     monkeypatch: pytest.MonkeyPatch,
@@ -1161,7 +1165,7 @@ def test_checkpoint_binary_stdout_unexpected_io_failure_is_typed(
     assert isinstance(captured.value.__cause__, failure_type)
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_checkpoint_cli_reports_unexpected_binary_output_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

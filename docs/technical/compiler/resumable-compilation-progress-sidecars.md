@@ -442,8 +442,9 @@ and a successful flush after full state validation. A short, invalid, or
 failed write returns failure; callers must ignore any bytes received from a
 failed invocation instead of treating partial stdout as recoverable state.
 
-Unexpected `ValueError` or `RuntimeError` from binary stdout write or flush
-also produce a typed extraction failure and a nonzero operator exit status.
+Unexpected `OSError`, `ValueError`, or `RuntimeError` from binary stdout write
+or flush also produce a typed extraction failure and a nonzero operator exit
+status.
 The original output error is retained as the cause, without making any
 partially emitted bytes authoritative checkpoint data.
 

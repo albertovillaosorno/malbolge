@@ -2673,7 +2673,7 @@ def _write_binary_stdout(payload: bytes) -> None:
         stream.flush()
     except ProgressSidecarError:
         raise
-    except (ValueError, RuntimeError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
             f"portable checkpoint extraction stdout failed: {error}", error
         )
