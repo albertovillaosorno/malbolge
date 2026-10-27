@@ -103,6 +103,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   fails, including `ValueError` and `RuntimeError` from raw directory close,
   typed uncertain-durability outcomes also cover non-`OSError` directory
   sync failures, keeping them primary over later close errors,
+  non-`OSError` payload file-sync failures during partial and pointer
+  publication retain exact last-committed generation evidence, with pre-first-
+  checkpoint failures remaining typed prepublication errors,
   durable-pointer evidence when writer-lock or immutable temporary
   cleanup fails after commit, exact committed-generation evidence when a later
   partial member or mutable sidecar fails prepublication, regular writer-lock

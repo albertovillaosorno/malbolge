@@ -688,6 +688,15 @@ than leaking host filesystem exceptions. Both direct pointer updates and
 checkpoint generation publication use a non-following metadata probe: only
 an absent pointer is accepted as new, while permission and other metadata
 errors produce a typed failure before any durable generation is published.
+
+Unexpected `ValueError` and `RuntimeError` faults during temporary
+checkpoint, partial, or sidecar file synchronization remain in the typed
+publication boundary. A partial-write failure after a durable checkpoint
+retains the checkpoint as last committed path, and a sidecar-write failure
+after both immutable members retain the partial as last committed path.
+An earlier failure before the first checkpoint commit remains a typed ordinary
+publication error without inventing committed evidence.
+
 Post-commit failures preserve the
 committed path through `ProgressSidecarCommittedError`; directory-sync failures
 use its `ProgressSidecarDurabilityError` subtype, while later lock cleanup

@@ -2275,6 +2275,10 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     Returns:
         Canonical progress path after flush and atomic replacement.
 
+    Raises:
+        ProgressSidecarCommittedError: If publication commits before a later
+            durability or cleanup operation fails.
+
     """
     validated = validate(sidecar)
     payload = _admit_sidecar_wire_size(validated)
@@ -2286,7 +2290,9 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
         _validate_referenced_generation(validated)
         try:
             return _write_atomic_bytes(destination, payload)
-        except OSError as error:
+        except ProgressSidecarCommittedError:
+            raise
+        except (OSError, ValueError, RuntimeError) as error:
             _fail(f"progress sidecar publication failed: {error}")
 
 
@@ -2337,7 +2343,7 @@ def _validated_generation_payloads(
 
 
 def _raise_generation_publication_failure(
-    error: ProgressSidecarError | OSError,
+    error: ProgressSidecarError | OSError | ValueError | RuntimeError,
     *,
     checkpoint_path: Path,
     checkpoint_committed: bool,
@@ -2370,7 +2376,7 @@ def _publish_generation_payloads(
         checkpoint_committed = True
         if partial is not None and sidecar.partial_path is not None:
             _ = _write_immutable(Path(sidecar.partial_path), partial)
-    except (ProgressSidecarError, OSError) as error:
+    except (ProgressSidecarError, OSError, ValueError, RuntimeError) as error:
         _raise_generation_publication_failure(
             error,
             checkpoint_path=checkpoint_path,
@@ -2414,7 +2420,7 @@ def write_checkpoint_generation(
         return write_atomic(validated)
     except ProgressSidecarCommittedError:
         raise
-    except ProgressSidecarError as error:
+    except (ProgressSidecarError, ValueError, RuntimeError) as error:
         message = (
             "generation payload committed durably but progress sidecar "
             f"publication failed: {error}"

@@ -3833,9 +3833,11 @@ def test_write_atomic_rejects_unavailable_or_corrupt_generation(
     assert progress.read(destination) == sidecar
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_checkpoint_generation_wraps_immutable_publication_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Keep immutable filesystem failures inside the sidecar boundary."""
     checkpoint = b"checkpoint-state-v1"
@@ -3853,7 +3855,7 @@ def test_checkpoint_generation_wraps_immutable_publication_oserror(
     ) -> Path:
         del destination, payload, platform
         message = "injected immutable publication failure"
-        raise OSError(message)
+        raise failure_type(message)
 
     monkeypatch.setattr(progress, "_write_immutable", fail_publication)
     with pytest.raises(
@@ -4295,9 +4297,11 @@ def test_checkpoint_generation_reports_committed_durability_failure(
     assert progress.read(destination) == sidecar
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_partial_file_sync_failure_reports_committed_checkpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Retain the committed checkpoint across partial prepublication failure."""
     checkpoint = b"checkpoint-state-v1"
@@ -4318,7 +4322,7 @@ def test_partial_file_sync_failure_reports_committed_checkpoint(
         if stat.S_ISREG(os.fstat(descriptor).st_mode):
             regular_syncs += 1
             if regular_syncs == partial_sync_number:
-                raise OSError(failure_message)
+                raise failure_type(failure_message)
         original_fsync(descriptor)
 
     with monkeypatch.context() as context:
@@ -4376,9 +4380,11 @@ def test_partial_collision_reports_committed_checkpoint(tmp_path: Path) -> None:
     assert not Path(sidecar.progress_path).exists()
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_sidecar_file_sync_failure_reports_committed_partial(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Pointer prepublication failure retains the last generation member."""
     checkpoint = b"checkpoint-state-v1"
@@ -4399,7 +4405,7 @@ def test_sidecar_file_sync_failure_reports_committed_partial(
         if stat.S_ISREG(os.fstat(descriptor).st_mode):
             regular_syncs += 1
             if regular_syncs == sidecar_sync_number:
-                raise OSError(failure_message)
+                raise failure_type(failure_message)
         original_fsync(descriptor)
 
     with monkeypatch.context() as context:
@@ -4426,6 +4432,60 @@ def test_sidecar_file_sync_failure_reports_committed_partial(
         checkpoint,
         partial,
     ) == Path(sidecar.progress_path)
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_generation_pointer_preflight_error_retains_last_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A pointer error after durable members cannot erase resume evidence."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    pointer_failure = "injected post-generation pointer preflight failure"
+    original_existing = cast(
+        "Callable[[Path, progress.ProgressSidecar], None]",
+        vars(progress)["_validate_existing_pointer"],
+    )
+    preflight_seen = False
+
+    def fail_second_preflight(
+        path: Path, candidate: progress.ProgressSidecar
+    ) -> None:
+        nonlocal preflight_seen
+        if preflight_seen:
+            raise failure_type(pointer_failure)
+        preflight_seen = True
+        original_existing(path, candidate)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_validate_existing_pointer", fail_second_preflight
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="generation payload committed durably",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(
+                sidecar, checkpoint, partial
+            )
+    assert captured.value.published_path == partial_path
+    assert isinstance(captured.value.__cause__, failure_type)
+    assert (checkpoint_path.read_bytes(), partial_path.read_bytes()) == (
+        checkpoint,
+        partial,
+    )
+    assert not Path(sidecar.progress_path).exists()
+    destination = progress.write_checkpoint_generation(
+        sidecar, checkpoint, partial
+    )
+    assert destination == Path(sidecar.progress_path)
 
 
 def test_partial_generation_reports_committed_durability_failure(
@@ -5692,9 +5752,11 @@ def test_write_atomic_reports_committed_lock_close_failure(
     assert progress.read(destination) == candidate
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_write_atomic_wraps_mutable_publication_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Mutable filesystem failures remain inside the sidecar error boundary."""
     candidate = _sidecar(tmp_path)
@@ -5702,7 +5764,7 @@ def test_write_atomic_wraps_mutable_publication_oserror(
     def fail_publication(destination: Path, payload: bytes) -> Path:
         del destination, payload
         message = "injected mutable publication failure"
-        raise OSError(message)
+        raise failure_type(message)
 
     monkeypatch.setattr(progress, "_write_atomic_bytes", fail_publication)
     with pytest.raises(ERROR, match="progress sidecar publication failed"):
