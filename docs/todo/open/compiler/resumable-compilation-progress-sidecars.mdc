@@ -127,6 +127,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   typed rejection of unexpected `ValueError` and `RuntimeError` during
   writer-lock stream opening, acquisition, or post-acquisition identity
   admission, with no publication attempted after failed lock-open,
+  lock release/close also type non-`OSError` cleanup faults before
+  publication while preserving raw causes for committed-path failures,
+  already typed lock-open and lock-acquire failures retain exact exception
+  identity and secondary notes without redundant wrappers,
   owner-only requested POSIX permissions for newly created writer locks
   without changing existing lock inodes,
   and writer-lock teardown preserves an earlier

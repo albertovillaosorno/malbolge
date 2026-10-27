@@ -1924,6 +1924,8 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         _reject_path_redirect(lock_path, "progress writer lock")
         return _open_regular_writer_lock(lock_path)
+    except ProgressSidecarError:
+        raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
             f"progress writer lock cannot be opened: {error}", error
@@ -1933,15 +1935,23 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
 def _release_writer_lock(release: Callable[[], None]) -> None:
     try:
         release()
-    except OSError as error:
-        _fail(f"progress writer lock cannot be released: {error}")
+    except ProgressSidecarError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"progress writer lock cannot be released: {error}", error
+        )
 
 
 def _close_writer_lock_stream(stream: _LockStream) -> None:
     try:
         stream.close()
-    except OSError as error:
-        _fail(f"progress writer lock cannot be closed: {error}")
+    except ProgressSidecarError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"progress writer lock cannot be closed: {error}", error
+        )
 
 
 def _release_writer_lock_preserving_primary(
@@ -1990,8 +2000,12 @@ def _writer_lock(destination: Path) -> Generator[None]:
     try:
         try:
             release = _acquire_writer_lock(stream)
+        except ProgressSidecarError:
+            raise
         except (OSError, ValueError, RuntimeError) as error:
-            _fail(f"progress writer lock cannot be acquired: {error}")
+            _fail_with_source(
+                f"progress writer lock cannot be acquired: {error}", error
+            )
         try:
             _verify_acquired_writer_lock(_writer_lock_path(destination), stream)
             yield
@@ -2017,7 +2031,13 @@ def _writer_publication_lock(destination: Path) -> Generator[None]:
             "progress sidecar committed durably but writer lock cleanup "
             f"failed: {error}"
         )
-        raise ProgressSidecarCommittedError(message, destination) from error
+        source = (
+            error.__cause__
+            if isinstance(error, ProgressSidecarError)
+            and isinstance(error.__cause__, (OSError, ValueError, RuntimeError))
+            else error
+        )
+        raise ProgressSidecarCommittedError(message, destination) from source
 
 
 def _cleanup_mutable_temporary(

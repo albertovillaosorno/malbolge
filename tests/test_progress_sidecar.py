@@ -5690,6 +5690,83 @@ def test_writer_lock_parent_creation_failure_is_typed(
     assert not Path(candidate.progress_path).exists()
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("phase", ["release", "close"])
+def test_writer_lock_teardown_helpers_preserve_typed_cause(
+    failure_type: type[Exception],
+    phase: str,
+) -> None:
+    """Raw lock teardown errors stay typed with exact source causes."""
+    failure = f"injected writer lock {phase} failure"
+    releaser = cast(
+        "Callable[[Callable[[], None]], None]",
+        vars(progress)["_release_writer_lock"],
+    )
+    closer = cast(
+        "Callable[[object], None]",
+        vars(progress)["_close_writer_lock_stream"],
+    )
+
+    def release() -> None:
+        raise failure_type(failure)
+
+    class BrokenStream:
+        @staticmethod
+        def close() -> None:
+            raise failure_type(failure)
+
+    release_label = "release"
+
+    def teardown() -> None:
+        if phase == release_label:
+            releaser(release)
+        else:
+            closer(BrokenStream())
+
+    expected = f"writer lock cannot be {phase}d"
+    with pytest.raises(ERROR, match=expected) as captured:
+        teardown()
+    assert type(captured.value) is ERROR
+    assert isinstance(captured.value.__cause__, failure_type)
+
+
+@pytest.mark.parametrize("opening", [True, False], ids=["open", "acquire"])
+def test_writer_lock_keeps_existing_typed_failure_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    opening: bool,
+) -> None:
+    """A typed lock admission error keeps its identity and attached notes."""
+    error = progress.ProgressSidecarError("injected typed lock admission")
+    error.add_note("existing lock admission detail")
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    opener_name = "_open_regular_writer_lock"
+    acquisition_name = "_acquire_writer_lock"
+
+    def fail_open(path: Path) -> None:
+        del path
+        raise error
+
+    def fail_acquire(stream: object) -> Callable[[], None]:
+        del stream
+        raise error
+
+    with monkeypatch.context() as context:
+        if opening:
+            context.setattr(progress, opener_name, fail_open)
+        else:
+            context.setattr(progress, acquisition_name, fail_acquire)
+        with pytest.raises(ERROR, match="typed lock admission") as captured:
+            _ = progress.write_atomic(candidate)
+    assert captured.value is error
+    assert getattr(error, "__notes__", None) == [
+        "existing lock admission detail"
+    ]
+    assert not destination.exists()
+
+
 def test_writer_lock_wraps_descriptor_close_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

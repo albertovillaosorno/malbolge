@@ -277,6 +277,17 @@ precedence also applies when an injected cleanup operation raises
 fails after durable pointer publication, those same unexpected error classes
 retain the exact committed path via `ProgressSidecarCommittedError`.
 
+Writer-lock release and close helpers also type unexpected `ValueError` and
+`RuntimeError` with their original cause, without rewrapping an existing
+`ProgressSidecarError`. When the failure follows a durable pointer commit,
+the committed-error cause still identifies the original raw cleanup fault
+rather than losing it inside the helper's typed wrapper.
+
+An existing `ProgressSidecarError` raised by a lock-open or lock-acquire
+operation passes through unchanged, including its original identity and
+attached diagnostic notes. Raw host exceptions still receive the typed
+prepublication error boundary and preserve their underlying cause.
+
 Unexpected `ValueError` and `RuntimeError` from lock acquisition or the
 post-acquisition inode identity probe become typed prepublication failures.
 Neither failure authorizes entry to the lock body, and stream teardown keeps
