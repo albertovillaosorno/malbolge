@@ -3845,6 +3845,88 @@ def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
 
 
 @pytest.mark.parametrize(
+    "failure_type",
+    [ValueError, RuntimeError],
+    ids=["value-error", "runtime-error"],
+)
+@pytest.mark.parametrize(
+    "close_fails", [False, True], ids=["close-ok", "close-error"]
+)
+def test_payload_fdopen_non_oserror_still_closes_raw_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    *,
+    close_fails: bool,
+) -> None:
+    """Unexpected stream-construction failures never leak raw descriptors."""
+    writer = cast(
+        "PayloadDescriptorWriter",
+        vars(progress)["_write_payload_descriptor"],
+    )
+    descriptor = 101
+    closed: list[int] = []
+    message = "injected non-OS stream construction failure"
+    binary_mode = "wb"
+    close_error = "injected raw descriptor close failure"
+
+    def fail_fdopen(observed: int, mode: str) -> FailingPayloadStream:
+        assert observed == descriptor
+        assert mode == binary_mode
+        raise failure_type(message)
+
+    def record_close(observed: int) -> None:
+        closed.append(observed)
+        if close_fails:
+            raise OSError(close_error)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", fail_fdopen)
+        context.setattr(os, "close", record_close)
+        with pytest.raises(failure_type, match=message) as captured:
+            writer(descriptor, b"payload")
+    assert closed == [descriptor]
+    notes = getattr(captured.value, "__notes__", None)
+    expected_note = (
+        f"payload descriptor ownership cleanup also failed: {close_error}"
+    )
+    assert notes == ([expected_note] if close_fails else None)
+
+
+@pytest.mark.parametrize(
+    "close_type", [ValueError, RuntimeError],
+    ids=["value-error", "runtime-error"],
+)
+def test_payload_non_os_close_preserves_primary_write_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
+) -> None:
+    """Unexpected stream close errors cannot mask an earlier write error."""
+    writer = cast(
+        "PayloadDescriptorWriter", vars(progress)["_write_payload_descriptor"]
+    )
+    message = "injected primary payload write failure"
+    close_failure = "injected non-OS stream close failure"
+
+    class FailingCloseStream(FailingPayloadStream):
+        @override
+        def close(self) -> None:
+            raise close_type(self.close_failure)
+
+    def fake_fdopen(descriptor: int, mode: str) -> FailingCloseStream:
+        del descriptor, mode
+        return FailingCloseStream(message, close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", fake_fdopen)
+        with pytest.raises(OSError, match=message) as captured:
+            writer(101, b"checkpoint")
+    assert str(captured.value) == message
+    assert getattr(captured.value, "__notes__", None) == [
+        f"payload descriptor close also failed: {close_failure}"
+    ]
+
+
+@pytest.mark.parametrize(
     ("accepted", "checkpoint"), [(True, b"x"), (False, b"")]
 )
 def test_checkpoint_generation_rejects_boolean_stream_write_count(

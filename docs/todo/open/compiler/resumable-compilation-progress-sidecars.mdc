@@ -104,6 +104,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   without changing existing lock inodes,
   and writer-lock teardown preserves an earlier
   acquisition/body/release failure as primary, shared mutable/immutable payload
+  raw-descriptor cleanup also covers non-`OSError` stream-construction
+  failures without replacing their primary exception,
+  and non-`OSError` stream-close errors cannot mask earlier write failures,
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
   temp unlink after replacement, and primary-error preservation when mutable

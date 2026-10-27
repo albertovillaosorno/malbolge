@@ -2055,7 +2055,7 @@ def _require_complete_payload_write(written: int, expected: int) -> None:
 def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
     try:
         stream = os.fdopen(descriptor, "wb")
-    except OSError as error:
+    except BaseException as error:
         try:
             os.close(descriptor)
         except OSError as close_error:
@@ -2074,7 +2074,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
         primary_error = sys.exception()
         try:
             stream.close()
-        except OSError as error:
+        except BaseException as error:
             if primary_error is not None:
                 primary_error.add_note(
                     f"payload descriptor close also failed: {error}"

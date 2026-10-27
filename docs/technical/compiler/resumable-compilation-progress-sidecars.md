@@ -56,6 +56,13 @@ Mutable pointer updates are serialized across processes from prior-sidecar
 validation through replacement, so a stale writer cannot overwrite a generation
 committed concurrently.
 
+Temporary payload writers retain raw-descriptor ownership until Python stream
+construction succeeds. Unexpected non-`OSError` construction failures still
+close the descriptor before propagating their primary error, while any raw
+close failure is attached as a secondary diagnostic rather than masking it.
+The same precedence applies to non-`OSError` stream-close failures after a
+write or sync error; an isolated close failure still propagates unchanged.
+
 Canonical progress-pointer JSON has a 1,048,576-byte inclusive limit.
 Publication checks that limit before acquiring a writer lock or creating
 immutable checkpoint members; reads reject oversized regular files before
