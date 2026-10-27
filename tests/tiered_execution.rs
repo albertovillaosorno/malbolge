@@ -1567,6 +1567,41 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 "#;
 
+#[cfg(target_os = "linux")]
+const NATIVE_PROCESS_SESSION_DESCENDANT_MARKER_WORKER: &str = r#"
+import pathlib
+import subprocess
+import sys
+import time
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(2)
+length = int.from_bytes(header, "little")
+if len(sys.stdin.buffer.read(length)) != length:
+    raise SystemExit(3)
+# This child inherits stdout and remains in the session's process group.
+subprocess.Popen(
+    [
+        sys.executable, "-c",
+        "import pathlib,sys,time; "
+        "time.sleep(1.0); "
+        "pathlib.Path(sys.argv[1]).write_text('escaped')",
+        sys.argv[1],
+    ],
+    stdin=subprocess.DEVNULL,
+    stdout=sys.stdout,
+    stderr=subprocess.DEVNULL,
+)
+pathlib.Path(sys.argv[2]).write_text("started")
+if sys.argv[3] == "respond":
+    sys.stdout.buffer.write((2).to_bytes(8, "little") + b"ok")
+    sys.stdout.buffer.flush()
+elif sys.argv[3] == "oversized":
+    sys.stdout.buffer.write((17).to_bytes(8, "little"))
+    sys.stdout.buffer.flush()
+time.sleep(30)
+"#;
+
 const NATIVE_PROCESS_SESSION_INHERITED_INPUT_PIPE_WORKER: &str = r#"
 import subprocess
 import sys
@@ -77124,6 +77159,136 @@ fn native_process_session_timeout_ignores_descendant_pipe_holders()
         return Err(format!("inherited pipe escaped deadline: {result:?}"));
     }
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn native_process_session_timeout_kills_descendant_before_marker()
+-> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-session-descendant-marker")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("create session marker directory: {error}"))?;
+    let marker = directory.join("escaped");
+    let launched = directory.join("started");
+    let result = (|| {
+        let mut session = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_DESCENDANT_MARKER_WORKER,
+        )
+        .argument(marker.as_os_str().to_os_string())
+        .argument(launched.as_os_str().to_os_string())
+        .argument(OsString::from("stall"))
+        .exchange_timeout(Duration::from_millis(450))
+        .spawn()
+        .map_err(|error| format!("descendant marker spawn: {error:?}"))?;
+        let started = Instant::now();
+        let outcome = session.exchange(b"fork", 16);
+        if outcome != Err(NativeProcessSessionError::ExchangeTimeout)
+            || !session.poisoned()
+            || started.elapsed() > Duration::from_secs(2)
+        {
+            return Err(format!("descendant timeout drifted: {outcome:?}"));
+        }
+        if !launched.exists() {
+            return Err(String::from(
+                "descendant did not spawn before timeout",
+            ));
+        }
+        // A surviving inherited-pipe holder writes this marker after timeout.
+        thread::sleep(Duration::from_millis(1_200));
+        if marker.exists() {
+            return Err(String::from("timed-out child left a live descendant"));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove session marker directory: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn native_process_session_drop_kills_descendant_before_marker()
+-> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-session-drop-descendant")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("create drop marker directory: {error}"))?;
+    let marker = directory.join("escaped");
+    let launched = directory.join("started");
+    let result = (|| {
+        let mut session = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_DESCENDANT_MARKER_WORKER,
+        )
+        .argument(marker.as_os_str().to_os_string())
+        .argument(launched.as_os_str().to_os_string())
+        .argument(OsString::from("respond"))
+        .spawn()
+        .map_err(|error| format!("descendant drop spawn: {error:?}"))?;
+        let response = session.exchange(b"fork", 16).map_err(|error| {
+            format!("healthy descendant exchange: {error:?}")
+        })?;
+        if response != b"ok" || session.poisoned() || !launched.exists() {
+            return Err(String::from("healthy descendant was not admitted"));
+        }
+        drop(session);
+        thread::sleep(Duration::from_millis(1_200));
+        if marker.exists() {
+            return Err(String::from("dropped session left a live descendant"));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove drop marker directory: {error}"));
+    result?;
+    cleanup
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn native_process_session_malformed_frame_kills_descendant()
+-> Result<(), String> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".temp/native-session-malformed-descendant")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("create malformed marker directory: {error}")
+    })?;
+    let marker = directory.join("escaped");
+    let launched = directory.join("started");
+    let result = (|| {
+        let mut session = native_process_session_python_config(
+            NATIVE_PROCESS_SESSION_DESCENDANT_MARKER_WORKER,
+        )
+        .argument(marker.as_os_str().to_os_string())
+        .argument(launched.as_os_str().to_os_string())
+        .argument(OsString::from("oversized"))
+        .spawn()
+        .map_err(|error| format!("malformed descendant spawn: {error:?}"))?;
+        let response = session.exchange(b"fork", 16);
+        if response != Err(NativeProcessSessionError::ResponseTooLarge)
+            || !session.poisoned()
+            || !launched.exists()
+            || session.exchange(b"again", 16)
+                != Err(NativeProcessSessionError::Poisoned)
+        {
+            return Err(format!(
+                "malformed descendant was admitted: {response:?}"
+            ));
+        }
+        thread::sleep(Duration::from_millis(1_200));
+        if marker.exists() {
+            return Err(String::from("malformed child left a live descendant"));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove malformed marker directory: {error}"));
+    result?;
+    cleanup
 }
 
 #[cfg(unix)]

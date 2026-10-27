@@ -949,6 +949,18 @@ by host platform. Absolute worker paths retain ordinary spawn behavior with
 configured working directories; qualified relative paths remain admissible
 without a child working-directory override.
 
+On Linux, persistent workers now own a fresh process group. Timed exchange
+failure, malformed framing, and session drop signal ordinary descendants as
+well as the direct child, then reap that child once. Idempotent termination
+prevents repeated group signals across timeout, poisoning, and drop.
+
+The host `/usr/bin/kill` helper suppresses its own stdout/stderr; its failures
+cannot appear as worker protocol frames. Deterministic delayed-file markers
+prove a descendant cannot outlive a timed exchange, rejected oversized
+response, or healthy session drop. Concurrent sibling sessions retain their
+independent group ownership. Deliberately detached descendants and non-Linux
+process-tree containment remain outside this scope.
+
 Any I/O, truncation, or size failure poisons and terminates the session.
 Deterministic workers prove one
 child survives multiple exchanges and that oversized/truncated responses fail

@@ -96,6 +96,7 @@ pub struct NativeProcessSession {
     poisoned: bool,
     stdin: Option<ChildStdin>,
     stdout: Option<ChildStdout>,
+    terminated: bool,
 }
 
 impl NativeProcessSessionConfig {
@@ -164,6 +165,12 @@ impl NativeProcessSessionConfig {
         if let Some(directory) = &self.working_directory {
             let _working_directory = command.current_dir(directory);
         }
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::process::CommandExt as _;
+            // Keep ordinary forked pipe holders in the same owned group.
+            let _group = command.process_group(0);
+        }
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -184,6 +191,7 @@ impl NativeProcessSessionConfig {
             poisoned: false,
             stdin: Some(stdin),
             stdout: Some(stdout),
+            terminated: false,
         })
     }
 
@@ -296,7 +304,7 @@ impl NativeProcessSession {
                 finish_timed_exchange(timeout, started.elapsed(), result)
             },
             Err(RecvTimeoutError::Timeout) => {
-                terminate_child(&mut self.child);
+                self.terminate();
                 Err(NativeProcessSessionError::ExchangeTimeout)
             },
             Err(RecvTimeoutError::Disconnected) => {
@@ -307,7 +315,7 @@ impl NativeProcessSession {
 
     fn poison(&mut self) {
         self.poisoned = true;
-        terminate_child(&mut self.child);
+        self.terminate();
     }
 
     /// Reports whether a previous exchange invalidated stream synchronization.
@@ -315,11 +323,20 @@ impl NativeProcessSession {
     pub const fn poisoned(&self) -> bool {
         self.poisoned
     }
+
+    fn terminate(&mut self) {
+        // Timeout, poisoning, and Drop may all reach cleanup. Signal each
+        // owned process group at most once, before the child PID can be reused.
+        if !self.terminated {
+            self.terminated = true;
+            terminate_child(&mut self.child);
+        }
+    }
 }
 
 impl Drop for NativeProcessSession {
     fn drop(&mut self) {
-        terminate_child(&mut self.child);
+        self.terminate();
     }
 }
 
@@ -391,6 +408,18 @@ fn exchange_framed_bytes(
 }
 
 fn terminate_child(child: &mut Child) {
+    #[cfg(target_os = "linux")]
+    {
+        // The process group includes ordinary descendants that may still
+        // own the pipes after the direct child exits. Use the absolute host
+        // helper under the safe-Rust policy, suppressing helper diagnostics.
+        let _group_signal = Command::new("/usr/bin/kill")
+            .args(["-s", "KILL", "--"])
+            .arg(format!("-{}", child.id()))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _kill_result = child.kill();
     let _wait_result = child.wait();
 }
