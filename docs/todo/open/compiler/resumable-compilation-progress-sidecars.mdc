@@ -77,6 +77,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   JSON decoding for UTF-8 input/canonical output (not limiting opaque state),
   typed decimal-rendering admission for direct metadata integers when a host
   Python digit limit would otherwise raise an untyped conversion error,
+  monotonic phase timers and publication limiters retain their last accepted
+  sample across snapshots and suppressed writes, rejecting clock regression
+  that does not reach an earlier phase or committed-write anchor,
   declared-length bounded partial reads and proposed-length bounded immutable
   collision reads without a new opaque checkpoint payload cap, and
   read-size admission bounded by observed file size when an untrusted

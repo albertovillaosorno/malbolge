@@ -203,7 +203,16 @@ regressions while treating trailing-zero representations as equal.
 timing evidence. Non-callable clocks and callback failures remain inside the
 stable sidecar error boundary. Snapshotting also revalidates its internal
 anchors and accumulated phase partition, so directly constructed or corrupted
-timer state cannot be misclassified as verification time. Public path helpers
+timer state cannot be misclassified as verification time.
+
+Both the phase timer and routine publication limiter retain their last
+successful clock sample,
+rejecting regressions between snapshots or suppressed writes even when the
+new reading remains above the original phase or last-commit anchor. A failed
+clock sample does not replace a prior accepted observation, and directly
+constructed observation state must not predate its segment or last commit.
+
+Public path helpers
 reject foreign objects instead of stringifying them, and direct reads require a
 real `pathlib.Path` before filesystem inspection.
 
@@ -706,7 +715,11 @@ these selectors once a product C-to-Malbolge pipeline exists.
   interval so checkpointing does not become an unmeasured dominant cost. The
   first routine write is eligible immediately; checkpointed and terminal states
   bypass suppression, and only attempts that cross publication commit start a
-  new rate window.
+  new rate window. Suppressed publications still advance the limiter's
+  monotonic observation floor; a later regressed sample is rejected without
+  permitting an unnecessary write. Mandatory checkpoint and terminal
+  publications also require nonregressed clock samples, even though they
+  bypass rate suppression.
 
 ## Failure Behavior
 

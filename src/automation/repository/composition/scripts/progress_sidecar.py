@@ -218,6 +218,16 @@ def _sample_clock(clock: object) -> int:
     return _monotonic_sample(value)
 
 
+def _validate_observed_sample(
+    observed: int | None, lower_bound: int, context: str
+) -> None:
+    if observed is None:
+        return
+    _ = _nonnegative_integer(observed, f"{context} last observation")
+    if observed < lower_bound:
+        _fail(f"{context} last observation precedes current segment")
+
+
 @dataclass(frozen=True, slots=True)
 class ProgressTiming:
     """One exact snapshot of accumulated monotonic durations."""
@@ -243,6 +253,7 @@ class ProgressTimer:
     _paused_elapsed_ns: int = 0
     _serialization_elapsed_ns: int = 0
     _verification_elapsed_ns: int = 0
+    _last_observed_ns: int | None = None
 
     @classmethod
     def start(
@@ -263,6 +274,7 @@ class ProgressTimer:
             _phase=phase,
             _segment_started_ns=now,
             _started_ns=now,
+            _last_observed_ns=now,
         )
 
     def _validate_state(self) -> None:
@@ -282,6 +294,9 @@ class ProgressTimer:
             _ = _nonnegative_integer(value, context)
         if self._segment_started_ns < self._started_ns:
             _fail("timer segment start precedes timer start")
+        _validate_observed_sample(
+            self._last_observed_ns, self._segment_started_ns, "timer"
+        )
         accumulated = (
             self._active_elapsed_ns
             + self._checkpoint_elapsed_ns
@@ -302,8 +317,14 @@ class ProgressTimer:
     def _sample(self) -> int:
         self._validate_state()
         now = _sample_clock(self._clock)
-        if now < self._segment_started_ns:
+        reference = (
+            self._segment_started_ns
+            if self._last_observed_ns is None
+            else self._last_observed_ns
+        )
+        if now < reference:
             _fail("monotonic clock moved backward")
+        self._last_observed_ns = now
         return now
 
     def _snapshot_at(self, now: int) -> ProgressTiming:
@@ -369,6 +390,7 @@ class ProgressWriteLimiter:
     _minimum_interval_ns: int
     _started_ns: int
     _last_committed_write_ns: int | None = None
+    _last_observed_ns: int | None = None
 
     @classmethod
     def start(
@@ -389,6 +411,7 @@ class ProgressWriteLimiter:
             _clock=clock,
             _minimum_interval_ns=minimum_interval_ns,
             _started_ns=now,
+            _last_observed_ns=now,
         )
 
     def _validate_state(self) -> None:
@@ -400,6 +423,9 @@ class ProgressWriteLimiter:
         ):
             _fail("progress write interval must be a positive integer")
         _ = _nonnegative_integer(self._started_ns, "progress write start")
+        _validate_observed_sample(
+            self._last_observed_ns, self._started_ns, "progress write"
+        )
         if self._last_committed_write_ns is None:
             return
         _ = _nonnegative_integer(
@@ -408,17 +434,27 @@ class ProgressWriteLimiter:
         )
         if self._last_committed_write_ns < self._started_ns:
             _fail("progress write last commit precedes limiter start")
+        _validate_observed_sample(
+            self._last_observed_ns,
+            self._last_committed_write_ns,
+            "progress write",
+        )
 
     def _sample(self) -> int:
         self._validate_state()
         now = _sample_clock(self._clock)
         reference = (
-            self._started_ns
-            if self._last_committed_write_ns is None
-            else self._last_committed_write_ns
+            self._last_observed_ns
+            if self._last_observed_ns is not None
+            else (
+                self._started_ns
+                if self._last_committed_write_ns is None
+                else self._last_committed_write_ns
+            )
         )
         if now < reference:
             _fail("progress write monotonic clock moved backward")
+        self._last_observed_ns = now
         return now
 
     def _record_committed(self, path: Path, fallback_ns: int) -> None:

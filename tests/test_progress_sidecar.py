@@ -7437,6 +7437,149 @@ def test_monotonic_timer_rejects_corrupt_direct_state() -> None:
         _ = inconsistent.snapshot()
 
 
+def test_monotonic_timer_rejects_regression_between_snapshots() -> None:
+    """Earlier same-segment clock reads cannot undo prior timing evidence."""
+    started = 100
+    first_sample = 180
+    rollback = 160
+    recovered = 200
+    timer = progress.ProgressTimer.start(
+        clock=SequenceClock([started, first_sample, rollback, recovered])
+    )
+    first = timer.snapshot()
+    assert first.wall_elapsed_ns == first_sample - started
+    with pytest.raises(ERROR, match="monotonic clock moved backward"):
+        _ = timer.snapshot()
+    assert timer.snapshot().wall_elapsed_ns == recovered - started
+
+
+def test_monotonic_limiter_rejects_regression_between_suppressed_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even suppressed polls must observe nondecreasing clock samples."""
+    sidecar = _sidecar(tmp_path)
+    published: list[str] = []
+
+    def publish(candidate: progress.ProgressSidecar) -> Path:
+        del candidate
+        published.append("published")
+        return Path(sidecar.progress_path)
+
+    limiter = progress.ProgressWriteLimiter.start(
+        100, clock=SequenceClock([100, 100, 101, 180, 160, 201, 202])
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        assert limiter.publish(sidecar) == Path(sidecar.progress_path)
+        assert limiter.publish(sidecar) is None
+        with pytest.raises(ERROR, match="monotonic clock moved backward"):
+            _ = limiter.publish(sidecar)
+        assert limiter.publish(sidecar) == Path(sidecar.progress_path)
+    assert published == ["published", "published"]
+
+
+def test_monotonic_timer_rejects_regression_before_phase_transition() -> None:
+    """A regressed switch cannot silently lower closed segment duration."""
+    timer = progress.ProgressTimer.start(
+        clock=SequenceClock([100, 170, 160, 180])
+    )
+    original = timer.snapshot()
+    with pytest.raises(ERROR, match="monotonic clock moved backward"):
+        _ = timer.switch(progress.TimingPhase.VERIFICATION)
+    assert timer.phase is progress.TimingPhase.ACTIVE
+    switched = timer.switch(progress.TimingPhase.VERIFICATION)
+    assert switched.active_elapsed_ns > original.active_elapsed_ns
+    assert switched.wall_elapsed_ns == switched.active_elapsed_ns
+
+
+def test_monotonic_limiter_rejects_mandatory_publication_after_regression(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mandatory terminal writes still obey prior monotonic observations."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    writes: list[Path] = []
+    expected_writes = 3
+
+    def publish(sidecar: progress.ProgressSidecar) -> Path:
+        destination = Path(sidecar.progress_path)
+        writes.append(destination)
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        100, clock=SequenceClock([100, 100, 101, 180, 181, 160, 200, 201])
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        assert limiter.publish(completed) == Path(completed.progress_path)
+        assert limiter.publish(completed) == Path(completed.progress_path)
+        with pytest.raises(ERROR, match="monotonic clock moved backward"):
+            _ = limiter.publish(completed)
+        assert limiter.publish(completed) == Path(completed.progress_path)
+    assert len(writes) == expected_writes
+
+
+def test_monotonic_observation_floor_accepts_huge_clock_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clock history tracks integer order without decimal-rendering limits."""
+    host_limit = sys.get_int_max_str_digits()
+    huge = cast("int", 10 ** max(host_limit, 640))
+    delta = 7
+    timer = progress.ProgressTimer.start(
+        clock=SequenceClock([huge, huge + delta, huge + delta])
+    )
+    assert timer.snapshot().wall_elapsed_ns == delta
+    switched = timer.switch(progress.TimingPhase.CHECKPOINT)
+    assert switched.wall_elapsed_ns == delta
+
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    published: list[Path] = []
+
+    def fake_publication(sidecar: progress.ProgressSidecar) -> Path:
+        del sidecar
+        published.append(destination)
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10, clock=SequenceClock([huge, huge, huge + 1, huge + 3])
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", fake_publication)
+        assert limiter.publish(candidate) == destination
+        assert limiter.publish(candidate) is None
+    assert published == [destination]
+
+
+def test_direct_observation_state_cannot_precede_clock_anchors(
+    tmp_path: Path,
+) -> None:
+    """Foreign constructor state cannot forge an earlier accepted sample."""
+    timer = progress.ProgressTimer(
+        _clock=SequenceClock([200]),
+        _phase=progress.TimingPhase.ACTIVE,
+        _segment_started_ns=150,
+        _started_ns=100,
+        _active_elapsed_ns=50,
+        _last_observed_ns=149,
+    )
+    with pytest.raises(ERROR, match="last observation precedes"):
+        _ = timer.snapshot()
+
+    limiter = progress.ProgressWriteLimiter(
+        _clock=SequenceClock([200]),
+        _minimum_interval_ns=10,
+        _started_ns=100,
+        _last_committed_write_ns=160,
+        _last_observed_ns=159,
+    )
+    with pytest.raises(ERROR, match="last observation precedes"):
+        _ = limiter.publish(_sidecar(tmp_path))
+
+
 def test_monotonic_timer_contains_foreign_clock_failures() -> None:
     """Foreign or failing clocks stay inside the sidecar error boundary."""
     with pytest.raises(ERROR, match="clock must be callable"):
