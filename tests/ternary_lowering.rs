@@ -83,6 +83,7 @@ use ternary_lowering::{
     realize_byte_stream_control_flow, realize_byte_stream_wrapper,
     realize_frame_helper, realize_heap_helper, realize_runtime_helper,
     realize_runtime_io, resume_ternary_from_progress,
+    resume_ternary_from_progress_for_source,
 };
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CastOp, CompareOp, Function,
@@ -11701,6 +11702,129 @@ fn progress_adapter_restores_verified_ternary_state() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn assert_foreign_progress_source_rejected(
+    expected: &TypedIrInput,
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+) -> Result<(), String> {
+    for field in 0u8..5u8 {
+        let mut foreign = expected.clone();
+        match field {
+            0 => foreign.abi_id.push_str("-foreign"),
+            1 => foreign.input_format_version = 2,
+            2 => foreign.source_id.push_str("-foreign"),
+            3 => foreign.source_sha256[0] ^= 1,
+            4 => foreign.target_profile.push_str("-foreign"),
+            _ => return Err(String::from("unknown identity field")),
+        }
+        let strict = resume_ternary_from_progress_for_source(
+            interpreter, inspector, progress, &foreign,
+        );
+        if strict != Err(TernaryProgressCheckpointError::IdentityMismatch) {
+            return Err(format!(
+                "foreign source {field} accepted: {strict:?}",
+            ));
+        }
+        let product = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::ProgressForSource {
+                expected: &foreign,
+                inspector,
+                interpreter,
+                progress,
+            },
+        );
+        if product != Err(TernaryCompilerStageError::Progress(
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )) {
+            return Err(format!(
+                "product accepted foreign field {field}: {product:?}",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn progress_resume_for_source_binds_caller_identity()
+-> Result<(), String> {
+    let module = admitted_golden(RETURN_GOLDEN)?;
+    let expected = project_typed_ir(&module)?;
+    let fresh = enter_ternary_compiler_stage(
+        TernaryCompilerStageInput::Fresh(&expected),
+    )
+    .map_err(|error| format!("select current source: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&fresh)
+        .map_err(|error| format!("encode source-bound state: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("source-bound", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let restored = resume_ternary_from_progress_for_source(
+            &interpreter, &inspector, &progress, &expected,
+        );
+        if restored != Ok(fresh.clone()) {
+            return Err(format!("matched source resume failed: {restored:?}"));
+        }
+        let selected = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::ProgressForSource {
+                expected: &expected,
+                inspector: &inspector,
+                interpreter: &interpreter,
+                progress: &progress,
+            },
+        );
+        if selected != Ok(fresh) {
+            return Err(format!("matched product resume failed: {selected:?}"));
+        }
+        assert_foreign_progress_source_rejected(
+            &expected, &interpreter, &inspector, &progress,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove source-bound fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn progress_resume_for_source_rejects_other_valid_checkpoint()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let foreign = projected_byte_io_fixture()?;
+    let program = enter_ternary_stage(TernaryStageInput::Projection(&foreign))
+        .map_err(|error| format!("lower foreign source: {error:?}"))?;
+    if expected.source_sha256 == program.source_sha256 {
+        return Err(String::from("foreign fixture shares source digest"));
+    }
+    let bytes = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode foreign state: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("other-source", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let unrestricted = resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if unrestricted != Ok(program) {
+            return Err(String::from("foreign checkpoint itself was invalid"));
+        }
+        let checked = resume_ternary_from_progress_for_source(
+            &interpreter, &inspector, &progress, &expected,
+        );
+        if checked != Err(TernaryProgressCheckpointError::IdentityMismatch) {
+            return Err(format!("foreign checkpoint admitted: {checked:?}"));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove foreign-source fixture: {error}"));
+    result?;
+    cleanup
 }
 
 #[test]

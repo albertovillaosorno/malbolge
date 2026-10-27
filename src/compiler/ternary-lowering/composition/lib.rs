@@ -119,6 +119,7 @@ pub use progress_resume::{
     TernaryCompilerStageError, TernaryCompilerStageInput,
     TernaryProgressCheckpointError, enter_ternary_compiler_stage,
     resume_ternary_from_progress,
+    resume_ternary_from_progress_for_source,
 };
 pub use realize_byte_stream_control_flow::{
     ByteStreamControlFlowError, realize_byte_stream_control_flow,

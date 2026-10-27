@@ -40,6 +40,7 @@ use std::path::Path;
 
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
+use super::input::TypedIrInput;
 use super::model::TernaryProgram;
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
@@ -48,9 +49,24 @@ use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 #[derive(Clone, Copy, Debug)]
 pub enum TernaryCompilerStageInput<'input> {
     /// Lower fresh admitted typed-IR projection.
-    Fresh(&'input super::input::TypedIrInput),
+    Fresh(&'input TypedIrInput),
     /// Restore verified ternary state from one durable progress sidecar.
+    ///
+    /// This legacy route does not bind the restored source to a caller's
+    /// expected compilation. Prefer `ProgressForSource` when available.
     Progress {
+        /// Explicit interpreter used to run the trusted inspector.
+        interpreter: &'input Path,
+        /// Explicit trusted progress-sidecar inspector.
+        inspector: &'input Path,
+        /// Durable progress sidecar selecting the committed checkpoint.
+        progress: &'input Path,
+    },
+    /// Restore state only when its source/ABI/profile matches the expected
+    /// already-admitted typed-IR projection.
+    ProgressForSource {
+        /// Source of the expected compilation identity (not executable state).
+        expected: &'input TypedIrInput,
         /// Explicit interpreter used to run the trusted inspector.
         interpreter: &'input Path,
         /// Explicit trusted progress-sidecar inspector.
@@ -72,6 +88,8 @@ pub enum TernaryCompilerStageError {
 /// Stable failures for progress-sidecar ternary-stage resume.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryProgressCheckpointError {
+    /// Restored provenance is not the caller's expected source/ABI/profile.
+    IdentityMismatch,
     /// The configured progress inspector could not be launched.
     InspectorLaunch,
     /// The inspector rejected durable state or emitted diagnostics.
@@ -116,6 +134,38 @@ pub fn resume_ternary_from_progress(
         .map_err(Into::into)
 }
 
+/// Restores a checkpoint only for the caller's expected compiler source.
+///
+/// The progress inspector still verifies checkpoint-envelope compatibility,
+/// and canonical stage admission validates the extracted ternary program.
+/// This additional check binds that program to separately supplied expected
+/// source/ABI/profile provenance; it does not authenticate the source digest
+/// or substitute for the caller's toolchain/revision compatibility policy.
+///
+/// # Errors
+///
+/// Preserves inspector and canonical-stage errors, or returns
+/// `IdentityMismatch` when the validated program differs from the caller's
+/// current source identity.
+pub fn resume_ternary_from_progress_for_source(
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+    expected: &TypedIrInput,
+) -> Result<TernaryProgram, TernaryProgressCheckpointError> {
+    let program =
+        resume_ternary_from_progress(interpreter, inspector, progress)?;
+    if program.abi_id != expected.abi_id
+        || program.input_format_version != expected.input_format_version
+        || program.source_id != expected.source_id
+        || program.source_sha256 != expected.source_sha256
+        || program.target_profile != expected.target_profile
+    {
+        return Err(TernaryProgressCheckpointError::IdentityMismatch);
+    }
+    Ok(program)
+}
+
 /// Enters ternary lowering from fresh projection or durable progress.
 ///
 /// # Errors
@@ -135,5 +185,14 @@ pub fn enter_ternary_compiler_stage(
             progress,
         } => resume_ternary_from_progress(interpreter, inspector, progress)
             .map_err(TernaryCompilerStageError::Progress),
+        TernaryCompilerStageInput::ProgressForSource {
+            expected,
+            inspector,
+            interpreter,
+            progress,
+        } => resume_ternary_from_progress_for_source(
+            interpreter, inspector, progress, expected,
+        )
+        .map_err(TernaryCompilerStageError::Progress),
     }
 }

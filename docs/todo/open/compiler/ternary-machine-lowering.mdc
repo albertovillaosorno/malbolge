@@ -600,6 +600,13 @@ instruction.
   same startup order for valid entries and rejects empty/missing entries,
   malformed program identity or function ordering, and invalid startup inputs
   without assigning guest addresses or executing the bind call.
+- A separate source-matched compiler progress route now compares the
+  validated checkpoint against the caller's current typed-IR source ID/digest,
+  ABI, format version, and selected profile before returning it. The exact-match
+  route converges with fresh lowering, while independently valid checkpoints
+  for each mismatched identity field reject with `IdentityMismatch` via both
+  direct adapter and product selector. This is provenance comparison only,
+  not external source authentication or toolchain revision binding.
 - Fresh ternary-stage selection now re-admits each lowerer-produced program
   through the independent canonical program validator before returning it.
   A distinct output-validation error identifies a violated producer/consumer

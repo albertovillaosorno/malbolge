@@ -919,6 +919,15 @@ capacity of at least 32 bytes, `u32` logical-address containment, exact
 one bind action followed by user entry, so later layout/linkage cannot silently
 place allocation-capable user code before the required bind.
 
+An opt-in source-matched progress selector now compares the restored,
+independently admitted ternary program with the caller's admitted typed-IR
+projection for exact source path/digest, ABI, typed-IR version, and target
+profile. The ordinary progress route remains available but does not bind an
+expected source. The source-matched route rejects an internally valid foreign
+checkpoint as `IdentityMismatch`, while preserving inspector and codec failures.
+This checks provenance equality, **not** the authenticity of the supplied
+source digest or the caller's external revision/toolchain compatibility policy.
+
 The compiler's fresh ternary-stage entry now also runs the independent
 `validate_ternary_program` admission gate after successful lowering, matching
 checkpoint restoration rather than trusting the producer alone. Its distinct
