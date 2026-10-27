@@ -111,6 +111,12 @@ Read-stream cleanup likewise preserves an earlier read error when `close()`
 raises a non-`OSError` exception. The cleanup failure is attached as a
 secondary diagnostic, and descriptor close does not replace the primary read
 failure.
+
+Raw-descriptor cleanup during failed read-stream or writer-lock stream
+construction follows the same precedence, including `ValueError` or
+`RuntimeError` from `os.close`. Exact stream-construction errors remain
+primary even after the failed raw close; writer locks cannot enter the
+serialization region on that path.
 Deterministic parent and regular-inode substitutions cover both progress-pointer
 and immutable checkpoint reads, including descriptor cleanup. A further
 read-completion regression replaces the progress parent with a linked directory

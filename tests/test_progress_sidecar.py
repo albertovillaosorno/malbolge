@@ -2329,9 +2329,14 @@ def test_progress_read_closes_descriptor_on_stream_open_failure(
         _ = os.fstat(observed[0])
 
 
+@pytest.mark.parametrize(
+    "close_type", [OSError, ValueError, RuntimeError],
+    ids=["os-error", "value-error", "runtime-error"],
+)
 def test_progress_read_preserves_stream_failure_before_close_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
 ) -> None:
     """A failing raw-descriptor close cannot replace the read-open failure."""
     destination = progress.write_atomic(_sidecar(tmp_path))
@@ -2345,7 +2350,7 @@ def test_progress_read_preserves_stream_failure_before_close_failure(
 
     def fail_close(descriptor: int) -> None:
         actual_close(descriptor)
-        raise OSError(close_failure)
+        raise close_type(close_failure)
 
     with monkeypatch.context() as context:
         context.setattr(progress, "FileIO", fail_stream)
@@ -2361,6 +2366,47 @@ def test_progress_read_preserves_stream_failure_before_close_failure(
     assert getattr(primary, "__notes__", None) == [
         f"read descriptor cleanup also failed: {close_failure}"
     ]
+
+
+@pytest.mark.parametrize(
+    "close_type", [ValueError, RuntimeError],
+    ids=["value-error", "runtime-error"],
+)
+def test_read_stream_open_retains_primary_when_raw_cleanup_is_non_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
+) -> None:
+    """Read stream construction remains primary over unusual fd cleanup."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    read_failure = "injected read stream construction failure"
+    close_failure = "injected non-OS read descriptor close failure"
+    actual_close = os.close
+    opened: list[int] = []
+    closed: list[int] = []
+    binary_mode = "rb"
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        assert (mode, closefd) == (binary_mode, True)
+        opened.append(descriptor)
+        raise ValueError(read_failure)
+
+    def fail_close(descriptor: int) -> None:
+        closed.append(descriptor)
+        actual_close(descriptor)
+        raise close_type(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(ValueError, match=read_failure) as captured:
+            _ = progress.read(destination)
+    assert opened == closed
+    assert getattr(captured.value, "__notes__", None) == [
+        f"read descriptor cleanup also failed: {close_failure}"
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_read_preserves_primary_read_failure_before_stream_close(
@@ -2945,6 +2991,49 @@ def test_writer_lock_closes_rejected_open_descriptor(
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize(
+    "close_type", [ValueError, RuntimeError],
+    ids=["value-error", "runtime-error"],
+)
+def test_writer_lock_stream_open_retains_primary_on_unusual_fd_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_type: type[Exception],
+) -> None:
+    """Lock stream-construction failures cannot be hidden by raw cleanup."""
+    destination = tmp_path / PROGRESS_NAME
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    open_failure = "injected lock stream construction failure"
+    close_failure = "injected non-OS lock descriptor close failure"
+    opened: list[int] = []
+    original_close = os.close
+
+    def fail_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        del mode, closefd
+        opened.append(descriptor)
+        raise ValueError(open_failure)
+
+    def fail_close(descriptor: int) -> None:
+        original_close(descriptor)
+        raise close_type(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        context.setattr(os, "close", fail_close)
+        with (
+            pytest.raises(ValueError, match=open_failure) as captured,
+            writer_lock(destination),
+        ):
+            pytest.fail("failed lock stream admitted serialization")
+    assert getattr(captured.value, "__notes__", None) == [
+        f"writer lock descriptor cleanup also failed: {close_failure}"
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+    with writer_lock(destination):
+        assert not destination.exists()
 
 
 def test_writer_lock_rejects_replaced_inode_after_acquisition(

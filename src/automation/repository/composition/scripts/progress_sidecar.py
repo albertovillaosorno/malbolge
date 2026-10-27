@@ -1676,7 +1676,7 @@ def _read_regular_bytes(
     except BaseException as error:
         try:
             os.close(descriptor)
-        except OSError as close_error:
+        except (OSError, ValueError, RuntimeError) as close_error:
             error.add_note(
                 f"read descriptor cleanup also failed: {close_error}"
             )
@@ -1860,7 +1860,7 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
     except BaseException as error:
         try:
             os.close(descriptor)
-        except OSError as close_error:
+        except (OSError, ValueError, RuntimeError) as close_error:
             error.add_note(
                 f"writer lock descriptor cleanup also failed: {close_error}"
             )
