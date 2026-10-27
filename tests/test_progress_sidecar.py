@@ -3106,6 +3106,76 @@ def test_loads_rejects_foreign_text_types() -> None:
             _ = progress.loads(cast("str", value))
 
 
+def test_public_numeric_rendering_rejects_host_decimal_limits(
+    tmp_path: Path,
+) -> None:
+    """Unrenderable large ints fail as typed metadata admission errors."""
+    host_digit_limit = sys.get_int_max_str_digits()
+    if host_digit_limit == 0:
+        pytest.skip("host integer-to-decimal conversion is unlimited")
+    enormous = 10**host_digit_limit
+    with pytest.raises(ERROR, match="seed cannot be rendered as decimal"):
+        _ = progress.resume_compatibility_fingerprint(
+            replace(_resume_identity(), seed=enormous)
+        )
+    for helper in (progress.checkpoint_path, progress.partial_path):
+        with pytest.raises(ERROR):
+            _ = helper(tmp_path / "program.malbolge", enormous)
+    candidate = replace(_sidecar(tmp_path), units_completed=enormous)
+    with pytest.raises(ERROR):
+        _ = progress.encode(candidate)
+    with pytest.raises(ERROR):
+        _ = progress.render_summary(candidate)
+    metadata = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="typed-ir-v1",
+        units_completed=enormous,
+    )
+    with pytest.raises(ERROR):
+        _ = progress.render_checkpoint_metadata(metadata)
+    with pytest.raises(ERROR):
+        _ = progress.encode_portable_checkpoint(
+            _resume_identity(),
+            progress.PortableCheckpointPosition(
+                checkpoint_sequence=1,
+                stage="candidate-search",
+                units_completed=enormous,
+            ),
+            "typed-ir-v1",
+            payload=b"state",
+        )
+    with pytest.raises(ERROR):
+        _ = progress.write_atomic(candidate)
+    assert not Path(candidate.progress_path).exists()
+    elapsed_ns = 7
+    timer = progress.ProgressTimer.start(
+        clock=SequenceClock([enormous, enormous + elapsed_ns])
+    )
+    assert timer.snapshot().wall_elapsed_ns == elapsed_ns
+
+
+def test_host_decimal_ceiling_remains_admitted_when_representable(
+    tmp_path: Path,
+) -> None:
+    """Typed overflow admission does not invent a lower decimal ceiling."""
+    host_digit_limit = sys.get_int_max_str_digits()
+    if host_digit_limit == 0:
+        pytest.skip("host integer-to-decimal conversion is unlimited")
+    largest_power = 10 ** (host_digit_limit - 1)
+    identity = replace(_resume_identity(), seed=largest_power)
+    fingerprint = progress.resume_compatibility_fingerprint(identity)
+    sidecar = replace(
+        _sidecar(tmp_path),
+        compatibility_fingerprint=fingerprint,
+        seed=largest_power,
+    )
+    encoded = progress.encode(sidecar)
+    assert progress.loads(encoded.decode("utf-8")) == sidecar
+    assert len(encoded) < SIDECAR_WIRE_LIMIT
+
+
 @pytest.mark.parametrize(
     "oversized_text",
     [

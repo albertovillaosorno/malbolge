@@ -69,6 +69,12 @@ canonical serialized size admitted, since a shorter noncanonical UTF-8 spelling
 can expand beyond the canonical limit. The inclusive ceiling remains accepted;
 immutable checkpoint state is outside this pointer-only budget.
 
+Caller-constructed metadata integers must also be representable in the host's
+decimal conversion before canonical JSON, checkpoint-generation filenames, or
+operator-facing records are rendered. A host digit-limit rejection returns a
+typed `ProgressSidecarError`, not an escaping Python `ValueError`. This adds no
+fixed digit cap to opaque checkpoint bytes or standalone timer arithmetic.
+
 Reads and immutable-generation collision checks reject pre-existing nonregular
 filesystem entries, including named pipes, before attempting blocking payload
 reads. The opened file descriptor is independently checked against the regular-

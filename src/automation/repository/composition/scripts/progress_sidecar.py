@@ -623,6 +623,7 @@ def checkpoint_path(output: str | Path, sequence: int) -> Path:
     """
     if type(sequence) is not int or sequence <= 0:
         _fail("checkpoint sequence must be a positive integer")
+    _ = _renderable_integer(sequence, "checkpoint sequence")
     return Path(f"{_output_path_text(output)}.checkpoint.{sequence:020d}")
 
 
@@ -635,6 +636,7 @@ def partial_path(output: str | Path, sequence: int) -> Path:
     """
     if type(sequence) is not int or sequence <= 0:
         _fail("partial sequence must be a positive integer")
+    _ = _renderable_integer(sequence, "partial sequence")
     return Path(f"{_output_path_text(output)}.partial.{sequence:020d}")
 
 
@@ -643,14 +645,14 @@ def _validate_checkpoint_position(
 ) -> PortableCheckpointPosition:
     if type(position) is not PortableCheckpointPosition:
         _fail("checkpoint position must use the exact immutable type")
-    sequence = _nonnegative_integer(
+    sequence = _renderable_integer(
         position.checkpoint_sequence,
         "checkpoint sequence",
     )
     if sequence == 0:
         _fail("portable checkpoint requires a positive checkpoint sequence")
     _identifier(position.stage, "checkpoint stage")
-    _ = _nonnegative_integer(
+    _ = _renderable_integer(
         position.units_completed,
         "checkpoint completed units",
     )
@@ -936,6 +938,21 @@ def _nonnegative_integer(value: object, context: str) -> int:
     return value
 
 
+def _renderable_integer(value: object, context: str) -> int:
+    """Admit a public metadata integer through host decimal conversion.
+
+    Returns:
+        Exact integer when its canonical JSON or operator rendering is safe.
+
+    """
+    number = _nonnegative_integer(value, context)
+    try:
+        _ = str(number)
+    except ValueError:
+        _fail(f"{context} cannot be rendered as decimal")
+    return number
+
+
 def _integer(value: JsonValue, context: str) -> int:
     return _nonnegative_integer(value, context)
 
@@ -1013,7 +1030,7 @@ def _validate_resume_identity(identity: ResumeIdentity) -> ResumeIdentity:
     if schema != SCHEMA_ID:
         _fail(f"unsupported progress schema: {schema}")
     if identity.seed is not None:
-        _ = _nonnegative_integer(identity.seed, "seed")
+        _ = _renderable_integer(identity.seed, "seed")
     _digest(identity.source_sha256, "source_sha256")
     _digest(identity.toolchain_fingerprint, "toolchain_fingerprint")
     _validate_revision(identity.repository_revision)
@@ -1188,10 +1205,10 @@ def _validate_numeric_domain(sidecar: ProgressSidecar) -> None:
         (sidecar.units_total, "units_total"),
     )
     for value, context in required:
-        _ = _nonnegative_integer(value, context)
+        _ = _renderable_integer(value, context)
     for value, context in optional:
         if value is not None:
-            _ = _nonnegative_integer(value, context)
+            _ = _renderable_integer(value, context)
 
 
 def _validate_units(sidecar: ProgressSidecar) -> None:
