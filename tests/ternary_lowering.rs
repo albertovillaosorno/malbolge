@@ -18038,7 +18038,8 @@ fn startup_plan_rejects_invalid_heap_layout() -> Result<(), String> {
 }
 
 #[test]
-fn startup_entry_must_exist_in_independently_admitted_program() -> Result<(), String> {
+fn startup_entry_must_exist_in_independently_admitted_program()
+-> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
     let program = lower_typed_ir(&project_typed_ir(&module)?)
         .map_err(|error| format!("lower entry fixture: {error:?}"))?;
@@ -18051,32 +18052,40 @@ fn startup_entry_must_exist_in_independently_admitted_program() -> Result<(), St
     request.user_entry_function = entry;
     let bound = plan_startup_for_program(&request, &program)
         .map_err(|error| format!("bind admitted entry: {error:?}"))?;
-    if bound
-        != plan_startup(&request).map_err(|error| format!("plan original request: {error:?}"))?
-    {
+    let ordinary = plan_startup(&request)
+        .map_err(|error| format!("plan original request: {error:?}"))?;
+    if bound != ordinary {
         return Err(String::from("program binding changed startup sequencing"));
     }
     request.user_entry_function = u32::MAX;
-    if plan_startup_for_program(&request, &program) != Err(StartupPlanningError::MissingUserEntry) {
+    if plan_startup_for_program(&request, &program)
+        != Err(StartupPlanningError::MissingUserEntry)
+    {
         return Err(String::from("missing entry function was accepted"));
     }
     // A valid program with no entry functions must not invent an entry point.
     let mut empty = program;
     empty.functions.clear();
-    if plan_startup_for_program(&request, &empty) != Err(StartupPlanningError::MissingUserEntry) {
+    if plan_startup_for_program(&request, &empty)
+        != Err(StartupPlanningError::MissingUserEntry)
+    {
         return Err(String::from("empty program invented an entry function"));
     }
     Ok(())
 }
 
 #[test]
-fn startup_entry_binding_revalidates_program_and_request() -> Result<(), String> {
+fn startup_entry_binding_revalidates_program_and_request()
+-> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
     let program = lower_typed_ir(&project_typed_ir(&module)?)
         .map_err(|error| format!("lower entry fixture: {error:?}"))?;
     let mut request = valid_startup_request();
-    request.user_entry_function = program.functions.first()
-        .ok_or_else(|| String::from("entry fixture has no functions"))?.id;
+    request.user_entry_function = program
+        .functions
+        .first()
+        .ok_or_else(|| String::from("entry fixture has no functions"))?
+        .id;
     let mut identity_forgery = program.clone();
     identity_forgery.abi_id = String::from("forged-host-abi");
     if plan_startup_for_program(&request, &identity_forgery)
@@ -18087,8 +18096,11 @@ fn startup_entry_binding_revalidates_program_and_request() -> Result<(), String>
         return Err(String::from("invalid program identity was accepted"));
     }
     let mut function_forgery = program.clone();
-    function_forgery.functions.first_mut()
-        .ok_or_else(|| String::from("entry fixture has no functions"))?.id = u32::MAX;
+    function_forgery
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("entry fixture has no functions"))?
+        .id = u32::MAX;
     if plan_startup_for_program(&request, &function_forgery)
         != Err(StartupPlanningError::InvalidProgram(
             TernaryProgramValidationError::FunctionIdentity,
@@ -18108,14 +18120,18 @@ fn startup_entry_binding_revalidates_program_and_request() -> Result<(), String>
         return Err(String::from("invalid function body was accepted"));
     }
     request.capacity = 16;
-    if plan_startup_for_program(&request, &program) != Err(StartupPlanningError::InvalidLayout) {
+    if plan_startup_for_program(&request, &program)
+        != Err(StartupPlanningError::InvalidLayout)
+    {
         return Err(String::from(
             "invalid heap extent bypassed startup admission",
         ));
     }
     request.capacity = 0x100;
     request.target_profile = String::from("forged-target-profile");
-    if plan_startup_for_program(&request, &program) != Err(StartupPlanningError::InvalidIdentity) {
+    if plan_startup_for_program(&request, &program)
+        != Err(StartupPlanningError::InvalidIdentity)
+    {
         return Err(String::from("invalid startup profile was accepted"));
     }
     Ok(())

@@ -35,7 +35,9 @@
 //! One-shot guest heap startup sequencing after layout resolution.
 
 use super::model::{StartupAction, StartupPlan, TernaryProgram};
-use super::program_codec::{TernaryProgramValidationError, validate_ternary_program};
+use super::program_codec::{
+    TernaryProgramValidationError, validate_ternary_program,
+};
 use super::startup_input::StartupRequest;
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -87,7 +89,8 @@ pub fn plan_startup(
     })
 }
 
-/// Binds a resolved startup request to one independently admitted target program.
+/// Binds a resolved startup request to an independently admitted target
+/// program.
 ///
 /// This does not choose addresses or realize guest runtime calls. It prevents
 /// a valid heap extent from authorizing transfer to a non-existent function.
@@ -101,7 +104,8 @@ pub fn plan_startup_for_program(
     program: &TernaryProgram,
 ) -> Result<StartupPlan, StartupPlanningError> {
     let plan = plan_startup(request)?;
-    validate_ternary_program(program).map_err(StartupPlanningError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(StartupPlanningError::InvalidProgram)?;
     if !program
         .functions
         .iter()
