@@ -35,7 +35,7 @@
 
 //! Persistent bounded child-process transport for native host protocols.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{ErrorKind, Read as _, Write as _};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -149,6 +149,11 @@ impl NativeProcessSessionConfig {
         // Bare names can resolve through ambient PATH. A relative executable
         // combined with current_dir has platform-dependent resolution in
         // Command::spawn; admit only an absolute executable for that case.
+        if invalid_process_configuration(self) {
+            return Err(NativeProcessSessionError::Spawn(
+                ErrorKind::InvalidInput,
+            ));
+        }
         let relative = !self.program.is_absolute();
         let unqualified = relative && self.program.components().count() < 2;
         let ambiguous = relative && self.working_directory.is_some();
@@ -338,6 +343,21 @@ impl Drop for NativeProcessSession {
     fn drop(&mut self) {
         self.terminate();
     }
+}
+
+fn invalid_process_configuration(config: &NativeProcessSessionConfig) -> bool {
+    let invalid_value = |value: &OsStr| value.as_encoded_bytes().contains(&0);
+    invalid_value(config.program.as_os_str())
+        || config.arguments.iter().any(|arg| invalid_value(arg))
+        || config.environment.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.as_encoded_bytes().contains(&b'=')
+                || invalid_value(key)
+                || invalid_value(value)
+        })
+        || config.working_directory.as_ref().is_some_and(|dir| {
+            dir.as_os_str().is_empty() || invalid_value(dir.as_os_str())
+        })
 }
 
 fn finish_timed_exchange(

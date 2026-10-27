@@ -79,6 +79,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   before spawn rather than relying on platform-specific executable lookup;
   absolute workers with child working directories remain admissible.
 
+  Worker spawn preflight also rejects empty environment keys, keys with `=`,
+  and embedded NUL in environment fields, arguments, programs, or directories.
+  An explicitly empty working directory is rejected before host lookup.
+  These malformed inputs return typed `Spawn(InvalidInput)` before launching;
+  valid empty arguments and normal working-directory overrides still work.
+  POSIX non-UTF-8 environment names, values, and argument bytes remain valid.
+
   Linux persistent native workers now own isolated process groups. Timeout,
   failed framing, and drop signal ordinary descendants before one direct-child
   reap, with idempotent cleanup across timeout/poison/drop. Delayed-marker

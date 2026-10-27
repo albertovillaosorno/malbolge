@@ -949,6 +949,17 @@ by host platform. Absolute worker paths retain ordinary spawn behavior with
 configured working directories; qualified relative paths remain admissible
 without a child working-directory override.
 
+Persistent worker spawn also rejects malformed process configuration before
+launch: empty environment names, names containing `=`, and embedded NUL bytes
+in environment fields, arguments, executable paths, or child directories.
+An empty child working directory is rejected with the same typed error.
+The typed `Spawn(InvalidInput)` result is stable even when host process APIs
+would silently ignore some malformed environment names.
+
+Valid empty argument values and exact configured child context remain
+admissible. POSIX non-UTF-8 environment names, values, and arguments still
+round-trip as exact bytes when they contain no forbidden process delimiters.
+
 On Linux, persistent workers now own a fresh process group. Timed exchange
 failure, malformed framing, and session drop signal ordinary descendants as
 well as the direct child, then reap that child once. Idempotent termination

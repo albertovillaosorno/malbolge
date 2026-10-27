@@ -77726,6 +77726,112 @@ fn native_process_session_rejects_relative_worker_with_custom_cwd()
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn native_process_session_rejects_invalid_process_configuration()
+-> Result<(), String> {
+    let new_config =
+        || NativeProcessSessionConfig::new(PathBuf::from("/bin/true"));
+    let cases = [
+        (
+            "empty environment key",
+            new_config().environment(OsString::new(), OsString::from("value")),
+        ),
+        (
+            "environment equals",
+            new_config().environment(
+                OsString::from("KEY=NAME"),
+                OsString::from("value"),
+            ),
+        ),
+        (
+            "environment key NUL",
+            new_config().environment(
+                OsString::from("KEY\0BAD"),
+                OsString::from("value"),
+            ),
+        ),
+        (
+            "environment value NUL",
+            new_config().environment(
+                OsString::from("KEY"),
+                OsString::from("value\0bad"),
+            ),
+        ),
+        (
+            "argument NUL",
+            new_config().argument(OsString::from("arg\0bad")),
+        ),
+        (
+            "empty working directory",
+            new_config().working_directory(PathBuf::new()),
+        ),
+        (
+            "working directory NUL",
+            new_config().working_directory(PathBuf::from("/tmp/dir\0bad")),
+        ),
+        (
+            "program NUL",
+            NativeProcessSessionConfig::new(PathBuf::from("/bin/true\0bad")),
+        ),
+    ];
+    for (label, config) in cases {
+        let observed = catch_unwind(|| config.spawn().err());
+        if !matches!(
+            &observed,
+            Ok(Some(NativeProcessSessionError::Spawn(
+                ErrorKind::InvalidInput
+            )))
+        ) {
+            return Err(format!(
+                "{label} reached platform spawn: {observed:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn native_process_session_non_utf8_fields_roundtrip() -> Result<(), String> {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let script = r"
+import os
+import sys
+key = b'MALBOLGE_NATIVE_\xff'
+if os.environb.get(key) != b'value-\xff':
+    raise SystemExit(2)
+if os.fsencode(sys.argv[1]) != b'argument-\xff':
+    raise SystemExit(3)
+header = sys.stdin.buffer.read(8)
+if len(header) != 8:
+    raise SystemExit(4)
+length = int.from_bytes(header, 'little')
+request = sys.stdin.buffer.read(length)
+if len(request) != length:
+    raise SystemExit(5)
+response = b'bytes-ok:' + request
+sys.stdout.buffer.write(len(response).to_bytes(8, 'little') + response)
+sys.stdout.buffer.flush()
+";
+    let mut session = native_process_session_python_config(script)
+        .environment(
+            OsString::from_vec(b"MALBOLGE_NATIVE_\xff".to_vec()),
+            OsString::from_vec(b"value-\xff".to_vec()),
+        )
+        .argument(OsString::from_vec(b"argument-\xff".to_vec()))
+        .spawn()
+        .map_err(|error| format!("byte-backed worker spawn: {error:?}"))?;
+    let response = session
+        .exchange(b"probe", 32)
+        .map_err(|error| format!("byte-backed worker exchange: {error:?}"))?;
+    if response != b"bytes-ok:probe" || session.poisoned() {
+        return Err(String::from("valid POSIX process bytes were rejected"));
+    }
+    Ok(())
+}
+
 #[test]
 fn native_process_session_bounds_response_and_poisoning() -> Result<(), String>
 {
