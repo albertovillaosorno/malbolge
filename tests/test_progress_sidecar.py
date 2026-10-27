@@ -7537,7 +7537,7 @@ def test_operator_text_missing_stdout_returns_failure(
         return metadata
 
     class NonCallableOutput:
-        write = 0
+        write: int = 0
 
     streams = {"none": None, "noncallable": NonCallableOutput()}
     errors = StringIO()
@@ -7579,7 +7579,7 @@ def test_operator_missing_stderr_keeps_failure_status(
     help_mode = "help"
 
     class NonCallableErrorOutput:
-        write = 0
+        write: int = 0
 
     sinks = {
         "none": None,
