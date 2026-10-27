@@ -34,7 +34,8 @@
 
 //! One-shot guest heap startup sequencing after layout resolution.
 
-use super::model::{StartupAction, StartupPlan};
+use super::model::{StartupAction, StartupPlan, TernaryProgram};
+use super::program_codec::{TernaryProgramValidationError, validate_ternary_program};
 use super::startup_input::StartupRequest;
 
 const ABI_ID: &str = "malbolge-c32-v1";
@@ -50,6 +51,10 @@ pub enum StartupPlanningError {
     InvalidIdentity,
     /// Layout supplied an invalid guest heap extent.
     InvalidLayout,
+    /// The provided pre-layout program failed independent stage admission.
+    InvalidProgram(TernaryProgramValidationError),
+    /// The selected entry does not identify a function in the admitted program.
+    MissingUserEntry,
 }
 
 /// Builds one ordered heap-bind-before-user-entry startup plan.
@@ -80,6 +85,31 @@ pub fn plan_startup(
         ],
         bind_identity: request.bind_identity.clone(),
     })
+}
+
+/// Binds a resolved startup request to one independently admitted target program.
+///
+/// This does not choose addresses or realize guest runtime calls. It prevents
+/// a valid heap extent from authorizing transfer to a non-existent function.
+///
+/// # Errors
+///
+/// Rejects malformed startup identity/layout, invalid program state, or an
+/// entry function not present in the admitted program.
+pub fn plan_startup_for_program(
+    request: &StartupRequest,
+    program: &TernaryProgram,
+) -> Result<StartupPlan, StartupPlanningError> {
+    let plan = plan_startup(request)?;
+    validate_ternary_program(program).map_err(StartupPlanningError::InvalidProgram)?;
+    if !program
+        .functions
+        .iter()
+        .any(|function| function.id == request.user_entry_function)
+    {
+        return Err(StartupPlanningError::MissingUserEntry);
+    }
+    Ok(plan)
 }
 
 const fn validate_heap_layout(

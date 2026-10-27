@@ -107,7 +107,9 @@ pub use model::*;
 pub use plan_byte_stream_wrapper::{
     ByteStreamWrapperPlanningError, plan_byte_stream_wrapper,
 };
-pub use plan_startup::{StartupPlanningError, plan_startup};
+pub use plan_startup::{
+    StartupPlanningError, plan_startup, plan_startup_for_program,
+};
 pub use program_codec::{
     TERNARY_PROGRAM_CODEC_ID, TernaryProgramCodecError,
     TernaryProgramValidationError, canonical_ternary_bytes,

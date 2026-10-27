@@ -919,6 +919,14 @@ capacity of at least 32 bytes, `u32` logical-address containment, exact
 one bind action followed by user entry, so later layout/linkage cannot silently
 place allocation-capable user code before the required bind.
 
+The program-bound startup entrypoint additionally revalidates the entire
+pre-layout `TernaryProgram` before accepting a resolved startup plan. It
+requires the requested user-entry function ID to exist in that admitted
+program, rejecting malformed program identity/function ordering or a missing
+entry without granting any guest execution, heap placement, or layout authority.
+The extent-only planning API remains available for layout-side sequencing,
+but does not itself attest to a function's presence in a concrete program.
+
 This is executable compiler lowering but not complete target code generation.
 Global layout/address assignment, concrete heap-arena placement, executable
 runtime-call encoding, complete source sequencing, typed-IR external-call
@@ -1096,6 +1104,11 @@ success,
   `BindHeap` before user entry. Tests reject ABI/profile/symbol drift, null or
   misaligned arena pointers, capacities below one header-plus-payload span,
   misaligned capacities, and logical-address overflow.
+- Program-bound startup evidence verifies that independent full-program
+  admission precedes entry membership: a valid entry preserves exact bind-then-
+  enter ordering; missing or empty-program entries, forged program identity,
+  noncanonical function IDs, invalid heap extents, and profile drift reject.
+  No final address assignment or runtime call is implied.
 - Global heap placement, executable bind-call/source sequencing, typed-IR
   external-call binding, and wrapper branch-address/source-cell placement remain
   open target-lowering work.
