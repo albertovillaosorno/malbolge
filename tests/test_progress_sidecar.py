@@ -7502,6 +7502,125 @@ def test_cli_preserves_failure_status_when_stderr_is_unavailable(
         assert progress.main(invocations[mode]) == expected
 
 
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "follow", "help"]
+)
+@pytest.mark.parametrize("unavailable", ["none", "noncallable"])
+def test_operator_text_missing_stdout_returns_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mode: str,
+    unavailable: str,
+) -> None:
+    """Absent standard output cannot report verified operator success."""
+    sidecar = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(sidecar)
+    invocations = {
+        "inspect": [str(destination)],
+        "checkpoint-info": ["--checkpoint-info", str(destination)],
+        "follow": ["--follow", str(destination)],
+        "help": ["--help"],
+    }
+    metadata = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="search.evaluated-prefix-v1",
+        units_completed=sidecar.units_completed,
+    )
+
+    def fake_metadata(
+        candidate: progress.ProgressSidecar,
+    ) -> progress.PortableCheckpointMetadata:
+        del candidate
+        return metadata
+
+    class NonCallableOutput:
+        write = 0
+
+    streams = {"none": None, "noncallable": NonCallableOutput()}
+    errors = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", streams[unavailable])
+        context.setattr(sys, "stderr", errors)
+        context.setattr(
+            progress, "read_portable_checkpoint_metadata", fake_metadata
+        )
+        assert progress.main(invocations[mode]) == 1
+    marker = "failed:"
+    assert marker in errors.getvalue()
+
+
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "extract", "follow", "usage", "help"]
+)
+@pytest.mark.parametrize(
+    "unavailable", ["none", "missing-writer", "noncallable"]
+)
+def test_operator_missing_stderr_keeps_failure_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mode: str,
+    unavailable: str,
+) -> None:
+    """A missing error stream never conceals a failed command result."""
+    missing = str(tmp_path / "absent.progress.json")
+    invocations = {
+        "inspect": [missing],
+        "checkpoint-info": ["--checkpoint-info", missing],
+        "extract": ["--extract-checkpoint", "search.state-v1", missing],
+        "follow": ["--follow", missing],
+        "usage": ["--invalid", missing],
+        "help": ["--help"],
+    }
+    usage_mode = "usage"
+    help_mode = "help"
+
+    class NonCallableErrorOutput:
+        write = 0
+
+    sinks = {
+        "none": None,
+        "missing-writer": object(),
+        "noncallable": NonCallableErrorOutput(),
+    }
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", sinks[unavailable])
+        if mode == help_mode:
+            context.setattr(sys, "stdout", None)
+        assert progress.main(invocations[mode]) == (
+            2 if mode == usage_mode else 1
+        )
+
+
+@pytest.mark.parametrize(
+    "failure_type",
+    [OSError, ValueError, RuntimeError, AttributeError, TypeError],
+)
+def test_binary_stdout_acquisition_errors_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """An unavailable binary stream must fail inside the extraction API."""
+    failure = "injected binary stdout initialization failure"
+
+    def reject_binary_stream() -> object:
+        raise failure_type(failure)
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_binary_stdout", reject_binary_stream)
+        with pytest.raises(
+            ERROR, match="portable checkpoint extraction stdout failed"
+        ) as captured:
+            writer(b"verified state")
+    assert type(captured.value.__cause__) is failure_type
+
+
 def test_inspector_rejects_invalid_utf8_as_stable_failure(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

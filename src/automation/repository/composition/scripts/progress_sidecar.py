@@ -76,6 +76,13 @@ CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
 _CALLBACK_ERRORS: Final = (Exception,)
+_OUTPUT_STREAM_ERRORS: Final = (
+    OSError,
+    ValueError,
+    RuntimeError,
+    AttributeError,
+    TypeError,
+)
 _CHECKPOINT_INFO_FLAG: Final = "--checkpoint-info"
 _CHECKPOINT_INFO_ARGUMENT_COUNT: Final = 2
 _EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
@@ -2692,15 +2699,15 @@ def _binary_stdout() -> _BinaryOutput:
 
 
 def _write_binary_stdout(payload: bytes) -> None:
-    stream = _binary_stdout()
     try:
+        stream = _binary_stdout()
         written = stream.write(payload)
         if type(written) is not int or written != len(payload):
             _fail("portable checkpoint extraction wrote incomplete stdout")
         stream.flush()
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"portable checkpoint extraction stdout failed: {error}", error
         )
@@ -2720,7 +2727,7 @@ def _write_operator_text(text: str) -> None:
         _ = sys.stdout.flush()
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(f"progress operator stdout failed: {error}", error)
 
 
@@ -2728,7 +2735,7 @@ def _write_error_diagnostic(message: str) -> None:
     """Preserve a known CLI failure even if stderr cannot accept text."""
     try:
         _ = sys.stderr.write(message)
-    except (OSError, ValueError, RuntimeError):
+    except _OUTPUT_STREAM_ERRORS:
         # The caller already rejected the operation. The status must remain
         # nonzero even when the diagnostic sink is unavailable.
         return
