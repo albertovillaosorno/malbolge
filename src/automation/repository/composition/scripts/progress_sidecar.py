@@ -2621,6 +2621,23 @@ def _write_binary_stdout(payload: bytes) -> None:
         )
 
 
+def _write_operator_text(text: str, *, flush: bool = False) -> None:
+    """Write operator metadata through the typed stdout failure boundary.
+
+    Raises:
+        ProgressSidecarError: If output write or flush fails.
+
+    """
+    try:
+        _ = sys.stdout.write(text)
+        if flush:
+            _ = sys.stdout.flush()
+    except ProgressSidecarError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(f"progress operator stdout failed: {error}", error)
+
+
 def _read_canonical_pointer(path: Path) -> ProgressSidecar:
     """Bind operator-visible inspection to the declared pointer location.
 
@@ -2651,11 +2668,11 @@ def _checkpoint_info_path(path: Path) -> int:
         metadata = read_portable_checkpoint_metadata(
             _read_canonical_pointer(path)
         )
+        _write_operator_text(render_checkpoint_metadata(metadata))
     except (OSError, ProgressSidecarError) as error:
         message = f"portable checkpoint inspection failed: {error}\n"
         _ = sys.stderr.write(message)
         return 1
-    _ = sys.stdout.write(render_checkpoint_metadata(metadata))
     return 0
 
 
@@ -2673,11 +2690,11 @@ def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
 def _inspect_path(path: Path) -> int:
     try:
         sidecar = _read_canonical_pointer(path)
+        _write_operator_text(render_summary(sidecar))
     except (OSError, ProgressSidecarError) as error:
         message = f"progress sidecar inspection failed: {error}\n"
         _ = sys.stderr.write(message)
         return 1
-    _ = sys.stdout.write(render_summary(sidecar))
     return 0
 
 
@@ -2710,8 +2727,7 @@ def _follow_validated_path(
 ) -> int:
     current = _read_canonical_pointer(path)
     while True:
-        _ = sys.stdout.write(render_summary(current))
-        _ = sys.stdout.flush()
+        _write_operator_text(render_summary(current), flush=True)
         if current.status.value in TERMINAL_STATUSES:
             return 0
         current = _next_observed_change(path, current, wait)

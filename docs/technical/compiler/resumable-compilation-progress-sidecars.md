@@ -395,6 +395,12 @@ including `..` segments, without following symlinks. Relocated pointers
 cannot impersonate another live job during
 summary, follow, checkpoint discovery, or binary state extraction.
 
+Operator text output for summary, checkpoint discovery, and follow status now
+uses a shared typed stdout boundary. Unexpected `OSError`, `ValueError`, or
+`RuntimeError` during writing returns the command's stable failure status;
+follow additionally rejects a failed flush instead of accepting an incomplete
+terminal record. No partially emitted text becomes recovery authority.
+
 Binary checkpoint extraction requires an exact integer stdout write count
 and a successful flush after full state validation. A short, invalid, or
 failed write returns failure; callers must ignore any bytes received from a

@@ -95,6 +95,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   primary exception cause and secondary descriptor cleanup notes,
   unexpected binary checkpoint stdout write or flush exceptions likewise
   produce typed extraction failure and a nonzero operator CLI exit,
+  operator text output across inspection, checkpoint discovery, and follow
+  likewise rejects unexpected stdout write and follow flush exceptions with
+  stable command failures, without admitting partially written status lines,
   raw read and writer-lock descriptor cleanup retains primary
   stream-construction errors even if closing a raw descriptor raises
   `ValueError` or `RuntimeError`,

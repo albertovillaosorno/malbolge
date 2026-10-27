@@ -6881,6 +6881,88 @@ def test_follow_cli_missing_sidecar_fails_closed(
     assert FOLLOW_FAILED_PREFIX in captured.err
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("mode", ["inspect", "checkpoint-info", "follow"])
+def test_operator_text_stdout_failure_returns_stable_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    mode: str,
+) -> None:
+    """Unexpected text output failures must not escape the public CLI."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(completed)
+    failure = "injected operator text stdout failure"
+    metadata = progress.PortableCheckpointMetadata(
+        checkpoint_sequence=1,
+        payload_sha256=SOURCE_HASH,
+        stage="candidate-search",
+        state_codec="search.evaluated-prefix-v1",
+        units_completed=completed.units_completed,
+    )
+    options = {
+        "inspect": [str(destination)],
+        "checkpoint-info": ["--checkpoint-info", str(destination)],
+        "follow": ["--follow", str(destination)],
+    }
+    expected_prefixes = {
+        "inspect": INSPECTION_FAILED_PREFIX,
+        "checkpoint-info": CHECKPOINT_INSPECTION_FAILED_PREFIX,
+        "follow": FOLLOW_FAILED_PREFIX,
+    }
+
+    class BrokenTextOutput(StringIO):
+        @override
+        def write(self, data: str) -> int:
+            del data
+            raise failure_type(failure)
+
+    def fake_metadata(
+        candidate: progress.ProgressSidecar,
+    ) -> progress.PortableCheckpointMetadata:
+        del candidate
+        return metadata
+
+    error_sink = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", BrokenTextOutput())
+        context.setattr(sys, "stderr", error_sink)
+        context.setattr(
+            progress, "read_portable_checkpoint_metadata", fake_metadata
+        )
+        status = progress.main(options[mode])
+    assert status == 1
+    assert expected_prefixes[mode] in error_sink.getvalue()
+    assert failure in error_sink.getvalue()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_follow_text_flush_failure_returns_stable_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A terminal follow record is not accepted if stdout flush fails."""
+    sidecar = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(sidecar)
+    failure = "injected follow stdout flush failure"
+    error_sink = StringIO()
+
+    class BrokenFlushOutput(StringIO):
+        @override
+        def flush(self) -> None:
+            raise failure_type(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", BrokenFlushOutput())
+        context.setattr(sys, "stderr", error_sink)
+        status = progress.main(["--follow", str(destination)])
+    assert status == 1
+    assert FOLLOW_FAILED_PREFIX in error_sink.getvalue()
+    assert failure in error_sink.getvalue()
+
+
 def test_inspector_rejects_invalid_utf8_as_stable_failure(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
