@@ -1742,7 +1742,20 @@ def _read_with_budget(
     # A huge declared count cannot become an unrepresentable FileIO size
     # when the admitted inode is much smaller.
     read_size = min(max_bytes + 1, observed_size + 1, sys.maxsize)
-    return stream.read(read_size)
+    chunks: list[bytes] = []
+    remaining = read_size
+    while remaining > 0:
+        chunk = stream.read(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _require_complete_read(payload: bytes, expected: int, context: str) -> None:
+    if len(payload) < expected:
+        _fail(f"{context} incomplete file read")
 
 
 def _read_stream_preserving_primary(
@@ -1765,6 +1778,7 @@ def _read_stream_preserving_primary(
         payload = _read_with_budget(stream, max_bytes, initial.st_size)
         if max_bytes is not None and len(payload) > max_bytes:
             _fail(f"{context} exceeds maximum byte length")
+        _require_complete_read(payload, initial.st_size, context)
         _verify_opened_read_identity(
             path, descriptor, context, phase="file read"
         )

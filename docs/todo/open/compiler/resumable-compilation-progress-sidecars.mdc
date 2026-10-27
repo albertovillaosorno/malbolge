@@ -90,7 +90,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   referenced-generation validation before pointer replacement, regular-file
   read descriptor/path inode identity matching against replacement or unlink,
   and pre/post read size and nanosecond modification/change-time admission for
-  same-inode rewrite detection,
+  same-inode rewrite detection, bounded raw reads consume short chunks until
+  completion and reject premature EOF before the admitted inode size,
   non-`OSError` read-stream close failures are secondary to a prior read
   failure rather than replacing the primary error,
   close-only `ValueError` and `RuntimeError` on pointer or checkpoint

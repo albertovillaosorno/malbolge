@@ -461,6 +461,7 @@ class SwappingReadStream:
     descriptor: int
     destination: Path
     replacement: Path
+    swapped: bool = False
 
     def read(self, size: int = -1) -> bytes:
         """Replace the path after reading the original regular descriptor.
@@ -473,11 +474,39 @@ class SwappingReadStream:
         payload = os.read(
             self.descriptor, available if size < 0 else min(available, size)
         )
-        _ = self.replacement.replace(self.destination)
+        if not self.swapped:
+            _ = self.replacement.replace(self.destination)
+            self.swapped = True
         return payload
 
     def close(self) -> None:
         """Close the underlying admitted operating-system descriptor."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
+class ShortChunkReadStream:
+    """Read an actual regular descriptor in small chunks or inject early EOF."""
+
+    descriptor: int
+    chunk_size: int
+    early_eof: bool
+    calls: int = 0
+
+    def read(self, size: int = -1) -> bytes:
+        """Return a bounded chunk or simulate a premature EOF.
+
+        Returns:
+            Next raw regular-file bytes, possibly empty on injected EOF.
+
+        """
+        self.calls += 1
+        if self.early_eof and self.calls > 1:
+            return b""
+        return os.read(self.descriptor, min(self.chunk_size, size))
+
+    def close(self) -> None:
+        """Close the exact descriptor transferred to the stream."""
         os.close(self.descriptor)
 
 
@@ -1754,6 +1783,49 @@ def test_sidecar_reader_caps_payload_even_if_stream_overruns(
         SIDECAR_WIRE_LIMIT + 1, destination.stat().st_size + 1
     )
     assert observed_sizes == [requested]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("premature_eof", [False, True])
+def test_progress_read_never_admits_incomplete_raw_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    premature_eof: bool,
+) -> None:
+    """Read valid short chunks, but reject EOF before the inode's size."""
+    sidecar = _sidecar(tmp_path)
+    destination = progress.write_atomic(sidecar)
+    canonical = destination.read_bytes()
+    if premature_eof:
+        # The unread suffix belongs to the admitted inode, even if the
+        # returned prefix is complete, valid JSON.
+        _ = destination.write_bytes(canonical + b"unread suffix")
+    opened: list[int] = []
+    binary_mode = "rb"
+
+    def short_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> ShortChunkReadStream:
+        assert mode == binary_mode
+        assert closefd
+        opened.append(descriptor)
+        return ShortChunkReadStream(
+            descriptor,
+            chunk_size=len(canonical) if premature_eof else 7,
+            early_eof=premature_eof,
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", short_stream)
+        if premature_eof:
+            with pytest.raises(ERROR, match="incomplete file read"):
+                _ = progress.read(destination)
+        else:
+            assert progress.read(destination) == sidecar
+
     assert len(opened) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
