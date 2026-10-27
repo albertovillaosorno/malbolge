@@ -7553,14 +7553,30 @@ def test_operator_text_missing_stdout_returns_failure(
 
 
 @pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "extract", "follow", "usage", "help"]
+)
 def test_error_diagnostic_flush_failure_preserves_original_exit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
     failure_type: type[Exception],
+    mode: str,
 ) -> None:
-    """Rejected inspection stays rejected if buffered stderr cannot flush."""
+    """Every rejected operator mode survives a failed diagnostic flush."""
     failure = "injected diagnostic flush failure"
     writes: list[str] = []
+    missing = str(tmp_path / "missing-progress.json")
+    invocations = {
+        "inspect": [missing],
+        "checkpoint-info": ["--checkpoint-info", missing],
+        "extract": ["--extract-checkpoint", "search.state-v1", missing],
+        "follow": ["--follow", missing],
+        "usage": ["--invalid", missing],
+        "help": ["--help"],
+    }
+    help_mode = "help"
+    usage_mode = "usage"
 
     class BufferedDiagnosticStream(StringIO):
         @override
@@ -7574,9 +7590,13 @@ def test_error_diagnostic_flush_failure_preserves_original_exit(
 
     with monkeypatch.context() as context:
         context.setattr(sys, "stderr", BufferedDiagnosticStream())
-        assert progress.main([str(tmp_path / "missing-progress.json")]) == 1
+        if mode == help_mode:
+            context.setattr(sys, "stdout", None)
+        assert progress.main(invocations[mode]) == (
+            2 if mode == usage_mode else 1
+        )
     assert len(writes) == 1
-    assert INSPECTION_FAILED_PREFIX in writes[0]
+    assert writes[0].endswith("\n")
 
 
 def test_error_diagnostic_flushes_before_returning_failed_status(
