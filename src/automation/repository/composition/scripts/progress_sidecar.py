@@ -83,6 +83,13 @@ _OUTPUT_STREAM_ERRORS: Final = (
     AttributeError,
     TypeError,
 )
+_READ_STREAM_ERRORS: Final = (
+    OSError,
+    ValueError,
+    RuntimeError,
+    TypeError,
+    AttributeError,
+)
 _CHECKPOINT_INFO_FLAG: Final = "--checkpoint-info"
 _CHECKPOINT_INFO_ARGUMENT_COUNT: Final = 2
 _EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
@@ -1843,7 +1850,7 @@ def read(path: Path) -> ProgressSidecar:
         _fail(f"invalid progress UTF-8: {error}")
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _READ_STREAM_ERRORS as error:
         _fail_with_source(f"progress sidecar is unavailable: {error}", error)
     return loads(text)
 
@@ -2330,7 +2337,7 @@ def _read_payload(
         )
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _READ_STREAM_ERRORS as error:
         _fail_with_source(f"{context} payload is unavailable: {error}", error)
 
 

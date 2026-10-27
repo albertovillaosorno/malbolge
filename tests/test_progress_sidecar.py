@@ -97,6 +97,8 @@ HELP_FAILED_PREFIX = "progress sidecar help failed:"
 FOLLOW_INTERVAL_SECONDS = 1.0
 WRONG_CODEC_DIAGNOSTIC = b"checkpoint state codec"
 BINARY_STDOUT_DIAGNOSTIC = "binary stdout is unavailable"
+POINTER_READER_MEMBER = "pointer"
+CHECKPOINT_READER_MEMBER = "checkpoint"
 WINDOWS_PAYLOAD = b"windows-payload"
 POSIX_PAYLOAD = b"posix-payload"
 EMPTY_PAYLOAD = b""
@@ -2949,6 +2951,74 @@ def test_checkpoint_read_reports_unexpected_stream_close_failure(
     assert len(closed) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(closed[0])
+
+
+def _read_selected_progress_member(
+    sidecar: progress.ProgressSidecar, member: str
+) -> object:
+    """Read the selected durable member through its public admission API.
+
+    Returns:
+        Admitted sidecar or checkpoint bytes for the selected member.
+
+    """
+    if member == POINTER_READER_MEMBER:
+        return progress.read(Path(sidecar.progress_path))
+    return progress.read_checkpoint_generation(sidecar)
+
+
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER]
+)
+def test_malformed_raw_reader_failure_is_typed_and_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    member: str,
+) -> None:
+    """Malformed raw reader methods fail closed for either durable member."""
+    checkpoint = b"portable-checkpoint-state"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    opened: list[int] = []
+    failure = "injected malformed raw read method"
+
+    class BrokenReadStream(FailingReadStream):
+        @override
+        def read(self, size: int = -1) -> bytes:
+            del size
+            raise failure_type(failure)
+
+        @override
+        def close(self) -> None:
+            os.close(self.descriptor)
+
+    def open_broken_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> BrokenReadStream:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return BrokenReadStream(descriptor, b"", "")
+
+    expected = {
+        POINTER_READER_MEMBER: "progress sidecar is unavailable",
+        CHECKPOINT_READER_MEMBER: "checkpoint payload is unavailable",
+    }[member]
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", open_broken_stream)
+        with pytest.raises(ERROR, match=expected) as captured:
+            _ = _read_selected_progress_member(sidecar, member)
+
+    cause = captured.value.__cause__
+    assert isinstance(cause, failure_type)
+    assert str(cause) == failure
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:
