@@ -43,6 +43,10 @@ import stat
 import sys
 from typing import Any
 from typing import Never
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import IO
 
 from scripts.validate import experiment_manifest
 
@@ -126,6 +130,26 @@ def _file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _open_evidence(path: Path) -> IO[bytes]:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        message = f"evidence file could not open safely: {path}"
+        raise EvidenceError(message) from error
+    try:
+        return os.fdopen(descriptor, "rb")
+    except (OSError, ValueError) as error:
+        os.close(descriptor)
+        message = f"evidence stream could not open: {path}"
+        raise EvidenceError(message) from error
+
+
 def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     """Read bounded ordinary evidence with before/after file identity checks.
 
@@ -135,7 +159,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     """
     path = regular_path(root, relative, limit=limit)
     original = path.lstat()
-    with path.open("rb") as stream:
+    with _open_evidence(path) as stream:
         opened = os.fstat(stream.fileno())
         if not stat.S_ISREG(opened.st_mode) or (
             _file_identity(original) != _file_identity(opened)

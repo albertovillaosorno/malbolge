@@ -111,8 +111,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   consistency, not source execution or independent verification.
 - Manifest, retained raw, challenge bundle and historical evidence readers
   now check path/descriptor identity and read-completion size/timestamps against
-  observed inode drift, with synthetic substitution/rewrite regressions. This
-  is bounded admission, not immutable filesystem snapshot proof.
+  observed inode drift, with synthetic substitution/rewrite regressions and
+  nonblocking/no-follow opens on supporting hosts. Raced FIFO leaf admission
+  also rejects without hanging. This is not immutable filesystem snapshot proof.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

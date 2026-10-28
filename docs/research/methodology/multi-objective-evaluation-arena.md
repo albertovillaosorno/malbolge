@@ -146,9 +146,11 @@ matching declarations do not attest actual hardware or accelerator utilization.
 The shared evidence-file reader now checks the admitted regular file against
 its opened descriptor and verifies device/inode identity, byte length and
 nanosecond modification/change timestamps through read completion. It also
-rechecks the canonical nonlinked path after read. Deterministic replacement and
-in-place rewrite regressions prove rejection of observed file drift. This is
-not an atomic snapshot guarantee against an adversarial filesystem scheduler.
+rechecks the canonical nonlinked path after read. Nonblocking/no-follow open
+flags where available prevent a replaced FIFO or linked leaf from becoming an
+indefinite blocking read. Deterministic replacement, in-place rewrite, and
+POSIX FIFO substitution regressions prove rejection of observed file drift.
+This is not an atomic snapshot guarantee against an adversarial filesystem scheduler.
 
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.

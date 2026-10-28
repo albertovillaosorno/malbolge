@@ -605,3 +605,39 @@ def test_bounded_reader_returns_original_bytes_for_ordinary_file(
         )
         == original
     )
+
+
+@pytest.mark.skipif(
+    not hasattr(evidence.os, "mkfifo")
+    or not getattr(evidence.os, "O_NONBLOCK", 0),
+    reason="nonblocking FIFO admission is a POSIX capability",
+)
+def test_bounded_reader_never_blocks_on_raced_fifo_leaf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted FIFO opens nonblocking and is rejected as nonregular."""
+    document = sample_study(tmp_path)
+    target = tmp_path / document["observations"][0]["raw_sample"]
+    real_lstat = Path.lstat
+    lookups = 0
+
+    def replace_with_fifo(path: Path) -> stat_result:
+        nonlocal lookups
+        details = real_lstat(path)
+        if path == target:
+            lookups += 1
+            if lookups == REPLACE_AFTER_LSTAT_COUNT:
+                target.unlink()
+                mkfifo = getattr(evidence.os, "mkfifo", None)
+                assert callable(mkfifo)
+                mkfifo(target)
+        return details
+
+    monkeypatch.setattr(Path, "lstat", replace_with_fifo)
+    with pytest.raises(evidence.EvidenceError, match="opened file changed"):
+        evidence.read_bounded_regular(
+            tmp_path,
+            document["observations"][0]["raw_sample"],
+            limit=1024,
+        )
