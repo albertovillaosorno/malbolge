@@ -1786,6 +1786,42 @@ fn assert_source_matched_resume_failure(
     Ok(())
 }
 
+fn assert_source_bound_rejects_admitted_module(
+    expected: &FrontendArtifact,
+    saved: &Module,
+    label: &str,
+) -> Result<(), String> {
+    validate_module(saved)
+        .map_err(|error| format!("{label} IR invalid: {error:?}"))?;
+    let directory = compiler_crash_directory(label)?;
+    let progress = directory.join("foreign.hex");
+    let inspector = temporary_inspector(label, INSPECTOR_SUCCESS_SCRIPT)?;
+    let result = (|| {
+        let encoded = canonical_debug_text(saved)
+            .map_err(|error| format!("encode {label} IR: {error:?}"))?;
+        write(&progress, encoded)
+            .map_err(|error| format!("write {label} IR: {error}"))?;
+        let interpreter = repository_python();
+        let unrestricted = resume_typed_ir_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if unrestricted.as_ref() != Ok(saved) {
+            return Err(format!("{label} IR rejected: {unrestricted:?}"));
+        }
+        assert_source_matched_resume_failure(
+            expected, &inspector, (&interpreter, &progress),
+            ProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let inspector_cleanup = remove_file(&inspector)
+        .map_err(|error| format!("remove {label} inspector: {error}"));
+    let directory_cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove {label} fixture: {error}"));
+    result?;
+    inspector_cleanup?;
+    directory_cleanup
+}
+
 #[test]
 fn typed_ir_progress_for_source_rejects_valid_empty_checkpoint()
 -> Result<(), String> {
@@ -1801,42 +1837,46 @@ fn typed_ir_progress_for_source_rejects_valid_empty_checkpoint()
         target_profile: String::from(PROFILE_ID),
         types: vec![TypeEntry::new(TypeId::new(0), TypeDef::I32)],
     });
-    validate_module(&empty)
-        .map_err(|error| format!("empty typed IR invalid: {error:?}"))?;
     if lower_frontend_artifact(&expected)
         != Err(FrontendLoweringError::UnsupportedSemantics)
     {
         return Err(String::from("fresh lowering accepted empty frontend"));
     }
-    let directory = compiler_crash_directory("empty-checkpoint")?;
-    let progress = directory.join("empty.hex");
-    let inspector = temporary_inspector(
-        "empty-checkpoint", INSPECTOR_SUCCESS_SCRIPT,
-    )?;
-    let result = (|| {
-        let encoded = canonical_debug_text(&empty)
-            .map_err(|error| format!("encode empty IR: {error:?}"))?;
-        write(&progress, encoded)
-            .map_err(|error| format!("write empty IR: {error}"))?;
-        let interpreter = repository_python();
-        let unrestricted = resume_typed_ir_from_progress(
-            &interpreter, &inspector, &progress,
-        );
-        if unrestricted != Ok(empty) {
-            return Err(format!("empty valid IR rejected: {unrestricted:?}"));
-        }
-        assert_source_matched_resume_failure(
-            &expected, &inspector, (&interpreter, &progress),
-            ProgressCheckpointError::IdentityMismatch,
-        )
-    })();
-    let inspector_cleanup = remove_file(&inspector)
-        .map_err(|error| format!("remove empty inspector: {error}"));
-    let directory_cleanup = remove_dir_all(&directory)
-        .map_err(|error| format!("remove empty fixture: {error}"));
-    result?;
-    inspector_cleanup?;
-    directory_cleanup
+    assert_source_bound_rejects_admitted_module(
+        &expected, &empty, "empty-checkpoint",
+    )
+}
+
+#[test]
+fn typed_ir_progress_for_source_rejects_valid_extra_global()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower global source: {error:?}"))?;
+    if !fresh.globals().is_empty() {
+        return Err(String::from("fresh frontend unexpectedly emitted globals"));
+    }
+    let extra_global = Global::new(GlobalSpec {
+        id: GlobalId::new(0),
+        initializer: Some(vec![0, 0, 0, 0]),
+        name: String::from("unexpected_global"),
+        span: span(0, 1),
+        type_id: TypeId::new(0),
+    });
+    let saved = Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: fresh.functions().to_vec(),
+        globals: vec![extra_global],
+        proof_obligations: fresh.proof_obligations().to_vec(),
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types: fresh.types().to_vec(),
+    });
+    assert_source_bound_rejects_admitted_module(
+        &expected, &saved, "extra-global-checkpoint",
+    )
 }
 
 #[test]
