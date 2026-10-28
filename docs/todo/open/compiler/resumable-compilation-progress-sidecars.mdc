@@ -340,6 +340,7 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and product source-bound inspector routes, while the complete eight-form
   positive comparison matrix remains recoverable. The equality projection
   still gets operand signedness indirectly through preceding bound definitions.
+
   All 39 currently admitted cast, bitcast, truncation, sign/zero extension,
   and Boolean conversion shapes now bind their projected operation family,
   destination type and exact source/result SSA identities as well. An

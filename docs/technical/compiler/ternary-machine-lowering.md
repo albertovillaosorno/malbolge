@@ -954,7 +954,9 @@ identities. Ordered comparisons bind signedness explicitly; equality operand
 signedness follows separately bound definitions rather than a kind on the
 Boolean comparison projection. Valid foreign comparison predicate and operand
 substitutions fail under both selectors, with an eight-form positive inspector
-matrix. Source-bound recovery now also matches all 39 currently admitted
+matrix.
+
+Source-bound recovery now also matches all 39 currently admitted
 cast, bitcast, truncation, sign/zero-extension and Boolean conversion forms:
 the exact projected family and destination category, plus source/result SSA
 identities, must agree with the independently admitted saved operation.
@@ -962,9 +964,10 @@ Every form is exercised using two fresh, independently lowerable projections
 with equal source/function/spans and different defined operand IDs. The real
 progress inspector admits each foreign checkpoint without source binding,
 while both source-bound selectors reject it; unchanged casts recover under
-both selectors. No re-lowering of checkpoint state is performed. An explicit
-`InputInstruction::Unsupported` sentinel in the expected projection also fails
-source-matched resume, as it does on fresh lowerer admission. The
+both selectors. No re-lowering of checkpoint state is performed.
+
+An explicit `InputInstruction::Unsupported` sentinel in the expected
+projection also fails source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span
 against its expected projected span. It also matches the final return's
 upstream SSA operand identity (or the absence of one for a void return),

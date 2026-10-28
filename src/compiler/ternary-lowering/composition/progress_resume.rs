@@ -459,13 +459,17 @@ fn matches_expected_comparison(
 // independently validated saved program establishes operand types, so
 // matching the projected destination kind and exact operation family does
 // not require rebuilding the lowerer's SSA type state.
-const fn expected_cast_values(instruction: &InputInstruction) -> Option<(u32, u32)> {
+const fn expected_cast_values(
+    instruction: &InputInstruction,
+) -> Option<(u32, u32)> {
     let (InputInstruction::BoolToSigned { result, value, .. }
         | InputInstruction::IntegerBitcast { result, value, .. }
         | InputInstruction::IntegerToBool { result, value, .. }
         | InputInstruction::SignExtendI8ToI32 { result, value, .. }
         | InputInstruction::TruncateInteger { result, value, .. }
-        | InputInstruction::ZeroExtendInteger { result, value, .. }) = instruction else {
+        | InputInstruction::ZeroExtendInteger {
+            result, value, ..
+        }) = instruction else {
         return None;
     };
     Some((*result, *value))
@@ -510,10 +514,189 @@ const fn saved_cast_values(operation: &TernaryOperation) -> Option<(u32, u32)> {
         | TernaryOperation::TruncateU32ToU16 { result, value, .. }
         | TernaryOperation::ZeroExtendU8ToU16 { result, value, .. }
         | TernaryOperation::ZeroExtendU8ToU32 { result, value, .. }
-        | TernaryOperation::ZeroExtendU16ToU32 { result, value, .. }) = operation else {
+        | TernaryOperation::ZeroExtendU16ToU32 {
+            result, value, ..
+        }) = operation else {
         return None;
     };
     Some((*result, *value))
+}
+
+const fn matches_cast_bool_to_signed(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::BoolToSigned {
+                type_kind: InputScalarType::I8, ..
+            },
+            TernaryOperation::BoolToI8 { .. },
+        )
+        |         (
+            InputInstruction::BoolToSigned {
+                type_kind: InputScalarType::I16, ..
+            },
+            TernaryOperation::BoolToI16 { .. },
+        )
+        |         (
+            InputInstruction::BoolToSigned {
+                type_kind: InputScalarType::I32, ..
+            },
+            TernaryOperation::BoolToI32 { .. },
+        )
+    )
+}
+
+const fn matches_cast_integer_bitcast(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::I8, ..
+            },
+            TernaryOperation::BitcastI8ToI8 { .. }
+            | TernaryOperation::BitcastU8ToI8 { .. },
+        )
+        |         (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::U8, ..
+            },
+            TernaryOperation::BitcastI8ToU8 { .. }
+            | TernaryOperation::BitcastU8ToU8 { .. },
+        )
+        |         (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::I16, ..
+            },
+            TernaryOperation::BitcastI16ToI16 { .. }
+            | TernaryOperation::BitcastU16ToI16 { .. },
+        )
+        |         (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::U16, ..
+            },
+            TernaryOperation::BitcastI16ToU16 { .. }
+            | TernaryOperation::BitcastU16ToU16 { .. },
+        )
+        |         (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::I32, ..
+            },
+            TernaryOperation::BitcastI32ToI32 { .. }
+            | TernaryOperation::BitcastU32ToI32 { .. },
+        )
+        |         (
+            InputInstruction::IntegerBitcast {
+                type_kind: InputScalarType::U32, ..
+            },
+            TernaryOperation::BitcastI32ToU32 { .. }
+            | TernaryOperation::BitcastU32ToU32 { .. },
+        )
+    )
+}
+
+const fn matches_cast_integer_to_bool(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::IntegerToBool {
+                type_kind: InputScalarType::Bool, ..
+            },
+            TernaryOperation::I8ToBool { .. }
+            | TernaryOperation::U8ToBool { .. }
+            | TernaryOperation::I16ToBool { .. }
+            | TernaryOperation::U16ToBool { .. }
+            | TernaryOperation::I32ToBool { .. }
+            | TernaryOperation::U32ToBool { .. },
+        )
+    )
+}
+
+const fn matches_cast_sign_extend_i8_to_i32(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::SignExtendI8ToI32 {
+                type_kind: InputScalarType::I16, ..
+            },
+            TernaryOperation::SignExtendI8ToI16 { .. },
+        )
+        |         (
+            InputInstruction::SignExtendI8ToI32 {
+                type_kind: InputScalarType::I32, ..
+            },
+            TernaryOperation::SignExtendI8ToI32 { .. }
+            | TernaryOperation::SignExtendI16ToI32 { .. },
+        )
+    )
+}
+
+const fn matches_cast_truncate_integer(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::TruncateInteger {
+                type_kind: InputScalarType::I8, ..
+            },
+            TernaryOperation::TruncateI16ToI8 { .. }
+            | TernaryOperation::TruncateI32ToI8 { .. }
+            | TernaryOperation::TruncateU16ToI8 { .. }
+            | TernaryOperation::TruncateU32ToI8 { .. },
+        )
+        |         (
+            InputInstruction::TruncateInteger {
+                type_kind: InputScalarType::U8, ..
+            },
+            TernaryOperation::TruncateI16ToU8 { .. }
+            | TernaryOperation::TruncateI32ToU8 { .. }
+            | TernaryOperation::TruncateU16ToU8 { .. }
+            | TernaryOperation::TruncateU32ToU8 { .. },
+        )
+        |         (
+            InputInstruction::TruncateInteger {
+                type_kind: InputScalarType::I16, ..
+            },
+            TernaryOperation::TruncateI32ToI16 { .. }
+            | TernaryOperation::TruncateU32ToI16 { .. },
+        )
+        |         (
+            InputInstruction::TruncateInteger {
+                type_kind: InputScalarType::U16, ..
+            },
+            TernaryOperation::TruncateI32ToU16 { .. }
+            | TernaryOperation::TruncateU32ToU16 { .. },
+        )
+    )
+}
+
+const fn matches_cast_zero_extend_integer(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    matches!((instruction, saved),
+        (
+            InputInstruction::ZeroExtendInteger {
+                type_kind: InputScalarType::U16, ..
+            },
+            TernaryOperation::ZeroExtendU8ToU16 { .. },
+        )
+        |         (
+            InputInstruction::ZeroExtendInteger {
+                type_kind: InputScalarType::U32, ..
+            },
+            TernaryOperation::ZeroExtendU8ToU32 { .. }
+            | TernaryOperation::ZeroExtendU16ToU32 { .. },
+        )
+    )
 }
 
 fn matches_expected_cast(
@@ -523,43 +706,12 @@ fn matches_expected_cast(
     let Some(expected) = expected_cast_values(instruction) else {
         return true;
     };
-    matches!((instruction, saved),
-        (InputInstruction::BoolToSigned { type_kind: InputScalarType::I8, .. },
-            TernaryOperation::BoolToI8 { .. })
-        | (InputInstruction::BoolToSigned { type_kind: InputScalarType::I16, .. },
-            TernaryOperation::BoolToI16 { .. })
-        | (InputInstruction::BoolToSigned { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::BoolToI32 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I8, .. },
-            TernaryOperation::BitcastI8ToI8 { .. } | TernaryOperation::BitcastU8ToI8 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U8, .. },
-            TernaryOperation::BitcastI8ToU8 { .. } | TernaryOperation::BitcastU8ToU8 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I16, .. },
-            TernaryOperation::BitcastI16ToI16 { .. } | TernaryOperation::BitcastU16ToI16 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U16, .. },
-            TernaryOperation::BitcastI16ToU16 { .. } | TernaryOperation::BitcastU16ToU16 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::BitcastI32ToI32 { .. } | TernaryOperation::BitcastU32ToI32 { .. })
-        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::BitcastI32ToU32 { .. } | TernaryOperation::BitcastU32ToU32 { .. })
-        | (InputInstruction::IntegerToBool { type_kind: InputScalarType::Bool, .. },
-            TernaryOperation::I8ToBool { .. } | TernaryOperation::U8ToBool { .. } | TernaryOperation::I16ToBool { .. } | TernaryOperation::U16ToBool { .. } | TernaryOperation::I32ToBool { .. } | TernaryOperation::U32ToBool { .. })
-        | (InputInstruction::SignExtendI8ToI32 { type_kind: InputScalarType::I16, .. },
-            TernaryOperation::SignExtendI8ToI16 { .. })
-        | (InputInstruction::SignExtendI8ToI32 { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::SignExtendI8ToI32 { .. } | TernaryOperation::SignExtendI16ToI32 { .. })
-        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::I8, .. },
-            TernaryOperation::TruncateI16ToI8 { .. } | TernaryOperation::TruncateI32ToI8 { .. } | TernaryOperation::TruncateU16ToI8 { .. } | TernaryOperation::TruncateU32ToI8 { .. })
-        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::U8, .. },
-            TernaryOperation::TruncateI16ToU8 { .. } | TernaryOperation::TruncateI32ToU8 { .. } | TernaryOperation::TruncateU16ToU8 { .. } | TernaryOperation::TruncateU32ToU8 { .. })
-        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::I16, .. },
-            TernaryOperation::TruncateI32ToI16 { .. } | TernaryOperation::TruncateU32ToI16 { .. })
-        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::U16, .. },
-            TernaryOperation::TruncateI32ToU16 { .. } | TernaryOperation::TruncateU32ToU16 { .. })
-        | (InputInstruction::ZeroExtendInteger { type_kind: InputScalarType::U16, .. },
-            TernaryOperation::ZeroExtendU8ToU16 { .. })
-        | (InputInstruction::ZeroExtendInteger { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::ZeroExtendU8ToU32 { .. } | TernaryOperation::ZeroExtendU16ToU32 { .. })
+    (matches_cast_bool_to_signed(instruction, saved)
+        || matches_cast_integer_bitcast(instruction, saved)
+        || matches_cast_integer_to_bool(instruction, saved)
+        || matches_cast_sign_extend_i8_to_i32(instruction, saved)
+        || matches_cast_truncate_integer(instruction, saved)
+        || matches_cast_zero_extend_integer(instruction, saved)
     ) && saved_cast_values(saved) == Some(expected)
 }
 

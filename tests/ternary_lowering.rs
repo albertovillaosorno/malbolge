@@ -12657,11 +12657,19 @@ fn source_bound_cast_instruction(
     let type_kind = result_kind;
     Ok(match family {
         0 => InputInstruction::BoolToSigned { result, span, type_kind, value },
-        1 => InputInstruction::IntegerBitcast { result, span, type_kind, value },
+        1 => InputInstruction::IntegerBitcast {
+            result, span, type_kind, value,
+        },
         2 => InputInstruction::IntegerToBool { result, span, type_kind, value },
-        3 => InputInstruction::SignExtendI8ToI32 { result, span, type_kind, value },
-        4 => InputInstruction::TruncateInteger { result, span, type_kind, value },
-        5 => InputInstruction::ZeroExtendInteger { result, span, type_kind, value },
+        3 => InputInstruction::SignExtendI8ToI32 {
+            result, span, type_kind, value,
+        },
+        4 => InputInstruction::TruncateInteger {
+            result, span, type_kind, value,
+        },
+        5 => InputInstruction::ZeroExtendInteger {
+            result, span, type_kind, value,
+        },
         _ => return Err(String::from("unknown source-bound cast")),
     })
 }
@@ -12684,7 +12692,9 @@ fn source_bound_cast_projection(
     let mut expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
     let function = expected.functions.first_mut()
         .ok_or_else(|| String::from("missing cast test function"))?;
-    function.name = format!("source_bound_cast_{family}_{source_kind:?}_{result_kind:?}");
+    function.name = format!(
+        "source_bound_cast_{family}_{source_kind:?}_{result_kind:?}"
+    );
     function.span = input_span(fixture_span(0, 4));
     function.return_kind = result_kind;
     let block = function.blocks.first_mut()
