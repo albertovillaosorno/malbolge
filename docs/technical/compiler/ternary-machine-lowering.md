@@ -935,7 +935,9 @@ recovery. The source-bound selector also checks the current one-to-one
 instruction/operation count plus final return against the saved function,
 rejecting independently valid extra operations whose module/function identity
 is otherwise unchanged. This structural admission does not re-lower
-instructions or compare saved operation semantics.
+instructions or compare saved operation semantics. An explicit
+`InputInstruction::Unsupported` sentinel in the expected projection also fails
+source-matched resume, as it does on fresh lowerer admission.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

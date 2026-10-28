@@ -619,6 +619,9 @@ instruction.
   Another production-inspector regression rejects an independently valid
   checkpoint with an extra unused operation and identical source/function
   provenance, using the fresh lowerer's one-operation-per-instruction count.
+  Source-bound selection additionally rejects an expected `Unsupported`
+  instruction sentinel that fresh lowering cannot lower, with direct and
+  product inspector-backed regression evidence.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.

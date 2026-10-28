@@ -40,7 +40,7 @@ use std::path::Path;
 
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
-use super::input::{InputFunction, InputScalarType, InputTerminator, TypedIrInput};
+use super::input::{InputFunction, InputInstruction, InputScalarType, InputTerminator, TypedIrInput};
 use super::lower::validate_projection_spans;
 use super::model::{TernaryOperation, TernaryProgram};
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
@@ -158,8 +158,9 @@ const fn matches_expected_return(
 // Source-bound resume must not accept an expected function shape that fresh
 // lowering cannot represent. Fresh lowering emits one operation per projected
 // instruction plus a return; this count and control-flow envelope do not redo
-// typed instruction lowering stored in the checkpoint.
-const fn matches_supported_function_shape(
+// typed instruction lowering stored in the checkpoint. The explicit upstream
+// Unsupported sentinel is not an executable projected instruction.
+fn matches_supported_function_shape(
     function: &InputFunction,
     saved_operation_count: usize,
 ) -> bool {
@@ -174,6 +175,9 @@ const fn matches_supported_function_shape(
         || block.id != function.entry
         || block.phi_count != 0
         || saved_instruction_count != block.instructions.len()
+        || block.instructions.iter().any(
+            |instruction| matches!(instruction, InputInstruction::Unsupported)
+        )
     {
         return false;
     }

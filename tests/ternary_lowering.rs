@@ -12358,6 +12358,43 @@ fn ternary_progress_for_source_binds_operation_count_without_relowering()
 }
 
 #[test]
+fn ternary_progress_for_source_rejects_unsupported_expected_instruction()
+-> Result<(), String> {
+    let mut expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower supported instruction: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&saved)
+        .map_err(|error| format!("encode supported instruction: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("unsupported-expected-instruction", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        assert_source_matched_ternary_success(
+            &expected, &saved, &inspector, (&interpreter, &progress),
+        )?;
+        let instruction = expected.functions.first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .and_then(|block| block.instructions.first_mut())
+            .ok_or_else(|| String::from("supported instruction missing"))?;
+        *instruction = InputInstruction::Unsupported;
+        if lower_typed_ir(&expected)
+            != Err(TernaryLoweringError::UnsupportedInstruction)
+        {
+            return Err(String::from("unsupported expected instruction lowered"));
+        }
+        assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean unsupported-instruction fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {
     let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;
