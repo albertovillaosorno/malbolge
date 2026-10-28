@@ -42,11 +42,13 @@ use std::path::Path;
 
 use inspector_transport::{InspectorFailure, extract_checkpoint};
 
+use super::control::Terminator;
 use super::encode::TYPED_IR_CODEC_ID;
 use super::frontend_semantics::{
     FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
     FrontendSpan,
 };
+use super::instruction::Instruction;
 use super::lower_frontend::{admit_frontend_function, validate_identity};
 use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
@@ -180,11 +182,10 @@ fn matches_expected_function_signature(
     })
 }
 
-// The current fresh frontend slice emits exactly one source-located
-// instruction in one entry block. Checkpoint admission validates each span,
-// but only the caller projection can bind those spans to its own source map.
-// This deliberately does not compare the instruction's guest semantics.
-fn matches_expected_inner_provenance(
+// Match the exact current single-constant-return frontend slice without
+// rebuilding typed IR. The independently admitted checkpoint must retain
+// source spans, constant bits, and the constant's returned SSA identity.
+fn matches_expected_inner_slice(
     function: &Function,
     source: &FrontendReturnIntegerFunction,
 ) -> bool {
@@ -194,8 +195,23 @@ fn matches_expected_inner_provenance(
     let [instruction] = block.instructions() else {
         return false;
     };
+    let Instruction::ConstantInteger { constant, result, .. } =
+        instruction.instruction()
+    else {
+        return false;
+    };
+    let Terminator::Return { value: Some(return_value) } = block.terminator()
+    else {
+        return false;
+    };
+    let Ok(expected_bits) = source.constant_decimal().parse::<i32>() else {
+        return false;
+    };
     block.id() == function.entry()
         && block.phis().is_empty()
+        && constant.bit_width() == 32
+        && constant.little_endian() == expected_bits.to_le_bytes()
+        && result == return_value
         && matches_span(block.span(), source.body_span())
         && matches_span(block.terminator_span(), source.return_span())
         && matches_span(instruction.span(), source.value_span())
@@ -221,19 +237,18 @@ fn matches_expected_frontend(
                     && matches_expected_function_signature(
                         saved, function, source,
                     )
-                    && matches_expected_inner_provenance(function, source)
+                    && matches_expected_inner_slice(function, source)
             },
         )
 }
 
 /// Restores a typed checkpoint only for the caller's expected frontend source.
 ///
-/// This check matches module and ordered function provenance after complete
-/// checkpoint admission, including the declared function return ABI and the
-/// frontend format/toolchain header and supported function form, without
-/// re-running frontend lowering.
-/// It does not authenticate the source digest, compare function instructions,
-/// or replace revision/toolchain policy.
+/// This checks module provenance, admitted return ABI, frontend identity,
+/// and exact constant-return instruction bytes and source maps of the current
+/// fresh-lowering slice, without rebuilding the IR module.
+/// It does not authenticate the source digest or replace toolchain/revision
+/// compatibility policy.
 ///
 /// # Errors
 ///

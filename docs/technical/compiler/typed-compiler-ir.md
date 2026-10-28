@@ -231,18 +231,19 @@ must also satisfy the same independent source-containment checks as fresh IR
 admission. The source-bound path additionally matches saved entry-block,
 return-terminator, and literal-instruction spans to those expected source
 spans, requiring the current single-entry-block, phi-free, one-instruction
-fresh-lowering shape. It rejects independently admitted checkpoints with
-changed internal provenance or an extra instruction while leaving unrestricted
-checkpoint admission available. These checks do not compare the checkpoint's
-instruction semantics, authenticate its toolchain, or prove operation-level
-equivalence. The unrestricted route
+fresh-lowering shape. The admitted instruction must also be an exact 32-bit
+integer constant whose bytes match the caller's normalized return literal,
+and the terminator must return that SSA result. Independently valid checkpoints
+with changed internal provenance, extra instructions, or different returned
+constant bits now fail this opt-in source-bound route. The check covers the
+current constant-return frontend slice only: it does not authenticate a supplied
+source digest, establish general operation-level equivalence, or replace
+revision/toolchain compatibility policy. The unrestricted route
 retains its original behavior. Matched frontend evidence
 converges with fresh lowering, while valid foreign checkpoints and caller
 module/function provenance
 drift, including a valid changed-return-signature checkpoint with unchanged
 module source identity, return `IdentityMismatch` through both entrypoints.
-The source check does not rerun frontend lowering, authenticate a supplied
-digest, compare function operations, or replace revision/toolchain compatibility.
 The production sidecar inspector and both source-matched selection entrypoints
 now also agree across all ten injected checkpoint/sidecar publication crashes:
 until pointer replacement they restore the valid matching predecessor, and

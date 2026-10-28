@@ -1850,8 +1850,17 @@ fn altered_frontend_block(
     } else {
         instruction.span()
     };
+    let first = if field == 4 {
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(32, vec![8, 0, 0, 0]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        }
+    } else {
+        instruction.instruction().clone()
+    };
     let mut instructions = vec![LocatedInstruction::new(
-        instruction.instruction().clone(), literal_span,
+        first, literal_span,
     )];
     if field == 3 {
         instructions.push(LocatedInstruction::new(
@@ -1902,7 +1911,7 @@ fn altered_frontend_module(fresh: &Module, field: u8)
 }
 
 #[test]
-fn typed_ir_source_bound_resume_rejects_changed_internal_spans()
+fn typed_ir_source_bound_resume_rejects_internal_drift()
 -> Result<(), String> {
     let expected = frontend_return_projection();
     let fresh = lower_frontend_artifact(&expected)
@@ -1912,6 +1921,7 @@ fn typed_ir_source_bound_resume_rejects_changed_internal_spans()
         (1, "changed-return-span"),
         (2, "changed-literal-span"),
         (3, "extra-source-instruction"),
+        (4, "changed-saved-constant"),
     ] {
         let saved = altered_frontend_module(&fresh, field)?;
         if saved.source_sha256() != fresh.source_sha256()

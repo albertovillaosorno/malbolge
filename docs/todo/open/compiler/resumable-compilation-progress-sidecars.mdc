@@ -293,11 +293,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   comparison or a new IR construction pass. Source-bound typed-IR recovery now
   additionally binds the checkpoint's entry-block, return-terminator, and
   literal-instruction spans to the caller's frontend source map, requiring the
-  one-block, phi-free, one-instruction shape of fresh lowering. Child-inspector
-  regressions reject three independently valid internal span forgeries and
-  one extra unused instruction while preserving unrestricted restoration.
-  Source-matched selection also
-  rejects a valid empty-function checkpoint paired with an empty expected
+  one-block, phi-free, one-instruction shape of fresh lowering. The saved
+  instruction and return now also bind the exact frontend `i32` constant bits
+  and returned SSA identity without rebuilding IR. Child-inspector regressions
+  reject three independently valid internal span forgeries, one extra unused
+  instruction, and a changed valid constant with matching source metadata,
+  while preserving unrestricted restoration. This exact semantic match is
+  limited to the admitted constant-return frontend slice. Source-matched
+  selection also rejects a valid empty-function checkpoint paired with an empty expected
   frontend, which fresh lowering cannot admit. A valid checkpoint with an
   extra global or retained proof obligation is rejected as well, since the
   current normalized frontend slice emits neither module-global objects nor
