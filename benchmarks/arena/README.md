@@ -69,6 +69,30 @@ outcome needs a separately named verifier and an `accepted` verdict. Failures
 retain their own outcomes (`verifier_rejected`, `no_solution`,
 `resource_exhausted`, or `tool_failed`) and at least an elapsed duration.
 
+## Optional linked-run evidence preflight
+
+The standalone analyzer accepts reported records without opening referenced
+files. For a stronger **identity-only** preflight, run from the repository root
+with the repository-owned validation modules on the Python import path:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.evidence path/to/study.json --root .
+```
+
+This optional entrypoint parses each referenced experiment run through the
+existing `scripts.validate.experiment_manifest.parse_manifest` authority. It
+matches algorithm ID, challenge family, difficulty, seed, target profile,
+reported workload SHA-256, host, toolchain, oracle, outcome, and raw-output path
+against the arena record. Only bounded regular manifest files and existing,
+nonempty raw samples under the supplied root are admitted; symlink hops,
+missing artifacts, and identity drift fail closed.
+
+The output includes `evidence_preflight` counts. This check **does not** hash
+or parse raw sample contents, rederive challenge bytes, authenticate the Git
+commit or device, or replay the independent semantic verifier. A matched
+manifest is still a report, not proof of an observed performance result.
+
 ## Interpretation and trust boundary
 
 The `capacity_curve` reports attempts, verified attempts, exact success
@@ -81,14 +105,14 @@ trial remain in the curve but cannot enter the conditional frontier.
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.
 
-The analyzer enforces schema and comparison consistency only. It **does not**
-open the declared experiment manifests, check the existence or content of raw
-samples, verify a source/workload digest against challenge generation, prove
-work was completed within the declared resource budget (apart from rejecting
-reported successful values above the stated time and resident-memory limits),
-or run the independent semantic oracle. These remain prerequisites for
-publishing performance claims
-under the repository benchmark protocol and experiment-identity contracts.
+The default analyzer enforces schema and comparison consistency only. It
+**does not** open experiment manifests, check raw files, rederive a challenge
+source digest, or prove work was completed within the declared resource budget.
+It rejects reported successful values above the stated time and resident-memory
+limits, but it does not check how those values were measured. An independent
+semantic oracle and reviewed raw evidence remain prerequisites for performance
+claims under the repository benchmark protocol and experiment-identity
+contracts.
 
 Input filenames and reported verdicts must not be treated as evidence of
 correctness or authenticated provenance. The sample data in automated tests
@@ -97,5 +121,6 @@ is entirely synthetic and must never be cited as Malbolge performance.
 Run the self-contained regression suite:
 
 ```sh
-python3.14 -B -m pytest benchmarks/arena/tests/test_analyze.py -q
+PYTHONPATH=src/automation/repository/composition python3.14 -B -m pytest \
+  benchmarks/arena/tests/ -q
 ```

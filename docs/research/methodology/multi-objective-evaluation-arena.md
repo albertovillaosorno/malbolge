@@ -81,6 +81,18 @@ cohort; zero-success algorithms remain in curves but are omitted from the
 conditional frontier. The reported highest verified difficulty is observed,
 not extrapolated, and there is no single aggregate performance score.
 
+An opt-in evidence preflight under `benchmarks/arena/evidence.py` now imports
+the repository's existing experiment-run manifest parser. It matches each
+reported trial to its named run, challenge family/difficulty/seed, target
+profile, workload fingerprint, host/toolchain, oracle, outcome, and raw output.
+Repository-root relative manifest files must be bounded, canonical, regular,
+and parseable; referenced raw samples must be present, nonempty, and ordinary.
+
+This preflight does not authenticate raw sample bytes, challenge-generation
+outputs, actual execution budgets, verifier replay, or hardware provenance.
+The synthetic fixtures prove only cross-record binding and file-admission
+behavior, and no real performance evidence is claimed.
+
 This first slice intentionally does not require an executable final `.malbolge`
 backend; the study's `stage` can describe available compiler or execution
 boundaries. All results from real studies must separately pass experiment
@@ -99,10 +111,15 @@ and raw evidence review before any performance conclusion is published.
   exercise exact cohorts, conditional Pareto fronts, failed-trial retention,
   huge exact medians, deterministic ordering, forged verifier status, invalid
   objective data, and fail-closed CLI output.
-- Research evidence pending: linked manifest admission, raw sample content
-  authentication, bibliography-backed context, real experiment configurations,
-  retained negative/null results, and a reviewed conclusion with threats to
-  validity.
+- `benchmarks/arena/evidence.py` binds reported observations to the governed
+  experiment-manifest run parser and to nonempty repository-local raw files.
+  Synthetic regressions reject forged profile, challenge, oracle, algorithm,
+  workload, host, outcome, and raw path identities; unsafe/missing file links
+  and malformed/oversized manifests fail closed.
+- Research evidence pending: raw sample content authentication,
+  protocol-level manifest linkage, bibliography-backed context, real experiment
+  configurations, retained negative/null results, and a reviewed conclusion
+  with threats to validity.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
@@ -116,14 +133,17 @@ profiles. No real result or capacity claim is made here.
 
 ## Threats to Validity
 
-The analyzer verifies structure, cohort matching, and reported outcome
-consistency, but cannot yet establish that the named verifier ran, that raw
-samples and experiment manifests exist or agree with their contents, or that
-resource budgets were actually enforced (only reported overages fail
-admission). Median costs conditional on success can hide
-how long failed runs took; verified counts remain a separate Pareto objective.
-For real experiments, implementation bias, workload selection, hardware
-variation, truncated trials, and insufficient replication remain threats.
+The default analyzer verifies structure, cohort matching, and reported
+outcome consistency, but cannot establish that the named verifier ran or that
+referenced samples and manifests exist. Opt-in linked-run preflight checks
+manifest identities and nonempty sample presence, without verifying their
+content or physical execution. It cannot establish actual resource budget
+enforcement (only reported overages fail admission).
+
+Median costs conditional on success can hide how long failed runs took;
+verified counts remain a separate Pareto objective. For real experiments,
+implementation bias, workload selection, hardware variation, truncated trials,
+and insufficient replication remain threats.
 
 ## Conclusion
 

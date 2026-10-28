@@ -495,7 +495,7 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_input(path: Path) -> str:
+def read_input(path: Path) -> str:
     """Read only a bounded ordinary source file under strict UTF-8.
 
     Returns:
@@ -525,7 +525,7 @@ def main() -> int:
     parser.add_argument("input", type=Path)
     args = parser.parse_args()
     try:
-        document = parse_document(_read_input(args.input))
+        document = parse_document(read_input(args.input))
         report = analyze(document)
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")

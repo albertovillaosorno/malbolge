@@ -67,10 +67,16 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   exact integer-rational medians, reported fixed-budget overage rejection, and
   no fabricated solved thresholds. The
   synthetic-only test suite lives under `benchmarks/arena/tests/`.
-- The analyzer is not an independent verifier and does not authenticate raw
-  samples or linked experiment manifests. Required next evidence includes
-  actual protocol-validated run manifests, verifier outcome admission, raw
-  multidimensional samples, budget enforcement, and published stage comparisons
+- An optional `benchmarks/arena/evidence.py` entrypoint now cross-checks the
+  reported algorithm, challenge, profile, host/toolchain, oracle, workload,
+  outcome, and raw path against the governed experiment run manifest parser.
+  It admits only existing nonempty regular raw files and bounded manifests;
+  synthetic regressions reject mismatches, unsafe links, and missing files.
+- The analyzer is not an independent verifier. The optional cross-check does
+  not authenticate raw sample contents, actual resource use, or verifier replay.
+  Required next evidence includes protocol-validated run manifests with real
+  verifier outcomes, raw multidimensional samples, budget enforcement, and
+  published stage comparisons
   on reproducible real challenges. Later verified `.malbolge` measurements
   remain dependent on the final compiler backend.
 - Required evidence: reproducible run commands, retained challenge and
