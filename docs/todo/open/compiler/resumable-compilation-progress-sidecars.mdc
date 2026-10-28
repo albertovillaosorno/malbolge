@@ -334,6 +334,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   valid forgeries substituting an input materialization, exchanging an output
   for an input, or writing another already-defined byte reject under direct
   and product source matching, while matching byte-I/O recovery still works.
+  All eight signed/unsigned `i32`/`u32` Boolean comparison outputs now bind
+  their predicate and upstream operands/results to the caller projection.
+  Two independently admitted predicate/SSA substitutions reject via direct
+  and product source-bound inspector routes, while the complete eight-form
+  positive comparison matrix remains recoverable. The equality projection
+  still gets operand signedness indirectly through preceding bound definitions.
   Remaining nonconstant operations are not yet fully bound.
 
   Its new `composition/progress_inspector.rs`

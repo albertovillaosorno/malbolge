@@ -41,7 +41,7 @@ use std::path::Path;
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
 use super::input::{
-    InputFunction, InputInstruction, InputScalarType, InputSourceSpan,
+    InputFunction, InputInstruction, InputOrderedComparison, InputScalarType, InputSourceSpan,
     InputTerminator, TypedIrInput,
 };
 use super::lower::{projected_instruction_span, validate_projection_spans};
@@ -392,6 +392,69 @@ const fn matches_expected_byte_effect(
     }
 }
 
+// Compare exact predicate and both operand/result SSA identities. For
+// equality, the projection's Bool result does not itself encode operand
+// signedness; earlier source-matched definitions constrain their categories.
+const fn expected_comparison_values(
+    instruction: &InputInstruction,
+) -> Option<BinaryValues> {
+    let (InputInstruction::CompareEqual { left, result, right, .. }
+        | InputInstruction::CompareNotEqual { left, result, right, .. }
+        | InputInstruction::CompareOrdered { left, result, right, .. }) = instruction
+    else {
+        return None;
+    };
+    Some((*left, *result, *right))
+}
+
+const fn saved_comparison_values(
+    saved: &TernaryOperation,
+) -> Option<BinaryValues> {
+    let (TernaryOperation::EqualI32 { left, result, right, .. }
+        | TernaryOperation::EqualU32 { left, result, right, .. }
+        | TernaryOperation::NotEqualI32 { left, result, right, .. }
+        | TernaryOperation::NotEqualU32 { left, result, right, .. }
+        | TernaryOperation::LessSignedI32 { left, result, right, .. }
+        | TernaryOperation::LessSignedEqualI32 { left, result, right, .. }
+        | TernaryOperation::LessUnsignedU32 { left, result, right, .. }
+        | TernaryOperation::LessUnsignedEqualU32 { left, result, right, .. }) = saved
+    else {
+        return None;
+    };
+    Some((*left, *result, *right))
+}
+
+fn matches_expected_comparison(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    let Some(expected) = expected_comparison_values(instruction) else {
+        return true;
+    };
+    matches!((instruction, saved),
+        (InputInstruction::CompareEqual { type_kind: InputScalarType::Bool, .. },
+            TernaryOperation::EqualI32 { .. } | TernaryOperation::EqualU32 { .. })
+        | (InputInstruction::CompareNotEqual { type_kind: InputScalarType::Bool, .. },
+            TernaryOperation::NotEqualI32 { .. } | TernaryOperation::NotEqualU32 { .. })
+        | (InputInstruction::CompareOrdered {
+                operation: InputOrderedComparison::Signed,
+                type_kind: InputScalarType::Bool, ..
+            }, TernaryOperation::LessSignedI32 { .. })
+        | (InputInstruction::CompareOrdered {
+                operation: InputOrderedComparison::SignedEqual,
+                type_kind: InputScalarType::Bool, ..
+            }, TernaryOperation::LessSignedEqualI32 { .. })
+        | (InputInstruction::CompareOrdered {
+                operation: InputOrderedComparison::Unsigned,
+                type_kind: InputScalarType::Bool, ..
+            }, TernaryOperation::LessUnsignedU32 { .. })
+        | (InputInstruction::CompareOrdered {
+                operation: InputOrderedComparison::UnsignedEqual,
+                type_kind: InputScalarType::Bool, ..
+            }, TernaryOperation::LessUnsignedEqualU32 { .. })
+    ) && saved_comparison_values(saved) == Some(expected)
+}
+
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
@@ -413,6 +476,7 @@ fn matches_expected_operation_spans(
                 matches_expected_constant(current_op, saved_op)
                     && matches_expected_binary(current_op, saved_op)
                     && matches_expected_byte_effect(current_op, saved_op)
+                    && matches_expected_comparison(current_op, saved_op)
                     && projected_instruction_span(current_op).is_some_and(
                         |span| matches_source_span(span, operation_span(*saved_op)),
                     )

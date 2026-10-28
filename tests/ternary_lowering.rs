@@ -12946,6 +12946,94 @@ fn ternary_progress_for_source_binds_byte_output_operand()
 }
 
 #[test]
+fn ternary_progress_for_source_binds_comparison_predicate_and_operands()
+-> Result<(), String> {
+    let (original, expected) = lowered_integer_comparison_fixture(
+        ComparisonFixture {
+            alias: false, left: 0x8000_0000,
+            operation: CompareOp::LessUnsigned,
+            right: u32::MAX, signed: false,
+        },
+    )?;
+    assert_source_bound_program_roundtrip(
+        "unchanged-unsigned-comparison", &expected, &original,
+    )?;
+    let operation = original.functions.first()
+        .and_then(|function| function.operations.get(2))
+        .ok_or_else(|| String::from("missing comparison"))?;
+    let TernaryOperation::LessUnsignedU32 {
+        left, result: ssa_result, right, span,
+    } = *operation else {
+        return Err(String::from("original unsigned comparison drifted"));
+    };
+    let changes = [
+        ("changed-comparison-predicate", TernaryOperation::LessUnsignedEqualU32 {
+            left, result: ssa_result, right, span,
+        }),
+        ("changed-comparison-operand", TernaryOperation::LessUnsignedU32 {
+            left: right, result: ssa_result, right, span,
+        }),
+    ];
+    for (label, changed) in changes {
+        let mut foreign = original.clone();
+        let changed_operation = foreign.functions.first_mut()
+            .and_then(|function| function.operations.get_mut(2))
+            .ok_or_else(|| String::from("missing restored comparison"))?;
+        *changed_operation = changed;
+        ternary_lowering::validate_ternary_program(&foreign)
+            .map_err(|error| format!("admit {label}: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode {label}: {error:?}"))?;
+        let (progress, directory) = publish_ternary_progress_fixture(label, &bytes)?;
+        let checked = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(foreign) {
+                return Err(format!("valid {label} was not restored"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean {label}: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_accepts_all_comparison_predicates()
+-> Result<(), String> {
+    for (signed, operation) in [
+        (true, CompareOp::Equal),
+        (false, CompareOp::Equal),
+        (true, CompareOp::NotEqual),
+        (false, CompareOp::NotEqual),
+        (true, CompareOp::LessSigned),
+        (true, CompareOp::LessSignedEqual),
+        (false, CompareOp::LessUnsigned),
+        (false, CompareOp::LessUnsignedEqual),
+    ] {
+        let (program, expected) = lowered_integer_comparison_fixture(
+            ComparisonFixture {
+                alias: false, left: 0x8000_0000, operation,
+                right: u32::MAX, signed,
+            },
+        )?;
+        assert_source_bound_program_roundtrip(
+            &format!("comparison-{signed}-{operation:?}"),
+            &expected, &program,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn progress_resume_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
