@@ -95,6 +95,19 @@ randomization, nor verifier replay follows from the labels or this estimator;
 selection on success changes the population being estimated. The default JSON
 and nominal Pareto selection remain unchanged by the opt-in calculation.
 
+A third optional inference view, `--success-intervals-95`, bounds the
+reported probability of verifier success among **all** attempts, retaining
+failure outcomes rather than treating only successful trials as a random
+population. A conservative Clopper-Pearson calculation inverts exact two-sided
+binomial tails and rounds probability roots outward to a 1/4096 rational grid,
+without floating-point normal approximations. Inference is only justified for
+independent identically distributed Bernoulli trials, which the research input
+and the reported verifier labels do **not** themselves establish. Sample sizes
+above 512 yield null rather than unbounded computation; zero successes yield a
+nonzero possible upper success rate. The view is descriptive if the sampling
+and verifier assumptions are not externally checked, and does not alter
+nominal Pareto rankings or the default JSON schema.
+
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched
 cohort; zero-success algorithms remain in curves but are omitted from the
@@ -298,6 +311,11 @@ The original study records remain the result authority.
   and both-success cost-sign hypotheses. Independent `math.comb` references
   check directional symmetry, empty comparisons, ties, extreme counts, and
   exact fractions; CLI and cohort tests retain default compatibility.
+- `benchmarks/arena/success_intervals.py` inverts exact binomial tails to
+  conservatively round two-sided 95% Clopper-Pearson success-rate bounds
+  outward to fixed rational grid endpoints. Independent exhaustive tail
+  references cover extremes, symmetry, invalid inputs and large sample limits,
+  and both CLI paths preserve default report behavior.
 - `benchmarks/arena/median_intervals.py` computes exact 95%-or-higher
   symmetric-rank intervals using binomial coverage, with independent reference
   tests for small/large samples, ties, negative costs and sample bounds.

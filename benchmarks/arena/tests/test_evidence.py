@@ -779,3 +779,42 @@ def test_evidence_cli_retains_source_linkage_during_holm_inference(
         == HOLM_METHOD
     )
     assert report["paired_exact_test_policy"]["adjustment_family_size"] == 0
+
+
+def test_evidence_cli_success_intervals_remain_downstream_of_source_links(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Success uncertainty preserves the identity preflight."""
+    document = sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--success-intervals-95",
+        ],
+    )
+    assert evidence.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["evidence_preflight"]["reported_trials_checked"] == (
+        ALGORITHM_COUNT
+    )
+    assert result["verification_success_interval_policy"][
+        "requested_confidence"
+    ] == [19, 20]
+    for point in result["capacity_curve"]:
+        interval = point["verification_success_probability_interval_95"]
+        assert interval is not None
+        assert interval["verified"] == point["verified"]
+        assert interval["sample_count"] == point["attempts"]
+    assert result["pareto_frontiers"][0]["algorithms"] == [
+        "baseline",
+        "candidate",
+    ]

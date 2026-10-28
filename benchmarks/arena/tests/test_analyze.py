@@ -81,6 +81,10 @@ HOLM_METHOD = "Holm-Bonferroni"
 HOLM_FIELD = "p_holm_adjusted"
 HOLM_ERROR = "requires --paired-exact-tests"
 MULTI_HYPOTHESIS_COUNT = 4
+SUCCESS_OBSERVED = 5
+SUCCESS_ATTEMPTS = 10
+SUCCESS_INTERVAL_POLICY_KEY = "verification_success_interval_policy"
+SUCCESS_INTERVAL_KEY = "verification_success_probability_interval_95"
 
 
 def _observation(
@@ -1054,3 +1058,101 @@ def test_holm_cli_rejects_missing_requirement_and_outputs_no_json(
     assert json.loads(capsys.readouterr().out) == _adjusted_paired_report(
         document
     )
+
+
+def _success_report(document: dict[str, Any]) -> dict[str, Any]:
+    report = _run(document)
+    analyze.annotate_success_intervals(report)
+    return report
+
+
+def test_success_interval_covers_all_attempts() -> None:
+    """A reported success probability includes failed attempts."""
+    document = _repeated_success_study(10)
+    for row in document["observations"]:
+        if (
+            row["algorithm"] == CANDIDATE
+            and row["case"]["seed"] < FAILURE_SEED_BOUND
+        ):
+            row["outcome"] = "no_solution"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    report = _success_report(document)
+    points = report["capacity_curve"]
+    candidate = next(
+        point for point in points if point["algorithm"] == CANDIDATE
+    )
+    baseline = next(point for point in points if point["algorithm"] == BASELINE)
+    assert candidate["verified"] == SUCCESS_OBSERVED
+    assert candidate["attempts"] == SUCCESS_ATTEMPTS
+    interval = candidate["verification_success_probability_interval_95"]
+    assert interval is not None
+    assert interval["verified"] == SUCCESS_OBSERVED
+    assert interval["sample_count"] == SUCCESS_ATTEMPTS
+    assert interval["lower"] == [383, 2048]
+    assert interval["upper"] == [1665, 2048]
+    assert baseline["verification_success_probability_interval_95"][
+        "upper"
+    ] == [1, 1]
+    policy = report["verification_success_interval_policy"]
+    assert policy["requested_confidence"] == [19, 20]
+    assert not policy["pareto_uses_intervals"]
+    assert INDEPENDENT_NOTE in policy["assumptions"]
+
+
+def test_zero_verified_trials_have_no_invented_probability() -> None:
+    """An all-failure cohort retains zero as observation, not proof of p=0."""
+    document = _repeated_success_study(10)
+    for row in document["observations"]:
+        if row["algorithm"] == CANDIDATE:
+            row["outcome"] = "tool_failed"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    point = next(
+        p
+        for p in _success_report(document)["capacity_curve"]
+        if p["algorithm"] == CANDIDATE
+    )
+    interval = point["verification_success_probability_interval_95"]
+    assert interval is not None
+    assert interval["lower"] == [0, 1]
+    assert interval["upper"] == [79, 256]
+
+
+def test_default_report_and_pareto_are_unchanged_by_success_intervals() -> None:
+    """The inference annotation cannot alter baseline decisions or counts."""
+    document = _repeated_success_study(10)
+    without = _run(document)
+    report = _success_report(document)
+    assert SUCCESS_INTERVAL_POLICY_KEY not in without
+    assert report["pareto_frontiers"] == without["pareto_frontiers"]
+    assert (
+        report["highest_observed_verified_difficulty"]
+        == (without["highest_observed_verified_difficulty"])
+    )
+    assert all(
+        SUCCESS_INTERVAL_KEY not in point for point in without["capacity_curve"]
+    )
+    document["observations"].reverse()
+    assert _success_report(document) == report
+
+
+def test_standalone_cli_success_intervals_are_explicitly_optional(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No statistical fields appear unless the operator requests them."""
+    document = _repeated_success_study(10)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+    assert analyze.main() == 0
+    assert json.loads(capsys.readouterr().out) == _run(document)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["arena", str(path), "--success-intervals-95"],
+    )
+    assert analyze.main() == 0
+    assert json.loads(capsys.readouterr().out) == _success_report(document)

@@ -240,6 +240,29 @@ not certify statistical significance or change any Pareto, capacity, or tier
 promotion decision. With no opt-in adjustment, the previous unadjusted view
 remains byte-identical.
 
+For an optional inferential view of the *reported* success fraction, both
+arena CLIs also accept `--success-intervals-95`. It adds a conservative
+Clopper-Pearson binomial confidence interval to each capacity point, using
+the exact number of reported `verified` outcomes out of **all attempts**,
+including failures. Each `verification_success_probability_interval_95`
+has `lower` and `upper` reduced rational `[numerator, denominator]` bounds,
+plus `verified` and `sample_count`. The underlying exact binomial tail roots
+are enclosed by outward rounding to a fixed grid of 1/4096; no floating-point
+normal approximation or false claim of exact irrational endpoints is used.
+Under independent, identically distributed Bernoulli trials, those bounds
+retain at least 95% nominal two-sided coverage. Counts above 512 or empty
+cohorts produce `null`, not extrapolated results. In particular, zero reported
+successes does **not** mean the true success probability is known to be zero.
+
+The `verification_success_interval_policy` records the grid, maximum samples,
+nominal confidence, and the critical unverified **iid sampling assumption**.
+The arena cannot authenticate the reported verifier outcome, guarantee trial
+independence or physical execution, or infer stochastic reliability from a
+conveniently chosen or correlated corpus. The option is independent of median
+and paired uncertainty; none of these intervals changes the Pareto frontier,
+capacity maxima or promotion decisions. Historical version-one reports retain
+the same fields without the opt-in flag.
+
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.
 

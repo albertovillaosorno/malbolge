@@ -48,6 +48,7 @@ from benchmarks.arena import median_intervals
 from benchmarks.arena import multiplicity
 from benchmarks.arena import paired_exact_tests
 from benchmarks.arena import study_file
+from benchmarks.arena import success_intervals
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -781,6 +782,32 @@ def analyze(
     return report
 
 
+def annotate_success_intervals(report: dict[str, Any]) -> None:
+    """Add a separately requested confidence view without changing ranking."""
+    for point in report["capacity_curve"]:
+        point["verification_success_probability_interval_95"] = (
+            success_intervals.success_interval_95(
+                point["verified"],
+                point["attempts"],
+            )
+        )
+    report["verification_success_interval_policy"] = {
+        "method": "conservative-grid-Clopper-Pearson-exact-binomial",
+        "requested_confidence": [19, 20],
+        "grid_denominator": success_intervals.GRID_DENOMINATOR,
+        "maximum_attempts": success_intervals.MAX_ATTEMPTS,
+        "assumptions": (
+            "Independent identically distributed Bernoulli attempts. "
+            "Exact binomial tails are inverted and endpoints rounded "
+            "outward to a rational grid, guaranteeing at least nominal "
+            "Clopper-Pearson coverage when the assumptions hold. "
+            "Reported verification outcomes, randomization and physical "
+            "execution are not independently authenticated."
+        ),
+        "pareto_uses_intervals": False,
+    }
+
+
 def read_input(path: Path) -> str:
     """Read only a bounded ordinary source file under strict UTF-8.
 
@@ -810,6 +837,7 @@ def main() -> int:
     parser.add_argument("--median-intervals-95", action="store_true")
     parser.add_argument("--paired-exact-tests", action="store_true")
     parser.add_argument("--adjust-paired-tests", action="store_true")
+    parser.add_argument("--success-intervals-95", action="store_true")
     args = parser.parse_args()
     try:
         document = parse_document(read_input(args.input))
@@ -819,6 +847,8 @@ def main() -> int:
             paired_exact_tests_enabled=args.paired_exact_tests,
             adjust_paired_tests=args.adjust_paired_tests,
         )
+        if args.success_intervals_95:
+            annotate_success_intervals(report)
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")
     _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")

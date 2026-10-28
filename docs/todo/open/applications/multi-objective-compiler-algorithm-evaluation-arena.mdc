@@ -136,6 +136,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   plus nonblocking/no-follow opens on capable hosts. Synthetic regular-file,
   FIFO, symlink, short-read and mid-read mutations fail before publishing
   report JSON; filesystem atomicity and source authenticity remain unproven.
+- An optional Clopper-Pearson 95% reported-success interval now uses all
+  attempted trials, exact binomial-tail inversion and outward rational-grid
+  bounds. It rejects empty and over-limit sample populations instead of
+  fabricating inference, while documenting the unverified iid Bernoulli and
+  verifier assumptions. Independent exact reference and both-CLI tests pass.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real
