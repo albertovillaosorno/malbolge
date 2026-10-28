@@ -1880,6 +1880,33 @@ fn typed_ir_progress_for_source_rejects_valid_extra_global()
 }
 
 #[test]
+fn typed_ir_progress_for_source_rejects_valid_extra_proof()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower proof source: {error:?}"))?;
+    if !fresh.proof_obligations().is_empty() {
+        return Err(String::from("fresh frontend unexpectedly emitted proofs"));
+    }
+    let saved = Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: fresh.functions().to_vec(),
+        globals: fresh.globals().to_vec(),
+        proof_obligations: vec![ProofObligation::ProfileCapability {
+            capability: String::from("byte-io"),
+        }],
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types: fresh.types().to_vec(),
+    });
+    assert_source_bound_rejects_admitted_module(
+        &expected, &saved, "extra-proof-checkpoint",
+    )
+}
+
+#[test]
 fn typed_ir_progress_for_source_preserves_inspector_and_codec_failures()
 -> Result<(), String> {
     let expected = frontend_return_projection();

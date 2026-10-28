@@ -293,8 +293,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   comparison or a new IR construction pass. Source-matched selection also
   rejects a valid empty-function checkpoint paired with an empty expected
   frontend, which fresh lowering cannot admit. A valid checkpoint with an
-  extra global is rejected as well, since the current normalized frontend
-  slice admits only global-free constant-return functions.
+  extra global or retained proof obligation is rejected as well, since the
+  current normalized frontend slice emits neither module-global objects nor
+  verifier-visible obligations.
   Real inspector-backed checks reject valid foreign-source state and caller
   provenance drift without changing unrestricted resume. An independently
   admitted unsigned-return checkpoint also rejects despite identical source

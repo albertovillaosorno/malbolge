@@ -187,6 +187,7 @@ fn matches_expected_frontend(
     validate_identity(expected).is_ok()
         && !expected.functions().is_empty()
         && saved.globals().is_empty()
+        && saved.proof_obligations().is_empty()
         && saved.abi_id() == expected.abi_id()
         && saved.source_id() == expected.source_id()
         && saved.source_sha256() == expected.source_sha256()
