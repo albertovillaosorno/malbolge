@@ -180,6 +180,27 @@ fn matches_expected_function_signature(
     })
 }
 
+// The current fresh frontend slice emits exactly one source-located
+// instruction in one entry block. Checkpoint admission validates each span,
+// but only the caller projection can bind those spans to its own source map.
+// This deliberately does not compare the instruction's guest semantics.
+fn matches_expected_inner_provenance(
+    function: &Function,
+    source: &FrontendReturnIntegerFunction,
+) -> bool {
+    let [block] = function.blocks() else {
+        return false;
+    };
+    let [instruction] = block.instructions() else {
+        return false;
+    };
+    block.id() == function.entry()
+        && block.phis().is_empty()
+        && matches_span(block.span(), source.body_span())
+        && matches_span(block.terminator_span(), source.return_span())
+        && matches_span(instruction.span(), source.value_span())
+}
+
 fn matches_expected_frontend(
     saved: &Module,
     expected: &FrontendArtifact,
@@ -200,6 +221,7 @@ fn matches_expected_frontend(
                     && matches_expected_function_signature(
                         saved, function, source,
                     )
+                    && matches_expected_inner_provenance(function, source)
             },
         )
 }

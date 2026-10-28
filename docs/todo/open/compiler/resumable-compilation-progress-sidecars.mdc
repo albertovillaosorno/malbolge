@@ -290,7 +290,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   without rebuilding typed-IR instructions. The same independent typed-IR span
   predicates now also reject four malformed or out-of-function expected body,
   return, and literal spans that fresh lowering rejects, without operation
-  comparison or a new IR construction pass. Source-matched selection also
+  comparison or a new IR construction pass. Source-bound typed-IR recovery now
+  additionally binds the checkpoint's entry-block, return-terminator, and
+  literal-instruction spans to the caller's frontend source map, requiring the
+  one-block, phi-free, one-instruction shape of fresh lowering. Child-inspector
+  regressions reject three independently valid internal span forgeries and
+  one extra unused instruction while preserving unrestricted restoration.
+  Source-matched selection also
   rejects a valid empty-function checkpoint paired with an empty expected
   frontend, which fresh lowering cannot admit. A valid checkpoint with an
   extra global or retained proof obligation is rejected as well, since the

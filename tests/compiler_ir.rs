@@ -1822,6 +1822,109 @@ fn assert_source_bound_rejects_admitted_module(
     directory_cleanup
 }
 
+fn altered_frontend_block(
+    block: &BasicBlock,
+    field: u8,
+) -> Result<BasicBlock, String> {
+    let instruction = block.instructions().first()
+        .ok_or_else(|| String::from("fresh instruction missing"))?;
+    let block_span = if field == 0 {
+        SourceSpan::new(
+            SourcePosition::new(1221, 35, 15), block.span().end(),
+        )
+    } else {
+        block.span()
+    };
+    let return_span = if field == 1 {
+        SourceSpan::new(
+            SourcePosition::new(1223, 35, 17),
+            block.terminator_span().end(),
+        )
+    } else {
+        block.terminator_span()
+    };
+    let literal_span = if field == 2 {
+        SourceSpan::new(
+            SourcePosition::new(1230, 35, 24), instruction.span().end(),
+        )
+    } else {
+        instruction.span()
+    };
+    let mut instructions = vec![LocatedInstruction::new(
+        instruction.instruction().clone(), literal_span,
+    )];
+    if field == 3 {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![9, 0, 0, 0]),
+                result: ValueId::new(1),
+                type_id: TypeId::new(0),
+            },
+            instruction.span(),
+        ));
+    }
+    Ok(BasicBlock::new(BasicBlockSpec {
+        id: block.id(),
+        instructions,
+        phis: block.phis().to_vec(),
+        span: block_span,
+        terminator: block.terminator().clone(),
+        terminator_span: return_span,
+    }))
+}
+
+fn altered_frontend_module(fresh: &Module, field: u8)
+-> Result<Module, String> {
+    let function = fresh.functions().first()
+        .ok_or_else(|| String::from("fresh function missing"))?;
+    let block = function.blocks().first()
+        .ok_or_else(|| String::from("fresh block missing"))?;
+    let modified_function = Function::new(FunctionSpec {
+        blocks: vec![altered_frontend_block(block, field)?],
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    Ok(Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: vec![modified_function],
+        globals: fresh.globals().to_vec(),
+        proof_obligations: fresh.proof_obligations().to_vec(),
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types: fresh.types().to_vec(),
+    }))
+}
+
+#[test]
+fn typed_ir_source_bound_resume_rejects_changed_internal_spans()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower frontend span fixture: {error:?}"))?;
+    for (field, label) in [
+        (0u8, "changed-body-span"),
+        (1, "changed-return-span"),
+        (2, "changed-literal-span"),
+        (3, "extra-source-instruction"),
+    ] {
+        let saved = altered_frontend_module(&fresh, field)?;
+        if saved.source_sha256() != fresh.source_sha256()
+            || saved.functions().first().map(Function::span)
+                != fresh.functions().first().map(Function::span)
+        {
+            return Err(format!("{label} altered outer source provenance"));
+        }
+        assert_source_bound_rejects_admitted_module(&expected, &saved, label)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn typed_ir_progress_for_source_rejects_valid_empty_checkpoint()
 -> Result<(), String> {
