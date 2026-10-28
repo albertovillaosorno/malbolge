@@ -50,7 +50,7 @@ use super::module::{
 };
 use super::source::{SourcePosition, SourceSpan};
 use super::types::{TypeDef, TypeEntry};
-use super::validate::validate_module;
+use super::validate::{span_contains, valid_span, validate_module};
 
 const ABI_ID: &str = "malbolge-c32-v1";
 const FRONTEND_ARTIFACT_ID: &str = "malbolge-c-frontend-v1";
@@ -145,9 +145,31 @@ pub(super) fn admit_frontend_function(
     {
         return Err(FrontendLoweringError::UnsupportedSemantics);
     }
-    function.constant_decimal().parse::<i32>().map_err(|_error| {
-        FrontendLoweringError::IntegerConstant
-    })
+    let value = function.constant_decimal().parse::<i32>()
+        .map_err(|_error| FrontendLoweringError::IntegerConstant)?;
+    // Verify the exact span invariants enforced on the freshly constructed
+    // single-block IR; the saved function span is checked separately.
+    let outer = convert_span(function.function_span());
+    let body = convert_span(function.body_span());
+    let returned = convert_span(function.return_span());
+    let literal = convert_span(function.value_span());
+    if !valid_span(outer) {
+        return Err(FrontendLoweringError::Validation(
+            ValidationError::FunctionIdentity,
+        ));
+    }
+    if !valid_span(body)
+        || !span_contains(outer, body)
+        || !valid_span(returned)
+        || !span_contains(body, returned)
+        || !valid_span(literal)
+        || !span_contains(body, literal)
+    {
+        return Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance,
+        ));
+    }
+    Ok(value)
 }
 
 fn lower_function(

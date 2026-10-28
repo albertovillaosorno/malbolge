@@ -94,7 +94,7 @@ fn valid_source_id(source_id: &str) -> bool {
             .any(|part| part.is_empty() || part == "." || part == "..")
 }
 
-const fn valid_span(span: SourceSpan) -> bool {
+pub(super) const fn valid_span(span: SourceSpan) -> bool {
     let begin = span.begin();
     let end = span.end();
     if !valid_position(begin)
@@ -110,7 +110,10 @@ const fn valid_span(span: SourceSpan) -> bool {
         || (begin.line() == end.line() && begin.column() <= end.column())
 }
 
-const fn span_contains(parent: SourceSpan, child: SourceSpan) -> bool {
+pub(super) const fn span_contains(
+    parent: SourceSpan,
+    child: SourceSpan,
+) -> bool {
     parent.begin().byte() <= child.begin().byte()
         && child.end().byte() <= parent.end().byte()
 }

@@ -1543,12 +1543,45 @@ fn compiler_stage_selector_converges_fresh_and_progress() -> Result<(), String>
     Ok(())
 }
 
+const fn changed_frontend_body_span(
+    function: &FrontendReturnIntegerFunction,
+    field: u8,
+) -> FrontendSpan {
+    match field {
+        20 => frontend_span(1100, 1, 1200, 29),
+        23 => frontend_span(1300, 1, 1200, 29),
+        _ => function.body_span(),
+    }
+}
+
+const fn changed_frontend_return_span(
+    function: &FrontendReturnIntegerFunction,
+    field: u8,
+) -> FrontendSpan {
+    if field == 21 {
+        frontend_span(1210, 1, 1215, 2)
+    } else {
+        function.return_span()
+    }
+}
+
+const fn changed_frontend_value_span(
+    function: &FrontendReturnIntegerFunction,
+    field: u8,
+) -> FrontendSpan {
+    if field == 22 {
+        frontend_span(1210, 1, 1215, 2)
+    } else {
+        function.value_span()
+    }
+}
+
 fn changed_frontend_function(
     function: &FrontendReturnIntegerFunction,
     field: u8,
 ) -> FrontendReturnIntegerFunction {
     FrontendReturnIntegerFunction::new(FrontendReturnIntegerFunctionSpec {
-        body_span: function.body_span(),
+        body_span: changed_frontend_body_span(function, field),
         constant_decimal: if field == 19 {
             String::from("4294967296")
         } else {
@@ -1575,7 +1608,7 @@ fn changed_frontend_function(
         } else {
             String::from(function.name())
         },
-        return_span: function.return_span(),
+        return_span: changed_frontend_return_span(function, field),
         signature: if field == 8 {
             String::from("fn()->u32")
         } else {
@@ -1586,7 +1619,7 @@ fn changed_frontend_function(
         } else {
             String::from(function.storage_class())
         },
-        value_span: function.value_span(),
+        value_span: changed_frontend_value_span(function, field),
         value_type: if field == 9 {
             String::from("u32")
         } else {
@@ -1620,7 +1653,7 @@ fn different_frontend_provenance(
         5 => spec.functions.push(frontend_function(
             "fn()->i32", "i32", "7",
         )),
-        6..=9 | 15..=19 => {
+        6..=9 | 15..=23 => {
             let original = spec.functions.first()
                 .ok_or_else(|| String::from("frontend function missing"))?;
             let changed = changed_frontend_function(original, field);
@@ -1643,7 +1676,7 @@ fn assert_foreign_frontend_rejected(
     inspector: &Path,
     golden: &Path,
 ) -> Result<(), String> {
-    for field in 0u8..20u8 {
+    for field in 0u8..24u8 {
         let foreign = different_frontend_provenance(expected, field)?;
         if field >= 10 {
             let fresh = lower_frontend_artifact(&foreign);
@@ -1651,6 +1684,9 @@ fn assert_foreign_frontend_rejected(
                 10..=14 => FrontendLoweringError::Identity,
                 15..=18 => FrontendLoweringError::UnsupportedSemantics,
                 19 => FrontendLoweringError::IntegerConstant,
+                20..=23 => FrontendLoweringError::Validation(
+                    ValidationError::SourceProvenance,
+                ),
                 _ => return Err(format!("unknown frontend field {field}")),
             };
             if fresh != Err(wanted) {

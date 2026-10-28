@@ -224,8 +224,11 @@ expected frontend must also pass the same artifact ID, Clang version/target,
 language, and schema-version identity gate as fresh lowering. Each expected
 function must also pass the supported declaration/constant-range gate (without
 rebuilding IR), rejecting unsupported storage, linkage, inline, definition,
-and out-of-range literals. These checks do not authenticate the checkpoint's
-toolchain or prove operation-level equivalence. The unrestricted route
+and out-of-range literals. Expected function body, return, and literal spans
+must also satisfy the same independent source-containment checks as fresh IR
+admission, without comparing checkpoint instruction semantics or body spans.
+These checks do not authenticate the checkpoint's toolchain or prove
+operation-level equivalence. The unrestricted route
 retains its original behavior. Matched frontend evidence
 converges with fresh lowering, while valid foreign checkpoints and caller
 module/function provenance
