@@ -1611,6 +1611,11 @@ fn different_frontend_provenance(
             spec.functions.clear();
             spec.functions.push(changed);
         },
+        10 => spec.artifact_id.push_str("-foreign"),
+        11 => spec.clang_target.push_str("-foreign"),
+        12 => spec.clang_version.push_str("-foreign"),
+        13 => spec.language.push_str("-foreign"),
+        14 => spec.schema_version = 2,
         _ => return Err(String::from("unknown frontend provenance field")),
     }
     Ok(FrontendArtifact::new(spec))
@@ -1622,8 +1627,16 @@ fn assert_foreign_frontend_rejected(
     inspector: &Path,
     golden: &Path,
 ) -> Result<(), String> {
-    for field in 0u8..10u8 {
+    for field in 0u8..15u8 {
         let foreign = different_frontend_provenance(expected, field)?;
+        if field >= 10 {
+            let fresh = lower_frontend_artifact(&foreign);
+            if fresh != Err(FrontendLoweringError::Identity) {
+                return Err(format!(
+                    "invalid frontend header {field} lowered: {fresh:?}"
+                ));
+            }
+        }
         let direct = resume_typed_ir_from_progress_for_source(
             interpreter, inspector, golden, &foreign,
         );

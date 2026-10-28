@@ -220,6 +220,9 @@ independently admitted checkpoint to a separately supplied normalized frontend
 artifact. They require exact ABI, source path/digest, target profile, ordered
 function count/names, full function source spans, and the current
 no-argument `i32` function signature through the admitted type table. The
+expected frontend must also pass the same artifact ID, Clang version/target,
+language, and schema-version identity gate as fresh lowering, without
+re-running lowering or authenticating the checkpoint's toolchain. The
 unrestricted route retains its original behavior. Matched frontend evidence
 converges with fresh lowering, while valid foreign checkpoints and caller
 module/function provenance

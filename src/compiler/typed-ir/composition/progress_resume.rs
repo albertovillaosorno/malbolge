@@ -47,6 +47,7 @@ use super::frontend_semantics::{
     FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
     FrontendSpan,
 };
+use super::lower_frontend::validate_identity;
 use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
 use super::stage::{
@@ -183,7 +184,8 @@ fn matches_expected_frontend(
     saved: &Module,
     expected: &FrontendArtifact,
 ) -> bool {
-    saved.abi_id() == expected.abi_id()
+    validate_identity(expected).is_ok()
+        && saved.abi_id() == expected.abi_id()
         && saved.source_id() == expected.source_id()
         && saved.source_sha256() == expected.source_sha256()
         && saved.target_profile() == expected.target_profile()
@@ -202,9 +204,10 @@ fn matches_expected_frontend(
 /// Restores a typed checkpoint only for the caller's expected frontend source.
 ///
 /// This check matches module and ordered function provenance after complete
-/// checkpoint admission, including the declared function return ABI, without
-/// re-running frontend lowering. It does not authenticate the source digest,
-/// compare function instructions, or replace revision/toolchain policy.
+/// checkpoint admission, including the declared function return ABI and the
+/// frontend format/toolchain header, without re-running frontend lowering.
+/// It does not authenticate the source digest, compare function instructions,
+/// or replace revision/toolchain policy.
 ///
 /// # Errors
 ///

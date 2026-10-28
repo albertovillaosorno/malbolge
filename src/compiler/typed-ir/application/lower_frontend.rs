@@ -190,7 +190,9 @@ fn lowered_types() -> Vec<TypeEntry> {
     ]
 }
 
-fn validate_identity(
+// Shared with source-matched resume: validating the frontend format header
+// must not require performing fresh semantic lowering.
+pub(super) fn validate_identity(
     artifact: &FrontendArtifact,
 ) -> Result<(), FrontendLoweringError> {
     if artifact.abi_id() != ABI_ID
