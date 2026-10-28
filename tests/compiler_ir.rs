@@ -347,11 +347,22 @@ fn launch_compiler_crash(
     output: &Path,
     boundary: &str,
 ) -> Result<(), String> {
+    launch_compiler_crash_with_first(
+        root, output, boundary, GOLDEN_PATH,
+    )
+}
+
+fn launch_compiler_crash_with_first(
+    root: &Path,
+    output: &Path,
+    boundary: &str,
+    first_golden: &str,
+) -> Result<(), String> {
     let crashed = Command::new(repository_python())
         .arg("-c")
         .arg(COMPILER_PROGRESS_CRASH_SCRIPT)
         .arg(output)
-        .arg(root.join(GOLDEN_PATH))
+        .arg(root.join(first_golden))
         .arg(root.join(EXTENDED_GOLDEN_PATH))
         .arg(COMPILER_CRASH_EXIT.to_string())
         .arg(boundary)
@@ -1710,6 +1721,73 @@ fn typed_ir_progress_for_source_rejects_other_valid_checkpoint()
         .map_err(|error| format!("remove source fixture: {error}"));
     result?;
     cleanup
+}
+
+fn check_source_matched_crash_boundary(
+    boundary: &str,
+    expected: &FrontendArtifact,
+    fresh: &Module,
+) -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = compiler_crash_directory(
+        &format!("source-bound-{boundary}"),
+    )?;
+    let output = directory.join("program.malbolge");
+    launch_compiler_crash_with_first(
+        root, &output, boundary, LOWERING_GOLDEN_PATH,
+    )?;
+    let progress = directory.join("program.malbolge.progress.json");
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = typed_ir_progress_inspector();
+        let expected_result = if matches!(
+            boundary, "after-sidecar-replace" | "after-sidecar-sync"
+        ) {
+            Err(ProgressCheckpointError::IdentityMismatch)
+        } else {
+            Ok(fresh.clone())
+        };
+        let direct = resume_typed_ir_from_progress_for_source(
+            &interpreter, &inspector, &progress, expected,
+        );
+        if direct != expected_result {
+            return Err(format!(
+                "source-bound {boundary} direct: {direct:?}"
+            ));
+        }
+        let selected = enter_typed_ir_compiler_stage(
+            TypedIrCompilerStageInput::ProgressForSource {
+                expected,
+                inspector: &inspector,
+                interpreter: &interpreter,
+                progress: &progress,
+            },
+        );
+        if selected != expected_result.map_err(
+            TypedIrCompilerStageError::Progress,
+        ) {
+            return Err(format!(
+                "source-bound {boundary} selected: {selected:?}"
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean crash {boundary}: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn typed_ir_source_matched_progress_survives_all_crash_boundaries()
+-> Result<(), String> {
+    let frontend = frontend_return_projection();
+    let fresh = lower_frontend_artifact(&frontend)
+        .map_err(|error| format!("lower source for crashes: {error:?}"))?;
+    for boundary in COMPILER_CRASH_BOUNDARIES {
+        check_source_matched_crash_boundary(boundary, &frontend, &fresh)?;
+    }
+    Ok(())
 }
 
 #[test]

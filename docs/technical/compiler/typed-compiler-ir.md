@@ -227,6 +227,10 @@ drift, including a valid changed-return-signature checkpoint with unchanged
 module source identity, return `IdentityMismatch` through both entrypoints.
 The source check does not rerun frontend lowering, authenticate a supplied
 digest, compare function operations, or replace revision/toolchain compatibility.
+The production sidecar inspector and both source-matched selection entrypoints
+now also agree across all ten injected checkpoint/sidecar publication crashes:
+until pointer replacement they restore the valid matching predecessor, and
+after replacement they reject the independently valid foreign generation.
 
 ### Relationship to LLVM IR
 

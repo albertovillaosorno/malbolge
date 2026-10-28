@@ -285,7 +285,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   provenance drift without changing unrestricted resume. An independently
   admitted unsigned-return checkpoint also rejects despite identical source
   provenance. This is equality admission, not source authentication or full
-  semantic re-lowering.
+  semantic re-lowering. A source-matched production-inspector regression also
+  covers all ten immutable publication crash boundaries: the old matching
+  generation stays selected until sidecar replacement, after which the new
+  independently admitted foreign generation is rejected by direct and product
+  routes.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB
