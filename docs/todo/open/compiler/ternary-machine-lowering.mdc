@@ -613,6 +613,9 @@ instruction.
   supported no-parameter, one-entry-block, phi-free shape and consistent
   return terminator. Production-inspector tests reject six independently
   unsupported expected function shapes while admitting unchanged checkpoints.
+  Source-bound recovery additionally shares the fresh lowerer's span validation
+  for expected instruction and terminator provenance: four independently
+  malformed expected spans reject while the saved checkpoint remains valid.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.

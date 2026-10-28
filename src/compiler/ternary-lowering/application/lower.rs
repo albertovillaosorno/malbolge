@@ -180,7 +180,7 @@ const fn projected_instruction_span(
     }
 }
 
-fn validate_projection_spans(
+pub(super) fn validate_projection_spans(
     function: &InputFunction,
 ) -> Result<(), TernaryLoweringError> {
     if !valid_projection_span(function.span) {

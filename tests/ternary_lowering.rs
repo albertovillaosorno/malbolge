@@ -12232,6 +12232,80 @@ fn ternary_progress_for_source_rejects_unsupported_expected_function_shape()
     cleanup
 }
 
+fn invalidate_expected_projection_span(
+    expected: &mut TypedIrInput,
+    field: u8,
+) -> Result<(), String> {
+    let block = expected.functions.first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("source entry block missing"))?;
+    if field < 2 {
+        let InputTerminator::Return { span, .. } = &mut block.terminator
+        else {
+            return Err(String::from("expected return missing"));
+        };
+        if field == 0 {
+            span.begin.byte = 0;
+        } else {
+            span.end.column = 0;
+        }
+    } else {
+        let Some(InputInstruction::ConstantInteger { span, .. }) =
+            block.instructions.first_mut()
+        else {
+            return Err(String::from("expected constant missing"));
+        };
+        if field == 2 {
+            span.begin.byte = 0;
+        } else {
+            span.begin.line = 0;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower source for span check: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&saved)
+        .map_err(|error| format!("encode source for span check: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("invalid-expected-spans", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(saved.clone())
+        {
+            return Err(String::from("valid span checkpoint not admitted"));
+        }
+        assert_source_matched_ternary_success(
+            &expected, &saved, &inspector, (&interpreter, &progress),
+        )?;
+        for field in 0u8..4 {
+            let mut changed = expected.clone();
+            invalidate_expected_projection_span(&mut changed, field)?;
+            if lower_typed_ir(&changed)
+                != Err(TernaryLoweringError::InvalidProjection)
+            {
+                return Err(format!("invalid expected span {field} lowered"));
+            }
+            assert_source_matched_ternary_failure(
+                &changed, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )?;
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean invalid-span fixture: {error}"));
+    result?;
+    cleanup
+}
+
 #[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {

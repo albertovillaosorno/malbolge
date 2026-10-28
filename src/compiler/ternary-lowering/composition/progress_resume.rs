@@ -41,6 +41,7 @@ use std::path::Path;
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
 use super::input::{InputFunction, InputScalarType, InputTerminator, TypedIrInput};
+use super::lower::validate_projection_spans;
 use super::model::{TernaryOperation, TernaryProgram};
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
@@ -189,6 +190,7 @@ fn matches_expected_functions(
         && program.functions.iter().zip(&expected.functions).all(
             |(saved, current)| {
                 matches_supported_function_shape(current)
+                    && validate_projection_spans(current).is_ok()
                     && saved.id == current.id
                     && saved.name == current.name
                     && saved.span.begin.byte == current.span.begin.byte
