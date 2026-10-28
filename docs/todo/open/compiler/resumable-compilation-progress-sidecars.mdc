@@ -340,7 +340,16 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and product source-bound inspector routes, while the complete eight-form
   positive comparison matrix remains recoverable. The equality projection
   still gets operand signedness indirectly through preceding bound definitions.
-  Remaining nonconstant operations are not yet fully bound.
+  All 39 currently admitted cast, bitcast, truncation, sign/zero extension,
+  and Boolean conversion shapes now bind their projected operation family,
+  destination type and exact source/result SSA identities as well. An
+  inspector-backed red-to-green matrix of two independently valid projections
+  for each form proves that alternate defined cast operands fail both
+  source-bound selectors despite matching function/span/source identity; the
+  unrestricted route still recovers the altered checkpoint. The unaltered
+  program remains recoverable with no checkpoint re-lowering. This binds the
+  admitted ternary projection only, not the authenticity of caller source or
+  complete C-to-target equivalence.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB

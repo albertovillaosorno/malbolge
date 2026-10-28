@@ -93,6 +93,7 @@ use typed_ir::{
     canonical_module, validate_module,
 };
 
+
 const RETURN_GOLDEN: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
 const SELECT_GOLDEN: &str = "tests/compiler/typed-ir/golden/select.hex";
@@ -394,6 +395,7 @@ sys.stdout.buffer.write(b"bad")
 
 static NEXT_TERNARY_CRASH_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
+type SourceBoundCastCase = (usize, InputScalarType, InputScalarType);
 type InspectorObservation =
     Result<ternary_lowering::TernaryProgram, TernaryProgressCheckpointError>;
 type TernaryProgressFixture = (PathBuf, PathBuf);
@@ -12640,6 +12642,164 @@ fn assert_source_bound_program_roundtrip(
         .map_err(|error| format!("clean {label} matched scalar: {error}"));
     result?;
     cleanup
+}
+
+// Two independently lowerable projections retain the same module/source
+// identity, spans and SSA layout but consume different defined cast operands.
+// Only the source-bound route must reject the other valid checkpoint.
+fn source_bound_cast_instruction(
+    family: usize,
+    result_kind: InputScalarType,
+    value: u32,
+) -> Result<InputInstruction, String> {
+    let result = 2;
+    let span = input_span(fixture_span(2, 3));
+    let type_kind = result_kind;
+    Ok(match family {
+        0 => InputInstruction::BoolToSigned { result, span, type_kind, value },
+        1 => InputInstruction::IntegerBitcast { result, span, type_kind, value },
+        2 => InputInstruction::IntegerToBool { result, span, type_kind, value },
+        3 => InputInstruction::SignExtendI8ToI32 { result, span, type_kind, value },
+        4 => InputInstruction::TruncateInteger { result, span, type_kind, value },
+        5 => InputInstruction::ZeroExtendInteger { result, span, type_kind, value },
+        _ => return Err(String::from("unknown source-bound cast")),
+    })
+}
+
+fn source_bound_cast_projection(
+    family: usize,
+    source_kind: InputScalarType,
+    result_kind: InputScalarType,
+    cast_operand: u32,
+) -> Result<TypedIrInput, String> {
+    let (bits, bytes) = match source_kind {
+        InputScalarType::Bool => (1, 1),
+        InputScalarType::I8 | InputScalarType::U8 => (8, 1),
+        InputScalarType::I16 | InputScalarType::U16 => (16, 2),
+        InputScalarType::I32 | InputScalarType::U32 => (32, 4),
+        InputScalarType::Void | InputScalarType::Other => {
+            return Err(String::from("invalid cast fixture source"));
+        },
+    };
+    let mut expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let function = expected.functions.first_mut()
+        .ok_or_else(|| String::from("missing cast test function"))?;
+    function.name = format!("source_bound_cast_{family}_{source_kind:?}_{result_kind:?}");
+    function.span = input_span(fixture_span(0, 4));
+    function.return_kind = result_kind;
+    let block = function.blocks.first_mut()
+        .ok_or_else(|| String::from("missing cast test block"))?;
+    let constant = |value: u8, result: u32, span: InputSourceSpan| {
+        let mut little_endian = vec![value];
+        little_endian.resize(bytes, 0);
+        InputInstruction::ConstantInteger {
+            bit_width: bits, little_endian, result, span,
+            type_kind: source_kind,
+        }
+    };
+    block.instructions = vec![
+        constant(0, 0, input_span(fixture_span(0, 1))),
+        constant(1, 1, input_span(fixture_span(1, 2))),
+        source_bound_cast_instruction(family, result_kind, cast_operand)?,
+    ];
+    block.terminator = InputTerminator::Return {
+        span: input_span(fixture_span(3, 4)), value: Some(2),
+    };
+    Ok(expected)
+}
+
+fn source_bound_cast_cases() -> Vec<SourceBoundCastCase> {
+    use InputScalarType::{Bool, I8, I16, I32, U8, U16, U32};
+    vec![
+        (0, Bool, I8),
+        (0, Bool, I16),
+        (0, Bool, I32),
+        (1, I8, I8),
+        (1, I8, U8),
+        (1, U8, I8),
+        (1, U8, U8),
+        (1, I16, I16),
+        (1, I16, U16),
+        (1, U16, I16),
+        (1, U16, U16),
+        (1, I32, I32),
+        (1, I32, U32),
+        (1, U32, I32),
+        (1, U32, U32),
+        (2, I8, Bool),
+        (2, U8, Bool),
+        (2, I16, Bool),
+        (2, U16, Bool),
+        (2, I32, Bool),
+        (2, U32, Bool),
+        (3, I8, I16),
+        (3, I8, I32),
+        (3, I16, I32),
+        (4, I16, I8),
+        (4, I16, U8),
+        (4, U16, I8),
+        (4, U16, U8),
+        (4, I32, I8),
+        (4, I32, U8),
+        (4, U32, I8),
+        (4, U32, U8),
+        (4, I32, I16),
+        (4, I32, U16),
+        (4, U32, I16),
+        (4, U32, U16),
+        (5, U8, U16),
+        (5, U8, U32),
+        (5, U16, U32),
+    ]
+}
+
+#[test]
+fn ternary_progress_for_source_binds_all_cast_operand_identities()
+-> Result<(), String> {
+    for (family, source_kind, result_kind) in source_bound_cast_cases() {
+        let label = format!("cast-{family}-{source_kind:?}-{result_kind:?}");
+        let expected = source_bound_cast_projection(
+            family, source_kind, result_kind, 0,
+        )?;
+        let original = enter_ternary_stage(
+            TernaryStageInput::Projection(&expected),
+        ).map_err(|error| format!("lower {label}: {error:?}"))?;
+        assert_source_bound_program_roundtrip(&label, &expected, &original)?;
+        let foreign_input = source_bound_cast_projection(
+            family, source_kind, result_kind, 1,
+        )?;
+        let foreign = enter_ternary_stage(
+            TernaryStageInput::Projection(&foreign_input),
+        ).map_err(|error| format!("lower foreign {label}: {error:?}"))?;
+        if original == foreign
+            || original.source_sha256 != foreign.source_sha256
+        {
+            return Err(format!("{label} did not preserve source identity"));
+        }
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode foreign {label}: {error:?}"))?;
+        let (progress, directory) = publish_ternary_progress_fixture(
+            &format!("source-foreign-{label}"), &bytes,
+        )?;
+        let checked = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(foreign) {
+                return Err(format!("unrestricted {label} rejected"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean cast {label}: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
 }
 
 #[test]

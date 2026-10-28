@@ -954,8 +954,15 @@ identities. Ordered comparisons bind signedness explicitly; equality operand
 signedness follows separately bound definitions rather than a kind on the
 Boolean comparison projection. Valid foreign comparison predicate and operand
 substitutions fail under both selectors, with an eight-form positive inspector
-matrix. The checks do not re-lower the projection or cover remaining
-nonconstant instruction semantics. An explicit
+matrix. Source-bound recovery now also matches all 39 currently admitted
+cast, bitcast, truncation, sign/zero-extension and Boolean conversion forms:
+the exact projected family and destination category, plus source/result SSA
+identities, must agree with the independently admitted saved operation.
+Every form is exercised using two fresh, independently lowerable projections
+with equal source/function/spans and different defined operand IDs. The real
+progress inspector admits each foreign checkpoint without source binding,
+while both source-bound selectors reject it; unchanged casts recover under
+both selectors. No re-lowering of checkpoint state is performed. An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
 source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span
@@ -971,8 +978,7 @@ with changed function identity despite a matching module digest, as well as
 caller function-name/span/count drift, using `IdentityMismatch` without
 re-running lowering. Inspector and codec failures remain distinct. This checks
 provenance equality, **not** the authenticity of the supplied source digest,
-full operation-level semantic equivalence, or external toolchain/revision
-policy.
+source-language equivalence, or external toolchain/revision policy.
 Production-inspector recovery for the source-matched route now covers all ten
 atomic checkpoint/pointer crash boundaries with matching first and foreign
 second generations: pre-pointer crashes retain the matching predecessor, while

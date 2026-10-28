@@ -455,6 +455,114 @@ fn matches_expected_comparison(
     ) && saved_comparison_values(saved) == Some(expected)
 }
 
+// Each cast retains both the upstream result and source SSA identity. The
+// independently validated saved program establishes operand types, so
+// matching the projected destination kind and exact operation family does
+// not require rebuilding the lowerer's SSA type state.
+const fn expected_cast_values(instruction: &InputInstruction) -> Option<(u32, u32)> {
+    let (InputInstruction::BoolToSigned { result, value, .. }
+        | InputInstruction::IntegerBitcast { result, value, .. }
+        | InputInstruction::IntegerToBool { result, value, .. }
+        | InputInstruction::SignExtendI8ToI32 { result, value, .. }
+        | InputInstruction::TruncateInteger { result, value, .. }
+        | InputInstruction::ZeroExtendInteger { result, value, .. }) = instruction else {
+        return None;
+    };
+    Some((*result, *value))
+}
+
+const fn saved_cast_values(operation: &TernaryOperation) -> Option<(u32, u32)> {
+    let (TernaryOperation::BoolToI8 { result, value, .. }
+        | TernaryOperation::BoolToI16 { result, value, .. }
+        | TernaryOperation::BoolToI32 { result, value, .. }
+        | TernaryOperation::BitcastI8ToI8 { result, value, .. }
+        | TernaryOperation::BitcastI8ToU8 { result, value, .. }
+        | TernaryOperation::BitcastU8ToI8 { result, value, .. }
+        | TernaryOperation::BitcastU8ToU8 { result, value, .. }
+        | TernaryOperation::BitcastI16ToI16 { result, value, .. }
+        | TernaryOperation::BitcastI16ToU16 { result, value, .. }
+        | TernaryOperation::BitcastU16ToI16 { result, value, .. }
+        | TernaryOperation::BitcastU16ToU16 { result, value, .. }
+        | TernaryOperation::BitcastI32ToI32 { result, value, .. }
+        | TernaryOperation::BitcastI32ToU32 { result, value, .. }
+        | TernaryOperation::BitcastU32ToI32 { result, value, .. }
+        | TernaryOperation::BitcastU32ToU32 { result, value, .. }
+        | TernaryOperation::I8ToBool { result, value, .. }
+        | TernaryOperation::U8ToBool { result, value, .. }
+        | TernaryOperation::I16ToBool { result, value, .. }
+        | TernaryOperation::U16ToBool { result, value, .. }
+        | TernaryOperation::I32ToBool { result, value, .. }
+        | TernaryOperation::U32ToBool { result, value, .. }
+        | TernaryOperation::SignExtendI8ToI16 { result, value, .. }
+        | TernaryOperation::SignExtendI8ToI32 { result, value, .. }
+        | TernaryOperation::SignExtendI16ToI32 { result, value, .. }
+        | TernaryOperation::TruncateI16ToI8 { result, value, .. }
+        | TernaryOperation::TruncateI16ToU8 { result, value, .. }
+        | TernaryOperation::TruncateI32ToI8 { result, value, .. }
+        | TernaryOperation::TruncateI32ToU8 { result, value, .. }
+        | TernaryOperation::TruncateU16ToI8 { result, value, .. }
+        | TernaryOperation::TruncateU16ToU8 { result, value, .. }
+        | TernaryOperation::TruncateU32ToI8 { result, value, .. }
+        | TernaryOperation::TruncateU32ToU8 { result, value, .. }
+        | TernaryOperation::TruncateI32ToI16 { result, value, .. }
+        | TernaryOperation::TruncateI32ToU16 { result, value, .. }
+        | TernaryOperation::TruncateU32ToI16 { result, value, .. }
+        | TernaryOperation::TruncateU32ToU16 { result, value, .. }
+        | TernaryOperation::ZeroExtendU8ToU16 { result, value, .. }
+        | TernaryOperation::ZeroExtendU8ToU32 { result, value, .. }
+        | TernaryOperation::ZeroExtendU16ToU32 { result, value, .. }) = operation else {
+        return None;
+    };
+    Some((*result, *value))
+}
+
+fn matches_expected_cast(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    let Some(expected) = expected_cast_values(instruction) else {
+        return true;
+    };
+    matches!((instruction, saved),
+        (InputInstruction::BoolToSigned { type_kind: InputScalarType::I8, .. },
+            TernaryOperation::BoolToI8 { .. })
+        | (InputInstruction::BoolToSigned { type_kind: InputScalarType::I16, .. },
+            TernaryOperation::BoolToI16 { .. })
+        | (InputInstruction::BoolToSigned { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::BoolToI32 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I8, .. },
+            TernaryOperation::BitcastI8ToI8 { .. } | TernaryOperation::BitcastU8ToI8 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U8, .. },
+            TernaryOperation::BitcastI8ToU8 { .. } | TernaryOperation::BitcastU8ToU8 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I16, .. },
+            TernaryOperation::BitcastI16ToI16 { .. } | TernaryOperation::BitcastU16ToI16 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U16, .. },
+            TernaryOperation::BitcastI16ToU16 { .. } | TernaryOperation::BitcastU16ToU16 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::BitcastI32ToI32 { .. } | TernaryOperation::BitcastU32ToI32 { .. })
+        | (InputInstruction::IntegerBitcast { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::BitcastI32ToU32 { .. } | TernaryOperation::BitcastU32ToU32 { .. })
+        | (InputInstruction::IntegerToBool { type_kind: InputScalarType::Bool, .. },
+            TernaryOperation::I8ToBool { .. } | TernaryOperation::U8ToBool { .. } | TernaryOperation::I16ToBool { .. } | TernaryOperation::U16ToBool { .. } | TernaryOperation::I32ToBool { .. } | TernaryOperation::U32ToBool { .. })
+        | (InputInstruction::SignExtendI8ToI32 { type_kind: InputScalarType::I16, .. },
+            TernaryOperation::SignExtendI8ToI16 { .. })
+        | (InputInstruction::SignExtendI8ToI32 { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::SignExtendI8ToI32 { .. } | TernaryOperation::SignExtendI16ToI32 { .. })
+        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::I8, .. },
+            TernaryOperation::TruncateI16ToI8 { .. } | TernaryOperation::TruncateI32ToI8 { .. } | TernaryOperation::TruncateU16ToI8 { .. } | TernaryOperation::TruncateU32ToI8 { .. })
+        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::U8, .. },
+            TernaryOperation::TruncateI16ToU8 { .. } | TernaryOperation::TruncateI32ToU8 { .. } | TernaryOperation::TruncateU16ToU8 { .. } | TernaryOperation::TruncateU32ToU8 { .. })
+        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::I16, .. },
+            TernaryOperation::TruncateI32ToI16 { .. } | TernaryOperation::TruncateU32ToI16 { .. })
+        | (InputInstruction::TruncateInteger { type_kind: InputScalarType::U16, .. },
+            TernaryOperation::TruncateI32ToU16 { .. } | TernaryOperation::TruncateU32ToU16 { .. })
+        | (InputInstruction::ZeroExtendInteger { type_kind: InputScalarType::U16, .. },
+            TernaryOperation::ZeroExtendU8ToU16 { .. })
+        | (InputInstruction::ZeroExtendInteger { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::ZeroExtendU8ToU32 { .. } | TernaryOperation::ZeroExtendU16ToU32 { .. })
+    ) && saved_cast_values(saved) == Some(expected)
+}
+
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
@@ -477,6 +585,7 @@ fn matches_expected_operation_spans(
                     && matches_expected_binary(current_op, saved_op)
                     && matches_expected_byte_effect(current_op, saved_op)
                     && matches_expected_comparison(current_op, saved_op)
+                    && matches_expected_cast(current_op, saved_op)
                     && projected_instruction_span(current_op).is_some_and(
                         |span| matches_source_span(span, operation_span(*saved_op)),
                     )
@@ -485,10 +594,9 @@ fn matches_expected_operation_spans(
         && matches_source_span(return_span, operation_span(*saved_return))
 }
 
-// This comparison reuses scalar/binary identity without re-lowering: resuming
-// a large job must not repeat the work stored in its checkpoint. Remaining
-// nonconstant operations still have structural/source-span admission, while
-// the upstream source digest remains caller-authenticated.
+// Bind all admitted scalar, binary, byte, comparison and cast operations
+// without re-lowering the saved work. The upstream source digest remains
+// caller-authenticated; this is not toolchain or revision verification.
 fn matches_expected_functions(
     program: &TernaryProgram,
     expected: &TypedIrInput,
@@ -528,8 +636,9 @@ fn matches_expected_functions(
 /// The progress inspector still verifies checkpoint-envelope compatibility,
 /// and canonical stage admission validates the extracted ternary program.
 /// This additional check binds that program to separately supplied expected
-/// module and function provenance; it does not authenticate the source digest,
-/// establish full operation-level equivalence, or replace toolchain policy.
+/// module, function and supported operation identity; it does not authenticate
+/// the source digest, prove source-language equivalence, or replace toolchain
+/// policy.
 ///
 /// # Errors
 ///
