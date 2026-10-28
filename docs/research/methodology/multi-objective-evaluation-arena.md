@@ -128,8 +128,9 @@ same arena analysis engine. It requires the registered experiment run and
 benchmark protocol to agree on challenge, host, raw path, outcome, target
 profile, and pairing. It checks complete repeated strategy pairs, registered
 quality-map fingerprints, complete registered raw CSV schemas, exact
-structural counts, and source-byte hashes. An explicit evidence-status marker
-states `source-reported-not-reverified`.
+structural counts, and source-byte hashes. The independent retained
+`source-commit.txt` must agree with the manifest's recorded Git revision.
+An explicit evidence-status marker states `source-reported-not-reverified`.
 
 The prefix-decomposition study reports 8,836 versus 8,742 verifier calls,
 with baseline/candidate timing medians of 831,921,051 and 835,180,632 ns.

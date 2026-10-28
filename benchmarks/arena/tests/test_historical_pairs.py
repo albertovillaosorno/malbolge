@@ -67,7 +67,12 @@ def _result(name: str) -> dict:
 def _copy_source(tmp_path: Path, name: str) -> Path:
     directory = tmp_path / TEMP
     directory.mkdir(parents=True)
-    for filename in ("experiment.toml", "benchmark.toml", "raw.csv"):
+    for filename in (
+        "experiment.toml",
+        "benchmark.toml",
+        "raw.csv",
+        "source-commit.txt",
+    ):
         original = REPO / BASE / name / filename
         destination = directory / filename
         contents = original.read_bytes().replace(
@@ -145,7 +150,12 @@ def test_exact_source_fingerprints_reproduce(name: str) -> None:
         filename: sha256(
             (REPO / BASE / name / filename).read_bytes()
         ).hexdigest()
-        for filename in ("benchmark.toml", "experiment.toml", "raw.csv")
+        for filename in (
+            "benchmark.toml",
+            "experiment.toml",
+            "raw.csv",
+            "source-commit.txt",
+        )
     }
 
 
@@ -198,6 +208,13 @@ def test_exact_source_fingerprints_reproduce(name: str) -> None:
             "columns differ",
         ),
         (REUSE, "raw.csv", "9dfe349bf", "1111111111", "quality map"),
+        (
+            PREFIX,
+            "source-commit.txt",
+            "ed6825af65aa",
+            "000000000000",
+            "source-commit pin",
+        ),
         (
             PREFIX,
             "raw.csv",

@@ -190,6 +190,8 @@ def _source_identity(
     manifest: experiment_manifest.ExperimentManifest,
     protocol: benchmark_protocol.BenchmarkProtocolRecord,
     relative: str,
+    *,
+    source_commit: str,
 ) -> None:
     run = manifest.run
     _require(run is not None, "historical paired comparison requires a run")
@@ -202,6 +204,10 @@ def _source_identity(
     _require(
         run.outcome == RUN_SUCCEEDED,
         "historical paired run must report success",
+    )
+    _require(
+        source_commit == run.commit + "\n",
+        "historical retained source-commit pin differs from manifest run",
     )
     _require(
         run.accelerator == protocol.accelerator,
@@ -396,10 +402,16 @@ class _StudySources:
     protocol: benchmark_protocol.BenchmarkProtocolRecord
     records: list[dict[str, str]]
     fingerprints: dict[str, str]
+    source_commit: str
 
 
 def _load_source(root: Path, relative: str) -> _StudySources:
-    names = ("experiment.toml", "benchmark.toml", "raw.csv")
+    names = (
+        "experiment.toml",
+        "benchmark.toml",
+        "raw.csv",
+        "source-commit.txt",
+    )
     sources = {name: _source(root, f"{relative}/{name}") for name in names}
     manifest_text = sources["experiment.toml"][0]
     benchmark_text = sources["benchmark.toml"][0]
@@ -418,6 +430,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
             registered_fields=REGISTERED_RAW_COLUMNS[extension_name],
         ),
         fingerprints={name: sources[name][1] for name in names},
+        source_commit=sources["source-commit.txt"][0],
     )
 
 
@@ -524,7 +537,12 @@ def _admitted_document(
 
 def _build_report(root: Path, relative: str) -> dict[str, Any]:
     sources = _load_source(root, relative)
-    _source_identity(sources.manifest, sources.protocol, relative)
+    _source_identity(
+        sources.manifest,
+        sources.protocol,
+        relative,
+        source_commit=sources.source_commit,
+    )
     baseline, candidate = _declared_strategies(sources)
     document = _admitted_document(sources, relative)
     report = analyze.analyze(analyze.parse_document(json.dumps(document)))

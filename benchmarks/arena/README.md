@@ -185,9 +185,10 @@ root, with an individual 4 MiB input cap. It reuses the version-one experiment
 and benchmark-protocol parsers, requires the exact paired trial population,
 checks preregistered baselines, matched workload/host/profile identities,
 and compares retained quality-map and structural counts against the recorded
-measurement declarations. Only the registered full CSV column sets for those
-two formats are admitted. It fingerprints the exact experiment, benchmark,
-and raw source bytes in `historical_evidence.source_sha256`.
+measurement declarations. The independent retained `source-commit.txt` pin
+must agree with the experiment-run commit. Only the registered CSV column sets
+are admitted. It fingerprints the exact experiment, benchmark, raw and source
+commit file bytes in `historical_evidence.source_sha256`.
 
 The prefix-decomposition record has a baseline timing median of 831,921,051 ns
 and a candidate timing median of 835,180,632 ns. Prefix decomposition reports
