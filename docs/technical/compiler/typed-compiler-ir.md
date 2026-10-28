@@ -221,9 +221,12 @@ artifact. They require exact ABI, source path/digest, target profile, ordered
 function count/names, full function source spans, and the current
 no-argument `i32` function signature through the admitted type table. The
 expected frontend must also pass the same artifact ID, Clang version/target,
-language, and schema-version identity gate as fresh lowering, without
-re-running lowering or authenticating the checkpoint's toolchain. The
-unrestricted route retains its original behavior. Matched frontend evidence
+language, and schema-version identity gate as fresh lowering. Each expected
+function must also pass the supported declaration/constant-range gate (without
+rebuilding IR), rejecting unsupported storage, linkage, inline, definition,
+and out-of-range literals. These checks do not authenticate the checkpoint's
+toolchain or prove operation-level equivalence. The unrestricted route
+retains its original behavior. Matched frontend evidence
 converges with fresh lowering, while valid foreign checkpoints and caller
 module/function provenance
 drift, including a valid changed-return-signature checkpoint with unchanged

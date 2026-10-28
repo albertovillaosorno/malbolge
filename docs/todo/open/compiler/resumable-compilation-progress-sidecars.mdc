@@ -284,6 +284,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   The expected frontend header must also pass fresh lowering's exact artifact,
   Clang target/version, language, and schema identity check, without lowering
   operations; five independent header-drift cases fail on both resume routes.
+  Expected functions also share the fresh lowering gate for supported
+  definition/inline/linkage/storage forms and valid signed integer constants;
+  five unsupported function changes now fail through direct and product resume
+  without rebuilding typed-IR instructions.
   Real inspector-backed checks reject valid foreign-source state and caller
   provenance drift without changing unrestricted resume. An independently
   admitted unsigned-return checkpoint also rejects despite identical source

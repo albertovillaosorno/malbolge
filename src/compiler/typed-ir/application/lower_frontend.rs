@@ -131,10 +131,11 @@ const fn convert_span(span: FrontendSpan) -> SourceSpan {
     )
 }
 
-fn lower_function(
-    index: usize,
+// Shared with source-matched resume: ensure the caller's frontend function
+// is in the supported semantic slice without building new IR instructions.
+pub(super) fn admit_frontend_function(
     function: &FrontendReturnIntegerFunction,
-) -> Result<Function, FrontendLoweringError> {
+) -> Result<i32, FrontendLoweringError> {
     if function.definition() != REQUIRED_DEFINITION
         || function.inline_specified()
         || function.linkage() != REQUIRED_LINKAGE
@@ -144,13 +145,19 @@ fn lower_function(
     {
         return Err(FrontendLoweringError::UnsupportedSemantics);
     }
+    function.constant_decimal().parse::<i32>().map_err(|_error| {
+        FrontendLoweringError::IntegerConstant
+    })
+}
+
+fn lower_function(
+    index: usize,
+    function: &FrontendReturnIntegerFunction,
+) -> Result<Function, FrontendLoweringError> {
+    let value = admit_frontend_function(function)?;
     let function_id = u32::try_from(index)
         .map(FunctionId::new)
         .map_err(|_error| FrontendLoweringError::UnsupportedSemantics)?;
-    let value = function
-        .constant_decimal()
-        .parse::<i32>()
-        .map_err(|_error| FrontendLoweringError::IntegerConstant)?;
     let instruction = LocatedInstruction::new(
         Instruction::ConstantInteger {
             constant: IntegerConstant::new(32, Vec::from(value.to_le_bytes())),

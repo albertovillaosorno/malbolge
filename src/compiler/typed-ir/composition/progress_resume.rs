@@ -47,7 +47,7 @@ use super::frontend_semantics::{
     FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
     FrontendSpan,
 };
-use super::lower_frontend::validate_identity;
+use super::lower_frontend::{admit_frontend_function, validate_identity};
 use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
 use super::stage::{
@@ -162,7 +162,7 @@ fn matches_expected_function_signature(
     function: &Function,
     source: &FrontendReturnIntegerFunction,
 ) -> bool {
-    if source.signature() != "fn()->i32" || source.value_type() != "i32" {
+    if admit_frontend_function(source).is_err() {
         return false;
     }
     let function_type = saved.types().iter().find(|entry| {
@@ -205,7 +205,8 @@ fn matches_expected_frontend(
 ///
 /// This check matches module and ordered function provenance after complete
 /// checkpoint admission, including the declared function return ABI and the
-/// frontend format/toolchain header, without re-running frontend lowering.
+/// frontend format/toolchain header and supported function form, without
+/// re-running frontend lowering.
 /// It does not authenticate the source digest, compare function instructions,
 /// or replace revision/toolchain policy.
 ///

@@ -1549,15 +1549,27 @@ fn changed_frontend_function(
 ) -> FrontendReturnIntegerFunction {
     FrontendReturnIntegerFunction::new(FrontendReturnIntegerFunctionSpec {
         body_span: function.body_span(),
-        constant_decimal: String::from(function.constant_decimal()),
-        definition: String::from(function.definition()),
+        constant_decimal: if field == 19 {
+            String::from("4294967296")
+        } else {
+            String::from(function.constant_decimal())
+        },
+        definition: if field == 15 {
+            String::from("declaration")
+        } else {
+            String::from(function.definition())
+        },
         function_span: if field == 7 {
             frontend_span(1207, 1, 1235, 28)
         } else {
             function.function_span()
         },
-        inline_specified: function.inline_specified(),
-        linkage: String::from(function.linkage()),
+        inline_specified: field == 16 || function.inline_specified(),
+        linkage: if field == 17 {
+            String::from("internal")
+        } else {
+            String::from(function.linkage())
+        },
         name: if field == 6 {
             format!("{}-foreign", function.name())
         } else {
@@ -1569,7 +1581,11 @@ fn changed_frontend_function(
         } else {
             String::from(function.signature())
         },
-        storage_class: String::from(function.storage_class()),
+        storage_class: if field == 18 {
+            String::from("static")
+        } else {
+            String::from(function.storage_class())
+        },
         value_span: function.value_span(),
         value_type: if field == 9 {
             String::from("u32")
@@ -1604,7 +1620,7 @@ fn different_frontend_provenance(
         5 => spec.functions.push(frontend_function(
             "fn()->i32", "i32", "7",
         )),
-        6..=9 => {
+        6..=9 | 15..=19 => {
             let original = spec.functions.first()
                 .ok_or_else(|| String::from("frontend function missing"))?;
             let changed = changed_frontend_function(original, field);
@@ -1627,13 +1643,19 @@ fn assert_foreign_frontend_rejected(
     inspector: &Path,
     golden: &Path,
 ) -> Result<(), String> {
-    for field in 0u8..15u8 {
+    for field in 0u8..20u8 {
         let foreign = different_frontend_provenance(expected, field)?;
         if field >= 10 {
             let fresh = lower_frontend_artifact(&foreign);
-            if fresh != Err(FrontendLoweringError::Identity) {
+            let wanted = match field {
+                10..=14 => FrontendLoweringError::Identity,
+                15..=18 => FrontendLoweringError::UnsupportedSemantics,
+                19 => FrontendLoweringError::IntegerConstant,
+                _ => return Err(format!("unknown frontend field {field}")),
+            };
+            if fresh != Err(wanted) {
                 return Err(format!(
-                    "invalid frontend header {field} lowered: {fresh:?}"
+                    "invalid frontend {field} lowered: {fresh:?}"
                 ));
             }
         }
