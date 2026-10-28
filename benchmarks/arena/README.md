@@ -208,3 +208,38 @@ Every projected trial is **reported verified** from the source manifest and
 quality-map identity, not independently re-verified by this adapter. Reports
 mark the evidence as `source-reported-not-reverified`. No new
 measurements, semantic proof, or capacity scaling claim is created.
+
+## Optional trial-scoped run manifests
+
+The version-one experiment manifest parser admits aggregate run records, so
+an identity-only preflight cannot tell whether a second reported repetition
+had a distinct recorded run. For an additional *source-reported* per-trial
+binding, add `--require-trial-run-identity` to the `benchmarks.arena.evidence`
+command. This implies `--require-raw-rows`, whether or not it is explicitly
+supplied, and requires each observation to reference a distinct experiment-run
+manifest. Each such manifest must retain the governed core run fields and add
+this version-one extension:
+
+```toml
+[arena_trial]
+schema_version = 1
+trial = 0
+raw_sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+```
+
+`trial` is the exact nonnegative observation repetition index, not the
+challenge seed or number of retained repetitions. `raw_sha256` is the
+lowercase SHA-256 of the complete referenced CSV file's actual bytes. It
+must agree with the inspected `arena-raw-v1` file, whose complete row set
+must independently match the admitted JSON observations. A single raw file
+may contain several trials, but each run manifest is specific to just one
+trial; duplicate manifest references, changed file bytes, unmatched trial
+numbers, invalid extension schema, and missing raw evidence are rejected.
+
+A matching recorded digest proves only that a producer-linked manifest and
+raw file are consistent. Neither the producer's measurements nor the
+reported independent verifier verdict become trusted by this preflight.
+Existing research projects with one aggregate run manifest covering multiple
+repetitions should continue to use the identity-only or raw-rows checks until
+they actually produce source-pinned per-trial run records. Do not split or
+fabricate aggregate provenance merely to satisfy the stronger mode.

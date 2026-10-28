@@ -47,6 +47,7 @@ from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import raw_samples
+from benchmarks.arena import trial_runs
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
@@ -111,13 +112,19 @@ def regular_path(
 def _manifest(
     root: Path,
     relative: str,
-) -> experiment_manifest.ExperimentManifest:
+    *,
+    require_trial: bool,
+) -> _ManifestLink:
     path = regular_path(root, relative, limit=MAX_MANIFEST_BYTES)
     with path.open("rb") as stream:
         data = stream.read(MAX_MANIFEST_BYTES + 1)
     if len(data) > MAX_MANIFEST_BYTES:
         _fail(f"evidence exceeds byte limit: {relative}")
-    return experiment_manifest.parse_manifest(data.decode("utf-8"))
+    text = data.decode("utf-8")
+    return _ManifestLink(
+        manifest=experiment_manifest.parse_manifest(text),
+        trial=(trial_runs.parse_trial_run(text) if require_trial else None),
+    )
 
 
 def _compare_identity(
@@ -167,24 +174,62 @@ def _compare_run(
         _fail("experiment run outcome does not match arena trial")
 
 
+@dataclass(frozen=True, slots=True)
+class _ManifestLink:
+    manifest: experiment_manifest.ExperimentManifest
+    trial: trial_runs.TrialRun | None
+
+
 @dataclass(slots=True)
 class _EvidenceContext:
     root: Path
     study: dict[str, Any]
-    manifests: dict[str, experiment_manifest.ExperimentManifest]
+    manifests: dict[str, _ManifestLink]
     samples: set[str]
+    require_trial: bool
+    claimed_trial_manifests: set[str]
 
 
 def _admit_observation(row: dict[str, Any], context: _EvidenceContext) -> None:
     manifest_path = row["experiment_manifest"]
     if manifest_path not in context.manifests:
         context.manifests[manifest_path] = _manifest(
-            context.root, manifest_path
+            context.root,
+            manifest_path,
+            require_trial=context.require_trial,
         )
-    _compare_identity(row, context.study, context.manifests[manifest_path])
+    link = context.manifests[manifest_path]
+    _compare_identity(row, context.study, link.manifest)
+    if context.require_trial:
+        _compare_trial(row, manifest_path, link, context=context)
     sample = row["raw_sample"]
     _ = regular_path(context.root, sample)
     context.samples.add(sample)
+
+
+def _compare_trial(
+    row: dict[str, Any],
+    path: str,
+    link: _ManifestLink,
+    *,
+    context: _EvidenceContext,
+) -> None:
+    if path in context.claimed_trial_manifests:
+        _fail(f"arena_trial manifest cited for multiple trials: {path}")
+    if link.trial is None or link.trial.trial != row["trial"]:
+        _fail(f"arena_trial repetition differs from reported trial: {path}")
+    context.claimed_trial_manifests.add(path)
+
+
+def _trial_digests(
+    context: _EvidenceContext,
+    contents: dict[str, str],
+    document: dict[str, Any],
+) -> None:
+    for row in document["observations"]:
+        trial = context.manifests[row["experiment_manifest"]].trial
+        if trial is None or trial.raw_sha256 != contents[row["raw_sample"]]:
+            _fail("arena_trial retained raw SHA-256 differs from run manifest")
 
 
 def _raw_contents(
@@ -203,11 +248,26 @@ def _raw_contents(
     return contents
 
 
+def _checked_contents(
+    document: dict[str, Any],
+    context: _EvidenceContext,
+    *,
+    require_raw_rows: bool,
+) -> dict[str, str] | None:
+    if not (require_raw_rows or context.require_trial):
+        return None
+    contents = _raw_contents(document, context.root)
+    if context.require_trial:
+        _trial_digests(context, contents, document)
+    return contents
+
+
 def validate_links(
     document: dict[str, Any],
     root: Path,
     *,
     require_raw_rows: bool = False,
+    require_trial_run_identity: bool = False,
 ) -> dict[str, Any]:
     """Cross-check reported trials with bounded canonical run files.
 
@@ -218,17 +278,29 @@ def validate_links(
         EvidenceError: A linked identity or retained file is inadmissible.
 
     """
-    context = _EvidenceContext(root, document["study"], {}, set())
+    context = _EvidenceContext(
+        root,
+        document["study"],
+        {},
+        set(),
+        require_trial_run_identity,
+        set(),
+    )
     try:
         for row in document["observations"]:
             _admit_observation(row, context)
-        contents = _raw_contents(document, root) if require_raw_rows else None
+        contents = _checked_contents(
+            document,
+            context,
+            require_raw_rows=require_raw_rows,
+        )
     except (
         OSError,
         UnicodeError,
         RuntimeError,
         experiment_manifest.ExperimentManifestError,
         raw_samples.RawSampleError,
+        trial_runs.TrialRunError,
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
@@ -248,6 +320,13 @@ def validate_links(
             "Reported raw CSV identity and metrics match; no provenance "
             "authentication or independent semantic oracle replay."
         )
+    if require_trial_run_identity:
+        report["trial_run_links_checked"] = len(context.claimed_trial_manifests)
+        report["scope"] = (
+            "Versioned per-trial run identity, matching retained CSV rows, "
+            "and source-reported raw-byte hashes; no verifier replay or "
+            "independent measurement authentication."
+        )
     return report
 
 
@@ -262,6 +341,7 @@ def main() -> int:
     parser.add_argument("study", type=Path)
     parser.add_argument("--root", type=Path, default=Path(__file__).parents[2])
     parser.add_argument("--require-raw-rows", action="store_true")
+    parser.add_argument("--require-trial-run-identity", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
@@ -269,6 +349,7 @@ def main() -> int:
             document,
             args.root,
             require_raw_rows=args.require_raw_rows,
+            require_trial_run_identity=args.require_trial_run_identity,
         )
         report = analyze.analyze(document)
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:

@@ -80,6 +80,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   exact metric to its JSON report, including failure outcomes. The analyzer
   returns inspected raw-byte SHA-256 fingerprints and rejects mismatches,
   missing rows, duplicates and malformed CSV under a bounded input limit.
+- A strict opt-in version-one `arena_trial` manifest extension now binds a
+  unique recorded run to each repetition index and retained raw-file SHA-256.
+  This mode implies complete `arena-raw-v1` row checks, rejects aggregate-run
+  reuse, and preserves older aggregate-manifest workflows without pretending
+  that a producer-reported digest or outcome is independently certified.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

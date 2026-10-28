@@ -61,6 +61,8 @@ RAW_HASH_FIELD = "raw_file_sha256"
 NO_AUTHENTICATION = "no provenance authentication"
 NO_RAW_DIGEST = "no content digest verification"
 CSV_HEADER_ERROR = "CSV header"
+NO_VERIFIER_REPLAY = "no verifier replay"
+REPETITION_DIAGNOSTIC = "repetition"
 INVALID_RAW_ROW = r"raw|evidence"
 MISSING = "missing"
 DUPLICATE = "duplicate"
@@ -377,3 +379,219 @@ def test_large_integer_cost_matches_exact_raw_digits(tmp_path: Path) -> None:
     record["metrics"]["artifact_bytes"] += 1
     with pytest.raises(evidence.EvidenceError, match=ROW_MISMATCH):
         _check(doc, tmp_path)
+
+
+def _bind_trial_extensions(doc: dict[str, Any], root: Path) -> None:
+    """Bind each synthetic run record to its exact inspected CSV bytes."""
+    written: set[str] = set()
+    for row in doc["observations"]:
+        if row["experiment_manifest"] in written:
+            continue
+        written.add(row["experiment_manifest"])
+        path = root / row["experiment_manifest"]
+        raw = (root / row["raw_sample"]).read_bytes()
+        with path.open("a", encoding="utf-8") as stream:
+            _ = stream.write(
+                "\n[arena_trial]\nschema_version = 1\n"
+                f"trial = {row["trial"]}\n"
+                f'raw_sha256 = "{sha256(raw).hexdigest()}"\n'
+            )
+
+
+def _strict_check(doc: dict[str, Any], root: Path) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(doc))
+    return evidence.validate_links(
+        admitted,
+        root,
+        require_trial_run_identity=True,
+    )
+
+
+def test_strict_trial_link_admits_versioned_run_and_complete_raw(
+    tmp_path: Path,
+) -> None:
+    """Strict mode binds run identity, trial index, and matching CSV digest."""
+    doc = _setup(tmp_path)
+    _bind_trial_extensions(doc, tmp_path)
+    report = _strict_check(doc, tmp_path)
+    assert report["trial_run_links_checked"] == ALGORITHM_COUNT
+    assert report["raw_rows_matched"] == ALGORITHM_COUNT
+    assert NO_VERIFIER_REPLAY in report["scope"]
+    # The historical optional mode still works without the new extension.
+    assert _check(doc, tmp_path)["raw_rows_matched"] == ALGORITHM_COUNT
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "diagnostic"),
+    [
+        ("schema_version = 1", "schema_version = 2", "schema_version"),
+        ("trial = 0", "trial = 1", "repetition"),
+        ("trial = 0", "trial = true", "nonnegative integer"),
+        ("trial = 0", "trial = -1", "nonnegative integer"),
+        ("[arena_trial]", "[unrelated_extension]", "arena_trial requires"),
+        ("trial = 0", "trial = 0\nunexpected = 1", "exact"),
+    ],
+)
+def test_invalid_trial_run_extension_rejected(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    *,
+    diagnostic: str,
+) -> None:
+    """Strict preflight rejects schema drift without certifying any outcome."""
+    doc = _setup(tmp_path)
+    _bind_trial_extensions(doc, tmp_path)
+    manifest = tmp_path / doc["observations"][0]["experiment_manifest"]
+    contents = manifest.read_text(encoding="utf-8")
+    header, marker, extension = contents.partition("[arena_trial]")
+    _ = manifest.write_text(
+        header + marker.replace(old, new) + extension.replace(old, new),
+        encoding="utf-8",
+    )
+    with pytest.raises(evidence.EvidenceError, match=diagnostic):
+        _strict_check(doc, tmp_path)
+
+
+def test_missing_trial_extension_is_not_silent_in_strict_mode(
+    tmp_path: Path,
+) -> None:
+    """Opt-in trial identity cannot be substituted by an aggregate manifest."""
+    doc = _setup(tmp_path)
+    with pytest.raises(evidence.EvidenceError, match="arena_trial requires"):
+        _strict_check(doc, tmp_path)
+    admitted = analyze.parse_document(json.dumps(doc))
+    assert (
+        evidence.validate_links(admitted, tmp_path)["manifest_links_checked"]
+        == ALGORITHM_COUNT
+    )
+
+
+def test_strict_trial_link_rejects_raw_change_after_manifest_creation(
+    tmp_path: Path,
+) -> None:
+    """Even an internally consistent report fails if recorded bytes drift."""
+    doc = _setup(tmp_path)
+    _bind_trial_extensions(doc, tmp_path)
+    row = doc["observations"][0]
+    row["metrics"]["elapsed_ns"] = 77
+    _ = (tmp_path / row["raw_sample"]).write_bytes(_render([row]))
+    with pytest.raises(evidence.EvidenceError, match="raw SHA-256"):
+        _strict_check(doc, tmp_path)
+
+
+def test_one_aggregate_manifest_cannot_claim_distinct_trial_repetitions(
+    tmp_path: Path,
+) -> None:
+    """No single manifest may masquerade as independent per-trial runs."""
+    doc = _setup(tmp_path)
+    for name in ("baseline", "candidate"):
+        first = next(
+            row for row in doc["observations"] if row["algorithm"] == name
+        )
+        second = copy.deepcopy(first)
+        second["trial"] = 1
+        doc["observations"].append(second)
+        _ = (tmp_path / first["raw_sample"]).write_bytes(
+            _render([first, second]),
+        )
+    _bind_trial_extensions(doc, tmp_path)
+    with pytest.raises(evidence.EvidenceError, match="multiple trials"):
+        _strict_check(doc, tmp_path)
+
+
+def test_distinct_run_manifests_can_reference_one_multi_trial_raw_file(
+    tmp_path: Path,
+) -> None:
+    """All run records can bind the full retained CSV without hidden rows."""
+    doc = _setup(tmp_path)
+    for name in ("baseline", "candidate"):
+        first = next(
+            row for row in doc["observations"] if row["algorithm"] == name
+        )
+        second = copy.deepcopy(first)
+        second["trial"] = 1
+        old_manifest = tmp_path / first["experiment_manifest"]
+        second_path = f"evidence/{name}-trial1.toml"
+        _ = (tmp_path / second_path).write_bytes(old_manifest.read_bytes())
+        second["experiment_manifest"] = second_path
+        doc["observations"].append(second)
+        _ = (tmp_path / first["raw_sample"]).write_bytes(
+            _render([first, second]),
+        )
+    _bind_trial_extensions(doc, tmp_path)
+    result = _strict_check(doc, tmp_path)
+    assert result["trial_run_links_checked"] == len(doc["observations"])
+    assert result["raw_sample_paths_checked"] == ALGORITHM_COUNT
+
+
+def test_strict_evidence_cli_fails_closed_on_unbound_trial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A declined strict trial link must never print partial capacity data."""
+    doc = _setup(tmp_path)
+    _bind_trial_extensions(doc, tmp_path)
+    study = tmp_path / "study.json"
+    _ = study.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(study),
+            "--root",
+            str(tmp_path),
+            "--require-trial-run-identity",
+        ],
+    )
+    assert evidence.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert (
+        report["evidence_preflight"]["trial_run_links_checked"]
+        == ALGORITHM_COUNT
+    )
+    manifest = tmp_path / doc["observations"][0]["experiment_manifest"]
+    _ = manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("trial = 0", "trial = 1"),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert REPETITION_DIAGNOSTIC in result.err
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        'raw_sha256 = "short"',
+        'raw_sha256 = "' + "F" * analyze.SHA256_HEX_LENGTH + '"',
+        "raw_sha256 = 1234",
+        "unexpected_field = true",
+    ],
+)
+def test_strict_run_raw_digest_requires_exact_declared_sha256(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    """Malformed or padded digest declarations never pass manifest binding."""
+    doc = _setup(tmp_path)
+    _bind_trial_extensions(doc, tmp_path)
+    manifest = tmp_path / doc["observations"][0]["experiment_manifest"]
+    contents = manifest.read_text(encoding="utf-8")
+    declared = (
+        'raw_sha256 = "'
+        + sha256(
+            (tmp_path / doc["observations"][0]["raw_sample"]).read_bytes()
+        ).hexdigest()
+        + '"'
+    )
+    _ = manifest.write_text(
+        contents.replace(declared, replacement),
+        encoding="utf-8",
+    )
+    with pytest.raises(evidence.EvidenceError, match="arena_trial"):
+        _strict_check(doc, tmp_path)

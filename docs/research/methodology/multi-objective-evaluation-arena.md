@@ -101,6 +101,14 @@ matches the reported trial identities, outcomes and exact integer costs,
 including failed trials. SHA-256 fingerprints of the inspected file bytes
 support later reproducibility checks.
 
+The additional opt-in `--require-trial-run-identity` mode extends each
+experiment run manifest with a versioned `[arena_trial]` table containing the
+exact trial number and SHA-256 of the full referenced `arena-raw-v1` CSV. It
+requires one distinct run manifest per observation and automatically enables
+complete raw-row checking; one unscoped aggregate run cannot stand in for
+multiple purportedly independent repetitions. These producer-declared
+bindings are not proof of physical replication or verifier execution.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -171,6 +179,10 @@ The original study records remain the result authority.
 - `benchmarks/arena/raw_samples.py` optionally matches retained CSV content
   exactly against the reported trial set. Synthetic regressions cover missing,
   extra, duplicate and mismatched rows, plus malformed CSV inputs.
+- `benchmarks/arena/trial_runs.py` admits a versioned per-trial manifest
+  extension under strict opt-in preflight. Synthetic regressions check
+  distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
+  trial/schema metadata, aggregate-manifest reuse, and fail-closed CLI output.
 - `benchmarks/arena/historical_pairs.py` replays the two retained classic
   five-pair research sources into arena reports. Source-backed regressions
   assert exact observed medians, paired results, fingerprints, and rejection
