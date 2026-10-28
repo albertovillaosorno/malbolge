@@ -353,6 +353,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   negative selectors also distinguish inspector launch, inspector rejection,
   and malformed canonical checkpoint bytes from source mismatch.
   A two-function checkpoint proves the last function is source-bound too.
+  The source-bound ternary selector now rejects a caller projection containing
+  any globals or pending proof obligations, matching fresh lowering's
+  `UnsupportedModule` boundary even for a valid matching checkpoint.
   A separately valid same-source checkpoint changes an unsigned 32-bit
   return to signed; unrestricted recovery accepts it, while both source-
   bound selectors reject the changed result category.

@@ -201,7 +201,9 @@ pub fn resume_ternary_from_progress_for_source(
 ) -> Result<TernaryProgram, TernaryProgressCheckpointError> {
     let program =
         resume_ternary_from_progress(interpreter, inspector, progress)?;
-    if program.abi_id != expected.abi_id
+    if expected.global_count != 0
+        || expected.proof_obligation_count != 0
+        || program.abi_id != expected.abi_id
         || program.input_format_version != expected.input_format_version
         || program.source_id != expected.source_id
         || program.source_sha256 != expected.source_sha256

@@ -924,6 +924,8 @@ independently admitted ternary program with the caller's admitted typed-IR
 projection for exact source path/digest, ABI, typed-IR version, target
 profile, ordered function count/IDs/names, complete function source spans, and
 function return category derived from the last admitted ternary operation.
+It rejects expected typed-IR modules containing globals or proof obligations,
+which the fresh lowerer cannot represent in this target-model slice.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

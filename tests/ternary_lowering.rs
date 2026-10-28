@@ -12129,6 +12129,51 @@ fn ternary_progress_for_source_checks_every_saved_function()
 }
 
 #[test]
+fn ternary_progress_for_source_rejects_unsupported_expected_module()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower baseline: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&saved)
+        .map_err(|error| format!("encode baseline: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("unsupported-module", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        ) != Ok(saved.clone()) {
+            return Err(String::from("valid baseline checkpoint rejected"));
+        }
+        assert_source_matched_ternary_success(
+            &expected, &saved, &inspector, (&interpreter, &progress),
+        )?;
+        for field in 0u8..2 {
+            let mut changed = expected.clone();
+            if field == 0 {
+                changed.global_count = 1;
+            } else {
+                changed.proof_obligation_count = 1;
+            }
+            let fresh = lower_typed_ir(&changed);
+            if fresh != Err(TernaryLoweringError::UnsupportedModule) {
+                return Err(format!("unsupported {field} lowered: {fresh:?}"));
+            }
+            assert_source_matched_ternary_failure(
+                &changed, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )?;
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove unsupported fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {
     let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;
