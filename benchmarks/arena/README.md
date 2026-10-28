@@ -57,7 +57,8 @@ input has one `study` and a nonempty `observations` array:
 This is **an illustrative schema example, not a benchmark result**. A real
 comparison needs matched observations from at least two algorithms and the
 baseline. All algorithms in each family/version/difficulty cohort must include
-the same `(seed, workload_sha256, trial)` combinations. Duplicate trials,
+the same `(seed, workload_sha256, trial)` combinations and the same named
+verifier for each matched case. Duplicate trials,
 unknown metrics, absent declared successful-run costs, mismatched cohorts,
 noncanonical paths, unsupported outcomes, malformed JSON, and an algorithm
 claiming to have verified its own successful output are rejected.
@@ -116,6 +117,16 @@ authenticate a Git commit; real conclusions still require separate validation.
 The `capacity_curve` reports attempts, verified attempts, exact success
 fractions, failure counts, and the median of **successful** samples for each
 objective. A median is `[numerator, denominator]`, not a rounded float.
+
+It also reports `median_absolute_deviation` (unscaled median absolute
+deviation) and `successful_range` (minimum and maximum) for every declared
+cost, conditional on verified success. Missing successes yield null
+conditional statistics, not fabricated zeroes. The `all_attempt_elapsed_ns`
+record reports exact median, median absolute deviation, and observed range
+across **every** attempt, including rejection, exhaustion, and no solution.
+These are descriptive statistics, not confidence intervals or proof of
+independent trials. Statistical uncertainty and replication are governed by
+the separate benchmark protocol before any research conclusion is accepted.
 `pareto_frontiers` compares verified-count and successful-only median costs
 within an exactly matched difficulty cohort. Algorithms without a verified
 trial remain in the curve but cannot enter the conditional frontier.

@@ -55,6 +55,7 @@ CANDIDATE = "candidate"
 BASELINE = "baseline"
 FIRST_DIFFICULTY = 1
 SECOND_DIFFICULTY = 2
+SECOND_SEED = 4
 TIME_DIMENSION = "time"
 LARGE_INPUT_DIAGNOSTIC = "exceeds 16 MiB"
 NON_FILE_DIAGNOSTIC = "regular file"
@@ -434,3 +435,88 @@ def test_cli_rejects_large_and_linked_input(
     second = capsys.readouterr()
     assert NON_FILE_DIAGNOSTIC in second.err
     assert not second.out
+
+
+def test_exact_even_sample_dispersion_and_failure_inclusive_elapsed() -> None:
+    """All-attempt time exposes failure cost ignored by successful medians."""
+    document = _document()
+    for row in document["observations"]:
+        if row["algorithm"] == BASELINE and row["case"]["difficulty"] == 1:
+            row["metrics"]["elapsed_ns"] = 10 + row["case"]["seed"] - 3
+    candidate = next(
+        row
+        for row in document["observations"]
+        if row["algorithm"] == CANDIDATE
+        and row["case"]["difficulty"] == SECOND_DIFFICULTY
+        and row["outcome"] != analyze.VERIFIED
+    )
+    candidate["metrics"]["elapsed_ns"] = 110
+    report = _run(document)
+    baseline = _point(report, BASELINE, FIRST_DIFFICULTY)
+    assert baseline["medians"]["elapsed_ns"] == [21, 2]
+    assert baseline["median_absolute_deviation"]["elapsed_ns"] == [1, 2]
+    assert baseline["successful_range"]["elapsed_ns"] == [10, 11]
+    point = _point(report, CANDIDATE, SECOND_DIFFICULTY)
+    assert point["medians"]["elapsed_ns"] == [10, 1]
+    assert point["median_absolute_deviation"]["elapsed_ns"] == [0, 1]
+    assert point["successful_range"]["elapsed_ns"] == [10, 10]
+    assert point["all_attempt_elapsed_ns"] == {
+        "median": [60, 1],
+        "median_absolute_deviation": [50, 1],
+        "range": [10, 110],
+    }
+
+
+def test_zero_success_still_reports_all_attempt_dispersion() -> None:
+    """Null conditional statistics never discard unsuccessful elapsed time."""
+    document = _document()
+    failures = [
+        row
+        for row in document["observations"]
+        if row["algorithm"] == CANDIDATE
+        and row["case"]["difficulty"] == SECOND_DIFFICULTY
+    ]
+    for index, row in enumerate(failures):
+        row["outcome"] = "resource_exhausted"
+        row["verifier_verdict"] = analyze.NOT_RUN
+        row["metrics"] = {"elapsed_ns": 90 + index * 10}
+    point = _point(_run(document), CANDIDATE, SECOND_DIFFICULTY)
+    assert point["medians"]["elapsed_ns"] is None
+    assert point["median_absolute_deviation"]["elapsed_ns"] is None
+    assert point["successful_range"]["elapsed_ns"] is None
+    assert point["all_attempt_elapsed_ns"] == {
+        "median": [95, 1],
+        "median_absolute_deviation": [5, 1],
+        "range": [90, 100],
+    }
+
+
+def test_exact_dispersion_does_not_round_large_costs() -> None:
+    """A half-unit MAD remains visible above the IEEE-754 integer range."""
+    document = _document()
+    huge = 2**80
+    for row in document["observations"]:
+        if row["algorithm"] == BASELINE:
+            row["metrics"]["artifact_bytes"] = huge + row["case"]["seed"] - 3
+    point = _point(_run(document), BASELINE, FIRST_DIFFICULTY)
+    assert point["medians"]["artifact_bytes"] == [2 * huge + 1, 2]
+    assert point["median_absolute_deviation"]["artifact_bytes"] == [1, 2]
+    assert point["successful_range"]["artifact_bytes"] == [huge, huge + 1]
+
+
+def test_oracle_identity_drift_rejects_matched_algorithm_comparison() -> None:
+    """Matching inputs are not comparable under different verifier versions."""
+    document = _document()
+    document["observations"][2]["verifier"] = "different-oracle"
+    with pytest.raises(analyze.ArenaError, match="verifier cohort"):
+        _run(document)
+
+
+def test_distinct_per_instance_oracles_are_allowed_when_matched() -> None:
+    """One verifier per case is required, not one for the whole difficulty."""
+    document = _document()
+    for row in document["observations"]:
+        if row["case"]["seed"] == SECOND_SEED:
+            row["verifier"] = "oracle-for-second-instance"
+    report = _run(document)
+    assert report["pareto_frontiers"][0]["algorithms"] == [BASELINE, CANDIDATE]

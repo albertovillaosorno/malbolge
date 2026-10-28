@@ -66,8 +66,10 @@ verified timings above the study time budget, or reported resident memory
 above its budget, fail admission without authorizing unmeasured resource use.
 
 The analyzer compares only cohorts with identical seeds, workload digests, and
-trial numbers at each challenge difficulty. Unmatched or duplicate trials
-fail closed. Every comparison requires the declared baseline. An independently
+trial numbers at each challenge difficulty. The named verifier must agree
+for each matched challenge and trial across compared algorithms. Unmatched,
+duplicate, or unverifiable comparisons fail closed. Every comparison requires
+the declared baseline. An independently
 named verifier and an accepted verdict are required to *report* success;
 rejection, exhaustion, no-solution, and tool failures remain visible.
 
@@ -75,7 +77,12 @@ The analyzer does not replay that verifier or authenticate the references yet.
 
 Curves retain trial counts, exact success fractions, per-outcome counts, and
 cost medians conditional on verified success. Medians are exact integer
-fractions, including even-sized and very large samples. The Pareto relation
+fractions, including even-sized and very large samples. Observed ranges
+and exact median absolute deviations describe successful-cost dispersion,
+while an all-attempt elapsed-time summary exposes failed-run cost. These
+statistics are descriptive, not confidence intervals or inferential evidence.
+
+The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched
 cohort; zero-success algorithms remain in curves but are omitted from the
 conditional frontier. The reported highest verified difficulty is observed,
@@ -114,8 +121,9 @@ and raw evidence review before any performance conclusion is published.
 - `benchmarks/arena/analyze.py` admits and compares version-one JSON studies.
   The synthetic regressions under `benchmarks/arena/tests/test_analyze.py`
   exercise exact cohorts, conditional Pareto fronts, failed-trial retention,
-  huge exact medians, deterministic ordering, forged verifier status, invalid
-  objective data, and fail-closed CLI output.
+  huge exact medians, descriptive dispersion, failure-inclusive elapsed costs,
+  deterministic ordering, forged verifier status, mismatched verifier cohorts,
+  invalid objective data, and fail-closed CLI output.
 - `benchmarks/arena/evidence.py` binds reported observations to the governed
   experiment-manifest run parser and to nonempty repository-local raw files.
   Synthetic regressions reject forged profile, challenge, oracle, algorithm,

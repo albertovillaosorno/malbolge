@@ -65,8 +65,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   matches algorithms on exact challenge seed/hash/trial cohorts, retains failure
   rates, and computes conditional-cost Pareto sets and capacity curves with
   exact integer-rational medians, reported fixed-budget overage rejection, and
-  no fabricated solved thresholds. The
-  synthetic-only test suite lives under `benchmarks/arena/tests/`.
+  no fabricated solved thresholds. Exact median absolute deviations and
+  observed ranges describe successful costs; a separate all-attempt elapsed
+  summary preserves failure costs. Named verifiers must agree per matched case.
+  Synthetic-only regressions live under `benchmarks/arena/tests/`.
 - An optional `benchmarks/arena/evidence.py` entrypoint now cross-checks the
   reported algorithm, challenge, profile, host/toolchain, oracle, workload,
   outcome, and raw path against the governed experiment run manifest parser.

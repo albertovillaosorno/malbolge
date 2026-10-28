@@ -334,13 +334,27 @@ def _case_key(row: dict[str, Any]) -> tuple[Any, ...]:
     return (case["family"], case["version"], case["difficulty"])
 
 
-def _exact_median(values: list[int]) -> list[int]:
+def _median_fraction(values: list[Fraction]) -> Fraction:
     ordered = sorted(values)
     middle = len(ordered) // 2
     if len(ordered) % 2:
-        return [ordered[middle], 1]
-    fraction = Fraction(ordered[middle - 1] + ordered[middle], 2)
-    return [fraction.numerator, fraction.denominator]
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _exact_pair(value: Fraction) -> list[int]:
+    return [value.numerator, value.denominator]
+
+
+def _exact_median(values: list[int]) -> list[int]:
+    return _exact_pair(_median_fraction([Fraction(value) for value in values]))
+
+
+def _exact_mad(values: list[int]) -> list[int]:
+    values_as_fractions = [Fraction(value) for value in values]
+    center = _median_fraction(values_as_fractions)
+    deviations = [abs(value - center) for value in values_as_fractions]
+    return _exact_pair(_median_fraction(deviations))
 
 
 def _dominates(
@@ -367,6 +381,18 @@ def _cohort(rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:
     }
 
 
+def _verifier_cohort(rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:
+    return {
+        (
+            row["case"]["seed"],
+            row["case"]["workload_sha256"],
+            row["trial"],
+            row["verifier"],
+        )
+        for row in rows
+    }
+
+
 def _point(
     algorithm: str,
     key: tuple[Any, ...],
@@ -375,6 +401,10 @@ def _point(
     objectives: list[str],
 ) -> dict[str, Any]:
     successes = [row for row in rows if row["outcome"] == VERIFIED]
+    success_values = {
+        name: [row["metrics"][name] for row in successes] for name in objectives
+    }
+    all_elapsed = [row["metrics"][ELAPSED] for row in rows]
     return {
         "algorithm": algorithm,
         "family": key[0],
@@ -388,10 +418,21 @@ def _point(
             for kind in sorted(OUTCOMES)
         },
         "medians": {
-            name: _exact_median([row["metrics"][name] for row in successes])
-            if successes
-            else None
-            for name in objectives
+            name: _exact_median(values) if values else None
+            for name, values in success_values.items()
+        },
+        "median_absolute_deviation": {
+            name: _exact_mad(values) if values else None
+            for name, values in success_values.items()
+        },
+        "successful_range": {
+            name: [min(values), max(values)] if values else None
+            for name, values in success_values.items()
+        },
+        "all_attempt_elapsed_ns": {
+            "median": _exact_median(all_elapsed),
+            "median_absolute_deviation": _exact_mad(all_elapsed),
+            "range": [min(all_elapsed), max(all_elapsed)],
         },
     }
 
@@ -449,6 +490,12 @@ def _validate_comparison(
     first = _cohort(next(iter(algorithms.values())))
     if any(_cohort(rows) != first for rows in algorithms.values()):
         _fail(f"unmatched trial/workload cohort for {key}")
+    verifier_reference = _verifier_cohort(next(iter(algorithms.values())))
+    if any(
+        _verifier_cohort(rows) != verifier_reference
+        for rows in algorithms.values()
+    ):
+        _fail(f"unmatched verifier cohort for {key}")
     if baseline not in algorithms:
         _fail(f"missing declared baseline for {key}")
     if len(algorithms) < MIN_COMPARISON_ALGORITHMS:
@@ -490,7 +537,8 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
         "verification_note": (
             "Outcomes are reported, not independently certified by this "
             "analyzer. Pareto costs are exact rational medians conditional "
-            "on verified success."
+            "on verified success. Descriptive dispersion is not a "
+            "confidence interval."
         ),
     }
 
