@@ -1,0 +1,379 @@
+# Copyright:
+#   - Copyright © 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - Apache-2.0
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+#
+# Boundary-Contract:
+# - Owns:
+#   - Arena-to-parametric-challenge canonical replay regression checks.
+# - Must-Not:
+#   - Present generated oracle agreement as compiled Malbolge correctness.
+# - Allows:
+#   - Inputs: synthetic challenge bundles and source-reported trial records.
+#   - Outputs: assertions on exact replay, provenance, and fail-closed drift.
+#   - Side effects: bounded test-local source/oracle/manifest copies.
+# - Split-When:
+#   - Different challenge families gain separately governed bundle admission.
+# - Merge-When:
+#   - The generator's source replay boundary owns these cross-record checks.
+# - Summary:
+#   - Binds reported arena workloads to exact deterministic challenge bytes.
+# - Description:
+#   - Regenerates canonical challenges without measuring downstream algorithms.
+# - Usage:
+#   - `python -B -m pytest benchmarks/arena/tests/test_challenge_bundles.py`.
+# - Defaults:
+#   - Missing, unsafe, fabricated and incompatible challenge files fail closed.
+#
+
+"""Challenge bundle preflight tests, not compiler performance claims."""
+
+# ruff: file-ignore[assert]
+
+from __future__ import annotations
+
+import copy
+from hashlib import sha256
+import json
+import sys
+from typing import TYPE_CHECKING
+
+import pytest
+
+from benchmarks.arena import analyze
+from benchmarks.arena import challenge_bundles
+from benchmarks.arena import evidence
+from benchmarks.arena.tests.test_evidence import sample_study
+from benchmarks.challenges import generate
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from typing import Any
+
+FAMILY = "arithmetic-dag"
+PROFILE = "malbolge-2026.3"
+SEED = 7
+NODES = 4
+BUNDLE_ROOT = "challenge-bundles"
+PREFIX = f"{BUNDLE_ROOT}/{FAMILY}/v1/seed-{SEED}/nodes-{NODES}"
+MATCH_SCOPE = "Deterministic challenge bundle replay"
+CHALLENGE_MISMATCH = "deterministic regeneration"
+ALGORITHM_COUNT = 2
+DIFFICULTY_COUNT = 2
+LINKED = "symlink"
+MISSING = "missing"
+
+
+def _generated(nodes: int = NODES) -> generate.GeneratedChallenge:
+    return generate.generate(
+        generate.ChallengeIdentity(
+            family=FAMILY,
+            version=1,
+            seed=SEED,
+            profile=PROFILE,
+            nodes=nodes,
+        )
+    )
+
+
+def _publish(root: Path, nodes: int = NODES) -> str:
+    output = f"{BUNDLE_ROOT}/{FAMILY}/v1/seed-{SEED}/nodes-{nodes}"
+    directory = root / output
+    directory.mkdir(parents=True, exist_ok=True)
+    generated = _generated(nodes)
+    for name, payload in zip(
+        challenge_bundles.BUNDLE_FILES,
+        (generated.source, generated.oracle, generated.manifest),
+        strict=True,
+    ):
+        _ = (directory / name).write_bytes(payload)
+    return output
+
+
+def _set_run_case(root: Path, row: dict[str, Any], nodes: int) -> None:
+    generated = _generated(nodes)
+    identity = json.loads(generated.manifest)["identity"]
+    case = row["case"]
+    old_difficulty = case["difficulty"]
+    old_seed = case["seed"]
+    old_workload = case["workload_sha256"]
+    case.update({
+        "family": FAMILY,
+        "version": 1,
+        "seed": SEED,
+        "difficulty": nodes,
+        "workload_sha256": sha256(generated.source).hexdigest(),
+    })
+    path = root / row["experiment_manifest"]
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(
+        'family = "protocol-fixture-v1"',
+        f'family = "{FAMILY}"',
+    )
+    text = text.replace(
+        f"difficulty = {old_difficulty}",
+        f"difficulty = {nodes}",
+    )
+    text = text.replace(f"seed = {old_seed}", f"seed = {SEED}")
+    text = text.replace(
+        'target_profile = "profile-independent"',
+        f'target_profile = "{PROFILE}"\n'
+        'target_profile_fingerprint = "'
+        + str(identity["target_profile_fingerprint"])
+        + '"',
+    )
+    text = text.replace(
+        f'workload_sha256 = "{old_workload}"',
+        f'workload_sha256 = "{case["workload_sha256"]}"',
+    )
+    _ = path.write_text(text, encoding="utf-8")
+
+
+def _study(root: Path) -> dict[str, Any]:
+    document = sample_study(root)
+    document["study"]["target_profile"] = PROFILE
+    _publish(root)
+    for row in document["observations"]:
+        _set_run_case(root, row, NODES)
+    return document
+
+
+def _preflight(document: dict[str, Any], root: Path) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(document))
+    return evidence.validate_links(
+        admitted,
+        root,
+        policy=evidence.EvidencePolicy(
+            challenge_root=BUNDLE_ROOT,
+        ),
+    )
+
+
+def test_canonical_challenge_bundle_regenerates_without_execution(
+    tmp_path: Path,
+) -> None:
+    """Two algorithms share one exact challenge, not fabricated sample work."""
+    document = _study(tmp_path)
+    checked = _preflight(document, tmp_path)
+    assert checked["regenerated_challenge_bundles"] == 1
+    assert checked["challenge_source_sha256"] == {
+        PREFIX: sha256(_generated().source).hexdigest(),
+    }
+    assert checked["reported_trials_checked"] == ALGORITHM_COUNT
+    assert MATCH_SCOPE in checked["scope"]
+
+
+@pytest.mark.parametrize("filename", challenge_bundles.BUNDLE_FILES)
+def test_any_mutated_challenge_payload_is_rejected(
+    tmp_path: Path,
+    filename: str,
+) -> None:
+    """Changed source, oracle, or manifest bytes fail canonical regeneration."""
+    document = _study(tmp_path)
+    path = tmp_path / PREFIX / filename
+    raw = path.read_bytes()
+    _ = path.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
+    with pytest.raises(evidence.EvidenceError, match="bundle differs"):
+        _preflight(document, tmp_path)
+
+
+def test_wrong_reported_digest_rejected_even_when_files_are_consistent(
+    tmp_path: Path,
+) -> None:
+    """Producer-declared workload SHA cannot differ from regenerated C."""
+    document = _study(tmp_path)
+    wrong = "f" * analyze.SHA256_HEX_LENGTH
+    for row in document["observations"]:
+        original = row["case"]["workload_sha256"]
+        row["case"]["workload_sha256"] = wrong
+        path = tmp_path / row["experiment_manifest"]
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace(original, wrong),
+            encoding="utf-8",
+        )
+    with pytest.raises(evidence.EvidenceError, match="workload SHA-256"):
+        _preflight(document, tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["symlink", "missing", "extra"])
+def test_bundle_requires_exact_ordinary_files(
+    tmp_path: Path, kind: str
+) -> None:
+    """Missing and linked files are never trusted challenge provenance."""
+    document = _study(tmp_path)
+    source = tmp_path / PREFIX / "program.c"
+    if kind == LINKED:
+        source.unlink()
+        source.symlink_to(tmp_path / PREFIX / "oracle.bin")
+    elif kind == MISSING:
+        source.unlink()
+    else:
+        with source.open("ab") as stream:
+            _ = stream.write(b"x")
+    with pytest.raises(
+        evidence.EvidenceError, match=r"bundle|symlink|FileNotFound"
+    ):
+        _preflight(document, tmp_path)
+
+
+def test_bounded_replay_rejects_excessive_challenge_difficulty(
+    tmp_path: Path,
+) -> None:
+    """No unbounded regeneration is triggered by producer-controlled nodes."""
+    document = _study(tmp_path)
+    over = challenge_bundles.MAX_BUNDLE_NODES + 1
+    for row in document["observations"]:
+        row["case"]["difficulty"] = over
+        path = tmp_path / row["experiment_manifest"]
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                f"difficulty = {NODES}",
+                f"difficulty = {over}",
+            ),
+            encoding="utf-8",
+        )
+    with pytest.raises(evidence.EvidenceError, match=r"bundle|4096-node"):
+        _preflight(document, tmp_path)
+
+
+def test_challenge_bundle_root_cannot_escape_or_follow_links(
+    tmp_path: Path,
+) -> None:
+    """Even an opt-in direct API caller cannot select a parent directory."""
+    document = _study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(document))
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(
+                challenge_root="../untrusted",
+            ),
+        )
+    root_link = tmp_path / "linked-challenge"
+    root_link.symlink_to(tmp_path / BUNDLE_ROOT)
+    with pytest.raises(evidence.EvidenceError, match="symlink"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(
+                challenge_root="linked-challenge",
+            ),
+        )
+
+
+def test_different_difficulty_bundles_have_distinct_verified_source_hashes(
+    tmp_path: Path,
+) -> None:
+    """One study may cite two real difficulties without pooling them."""
+    document = _study(tmp_path)
+    next_nodes = NODES + 1
+    _publish(tmp_path, nodes=next_nodes)
+    for row in tuple(document["observations"]):
+        new_row = copy.deepcopy(row)
+        old_path = tmp_path / row["experiment_manifest"]
+        new_relative = row["experiment_manifest"].replace(".toml", "-next.toml")
+        _ = (tmp_path / new_relative).write_bytes(old_path.read_bytes())
+        new_row["experiment_manifest"] = new_relative
+        _set_run_case(tmp_path, new_row, next_nodes)
+        new_row["raw_sample"] = row["raw_sample"]
+        document["observations"].append(new_row)
+    # Reassign each new run's raw path identity unchanged; each trial uses the
+    # same retained sample file but different challenge source and run manifest.
+    checked = _preflight(document, tmp_path)
+    assert checked["regenerated_challenge_bundles"] == DIFFICULTY_COUNT
+    assert set(checked["challenge_source_sha256"].values()) == {
+        sha256(_generated(NODES).source).hexdigest(),
+        sha256(_generated(next_nodes).source).hexdigest(),
+    }
+
+
+def test_challenge_bundle_cli_never_emits_partial_report_after_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The operator receives a complete report or no published capacity data."""
+    document = _study(tmp_path)
+    input_path = tmp_path / "study.json"
+    _ = input_path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(input_path),
+            "--root",
+            str(tmp_path),
+            "--challenge-root",
+            BUNDLE_ROOT,
+        ],
+    )
+    assert evidence.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["evidence_preflight"]["regenerated_challenge_bundles"] == 1
+    source = tmp_path / PREFIX / "program.c"
+    _ = source.write_bytes(source.read_bytes() + b"untrusted")
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert CHALLENGE_MISMATCH in failure.err
+
+
+def _forged_repetition(
+    root: Path,
+    original: dict[str, Any],
+    *,
+    trial: int,
+    digest: str,
+) -> dict[str, Any]:
+    copied = copy.deepcopy(original)
+    copied["trial"] = trial
+    copied["case"]["workload_sha256"] = digest
+    old_manifest = root / original["experiment_manifest"]
+    new_path = original["experiment_manifest"].replace(
+        ".toml",
+        "-second.toml",
+    )
+    _ = (root / new_path).write_text(
+        old_manifest.read_text(encoding="utf-8").replace(
+            original["case"]["workload_sha256"],
+            digest,
+        ),
+        encoding="utf-8",
+    )
+    copied["experiment_manifest"] = new_path
+    return copied
+
+
+def test_challenge_replay_cannot_reuse_digest_for_changed_trial_source(
+    tmp_path: Path,
+) -> None:
+    """Regenerated C binds every trial even if its case label is unchanged."""
+    document = _study(tmp_path)
+    fake_digest = "f" * analyze.SHA256_HEX_LENGTH
+    for original in tuple(document["observations"]):
+        document["observations"].append(
+            _forged_repetition(tmp_path, original, trial=1, digest=fake_digest),
+        )
+    with pytest.raises(evidence.EvidenceError, match="repeated challenge case"):
+        _preflight(document, tmp_path)
+
+
+def test_challenge_root_with_embedded_nul_is_typed_rejection(
+    tmp_path: Path,
+) -> None:
+    """Malformed policy roots must not leak operating-system path exceptions."""
+    document = _study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(document))
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(challenge_root="bundle\x00escape"),
+        )

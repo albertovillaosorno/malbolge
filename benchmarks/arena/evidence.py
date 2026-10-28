@@ -47,6 +47,7 @@ from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import budget_links
+from benchmarks.arena import challenge_bundles
 from benchmarks.arena import raw_samples
 from benchmarks.arena import trial_runs
 
@@ -74,7 +75,11 @@ def _segments(relative: str) -> list[str]:
         _fail("evidence requires a canonical relative path")
     if relative.startswith(("/", analyze.BACKSLASH)):
         _fail("evidence requires a canonical relative path")
-    if analyze.BACKSLASH in relative or analyze.COLON in relative:
+    if (
+        analyze.BACKSLASH in relative
+        or analyze.COLON in relative
+        or analyze.NUL in relative
+    ):
         _fail("evidence requires a canonical relative path")
     parts = relative.split("/")
     if any(
@@ -193,6 +198,7 @@ class EvidencePolicy:
     require_raw_rows: bool = False
     require_trial_run_identity: bool = False
     require_budget_agreement: bool = False
+    challenge_root: str | None = None
 
 
 DEFAULT_EVIDENCE_POLICY = EvidencePolicy()
@@ -297,10 +303,78 @@ def _checked_contents(
     return contents
 
 
+def _bundle_source(
+    root: Path,
+    relative: str,
+    *,
+    limit: int,
+) -> bytes:
+    path = regular_path(root, relative, limit=limit)
+    with path.open("rb") as stream:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        _fail(f"challenge bundle exceeds byte limit: {relative}")
+    return data
+
+
+def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:
+    if case["difficulty"] > challenge_bundles.MAX_BUNDLE_NODES:
+        _fail("challenge replay exceeds 4096-node preflight limit")
+    return (
+        f"{relative_root}/{case["family"]}/v{case["version"]}/"
+        f"seed-{case["seed"]}/nodes-{case["difficulty"]}"
+    )
+
+
+def _bundle_inspection(
+    document: dict[str, Any],
+    root: Path,
+    relative_root: str,
+) -> dict[str, str]:
+    _ = _segments(relative_root)
+    results: dict[str, str] = {}
+    cases: set[tuple[str, int, int, int]] = set()
+    for row in document["observations"]:
+        case = row["case"]
+        key = (
+            case["family"],
+            case["version"],
+            case["seed"],
+            case["difficulty"],
+        )
+        directory = _bundle_directory(case, relative_root)
+        if key in cases:
+            if results[directory] != case["workload_sha256"]:
+                _fail("repeated challenge case has different workload digest")
+            continue
+        cases.add(key)
+        if len(cases) > challenge_bundles.MAX_BUNDLE_CASES:
+            _fail("too many distinct challenge bundles for replay")
+        limits = {
+            "program.c": challenge_bundles.MAX_SOURCE_BYTES,
+            "oracle.bin": challenge_bundles.ORACLE_BYTES,
+            "manifest.json": challenge_bundles.MAX_MANIFEST_BYTES,
+        }
+        files = {
+            name: _bundle_source(
+                root, f"{directory}/{name}", limit=limits[name]
+            )
+            for name in challenge_bundles.BUNDLE_FILES
+        }
+        results[directory] = challenge_bundles.verify_bundle(
+            case,
+            document["study"]["target_profile"],
+            files,
+        )
+    return results
+
+
 def _report_links(
     context: _EvidenceContext,
     document: dict[str, Any],
     contents: dict[str, str] | None,
+    *,
+    bundle_sources: dict[str, str] | None,
 ) -> dict[str, Any]:
     report = {
         "manifest_links_checked": len(context.manifests),
@@ -330,6 +404,13 @@ def _report_links(
         report["scope"] += (
             " Exact declared run time/memory budgets agree with study; "
             "no physical budget enforcement."
+        )
+    if bundle_sources is not None:
+        report["regenerated_challenge_bundles"] = len(bundle_sources)
+        report["challenge_source_sha256"] = bundle_sources
+        report["scope"] += (
+            " Deterministic challenge bundle replay succeeded; "
+            "no compiler execution or verifier replay."
         )
     return report
 
@@ -361,6 +442,11 @@ def validate_links(
         for row in document["observations"]:
             _admit_observation(row, context)
         contents = _checked_contents(document, context)
+        bundle_sources = (
+            _bundle_inspection(document, root, policy.challenge_root)
+            if policy.challenge_root is not None
+            else None
+        )
     except (
         OSError,
         UnicodeError,
@@ -369,10 +455,16 @@ def validate_links(
         raw_samples.RawSampleError,
         trial_runs.TrialRunError,
         budget_links.BudgetLinkError,
+        challenge_bundles.ChallengeBundleError,
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
-    return _report_links(context, document, contents)
+    return _report_links(
+        context,
+        document,
+        contents,
+        bundle_sources=bundle_sources,
+    )
 
 
 def main() -> int:
@@ -388,6 +480,7 @@ def main() -> int:
     parser.add_argument("--require-raw-rows", action="store_true")
     parser.add_argument("--require-trial-run-identity", action="store_true")
     parser.add_argument("--require-budget-agreement", action="store_true")
+    parser.add_argument("--challenge-root")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
@@ -398,6 +491,7 @@ def main() -> int:
                 require_raw_rows=args.require_raw_rows,
                 require_trial_run_identity=args.require_trial_run_identity,
                 require_budget_agreement=args.require_budget_agreement,
+                challenge_root=args.challenge_root,
             ),
         )
         report = analyze.analyze(document)

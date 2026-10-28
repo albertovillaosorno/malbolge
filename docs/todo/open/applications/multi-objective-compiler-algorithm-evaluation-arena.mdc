@@ -96,6 +96,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   admit microjoule observations without changing v1 bytes, rejecting lost
   energy fields or inconsistent trial costs. No real energy measurements,
   calibration or physical consumption claim is yet available.
+- An optional bounded challenge-bundle preflight now regenerates original
+  parametric C source, binary oracle and canonical manifest bytes in memory
+  and matches every reported workload digest to the regenerated C source.
+  This confirms generator provenance only, not guest verifier replay or an
+  observed benchmark run.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

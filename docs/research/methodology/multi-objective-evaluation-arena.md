@@ -125,6 +125,17 @@ objective. This is *representation* support only: energy samples, meter
 calibration, host attribution, uncertainty and physical validity remain
 unproven until real measurement evidence is admitted and reviewed.
 
+A separate opt-in `--challenge-root` mode now binds each distinct arena
+case to the completed deterministic parametric compiler challenge generator.
+The case family, version, seed and `difficulty` (interpreted as `nodes`) plus
+study target profile drive a bounded read-only regeneration of canonical
+`program.c`, `oracle.bin` and `manifest.json` bytes. The arena workload SHA-256
+must equal the regenerated C source digest. A repeated case with a different
+digest fails even if both algorithms report that forged identity. Files must
+be ordinary, canonical, unlinked and bounded, and the profile fingerprint
+remains under the generator's existing authority. No compiler or verifier is
+run; this does not prove the optimizer consumed the retained challenge.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -203,6 +214,11 @@ The original study records remain the result authority.
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
   impossible signed energy reports, not measured energy savings.
+- `benchmarks/arena/challenge_bundles.py` optionally replays the original
+  generator's exact source/oracle/manifest bytes against a bounded retained
+  challenge bundle, binding workload digests to reproducible C source. Synthetic
+  regressions cover missing and altered files, canonical profile and difficulty
+  identities, unsafe paths, repeated-trial digest drift and fail-closed CLI.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.

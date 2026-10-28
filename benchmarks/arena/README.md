@@ -291,3 +291,50 @@ selection, run the pinned checker with the local standard-level policy:
 The scoped check covers this package and imports the repository's governed
 experiment/benchmark validators. It complements, rather than replaces, the
 pinned Ruff checks, synthetic/replayed evidence tests, and Jig validation.
+
+## Optional canonical challenge-bundle replay
+
+The ordinary arena case digest is a producer-reported workload identity, not a
+source authentication. For studies using the completed sixteen-family
+`benchmarks.challenges.generate` generator, the optional `--challenge-root`
+preflight regenerates each **distinct** challenge and compares exact source,
+oracle, and canonical manifest bytes to the files retained under a local root:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.evidence path/to/study.json \
+  --root . --challenge-root benchmarks/challenge-bundles
+```
+
+For a case with family `arithmetic-dag`, version `1`, seed `7`, difficulty
+`4`, the caller publishes the three original generated files at:
+
+```text
+benchmarks/challenge-bundles/arithmetic-dag/v1/seed-7/nodes-4/program.c
+benchmarks/challenge-bundles/arithmetic-dag/v1/seed-7/nodes-4/oracle.bin
+benchmarks/challenge-bundles/arithmetic-dag/v1/seed-7/nodes-4/manifest.json
+```
+
+This opt-in mode explicitly interprets the arena `difficulty` integer as the
+generator's `nodes` parameter and `workload_sha256` as SHA-256 of the exact
+`program.c` bytes, not a digest of an unrelated input package. All matched
+algorithms and trials citing that case must agree on that same regenerated
+source digest. The selected study profile must reproduce the canonical
+manifest's profile and fingerprint. Noncanonical files, unsafe links,
+unsupported generator families, missing bytes, or identity drift fail before
+any arena summary is published. Files are never regenerated **to disk** by
+this check: only an in-memory deterministic replay is performed.
+
+The preflight is bounded to 64 distinct challenge identities per study,
+4,096 nodes per generated challenge, 8 MiB per C source, 32 KiB per manifest,
+and an exact four-byte oracle. Larger research experiments need a separately
+reviewed bounded replay policy rather than silently skipping checks. Results
+include `regenerated_challenge_bundles` and the checked C source digests in
+`challenge_source_sha256`. The historical generic analysis, including other
+challenge producers and workloads with a different digest definition, remains
+available without this option.
+
+The generator and its oracle can share a common-mode defect, and byte-exact
+replay does not establish that the compiler used the retained source, that the
+named verifier executed, or that a measured candidate was correct. This
+checks **workload provenance**, not measured performance or guest semantics.
