@@ -46,6 +46,7 @@ from typing import Never
 from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
+from benchmarks.arena import raw_samples
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
@@ -186,7 +187,28 @@ def _admit_observation(row: dict[str, Any], context: _EvidenceContext) -> None:
     context.samples.add(sample)
 
 
-def validate_links(document: dict[str, Any], root: Path) -> dict[str, Any]:
+def _raw_contents(
+    document: dict[str, Any],
+    root: Path,
+) -> dict[str, str]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in document["observations"]:
+        groups.setdefault(row["raw_sample"], []).append(row)
+    contents = {}
+    for relative, rows in sorted(groups.items()):
+        path = _regular_path(root, relative, limit=raw_samples.MAX_RAW_BYTES)
+        with path.open("rb") as stream:
+            raw = stream.read(raw_samples.MAX_RAW_BYTES + 1)
+        contents[relative] = raw_samples.check_rows(raw, rows, relative)
+    return contents
+
+
+def validate_links(
+    document: dict[str, Any],
+    root: Path,
+    *,
+    require_raw_rows: bool = False,
+) -> dict[str, Any]:
     """Cross-check reported trials with bounded canonical run files.
 
     Returns:
@@ -200,15 +222,17 @@ def validate_links(document: dict[str, Any], root: Path) -> dict[str, Any]:
     try:
         for row in document["observations"]:
             _admit_observation(row, context)
+        contents = _raw_contents(document, root) if require_raw_rows else None
     except (
         OSError,
         UnicodeError,
         RuntimeError,
         experiment_manifest.ExperimentManifestError,
+        raw_samples.RawSampleError,
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
-    return {
+    report = {
         "manifest_links_checked": len(context.manifests),
         "raw_sample_paths_checked": len(context.samples),
         "reported_trials_checked": len(document["observations"]),
@@ -217,6 +241,14 @@ def validate_links(document: dict[str, Any], root: Path) -> dict[str, Any]:
             "no content digest verification or semantic oracle replay."
         ),
     }
+    if contents is not None:
+        report["raw_file_sha256"] = contents
+        report["raw_rows_matched"] = len(document["observations"])
+        report["scope"] = (
+            "Reported raw CSV identity and metrics match; no provenance "
+            "authentication or independent semantic oracle replay."
+        )
+    return report
 
 
 def main() -> int:
@@ -229,10 +261,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("study", type=Path)
     parser.add_argument("--root", type=Path, default=Path(__file__).parents[2])
+    parser.add_argument("--require-raw-rows", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
-        checked = validate_links(document, args.root)
+        checked = validate_links(
+            document,
+            args.root,
+            require_raw_rows=args.require_raw_rows,
+        )
         report = analyze.analyze(document)
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")

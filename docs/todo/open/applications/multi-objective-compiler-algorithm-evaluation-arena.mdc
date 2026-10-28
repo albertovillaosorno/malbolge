@@ -72,8 +72,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   outcome, and raw path against the governed experiment run manifest parser.
   It admits only existing nonempty regular raw files and bounded manifests;
   synthetic regressions reject mismatches, unsafe links, and missing files.
-- The analyzer is not an independent verifier. The optional cross-check does
-  not authenticate raw sample contents, actual resource use, or verifier replay.
+- Opt-in `arena-raw-v1` CSV checking now binds every retained trial row and
+  exact metric to its JSON report, including failure outcomes. The analyzer
+  returns inspected raw-byte SHA-256 fingerprints and rejects mismatches,
+  missing rows, duplicates and malformed CSV under a bounded input limit.
+- The analyzer is not an independent verifier. Even a matching raw CSV is
+  only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real
   verifier outcomes, raw multidimensional samples, budget enforcement, and
   published stage comparisons

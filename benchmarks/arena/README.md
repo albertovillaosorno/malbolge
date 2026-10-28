@@ -88,10 +88,28 @@ against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
 missing artifacts, and identity drift fail closed.
 
-The output includes `evidence_preflight` counts. This check **does not** hash
-or parse raw sample contents, rederive challenge bytes, authenticate the Git
-commit or device, or replay the independent semantic verifier. A matched
-manifest is still a report, not proof of an observed performance result.
+The identity-only output includes `evidence_preflight` counts. A stronger,
+optional raw-row check is documented below; neither mode runs the independent
+semantic verifier.
+
+## Optional version-one raw CSV check
+
+Add `--require-raw-rows` to the `benchmarks.arena.evidence` command to verify
+retained CSV contents against every reported observation. The fixed
+`arena-raw-v1` CSV header begins with `schema_version`, `algorithm`, `family`,
+`version`, `difficulty`, `seed`, `workload_sha256`, `trial`, `outcome`,
+`verifier`, and `verifier_verdict`. It ends with `artifact_bytes`, `elapsed_ns`,
+`peak_rss_bytes`, `peak_vram_bytes`, `runtime_steps`, and `verifier_ns`.
+
+Each row has the literal schema version `1`, canonical nonnegative integers,
+and exact reported identity and metric values. Missing optional metrics use
+empty cells, distinct from zero. All referenced rows must be present exactly
+once, with no extra rows, even when several trials share one file. Each CSV
+is limited to 16 MiB. The report adds a SHA-256 digest per inspected raw file.
+
+This strengthens **report-to-file consistency**, not the trust in the file's
+producer. It does not replay a verifier, prove hardware measurements, or
+authenticate a Git commit; real conclusions still require separate validation.
 
 ## Interpretation and trust boundary
 

@@ -88,10 +88,15 @@ profile, workload fingerprint, host/toolchain, oracle, outcome, and raw output.
 Repository-root relative manifest files must be bounded, canonical, regular,
 and parseable; referenced raw samples must be present, nonempty, and ordinary.
 
-This preflight does not authenticate raw sample bytes, challenge-generation
-outputs, actual execution budgets, verifier replay, or hardware provenance.
-The synthetic fixtures prove only cross-record binding and file-admission
-behavior, and no real performance evidence is claimed.
+The preflight also supports an opt-in `arena-raw-v1` CSV check using
+`--require-raw-rows`. This verifies that the complete raw CSV row multiset
+matches the reported trial identities, outcomes and exact integer costs,
+including failed trials. SHA-256 fingerprints of the inspected file bytes
+support later reproducibility checks.
+
+A raw match cannot independently prove that the CSV was measured accurately,
+that a verifier actually ran, or that resource budgets were enforced.
+The test fixtures establish only evidence linkage, not performance results.
 
 This first slice intentionally does not require an executable final `.malbolge`
 backend; the study's `stage` can describe available compiler or execution
@@ -116,6 +121,9 @@ and raw evidence review before any performance conclusion is published.
   Synthetic regressions reject forged profile, challenge, oracle, algorithm,
   workload, host, outcome, and raw path identities; unsafe/missing file links
   and malformed/oversized manifests fail closed.
+- `benchmarks/arena/raw_samples.py` optionally matches retained CSV content
+  exactly against the reported trial set. Synthetic regressions cover missing,
+  extra, duplicate and mismatched rows, plus malformed CSV inputs.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion

@@ -65,7 +65,13 @@ RAW_TEMPLATE_PATH = (
 )
 
 
-def _study(root: Path) -> dict[str, Any]:
+def sample_study(root: Path) -> dict[str, Any]:
+    """Construct a synthetic two-algorithm experiment-run comparison.
+
+    Returns:
+        An in-memory report with linked temporary manifests and CSV paths.
+
+    """
     directory = root / "evidence"
     directory.mkdir()
     observations = []
@@ -141,7 +147,7 @@ def _modify_manifest(
 
 def test_links_are_checked_without_certification(tmp_path: Path) -> None:
     """Existing manifest parser cross-checks exactly two distinct run links."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     result = _admit(document, tmp_path)
     assert result["manifest_links_checked"] == ALGORITHM_COUNT
     assert result["raw_sample_paths_checked"] == ALGORITHM_COUNT
@@ -193,7 +199,7 @@ def test_manifest_identity_drift_rejected(
     diagnostic: str,
 ) -> None:
     """Every available run identity dimension is bound to its arena claim."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     _modify_manifest(tmp_path, "baseline", old=previous, new=replacement)
     with pytest.raises(evidence.EvidenceError, match=diagnostic):
         _admit(document, tmp_path)
@@ -201,7 +207,7 @@ def test_manifest_identity_drift_rejected(
 
 def test_consistent_rejected_run_keeps_failure_count(tmp_path: Path) -> None:
     """A reported rejection survives cross-check without becoming a success."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     _modify_manifest(
         tmp_path,
         CANDIDATE_ALGORITHM,
@@ -231,7 +237,7 @@ def test_missing_empty_or_linked_raw_file_rejected(
     path_kind: str,
 ) -> None:
     """A retained raw path cannot be missing, empty, or a symlink."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     sample = tmp_path / "evidence/baseline.csv"
     if path_kind == MISSING_FILE:
         sample.unlink()
@@ -246,7 +252,7 @@ def test_missing_empty_or_linked_raw_file_rejected(
 
 def test_corrupt_or_oversized_manifest_rejected(tmp_path: Path) -> None:
     """No oversized or malformed run manifest reaches summary admission."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     manifest = tmp_path / "evidence/baseline.toml"
     _ = manifest.write_text("invalid = {\n", encoding="utf-8")
     with pytest.raises(evidence.EvidenceError, match="invalid"):
@@ -264,7 +270,7 @@ def test_cli_cross_checks_before_reporting(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """CLI only reports metrics with all indicated file links intact."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     input_path = tmp_path / "study.json"
     _ = input_path.write_text(json.dumps(document), encoding="utf-8")
     monkeypatch.setattr(
@@ -288,7 +294,7 @@ def test_cli_cross_checks_before_reporting(
 
 def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     """Even a caller bypassing schema admission cannot read a parent path."""
-    document = _study(tmp_path)
+    document = sample_study(tmp_path)
     document["observations"][0]["experiment_manifest"] = "../escape.toml"
     with pytest.raises(evidence.EvidenceError, match="canonical relative"):
         evidence.validate_links(document, tmp_path)
