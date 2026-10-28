@@ -938,6 +938,11 @@ post-pointer crashes reject the newly committed foreign state. Both direct and
 product selection enforce that distinction. Separate regressions also preserve
 launch, inspector rejection, and malformed-codec errors independently of
 source-identity mismatch.
+A two-function production-inspector fixture proves that matching the first
+function does not excuse changed identity in a later function. An independently
+admitted checkpoint with unchanged source digest, function name and span but
+a changed signed/unsigned return category also rejects under both source-bound
+routes, while the unrestricted route admits it.
 
 The compiler's fresh ternary-stage entry now also runs the independent
 `validate_ternary_program` admission gate after successful lowering, matching

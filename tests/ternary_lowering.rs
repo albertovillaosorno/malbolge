@@ -12044,6 +12044,148 @@ fn progress_resume_rejects_forged_function_provenance_with_same_digest()
     cleanup
 }
 
+fn assert_source_matched_ternary_success(
+    expected: &TypedIrInput,
+    original: &ternary_lowering::TernaryProgram,
+    inspector: &Path,
+    paths: (&Path, &Path),
+) -> Result<(), String> {
+    let (interpreter, progress) = paths;
+    let checked = resume_ternary_from_progress_for_source(
+        interpreter, inspector, progress, expected,
+    );
+    let selected = enter_ternary_compiler_stage(
+        TernaryCompilerStageInput::ProgressForSource {
+            expected,
+            inspector,
+            interpreter,
+            progress,
+        },
+    );
+    if checked != Ok(original.clone()) || selected != Ok(original.clone()) {
+        return Err(format!(
+            "source-matched function identity: {checked:?}; {selected:?}",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_checks_every_saved_function()
+-> Result<(), String> {
+    let (original, expected) =
+        lowered_dual_lane_io_fixture((None, Some(0x80)), true)?;
+    if original.functions.len() != 2 || expected.functions.len() != 2 {
+        return Err(String::from("two-function source fixture drifted"));
+    }
+    for (index, label) in [
+        (None, "two-functions-matching"),
+        (Some(0usize), "two-functions-first-foreign"),
+        (Some(1usize), "two-functions-last-foreign"),
+    ] {
+        let mut program = original.clone();
+        if let Some(position) = index {
+            program.functions.get_mut(position)
+                .ok_or_else(|| String::from("missing function"))?
+                .name.push_str("-foreign");
+        }
+        if program.source_sha256 != original.source_sha256 {
+            return Err(String::from("function forgery altered module digest"));
+        }
+        ternary_lowering::validate_ternary_program(&program).map_err(
+            |error| format!("admit {label} function state: {error:?}"),
+        )?;
+        let bytes = canonical_ternary_bytes(&program)
+            .map_err(|error| format!("encode {label}: {error:?}"))?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(program.clone()) {
+                return Err(format!("{label} unrestricted state was rejected"));
+            }
+            if index.is_some() {
+                assert_source_matched_ternary_failure(
+                    &expected, &inspector, (&interpreter, &progress),
+                    TernaryProgressCheckpointError::IdentityMismatch,
+                )?;
+            } else {
+                assert_source_matched_ternary_success(
+                    &expected, &original, &inspector,
+                    (&interpreter, &progress),
+                )?;
+            }
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean {label}: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_rejects_valid_changed_return_category()
+-> Result<(), String> {
+    let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;
+    let mut foreign = original.clone();
+    let operations = &mut foreign.functions
+        .first_mut().ok_or_else(|| String::from("missing function"))?
+        .operations;
+    if operations.len() != 2 {
+        return Err(String::from("unsigned source shape changed"));
+    }
+    for operation in operations {
+        *operation = if let TernaryOperation::MaterializeU32 {
+            result, scalar, span,
+        } = *operation {
+            TernaryOperation::MaterializeI32 { result, scalar, span }
+        } else if let TernaryOperation::ReturnU32 { value, span } = *operation {
+            TernaryOperation::Return { value, span }
+        } else {
+            return Err(String::from("unexpected unsigned operation"));
+        };
+    }
+    if foreign.source_sha256 != original.source_sha256
+        || foreign.functions.iter().zip(&original.functions).any(
+            |(changed, source)| changed.span != source.span
+                || changed.name != source.name,
+        )
+    {
+        return Err(String::from("return forgery changed provenance"));
+    }
+    ternary_lowering::validate_ternary_program(&foreign)
+        .map_err(|error| format!("validate signed forgery: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&foreign)
+        .map_err(|error| format!("encode signed forgery: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("changed-return-kind", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let unrestricted = resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if unrestricted != Ok(foreign) {
+            return Err(format!(
+                "independently valid signed checkpoint rejected: {unrestricted:?}",
+            ));
+        }
+        assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean changed-return fixture: {error}"));
+    result?;
+    cleanup
+}
+
 #[test]
 fn progress_resume_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {

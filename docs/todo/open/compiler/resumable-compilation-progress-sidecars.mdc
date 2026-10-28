@@ -338,6 +338,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   replacement it rejects the independently valid foreign generation. Explicit
   negative selectors also distinguish inspector launch, inspector rejection,
   and malformed canonical checkpoint bytes from source mismatch.
+  A two-function checkpoint proves the last function is source-bound too.
+  A separately valid same-source checkpoint changes an unsigned 32-bit
+  return to signed; unrestricted recovery accepts it, while both source-
+  bound selectors reject the changed result category.
 - Product CLI progress access now selects repository-pinned Python 3.14.7 and
   the trusted inspector for `--checkpoint-info`,
   `--extract-checkpoint STATE_CODEC`, and `--follow-progress`. Rust
