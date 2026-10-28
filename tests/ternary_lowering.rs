@@ -12786,6 +12786,166 @@ fn ternary_progress_for_source_accepts_all_supported_binary_kinds()
 }
 
 #[test]
+fn ternary_progress_for_source_binds_byte_effect_kind_and_ssa_values()
+-> Result<(), String> {
+    for (change_output, module) in [
+        (false, byte_io_module_with_return(None, false)),
+        (true, void_function_module(true)),
+    ] {
+        validate_module(&module)
+            .map_err(|error| format!("admit byte source: {error:?}"))?;
+        let expected = project_typed_ir(&module)?;
+        let original = lower_typed_ir(&expected)
+            .map_err(|error| format!("lower byte source: {error:?}"))?;
+        assert_source_bound_program_roundtrip(
+            &format!("unchanged-byte-effect-{change_output}"),
+            &expected, &original,
+        )?;
+        let mut foreign = original.clone();
+        let operations = &mut foreign.functions.first_mut()
+            .ok_or_else(|| String::from("missing byte function"))?
+            .operations;
+        let changed = usize::from(change_output);
+        let operation = operations.get_mut(changed)
+            .ok_or_else(|| String::from("missing byte effect"))?;
+        *operation = if let TernaryOperation::ByteInput { result, span } = *operation {
+            TernaryOperation::MaterializeU8 {
+                result,
+                scalar: ternary_lowering::TernaryU8Scalar::from_bits(0x7a),
+                span,
+            }
+        } else if let TernaryOperation::ByteOutput { span, .. } = *operation {
+            TernaryOperation::ByteInput { result: 1, span }
+        } else {
+            return Err(String::from("unexpected byte-effect shape"));
+        };
+        ternary_lowering::validate_ternary_program(&foreign)
+            .map_err(|error| format!("admit changed byte effect: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode changed byte effect: {error:?}"))?;
+        let (progress, directory) = publish_ternary_progress_fixture(
+            if change_output { "altered-byte-output" } else { "altered-byte-input" },
+            &bytes,
+        )?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(foreign) {
+                return Err(String::from("valid changed byte effect rejected"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean byte effect: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+fn two_byte_inputs_void_module() -> Module {
+    let byte_type = TypeId::new(0);
+    let signature = TypeId::new(1);
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: vec![
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(0), type_id: byte_type,
+                        },
+                        fixture_span(0, 1),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(1), type_id: byte_type,
+                        },
+                        fixture_span(1, 2),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteOutput { value: ValueId::new(0) },
+                        fixture_span(2, 3),
+                    ),
+                ],
+                phis: Vec::new(),
+                span: fixture_span(0, 4),
+                terminator: Terminator::Return { value: None },
+                terminator_span: fixture_span(3, 4),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("two_byte_inputs"),
+            parameters: Vec::new(),
+            signature,
+            span: fixture_span(0, 4),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/two-byte-inputs.c"),
+        source_sha256: [0xb1; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(byte_type, TypeDef::U8),
+            TypeEntry::new(signature,
+                TypeDef::function(Vec::new(), None, false)),
+        ],
+    })
+}
+
+#[test]
+fn ternary_progress_for_source_binds_byte_output_operand()
+-> Result<(), String> {
+    let module = two_byte_inputs_void_module();
+    validate_module(&module)
+        .map_err(|error| format!("admit two input source: {error:?}"))?;
+    let expected = project_typed_ir(&module)?;
+    let original = lower_typed_ir(&expected)
+        .map_err(|error| format!("lower two input source: {error:?}"))?;
+    assert_source_bound_program_roundtrip(
+        "two-inputs-original-output", &expected, &original,
+    )?;
+    let mut foreign = original;
+    let operation = foreign.functions.first_mut()
+        .and_then(|function| function.operations.get_mut(2))
+        .ok_or_else(|| String::from("missing byte output"))?;
+    let TernaryOperation::ByteOutput { span, value: 0 } = *operation else {
+        return Err(String::from("original byte output changed"));
+    };
+    *operation = TernaryOperation::ByteOutput { span, value: 1 };
+    ternary_lowering::validate_ternary_program(&foreign)
+        .map_err(|error| format!("admit altered output: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&foreign)
+        .map_err(|error| format!("encode altered output: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("forged-byte-output-value", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        ) != Ok(foreign) {
+            return Err(String::from("valid altered output was rejected"));
+        }
+        assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean altered output: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn progress_resume_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;

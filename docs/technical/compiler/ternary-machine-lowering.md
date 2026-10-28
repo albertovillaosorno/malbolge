@@ -943,8 +943,13 @@ signed/unsigned 32-bit binary forms also bind the exact operation kind,
 signedness, and left/result/right SSA identities to the caller projection;
 an independently valid opcode or operand substitution now rejects through both
 source-bound selectors. A separate inspector-backed matrix admits unchanged
-checkpoints across all twenty binary forms. The checks do not re-lower the
-projection or cover remaining nonconstant instruction semantics. An explicit
+checkpoints across all twenty binary forms. Guest byte-input and byte-output
+operations now also bind their exact effect kind and declared result or
+source-byte SSA identity, rejecting independently admitted input/materialize,
+output/input, and alternate-defined-byte substitutions. Positive byte-I/O
+sidecar recovery remains accepted by both source selectors. The checks do not
+re-lower the projection or cover remaining nonconstant instruction semantics.
+An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
 source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span

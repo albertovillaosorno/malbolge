@@ -369,6 +369,29 @@ fn matches_expected_binary(
     ) && saved_binary_values(saved) == Some(expected)
 }
 
+// Guest byte effects cannot be exchanged for scalar materializations or
+// each other solely because their spans and function identity still match.
+// Retain the exact declared successful u8 input result or output operand.
+const fn matches_expected_byte_effect(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    if let InputInstruction::ByteInput {
+        result, type_kind, ..
+    } = instruction {
+        matches!(type_kind, InputScalarType::U8)
+            && matches!(saved, TernaryOperation::ByteInput {
+                result: observed, ..
+            } if *observed == *result)
+    } else if let InputInstruction::ByteOutput { value, .. } = instruction {
+        matches!(saved, TernaryOperation::ByteOutput {
+            value: observed, ..
+        } if *observed == *value)
+    } else {
+        true
+    }
+}
+
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
@@ -389,6 +412,7 @@ fn matches_expected_operation_spans(
             |(saved_op, current_op)| {
                 matches_expected_constant(current_op, saved_op)
                     && matches_expected_binary(current_op, saved_op)
+                    && matches_expected_byte_effect(current_op, saved_op)
                     && projected_instruction_span(current_op).is_some_and(
                         |span| matches_source_span(span, operation_span(*saved_op)),
                     )

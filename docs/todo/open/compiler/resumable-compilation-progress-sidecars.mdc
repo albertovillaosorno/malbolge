@@ -329,6 +329,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   lowering. Two independently admitted changed-opcode/operand checkpoints
   reject through direct and product inspector selectors, and all twenty
   unchanged binary shapes pass their positive inspector-backed matrix.
+  Guest byte effects now also match the expected `ByteInput`/`ByteOutput`
+  kind and exact input-result/output-operand SSA identity. Inspector-backed
+  valid forgeries substituting an input materialization, exchanging an output
+  for an input, or writing another already-defined byte reject under direct
+  and product source matching, while matching byte-I/O recovery still works.
   Remaining nonconstant operations are not yet fully bound.
 
   Its new `composition/progress_inspector.rs`
