@@ -191,6 +191,29 @@ signed differences contribute to their own conditional median interval.
 Paired differences are descriptive and do not replace the Pareto frontier or
 establish statistical significance.
 
+For an additional opt-in paired asymmetry view, use `--paired-exact-tests` on
+either arena CLI (independently or with `--median-intervals-95`). It adds an
+exact two-sided conditional-binomial test for **verified outcome discordance**:
+the counts where only the baseline or only the candidate verified. It also adds
+a sign test for each cost objective using only *both-verified* matched pairs in
+which the costs actually differ (candidate lower versus higher). Same-cost
+ties and pairs with a failed arm never enter a cost sign test. No discordant
+pairs, or more than 4096 discordant pairs, produce `null` rather than an
+invented probability. Every available test reports `discordant_pairs` and an
+exact two-sided `p_two_sided` as a reduced rational `[numerator, denominator]`.
+
+These tests use the null assumption of symmetric discordant outcomes,
+conditional on the number of such pairs. Valid inference additionally assumes
+independent matched trials; the analyzer cannot verify that assumption, or
+prove that a reported verifier ran. The probabilities are **unadjusted for
+multiple comparisons** across objectives, algorithms, and difficulties. The
+arena does not transform an unadjusted p-value into a declaration of
+statistical significance or a native-tier promotion decision. This separate
+view does not change descriptive outcomes, medians, Pareto frontiers, or
+capacity claims. Its `paired_exact_test_policy` block records these limits;
+the default version-one output remains byte-for-byte unchanged without the
+opt-in flag.
+
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.
 

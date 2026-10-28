@@ -53,6 +53,8 @@ if TYPE_CHECKING:
 
 REPLACE_AFTER_LSTAT_COUNT = 3
 SECOND_FSTAT_CALL = 2
+PAIRED_TEST_METHOD = "two-sided-exact-conditional-binomial"
+VERIFICATION_ASYMMETRY_FIELD = "verification_asymmetry_test"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = (
@@ -682,3 +684,36 @@ def test_evidence_cli_passes_opt_in_median_intervals_without_replacing_links(
             ]
             is None
         )
+
+
+def test_evidence_cli_opt_in_paired_tests_preserve_evidence_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Source-reported paired tests never replace run-link verification."""
+    document = sample_study(tmp_path)
+    study_path = tmp_path / "study.json"
+    _ = study_path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(study_path),
+            "--root",
+            str(tmp_path),
+            "--paired-exact-tests",
+            "--median-intervals-95",
+        ],
+    )
+    assert evidence.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["evidence_preflight"]["reported_trials_checked"] == (
+        ALGORITHM_COUNT
+    )
+    assert report["paired_exact_test_policy"]["method"] == PAIRED_TEST_METHOD
+    assert report["median_interval_policy"]["requested_confidence"] == [19, 20]
+    assert (
+        VERIFICATION_ASYMMETRY_FIELD in report["paired_baseline_comparisons"][0]
+    )

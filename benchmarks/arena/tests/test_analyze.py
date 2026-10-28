@@ -70,6 +70,13 @@ INDEPENDENT_NOTE = "Independent identically distributed"
 INTERVAL_POLICY = "median_interval_policy"
 INTERVALS_KEY = "median_confidence_intervals_95"
 INTERVAL_KEY = "median_confidence_interval_95"
+PAIRED_FAILURE_SEED_BOUND = 9
+LOW_SIGN_SEED_BOUND = 7
+HIGH_SIGN_SEED_BOUND = 11
+DISCORDANT_HALVES = 6
+NO_ADJUSTMENT = "none"
+PAIRED_SIGN_TEST = "paired_sign_test"
+VERIFICATION_ASYMMETRY_TEST = "verification_asymmetry_test"
 
 
 def _observation(
@@ -773,3 +780,151 @@ def test_cli_opt_in_intervals_and_default_json_compatibility(
     )
     assert analyze.main() == 0
     assert json.loads(capsys.readouterr().out) == _interval_report(document)
+
+
+def _paired_exact_report(document: dict[str, Any]) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(document))
+    return analyze.analyze(admitted, paired_exact_tests_enabled=True)
+
+
+def test_paired_exact_cost_signs_are_distinct_from_outcome_asymmetry() -> None:
+    """All pairs verified gives no McNemar test but a cost sign test."""
+    document = _repeated_success_study(12)
+    legacy = _run(document)
+    report = _paired_exact_report(document)
+    assert report["pareto_frontiers"] == legacy["pareto_frontiers"]
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["verification_asymmetry_test"] is None
+    assert comparison["cost_differences"]["elapsed_ns"]["paired_sign_test"] == {
+        "discordant_pairs": 12,
+        "p_two_sided": [1, 2048],
+    }
+    assert (
+        comparison["cost_differences"]["artifact_bytes"]["paired_sign_test"]
+        is None
+    )
+    policy = report["paired_exact_test_policy"]
+    assert policy["multiple_testing_adjustment"] == NO_ADJUSTMENT
+    assert not policy["pareto_uses_tests"]
+
+
+def test_paired_exact_tests_retain_failures_without_fake_cost_wins() -> None:
+    """Six candidate failures yield separate exact outcome and cost tests."""
+    document = _repeated_success_study(12)
+    for row in document["observations"]:
+        if (
+            row["algorithm"] == CANDIDATE
+            and row["case"]["seed"] < PAIRED_FAILURE_SEED_BOUND
+        ):
+            row["outcome"] = "resource_exhausted"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    report = _paired_exact_report(document)
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["outcomes"]["baseline_only_verified"] == DISCORDANT_HALVES
+    assert comparison["outcomes"]["both_verified"] == DISCORDANT_HALVES
+    assert comparison["verification_asymmetry_test"] == {
+        "discordant_pairs": 6,
+        "p_two_sided": [1, 32],
+    }
+    assert comparison["cost_differences"]["elapsed_ns"]["paired_sign_test"] == {
+        "discordant_pairs": 6,
+        "p_two_sided": [1, 32],
+    }
+
+
+def test_disjoint_verified_arms_have_no_cost_sign_evidence() -> None:
+    """Opposite successful arms are balanced but have no shared cost sample."""
+    document = _repeated_success_study(12)
+    for row in document["observations"]:
+        is_baseline = row["algorithm"] == BASELINE
+        first_half = row["case"]["seed"] < PAIRED_FAILURE_SEED_BOUND
+        if is_baseline != first_half:
+            row["outcome"] = "no_solution"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    report = _paired_exact_report(document)
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["outcomes"]["both_verified"] == 0
+    assert comparison["outcomes"]["baseline_only_verified"] == DISCORDANT_HALVES
+    assert (
+        comparison["outcomes"]["candidate_only_verified"] == DISCORDANT_HALVES
+    )
+    assert comparison["verification_asymmetry_test"] == {
+        "discordant_pairs": 12,
+        "p_two_sided": [1, 1],
+    }
+    assert (
+        comparison["cost_differences"]["elapsed_ns"]["paired_sign_test"] is None
+    )
+    assert (
+        comparison["cost_differences"]["elapsed_ns"][
+            "median_candidate_minus_baseline"
+        ]
+        is None
+    )
+
+
+def test_paired_cost_sign_test_ignores_exact_cost_ties() -> None:
+    """Four wins per arm plus four ties use only eight nontied pairs."""
+    document = _repeated_success_study(12)
+    for row in document["observations"]:
+        if row["algorithm"] == CANDIDATE:
+            seed = row["case"]["seed"]
+            original = 100 + seed - 3
+            delta = (
+                -3
+                if seed < LOW_SIGN_SEED_BOUND
+                else (3 if seed < HIGH_SIGN_SEED_BOUND else 0)
+            )
+            row["metrics"]["elapsed_ns"] = original + delta
+    report = _paired_exact_report(document)
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["cost_differences"]["elapsed_ns"]["paired_sign_test"] == {
+        "discordant_pairs": 8,
+        "p_two_sided": [1, 1],
+    }
+
+
+def test_paired_exact_opt_in_keeps_default_and_order_stable() -> None:
+    """Both inferential tools compose without affecting descriptive ranking."""
+    document = _repeated_success_study(12)
+    default = _run(document)
+    for pair in default["paired_baseline_comparisons"]:
+        assert VERIFICATION_ASYMMETRY_TEST not in pair
+        for cost in pair["cost_differences"].values():
+            assert PAIRED_SIGN_TEST not in cost
+    admitted = analyze.parse_document(json.dumps(document))
+    combined = analyze.analyze(
+        admitted,
+        median_intervals_95=True,
+        paired_exact_tests_enabled=True,
+    )
+    assert combined["pareto_frontiers"] == default["pareto_frontiers"]
+    assert combined["capacity_curve"][0]["median_confidence_intervals_95"]
+    assert combined["paired_baseline_comparisons"][0]["cost_differences"][
+        "elapsed_ns"
+    ]["paired_sign_test"]
+    document["observations"].reverse()
+    assert _run(document) == default
+    assert _paired_exact_report(document) == _paired_exact_report({
+        **document,
+        "observations": list(reversed(document["observations"])),
+    })
+
+
+def test_standalone_cli_accepts_paired_exact_test_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator output contains the optional exact test only when requested."""
+    document = _repeated_success_study(12)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["arena", str(path), "--paired-exact-tests"]
+    )
+    assert analyze.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report == _paired_exact_report(document)

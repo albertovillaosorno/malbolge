@@ -46,6 +46,7 @@ from typing import Any
 from typing import Never
 
 from benchmarks.arena import median_intervals
+from benchmarks.arena import paired_exact_tests
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -422,6 +423,7 @@ def _paired_cost(
     name: str,
     *,
     median_intervals_95: bool = False,
+    paired_exact_tests_enabled: bool = False,
 ) -> dict[str, Any]:
     differences = [
         candidate["metrics"][name] - baseline["metrics"][name]
@@ -440,6 +442,11 @@ def _paired_cost(
         result["median_confidence_interval_95"] = (
             median_intervals.median_interval_95(differences)
         )
+    if paired_exact_tests_enabled:
+        result["paired_sign_test"] = paired_exact_tests.two_sided_sign_test(
+            result["candidate_lower"],
+            result["candidate_higher"],
+        )
     return result
 
 
@@ -447,6 +454,7 @@ def _paired_cost(
 class _AnalysisPolicy:
     objectives: list[str]
     median_intervals_95: bool
+    paired_exact_tests: bool
 
 
 def _paired_per_cohort(
@@ -468,23 +476,33 @@ def _paired_per_cohort(
                 strict=True,
             )
         )
-        result.append({
+        outcomes = _paired_outcomes(paired)
+        paired_report = {
             "family": key[0],
             "version": key[1],
             "difficulty": key[2],
             "baseline": baseline,
             "algorithm": algorithm,
             "paired_trials": len(paired),
-            "outcomes": _paired_outcomes(paired),
+            "outcomes": outcomes,
             "cost_differences": {
                 name: _paired_cost(
                     paired,
                     name,
                     median_intervals_95=policy.median_intervals_95,
+                    paired_exact_tests_enabled=policy.paired_exact_tests,
                 )
                 for name in policy.objectives
             },
-        })
+        }
+        if policy.paired_exact_tests:
+            paired_report["verification_asymmetry_test"] = (
+                paired_exact_tests.two_sided_sign_test(
+                    outcomes["baseline_only_verified"],
+                    outcomes["candidate_only_verified"],
+                )
+            )
+        result.append(paired_report)
     return result
 
 
@@ -611,6 +629,7 @@ def analyze(
     document: dict[str, Any],
     *,
     median_intervals_95: bool = False,
+    paired_exact_tests_enabled: bool = False,
 ) -> dict[str, Any]:
     """Summarize exact trial counts and matched Pareto sets.
 
@@ -620,7 +639,11 @@ def analyze(
     """
     study = document["study"]
     objectives: list[str] = study["objectives"]
-    policy = _AnalysisPolicy(objectives, median_intervals_95)
+    policy = _AnalysisPolicy(
+        objectives,
+        median_intervals_95,
+        paired_exact_tests_enabled,
+    )
     grouped: dict[tuple[Any, ...], dict[str, list[dict[str, Any]]]] = (
         defaultdict(lambda: defaultdict(list))
     )
@@ -681,6 +704,22 @@ def analyze(
             ),
             "pareto_uses_intervals": False,
         }
+    if paired_exact_tests_enabled:
+        report["paired_exact_test_policy"] = {
+            "method": "two-sided-exact-conditional-binomial",
+            "maximum_discordant_pairs": paired_exact_tests.MAX_DISCORDANT_PAIRS,
+            "multiple_testing_adjustment": "none",
+            "assumptions": (
+                "Independent matched pairs, symmetric discordant signs under "
+                "the null. Outcome asymmetry conditions on one verified arm, "
+                "while cost signs condition on both verified and exclude ties. "
+                "Source-reported verification, sampling independence and "
+                "physical measurements are not authenticated. Unadjusted "
+                "p-values do not establish statistical significance after "
+                "multiple comparisons."
+            ),
+            "pareto_uses_tests": False,
+        }
     return report
 
 
@@ -713,10 +752,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
     parser.add_argument("--median-intervals-95", action="store_true")
+    parser.add_argument("--paired-exact-tests", action="store_true")
     args = parser.parse_args()
     try:
         document = parse_document(read_input(args.input))
-        report = analyze(document, median_intervals_95=args.median_intervals_95)
+        report = analyze(
+            document,
+            median_intervals_95=args.median_intervals_95,
+            paired_exact_tests_enabled=args.paired_exact_tests,
+        )
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")
     _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")

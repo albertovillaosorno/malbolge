@@ -176,8 +176,20 @@ four categories: both solved, baseline-only, candidate-only, and neither.
 Cost wins/losses and exact median signed differences are computed only from
 pairs where both solutions passed the named independent verifier. This avoids
 pretending that a failed run has a successful solution size or cost. The paired
-view does not replace the authoritative multidimensional frontier or supply
-an inferential confidence bound.
+view does not replace the authoritative multidimensional frontier. An
+optional `--paired-exact-tests` view now computes exact two-sided conditional
+binomial probabilities for verification-outcome asymmetry (McNemar-style
+baseline-only/candidate-only successful arms) and cost sign asymmetry among
+*both-verified*, non-tied paired measurements. These are distinct estimands:
+a verified failure is never assigned a fictitious successful cost. Each test
+conditions on its discordant pair count, computes the exact rational null
+probability without floating-point rounding, and refuses to infer from zero
+or more than 4096 discordant pairs. The test requires independently sampled
+matched pairs and a symmetric-sign null; the analyzer cannot verify sampling
+independence or physical measurement validity. Across multiple objectives and
+cohorts, the probabilities are unadjusted for multiplicity and are not
+significance or performance-promotion verdicts. This view does not change
+nominal Pareto rankings or existing reports by default.
 
 This first slice intentionally does not require an executable final `.malbolge`
 backend; the study's `stage` can describe available compiler or execution
@@ -253,6 +265,11 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
+- `benchmarks/arena/paired_exact_tests.py` computes unadjusted exact
+  two-sided conditional-binomial p-values for the distinct verified-outcome
+  and both-success cost-sign hypotheses. Independent `math.comb` references
+  check directional symmetry, empty comparisons, ties, extreme counts, and
+  exact fractions; CLI and cohort tests retain default compatibility.
 - `benchmarks/arena/median_intervals.py` computes exact 95%-or-higher
   symmetric-rank intervals using binomial coverage, with independent reference
   tests for small/large samples, ties, negative costs and sample bounds.

@@ -120,6 +120,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   leave the default Pareto ranking unchanged and refuse insufficient or
   over-budget sample counts; independence and physical measurements remain
   unverified. Independent binomial-reference and CLI regressions are retained.
+- Optional paired exact tests now distinguish baseline-only versus
+  candidate-only verifier outcome asymmetry from both-verified, non-tied cost
+  sign differences. Exact rational two-sided conditional binomial p-values
+  retain null on zero or over-limit discordant samples; test hypotheses rely
+  on independent pairs and remain unadjusted across multiple comparisons.
+  Neither verifier authority nor automatic significance is inferred.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real
