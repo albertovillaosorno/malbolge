@@ -46,6 +46,7 @@ from typing import Never
 from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
+from benchmarks.arena import budget_links
 from benchmarks.arena import raw_samples
 from benchmarks.arena import trial_runs
 
@@ -114,6 +115,7 @@ def _manifest(
     relative: str,
     *,
     require_trial: bool,
+    require_budgets: bool,
 ) -> _ManifestLink:
     path = regular_path(root, relative, limit=MAX_MANIFEST_BYTES)
     with path.open("rb") as stream:
@@ -124,6 +126,9 @@ def _manifest(
     return _ManifestLink(
         manifest=experiment_manifest.parse_manifest(text),
         trial=(trial_runs.parse_trial_run(text) if require_trial else None),
+        budgets=(
+            budget_links.parse_run_budgets(text) if require_budgets else None
+        ),
     )
 
 
@@ -178,6 +183,19 @@ def _compare_run(
 class _ManifestLink:
     manifest: experiment_manifest.ExperimentManifest
     trial: trial_runs.TrialRun | None
+    budgets: budget_links.RunBudgets | None
+
+
+@dataclass(frozen=True, slots=True)
+class EvidencePolicy:
+    """Optional source-reported evidence checks, defaulting to identity only."""
+
+    require_raw_rows: bool = False
+    require_trial_run_identity: bool = False
+    require_budget_agreement: bool = False
+
+
+DEFAULT_EVIDENCE_POLICY = EvidencePolicy()
 
 
 @dataclass(slots=True)
@@ -186,8 +204,8 @@ class _EvidenceContext:
     study: dict[str, Any]
     manifests: dict[str, _ManifestLink]
     samples: set[str]
-    require_trial: bool
     claimed_trial_manifests: set[str]
+    policy: EvidencePolicy
 
 
 def _admit_observation(row: dict[str, Any], context: _EvidenceContext) -> None:
@@ -196,12 +214,15 @@ def _admit_observation(row: dict[str, Any], context: _EvidenceContext) -> None:
         context.manifests[manifest_path] = _manifest(
             context.root,
             manifest_path,
-            require_trial=context.require_trial,
+            require_trial=context.policy.require_trial_run_identity,
+            require_budgets=context.policy.require_budget_agreement,
         )
     link = context.manifests[manifest_path]
     _compare_identity(row, context.study, link.manifest)
-    if context.require_trial:
+    if context.policy.require_trial_run_identity:
         _compare_trial(row, manifest_path, link, context=context)
+    if context.policy.require_budget_agreement:
+        _compare_budgets(link, context.study)
     sample = row["raw_sample"]
     _ = regular_path(context.root, sample)
     context.samples.add(sample)
@@ -219,6 +240,19 @@ def _compare_trial(
     if link.trial is None or link.trial.trial != row["trial"]:
         _fail(f"arena_trial repetition differs from reported trial: {path}")
     context.claimed_trial_manifests.add(path)
+
+
+def _compare_budgets(
+    link: _ManifestLink,
+    study: dict[str, Any],
+) -> None:
+    if link.budgets is None:
+        _fail("experiment run budget agreement was not loaded")
+    if (
+        link.budgets.time_ns != study["budget"]["time_ns"]
+        or link.budgets.memory_bytes != study["budget"]["memory_bytes"]
+    ):
+        _fail("experiment run declared budget differs from arena study")
 
 
 def _trial_digests(
@@ -251,59 +285,23 @@ def _raw_contents(
 def _checked_contents(
     document: dict[str, Any],
     context: _EvidenceContext,
-    *,
-    require_raw_rows: bool,
 ) -> dict[str, str] | None:
-    if not (require_raw_rows or context.require_trial):
+    if not (
+        context.policy.require_raw_rows
+        or context.policy.require_trial_run_identity
+    ):
         return None
     contents = _raw_contents(document, context.root)
-    if context.require_trial:
+    if context.policy.require_trial_run_identity:
         _trial_digests(context, contents, document)
     return contents
 
 
-def validate_links(
+def _report_links(
+    context: _EvidenceContext,
     document: dict[str, Any],
-    root: Path,
-    *,
-    require_raw_rows: bool = False,
-    require_trial_run_identity: bool = False,
+    contents: dict[str, str] | None,
 ) -> dict[str, Any]:
-    """Cross-check reported trials with bounded canonical run files.
-
-    Returns:
-        Counts of checked links without claiming semantic certification.
-
-    Raises:
-        EvidenceError: A linked identity or retained file is inadmissible.
-
-    """
-    context = _EvidenceContext(
-        root,
-        document["study"],
-        {},
-        set(),
-        require_trial_run_identity,
-        set(),
-    )
-    try:
-        for row in document["observations"]:
-            _admit_observation(row, context)
-        contents = _checked_contents(
-            document,
-            context,
-            require_raw_rows=require_raw_rows,
-        )
-    except (
-        OSError,
-        UnicodeError,
-        RuntimeError,
-        experiment_manifest.ExperimentManifestError,
-        raw_samples.RawSampleError,
-        trial_runs.TrialRunError,
-    ) as error:
-        message = f"linked arena evidence invalid: {error}"
-        raise EvidenceError(message) from error
     report = {
         "manifest_links_checked": len(context.manifests),
         "raw_sample_paths_checked": len(context.samples),
@@ -320,14 +318,61 @@ def validate_links(
             "Reported raw CSV identity and metrics match; no provenance "
             "authentication or independent semantic oracle replay."
         )
-    if require_trial_run_identity:
+    if context.policy.require_trial_run_identity:
         report["trial_run_links_checked"] = len(context.claimed_trial_manifests)
         report["scope"] = (
             "Versioned per-trial run identity, matching retained CSV rows, "
             "and source-reported raw-byte hashes; no verifier replay or "
             "independent measurement authentication."
         )
+    if context.policy.require_budget_agreement:
+        report["run_budget_links_checked"] = len(context.manifests)
+        report["scope"] += (
+            " Exact declared run time/memory budgets agree with study; "
+            "no physical budget enforcement."
+        )
     return report
+
+
+def validate_links(
+    document: dict[str, Any],
+    root: Path,
+    *,
+    policy: EvidencePolicy = DEFAULT_EVIDENCE_POLICY,
+) -> dict[str, Any]:
+    """Cross-check reported trials with bounded canonical run files.
+
+    Returns:
+        Counts of checked links without claiming semantic certification.
+
+    Raises:
+        EvidenceError: A linked identity or retained file is inadmissible.
+
+    """
+    context = _EvidenceContext(
+        root,
+        document["study"],
+        {},
+        set(),
+        set(),
+        policy,
+    )
+    try:
+        for row in document["observations"]:
+            _admit_observation(row, context)
+        contents = _checked_contents(document, context)
+    except (
+        OSError,
+        UnicodeError,
+        RuntimeError,
+        experiment_manifest.ExperimentManifestError,
+        raw_samples.RawSampleError,
+        trial_runs.TrialRunError,
+        budget_links.BudgetLinkError,
+    ) as error:
+        message = f"linked arena evidence invalid: {error}"
+        raise EvidenceError(message) from error
+    return _report_links(context, document, contents)
 
 
 def main() -> int:
@@ -342,14 +387,18 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).parents[2])
     parser.add_argument("--require-raw-rows", action="store_true")
     parser.add_argument("--require-trial-run-identity", action="store_true")
+    parser.add_argument("--require-budget-agreement", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
         checked = validate_links(
             document,
             args.root,
-            require_raw_rows=args.require_raw_rows,
-            require_trial_run_identity=args.require_trial_run_identity,
+            policy=EvidencePolicy(
+                require_raw_rows=args.require_raw_rows,
+                require_trial_run_identity=args.require_trial_run_identity,
+                require_budget_agreement=args.require_budget_agreement,
+            ),
         )
         report = analyze.analyze(document)
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:

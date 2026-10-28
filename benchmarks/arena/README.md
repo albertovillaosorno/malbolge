@@ -243,3 +243,22 @@ Existing research projects with one aggregate run manifest covering multiple
 repetitions should continue to use the identity-only or raw-rows checks until
 they actually produce source-pinned per-trial run records. Do not split or
 fabricate aggregate provenance merely to satisfy the stronger mode.
+
+## Optional declared run-budget agreement
+
+To detect inconsistent *reported* run limits, add
+`--require-budget-agreement` to `benchmarks.arena.evidence`. This mode is
+independent of `--require-raw-rows` and `--require-trial-run-identity` and
+requires the standard experiment run `[budget]` table to explicitly include
+positive integer `seconds` and `memory_mib`. Every linked run must declare
+limits that match the study's `time_ns` and `memory_bytes` **exactly** after
+multiplying seconds by 1,000,000,000 and MiB by 1,048,576. Fractional seconds
+or non-MiB-aligned study limits cannot meet this opt-in agreement contract;
+they should use a separate, properly versioned timing-unit specification.
+
+This check catches different budget declarations for two algorithms on the
+same compared workload, as well as silent unit conversion or rounding drift.
+It does **not** prove that the runner enforced either limit or accurately
+reported resource use. Neither the ordinary identity-only mode nor legacy
+aggregate research evidence is required to carry both budget fields until
+this stronger agreement check is requested.

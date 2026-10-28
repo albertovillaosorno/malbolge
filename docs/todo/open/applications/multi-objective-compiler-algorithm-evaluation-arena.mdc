@@ -85,6 +85,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   This mode implies complete `arena-raw-v1` row checks, rejects aggregate-run
   reuse, and preserves older aggregate-manifest workflows without pretending
   that a producer-reported digest or outcome is independently certified.
+- A separate opt-in budget link requires every reported run's whole-second
+  and MiB budget declarations to agree exactly with the arena study's
+  nanosecond and byte limits, rejecting stale or unequal research budgets.
+  This is not evidence of actual resource monitoring or enforcement.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

@@ -117,7 +117,11 @@ def _setup(root: Path) -> dict[str, Any]:
 
 def _check(doc: dict[str, Any], root: Path) -> dict[str, Any]:
     admitted = analyze.parse_document(json.dumps(doc))
-    return evidence.validate_links(admitted, root, require_raw_rows=True)
+    return evidence.validate_links(
+        admitted,
+        root,
+        policy=evidence.EvidencePolicy(require_raw_rows=True),
+    )
 
 
 def test_exact_raw_matches_with_durable_content_digests(tmp_path: Path) -> None:
@@ -403,7 +407,7 @@ def _strict_check(doc: dict[str, Any], root: Path) -> dict[str, Any]:
     return evidence.validate_links(
         admitted,
         root,
-        require_trial_run_identity=True,
+        policy=evidence.EvidencePolicy(require_trial_run_identity=True),
     )
 
 
@@ -595,3 +599,44 @@ def test_strict_run_raw_digest_requires_exact_declared_sha256(
     )
     with pytest.raises(evidence.EvidenceError, match="arena_trial"):
         _strict_check(doc, tmp_path)
+
+
+def test_strict_trial_run_can_also_require_exact_run_budget_agreement(
+    tmp_path: Path,
+) -> None:
+    """All optional contracts coexist without weakening prior checks."""
+    doc = _setup(tmp_path)
+    doc["study"]["budget"] = {
+        "time_ns": 1_000_000_000,
+        "memory_bytes": 128 * 1_048_576,
+    }
+    for row in doc["observations"]:
+        path = tmp_path / row["experiment_manifest"]
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "seconds = 1",
+                "seconds = 1\nmemory_mib = 128",
+            ),
+            encoding="utf-8",
+        )
+    _bind_trial_extensions(doc, tmp_path)
+    policy = evidence.EvidencePolicy(
+        require_raw_rows=True,
+        require_trial_run_identity=True,
+        require_budget_agreement=True,
+    )
+    admitted = analyze.parse_document(json.dumps(doc))
+    checked = evidence.validate_links(admitted, tmp_path, policy=policy)
+    assert checked["trial_run_links_checked"] == ALGORITHM_COUNT
+    assert checked["run_budget_links_checked"] == ALGORITHM_COUNT
+    assert checked["raw_rows_matched"] == ALGORITHM_COUNT
+    path = tmp_path / doc["observations"][0]["experiment_manifest"]
+    _ = path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "memory_mib = 128",
+            "memory_mib = 256",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(evidence.EvidenceError, match="declared budget differs"):
+        evidence.validate_links(admitted, tmp_path, policy=policy)

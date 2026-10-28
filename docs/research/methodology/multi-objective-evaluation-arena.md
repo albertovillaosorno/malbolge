@@ -109,6 +109,13 @@ complete raw-row checking; one unscoped aggregate run cannot stand in for
 multiple purportedly independent repetitions. These producer-declared
 bindings are not proof of physical replication or verifier execution.
 
+A separate opt-in `--require-budget-agreement` mode reads every governed
+experiment run's `[budget]` table and requires explicit positive integer
+`seconds` and `memory_mib` declarations. Those values must convert exactly to
+the study's declared `time_ns` and `memory_bytes`, without rounding or allowing
+one algorithm a different recorded resource budget. This is a reporting
+consistency check only, not physical runtime or peak-memory enforcement.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -183,6 +190,9 @@ The original study records remain the result authority.
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
   trial/schema metadata, aggregate-manifest reuse, and fail-closed CLI output.
+- `benchmarks/arena/budget_links.py` optionally requires exact resource
+  budget declarations from each linked run, rejecting missing/forged integers,
+  unit mismatches, and one-unit study drift with fail-closed CLI regressions.
 - `benchmarks/arena/historical_pairs.py` replays the two retained classic
   five-pair research sources into arena reports. Source-backed regressions
   assert exact observed medians, paired results, fingerprints, and rejection

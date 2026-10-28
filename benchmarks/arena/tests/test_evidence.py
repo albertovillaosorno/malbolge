@@ -298,3 +298,142 @@ def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     document["observations"][0]["experiment_manifest"] = "../escape.toml"
     with pytest.raises(evidence.EvidenceError, match="canonical relative"):
         evidence.validate_links(document, tmp_path)
+
+
+BUDGET_SECONDS = 1
+BUDGET_MEMORY_MIB = 128
+BYTES_PER_MIB = 1_048_576
+NANOSECONDS_PER_SECOND = 1_000_000_000
+BUDGET_DIAGNOSTIC = "declared budget differs"
+NOT_ENFORCED = "no physical budget enforcement"
+
+
+def _budgeted_study(root: Path) -> dict[str, Any]:
+    doc = sample_study(root)
+    doc["study"]["budget"] = {
+        "time_ns": BUDGET_SECONDS * NANOSECONDS_PER_SECOND,
+        "memory_bytes": BUDGET_MEMORY_MIB * BYTES_PER_MIB,
+    }
+    for row in doc["observations"]:
+        path = root / row["experiment_manifest"]
+        text = path.read_text(encoding="utf-8")
+        _ = path.write_text(
+            text.replace(
+                "seconds = 1",
+                "seconds = 1\nmemory_mib = 128",
+            ),
+            encoding="utf-8",
+        )
+    return doc
+
+
+def _budget_preflight(doc: dict[str, Any], root: Path) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(doc))
+    return evidence.validate_links(
+        admitted,
+        root,
+        policy=evidence.EvidencePolicy(require_budget_agreement=True),
+    )
+
+
+def test_opt_in_run_budget_binding_reports_exact_declared_limits(
+    tmp_path: Path,
+) -> None:
+    """Each run must declare the same nanosecond/MiB study resource limits."""
+    doc = _budgeted_study(tmp_path)
+    checked = _budget_preflight(doc, tmp_path)
+    assert checked["run_budget_links_checked"] == ALGORITHM_COUNT
+    assert NOT_ENFORCED in checked["scope"]
+
+
+@pytest.mark.parametrize(
+    ("previous", "replacement", "message"),
+    [
+        ("seconds = 1", "seconds = 2", BUDGET_DIAGNOSTIC),
+        ("memory_mib = 128", "memory_mib = 129", BUDGET_DIAGNOSTIC),
+        ("memory_mib = 128", "memory_mib = true", "positive integer"),
+        ("memory_mib = 128", "memory_mib = -1", "positive integer"),
+        ("memory_mib = 128", "memory_mib = 1.5", "positive integer"),
+        ("seconds = 1", "seconds = false", "positive integer"),
+        ("seconds = 1", "seconds = 0", "positive integer"),
+        ("memory_mib = 128", "", "positive integer"),
+    ],
+)
+def test_run_budget_drift_is_rejected_without_performance_claim(
+    tmp_path: Path,
+    previous: str,
+    replacement: str,
+    *,
+    message: str,
+) -> None:
+    """Budget values must agree with the registered workload limit exactly."""
+    doc = _budgeted_study(tmp_path)
+    _modify_manifest(
+        tmp_path,
+        "baseline",
+        old=previous,
+        new=replacement,
+    )
+    with pytest.raises(evidence.EvidenceError, match=message):
+        _budget_preflight(doc, tmp_path)
+
+
+@pytest.mark.parametrize("dimension", ["time_ns", "memory_bytes"])
+def test_study_budget_unit_drift_fails_even_by_one_unit(
+    tmp_path: Path,
+    dimension: str,
+) -> None:
+    """Whole-second and MiB declarations never round nanosecond/byte drift."""
+    doc = _budgeted_study(tmp_path)
+    doc["study"]["budget"][dimension] += 1
+    with pytest.raises(evidence.EvidenceError, match=BUDGET_DIAGNOSTIC):
+        _budget_preflight(doc, tmp_path)
+
+
+def test_budget_requirement_is_optional_for_old_one_bound_manifests(
+    tmp_path: Path,
+) -> None:
+    """Normal linked-run preflight still admits the governed fixture record."""
+    doc = sample_study(tmp_path)
+    assert _admit(doc, tmp_path)["reported_trials_checked"] == ALGORITHM_COUNT
+    with pytest.raises(evidence.EvidenceError, match="memory_mib"):
+        _budget_preflight(doc, tmp_path)
+
+
+def test_budget_cli_drift_omits_entire_capacity_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No Pareto JSON escapes after a reported run-budget mismatch."""
+    doc = _budgeted_study(tmp_path)
+    input_path = tmp_path / "study.json"
+    _ = input_path.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(input_path),
+            "--root",
+            str(tmp_path),
+            "--require-budget-agreement",
+        ],
+    )
+    assert evidence.main() == 0
+    admitted = json.loads(capsys.readouterr().out)
+    assert (
+        admitted["evidence_preflight"]["run_budget_links_checked"]
+        == ALGORITHM_COUNT
+    )
+    _modify_manifest(
+        tmp_path,
+        "candidate",
+        old="memory_mib = 128",
+        new="memory_mib = 129",
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert BUDGET_DIAGNOSTIC in result.err
