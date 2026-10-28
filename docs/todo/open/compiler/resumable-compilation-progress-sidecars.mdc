@@ -332,6 +332,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   generation through the production inspector. The matrix transitions from a
   CPU-labelled generation to a CUDA-labelled generation, alongside malformed-
   state and bridge failure regressions.
+  The opt-in source-bound ternary route now independently tests all ten
+  crash boundaries through both the direct and product selectors. Before
+  pointer replacement it restores the matching source generation; after
+  replacement it rejects the independently valid foreign generation. Explicit
+  negative selectors also distinguish inspector launch, inspector rejection,
+  and malformed canonical checkpoint bytes from source mismatch.
 - Product CLI progress access now selects repository-pinned Python 3.14.7 and
   the trusted inspector for `--checkpoint-info`,
   `--extract-checkpoint STATE_CODEC`, and `--follow-progress`. Rust

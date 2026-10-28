@@ -931,6 +931,13 @@ caller function-name/span/count drift, using `IdentityMismatch` without
 re-running lowering. Inspector and codec failures remain distinct. This checks
 provenance equality, **not** the authenticity of the supplied source digest,
 operation-level semantic equivalence, or external toolchain/revision policy.
+Production-inspector recovery for the source-matched route now covers all ten
+atomic checkpoint/pointer crash boundaries with matching first and foreign
+second generations: pre-pointer crashes retain the matching predecessor, while
+post-pointer crashes reject the newly committed foreign state. Both direct and
+product selection enforce that distinction. Separate regressions also preserve
+launch, inspector rejection, and malformed-codec errors independently of
+source-identity mismatch.
 
 The compiler's fresh ternary-stage entry now also runs the independent
 `validate_ternary_program` admission gate after successful lowering, matching

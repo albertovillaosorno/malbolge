@@ -11852,6 +11852,154 @@ fn progress_resume_for_source_binds_caller_identity()
     cleanup
 }
 
+fn assert_source_matched_ternary_failure(
+    expected: &TypedIrInput,
+    inspector: &Path,
+    paths: (&Path, &Path),
+    wanted: TernaryProgressCheckpointError,
+) -> Result<(), String> {
+    let (interpreter, progress) = paths;
+    let direct = resume_ternary_from_progress_for_source(
+        interpreter, inspector, progress, expected,
+    );
+    if direct != Err(wanted) {
+        return Err(format!("source-bound direct error: {direct:?}"));
+    }
+    let selected = enter_ternary_compiler_stage(
+        TernaryCompilerStageInput::ProgressForSource {
+            expected,
+            inspector,
+            interpreter,
+            progress,
+        },
+    );
+    if selected != Err(TernaryCompilerStageError::Progress(wanted)) {
+        return Err(format!("source-bound product error: {selected:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_preserves_inspector_and_codec_failures()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let interpreter = repository_python();
+    let progress =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
+    let missing = temp_dir().join(format!(
+        "malbolge-missing-ternary-source-inspector-{}", id(),
+    ));
+    assert_source_matched_ternary_failure(
+        &expected, &missing, (&missing, &progress),
+        TernaryProgressCheckpointError::InspectorLaunch,
+    )?;
+    assert_source_matched_ternary_failure(
+        &expected, &missing, (&interpreter, &progress),
+        TernaryProgressCheckpointError::InspectorRejected,
+    )?;
+    for (label, script, wanted) in [
+        (
+            "source-diagnostic",
+            TERNARY_INSPECTOR_DIAGNOSTIC_SCRIPT,
+            TernaryProgressCheckpointError::InspectorRejected,
+        ),
+        (
+            "source-invalid-state",
+            TERNARY_INSPECTOR_INVALID_SCRIPT,
+            TernaryProgressCheckpointError::Stage(
+                TernaryStageError::Checkpoint(
+                    TernaryProgramCodecError::Truncated,
+                ),
+            ),
+        ),
+    ] {
+        let inspector =
+            temporary_ternary_file(label, "py", script.as_bytes())?;
+        let outcome = assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress), wanted,
+        );
+        let cleanup = remove_file(&inspector)
+            .map_err(|error| format!("remove {label} inspector: {error}"));
+        outcome?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+fn check_source_matched_ternary_crash_boundary(
+    boundary: &str,
+    expected: &TypedIrInput,
+    matching: &ternary_lowering::TernaryProgram,
+    foreign: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let directory = ternary_crash_directory(
+        &format!("source-bound-{boundary}"),
+    )?;
+    let paths = write_ternary_crash_states(directory, matching, foreign)?;
+    let result = (|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let progress = launch_ternary_crash(root, boundary, &paths)?;
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let direct = resume_ternary_from_progress_for_source(
+            &interpreter, &inspector, &progress, expected,
+        );
+        let wanted = if matches!(
+            boundary, "after-sidecar-replace" | "after-sidecar-sync"
+        ) {
+            Err(TernaryProgressCheckpointError::IdentityMismatch)
+        } else {
+            Ok(matching.clone())
+        };
+        if direct != wanted {
+            return Err(format!(
+                "source-bound ternary crash {boundary} direct: {direct:?}",
+            ));
+        }
+        let selected = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::ProgressForSource {
+                expected,
+                inspector: &inspector,
+                interpreter: &interpreter,
+                progress: &progress,
+            },
+        );
+        if selected != wanted.map_err(TernaryCompilerStageError::Progress) {
+            return Err(format!(
+                "source-bound ternary crash {boundary} product: {selected:?}",
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&paths.directory)
+        .map_err(|error| format!("remove crash {boundary}: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn ternary_progress_for_source_survives_all_crash_boundaries()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let matching = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower matching ternary source: {error:?}"))?;
+    let foreign_source = projected_byte_io_fixture()?;
+    let foreign =
+        enter_ternary_stage(TernaryStageInput::Projection(&foreign_source))
+            .map_err(|error| {
+                format!("lower foreign ternary source: {error:?}")
+            })?;
+    if matching.source_sha256 == foreign.source_sha256 {
+        return Err(String::from("ternary crash sources are not distinct"));
+    }
+    for boundary in TERNARY_CRASH_BOUNDARIES {
+        check_source_matched_ternary_crash_boundary(
+            boundary, &expected, &matching, &foreign,
+        )?;
+    }
+    Ok(())
+}
+
 #[test]
 fn progress_resume_rejects_forged_function_provenance_with_same_digest()
 -> Result<(), String> {
