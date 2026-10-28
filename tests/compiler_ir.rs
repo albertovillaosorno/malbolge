@@ -1691,6 +1691,74 @@ fn typed_ir_progress_for_source_checks_expected_frontend()
     cleanup
 }
 
+fn assert_source_matched_resume_failure(
+    expected: &FrontendArtifact,
+    inspector: &Path,
+    paths: (&Path, &Path),
+    wanted: ProgressCheckpointError,
+) -> Result<(), String> {
+    let (interpreter, progress) = paths;
+    let direct = resume_typed_ir_from_progress_for_source(
+        interpreter, inspector, progress, expected,
+    );
+    if direct != Err(wanted) {
+        return Err(format!("source-bound failure changed: {direct:?}"));
+    }
+    let selected = enter_typed_ir_compiler_stage(
+        TypedIrCompilerStageInput::ProgressForSource {
+            expected, inspector, interpreter, progress,
+        },
+    );
+    if selected != Err(TypedIrCompilerStageError::Progress(wanted)) {
+        return Err(format!("source-bound product failure: {selected:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_ir_progress_for_source_preserves_inspector_and_codec_failures()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let interpreter = repository_python();
+    let progress =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(LOWERING_GOLDEN_PATH);
+    let missing = temp_dir().join(format!(
+        "malbolge-missing-source-bound-inspector-{}", id(),
+    ));
+    assert_source_matched_resume_failure(
+        &expected, &missing, (&missing, &progress),
+        ProgressCheckpointError::InspectorLaunch,
+    )?;
+    assert_source_matched_resume_failure(
+        &expected, &missing, (&interpreter, &progress),
+        ProgressCheckpointError::InspectorRejected,
+    )?;
+    for (label, script, wanted) in [
+        (
+            "source-diagnostic",
+            INSPECTOR_DIAGNOSTIC_SCRIPT,
+            ProgressCheckpointError::InspectorRejected,
+        ),
+        (
+            "source-invalid-checkpoint",
+            INSPECTOR_STAGE_FAILURE_SCRIPT,
+            ProgressCheckpointError::Stage(TypedIrStageError::Checkpoint(
+                CanonicalDecodeError::Truncated,
+            )),
+        ),
+    ] {
+        let inspector = temporary_inspector(label, script)?;
+        let checked = assert_source_matched_resume_failure(
+            &expected, &inspector, (&interpreter, &progress), wanted,
+        );
+        let cleanup = remove_file(&inspector)
+            .map_err(|error| format!("clean source inspector: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
+}
+
 #[test]
 fn typed_ir_progress_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {

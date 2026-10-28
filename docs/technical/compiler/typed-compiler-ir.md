@@ -231,6 +231,9 @@ The production sidecar inspector and both source-matched selection entrypoints
 now also agree across all ten injected checkpoint/sidecar publication crashes:
 until pointer replacement they restore the valid matching predecessor, and
 after replacement they reject the independently valid foreign generation.
+Malformed extracted state continues to report the typed checkpoint codec error;
+failed Python launch and inspector rejection remain distinct from source
+identity mismatch on both selection routes.
 
 ### Relationship to LLVM IR
 

@@ -289,7 +289,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   covers all ten immutable publication crash boundaries: the old matching
   generation stays selected until sidecar replacement, after which the new
   independently admitted foreign generation is rejected by direct and product
-  routes.
+  routes. The source-matched selector also preserves launch, diagnostics,
+  and canonical checkpoint codec failure classes independently of provenance
+  mismatch, with both direct and product regression assertions.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB
