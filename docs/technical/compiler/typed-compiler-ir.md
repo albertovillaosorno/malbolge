@@ -217,8 +217,9 @@ admission.
 An opt-in `ProgressForSource` product selector and direct
 `resume_typed_ir_from_progress_for_source()` route additionally compare the
 independently admitted checkpoint to a separately supplied normalized frontend
-artifact. They require exact ABI, source path/digest, target profile, ordered
-function count/names, full function source spans, and the current
+artifact. They require a nonempty expected function set, exact ABI,
+source path/digest, target profile, ordered function count/names, full function
+source spans, and the current
 no-argument `i32` function signature through the admitted type table. The
 expected frontend must also pass the same artifact ID, Clang version/target,
 language, and schema-version identity gate as fresh lowering. Each expected

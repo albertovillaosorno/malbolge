@@ -1787,6 +1787,59 @@ fn assert_source_matched_resume_failure(
 }
 
 #[test]
+fn typed_ir_progress_for_source_rejects_valid_empty_checkpoint()
+-> Result<(), String> {
+    let expected = frontend_artifact("malbolge-c-frontend-v1", Vec::new());
+    let empty = Module::new(ModuleSpec {
+        abi_id: String::from(ABI_ID),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: Vec::new(),
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from(LOWERING_SOURCE_ID),
+        source_sha256: LOWERING_SOURCE_HASH,
+        target_profile: String::from(PROFILE_ID),
+        types: vec![TypeEntry::new(TypeId::new(0), TypeDef::I32)],
+    });
+    validate_module(&empty)
+        .map_err(|error| format!("empty typed IR invalid: {error:?}"))?;
+    if lower_frontend_artifact(&expected)
+        != Err(FrontendLoweringError::UnsupportedSemantics)
+    {
+        return Err(String::from("fresh lowering accepted empty frontend"));
+    }
+    let directory = compiler_crash_directory("empty-checkpoint")?;
+    let progress = directory.join("empty.hex");
+    let inspector = temporary_inspector(
+        "empty-checkpoint", INSPECTOR_SUCCESS_SCRIPT,
+    )?;
+    let result = (|| {
+        let encoded = canonical_debug_text(&empty)
+            .map_err(|error| format!("encode empty IR: {error:?}"))?;
+        write(&progress, encoded)
+            .map_err(|error| format!("write empty IR: {error}"))?;
+        let interpreter = repository_python();
+        let unrestricted = resume_typed_ir_from_progress(
+            &interpreter, &inspector, &progress,
+        );
+        if unrestricted != Ok(empty) {
+            return Err(format!("empty valid IR rejected: {unrestricted:?}"));
+        }
+        assert_source_matched_resume_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            ProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let inspector_cleanup = remove_file(&inspector)
+        .map_err(|error| format!("remove empty inspector: {error}"));
+    let directory_cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove empty fixture: {error}"));
+    result?;
+    inspector_cleanup?;
+    directory_cleanup
+}
+
+#[test]
 fn typed_ir_progress_for_source_preserves_inspector_and_codec_failures()
 -> Result<(), String> {
     let expected = frontend_return_projection();
